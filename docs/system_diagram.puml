@@ -1,0 +1,51 @@
+@startuml
+
+package "Lens Correction" {
+  [Histogram Equalization] as HEQ
+  [Debayer] as DB
+  [Lens Calibration] as LENC
+  [Undistorted RAW] as RAW
+  [Undistortion] as UD
+  HEQ --> DB
+  LENC --> UD
+  RAW --> UD
+  UD --> HEQ 
+  DB --> LENC
+}
+
+package "Laser Depth" {
+  [Laser Calibration] as LASC
+  [Laser Location] as LL
+  [Laser Parallax] as LP
+  DB --> LL
+  LL --> LP
+  LENC --> LASC
+  LASC --> LP
+}
+
+package "Image Correction" {
+  [Dehaze] as DH
+  [Depth Estimation] as DE
+  [SeaThru] as ST
+  [Post-SeaThru Color Correction] as CC
+  LP --> DH
+  DH --> DE
+  DE --> ST
+  ST --> CC
+}
+
+package "Fish Segmentation and ID" {
+  [Fishial] as FA
+  [Line Symmetry] as LS
+  [Fork/Head Point] as FH
+  [Fish Length] as FL
+  [Species ID] as ID
+  [Fish Mass] as FM
+  CC --> FA
+  FA --> LS
+  LS --> FH
+  FH --> FL
+  FL --> ID
+  ID --> FM
+}
+@enduml
