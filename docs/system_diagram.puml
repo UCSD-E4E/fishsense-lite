@@ -1,51 +1,106 @@
-@startuml
+@startuml System Diagram
 
-package "Lens Correction" {
-  [Histogram Equalization] as HEQ
-  [Debayer] as DB
-  [Lens Calibration] as LENC
-  [Undistorted RAW] as RAW
-  [Undistortion] as UD
-  HEQ --> DB
-  LENC --> UD
-  RAW --> UD
-  UD --> HEQ 
-  DB --> LENC
+package "C# GUI" {
+    package "Rust Message Dispatcher" {
+        [RAW Loader] as RAWL
+        [Camera Config Feeder]  as CCF
+        [Laser Config Feeder] as LCF
+    }
+
+    package "Rust Message Receiver" {
+        [Camera Config Handler] as CCH
+        [Laser Config Handler] as LCH
+        [Length Data Handler] as LDH
+    }
 }
 
-package "Laser Depth" {
-  [Laser Calibration] as LASC
-  [Laser Location] as LL
-  [Laser Parallax] as LP
-  DB --> LL
-  LL --> LP
-  LENC --> LASC
-  LASC --> LP
+package "Rust Business Logic" {
+    package "Single Lens Correction" {
+        [RAW Undistort] as RAWU
+        package "RAW Ingester" {
+            [Debayer] as DB
+            [Histogram Equalization] as HE
+        }
+        [Camera Calibrator] as CC
+    }
+   
+    DB --> HE: Debayered Image
+
+    HE --> CC: Checkerboard only 
+    HE --> RAWU: Checkerboard with laser
+    HE --> RAWU: Fish with laser
+
+
+    package "GUI Message Dispatcher" {
+        [Camera Calibration Data] as CDD
+        [Laser Calibration Data] as LCDD
+        [Length Data] as LDD
+    }
+
+
+    package "GUI Message Receiver" {
+        [Camera Calibration Data] as CDR
+        [Laser Calibration Data] as LCDR
+        [RAWs] as RAWR
+    }
+    RAWR --> DB: Unprocessed RAW
+
+    CC --> CDD: Lens calibration parameters 
+
+    
+    CDR --> RAWU: Calibration parameters
+
+    package "Laser Depth" {
+        [Laser Calibrator] as LC
+        [Laser 2D Locator] as LL2
+        [Laser 3D Locator Checkerboard Pose Estimator] as LL3
+    }
+    RAWU --> LL2: Undistorted checkerboard + laser images
+    LL2 --> LL3: List of laser calibration images
+    LL3 --> LC: List of 3D laser points
+    LL2 --> LC: List of 2D laser points
+    LC --> LCDD: Laser calibration parameters
+    LCDR --> LL3: Laser calibration parameters
+
+    package "Image Quality Improvement" {
+        [SeaThru] as SEA
+        [Depth Map Estimation] as DME
+        [Dehazing] as DH
+    }
+    RAWU --> DH: Processed fish images 
+    DH --> DME: Dehazed fish images
+    LL3 --> DME: Laser depth
+    DH --> SEA: Dehazed fish images
+    DME --> SEA: Depth map estimate for Seathru
+
+    package "Fish Analyzer" {
+        [Fishial] as FAL
+        [Line Symmetry] as LS
+        [Head/Fork Locator] as HFL
+        [Length Calculator] as LCal
+        [Mass Calculator] as MCal
+        [Data Packager] as DP
+    }
+
+    SEA --> FAL: Fully processed fish image
+    FAL --> LS: Fish contour
+    LS --> HFL: Body line
+    FAL --> HFL: Fish contour
+    LL3 --> HFL: Laser depth
+    HFL --> LCal: Head and fork 3D locations
+    LCal --> MCal: Fish length
+
+    LCal --> DP: Fish length
+    MCal --> DP: Fish mass
+
+    DP --> LDD: Fish data packet
 }
 
-package "Image Correction" {
-  [Dehaze] as DH
-  [Depth Estimation] as DE
-  [SeaThru] as ST
-  [Post-SeaThru Color Correction] as CC
-  LP --> DH
-  DH --> DE
-  DE --> ST
-  ST --> CC
-}
+CCF --> CDR: Camera calibration parameters
+CDD --> CCH: Camera calibration parameters
+LCF --> LCDR: Laser calibration parameters
+LCDD --> LCH: Laser calibration parameters
+RAWL --> RAWR: RAW bytes
+LDD --> LDH: Fish data
 
-package "Fish Segmentation and ID" {
-  [Fishial] as FA
-  [Line Symmetry] as LS
-  [Fork/Head Point] as FH
-  [Fish Length] as FL
-  [Species ID] as ID
-  [Fish Mass] as FM
-  CC --> FA
-  FA --> LS
-  LS --> FH
-  FH --> FL
-  FL --> ID
-  ID --> FM
-}
 @enduml
