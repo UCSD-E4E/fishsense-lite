@@ -1,0 +1,26 @@
+@startuml Ingest Data
+actor Actor
+participant UI
+participant Backend
+database Database
+
+Actor->UI: Request to ingest data RAWs
+UI->Actor: Display UI to select data RAWs
+Actor->UI: Select data RAWs to ingest
+
+UI->Database: Request lens calibration parameters
+Database->UI: Return lens calibration parameters
+
+UI->Backend: Request process and undistort of RAWs
+Backend->UI: Return process and undistorted RAWs
+
+UI->Actor: Display each image for laser, fish head/tail labeling
+Actor->UI: Label laser and fish head/tail
+
+UI->Backend: Request length estimate using laser position and fish head/tail per image
+Backend->UI: Return calculated fish length per image
+UI->Actor: Display results and provide option to save lengths and images
+
+Actor->UI: Request save length and images
+UI->UI: Saves length and images
+@enduml

@@ -1,0 +1,75 @@
+@startuml Class Diagram
+
+package "Single Lens Correction" {
+    class UndistortRawProcessor {
+        LensCalibration lens_calibration
+
+        byte[] undistort_raw(byte[] image)
+    }
+
+    class RawProcessor {
+        byte[] process_image(byte[] image)
+    }
+
+    class LensCalibration {
+        float focal_x
+        float focal_y
+        
+        float optical_center_x
+        float optical_center_y
+
+        float skew
+
+        float[5] distortion_coefficients
+    }
+
+    class LensCalibrator {
+        LensCalibration calibrate(int[][][][3] images)
+    }
+
+    class Checkboard {
+        float[2] find_corners(int[][][3] image)
+        float[3] find_checkboard_pose(int[][][3] image)
+    }
+}
+
+package "Laser Depth" {
+    class LaserCalibration {
+        float[3] laser_axis
+        float[3] laser_origin
+    }
+
+    class LaserCalibrator {
+        LaserCalibration calibrate_with_checkerboard(int[][][3] undistorted_images)
+    }
+
+    class LaserProcessor {
+        LaserCalibration laser_calibration
+
+        float[3] calculate_laser_3d(float[2] laser_image_coordinates)
+        float[][][3] calculate_depth_map(float[2] laser_image_coordinates)
+    }
+}
+
+package "Fish Analyzer" {
+    class FishLengthCalculator {
+        float[3] calculate_length(float[2] head_image_coord, float[2] tail_image_coord, float[][][3] depth_map)
+    }
+}
+
+package "FishSense Lite Business Layer Handlers" {
+    class CalibrationHandler {
+        LensCalibration calibrate_lens(string[] file_paths)
+        LaserCalibration calibrate_laser(string[] file_paths, LensCalibration lens_calibration)
+    }
+
+    class RawProcessHandler {
+        int[][][3] process_image(string file_path, LensCalibration lens_calibration)
+    }
+
+    class FishAnalyzerHandler {
+        float analyze_fish(float[][][3] image, float[2] laser_coord, LaserCalibration laser_calibration)
+    }
+}
+
+@enduml
