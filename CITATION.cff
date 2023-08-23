@@ -1,0 +1,46 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: FishSense-Lite
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Christopher
+    name-particle: L
+    family-names: Crutchfield
+    email: ccrutchf@ucsd.edu
+    affiliation: UC San Diego
+    orcid: 'https://orcid.org/0000-0002-2011-721X'
+repository-code: 'https://github.com/UCSD-E4E/fishsense-lite'
+abstract: >-
+  Length is a vital metric for studying a fish population's
+  overall health. Studying size distribution over time can
+  aid in documenting population recovery efforts. Common
+  scientific methods include having divers manually survey
+  an area and record individuals and their approximate sizes
+  (known as a roving diver survey), which has the potential
+  to be inaccurate and catch and release, which is
+  time-consuming and highly invasive. Previous attempts at
+  automating this process use a dual laser caliper system,
+  which is difficult to calibrate and maintain, and stereo
+  cameras, which are costly and require extensive manual
+  work. We propose a system that is relatively
+  cost-effective and easy to use, with the ultimate goal of
+  it being able to be built and used by citizen scientists.
+  This system consists of a standard underwater
+  point-and-shoot camera combined with a single laser using
+  a 3D-printed mount, for which we provide a tool for
+  calibration and length calculation. By using this system
+  to measure objects of known length, we are able to verify
+  a measurement error of less than $20\%$ at ranges of up to
+  5 meters.
+keywords:
+  - fish
+  - ecology
+  - optics
+  - depth camera
+  - laser
+license: BSD-4-Clause-UC
