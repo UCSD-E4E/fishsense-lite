@@ -8,8 +8,7 @@ message: >-
   metadata from this file.
 type: software
 authors:
-  - given-names: Christopher
-    name-particle: L
+  - given-names: Christopher L.
     family-names: Crutchfield
     email: ccrutchf@ucsd.edu
     affiliation: UC San Diego
