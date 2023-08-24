@@ -13,6 +13,11 @@ authors:
     email: ccrutchf@ucsd.edu
     affiliation: UC San Diego
     orcid: 'https://orcid.org/0000-0002-2011-721X'
+  - given-names: Kyle S.
+    family-names: Hu
+    email: kshu@ucsd.edu
+    affiliation: UC San Diego
+    orcid: 'https://orcid.org/0009-0006-4494-7257'
 repository-code: 'https://github.com/UCSD-E4E/fishsense-lite'
 abstract: >-
   Length is a vital metric for studying a fish population's
