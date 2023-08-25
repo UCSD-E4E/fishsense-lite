@@ -8,7 +8,7 @@ package "Single Lens Correction" {
     }
 
     class RawProcessor {
-        byte[] process_image(byte[] image)
+        Image process_image(byte[] image)
     }
 
     class LensCalibration {
@@ -24,12 +24,17 @@ package "Single Lens Correction" {
     }
 
     class LensCalibrator {
-        LensCalibration calibrate(int[][][][3] images)
+        LensCalibration calibrate(Image[] images)
+    }
+
+    class CheckerboardPose {
+        float[3][3] rotation
+        float[3] translation
     }
 
     class Checkboard {
-        float[2] find_corners(int[][][3] image)
-        float[3] find_checkboard_pose(int[][][3] image)
+        float[2] find_corners(Image image)
+        CheckerboardPose find_checkboard_pose(Image image)
     }
 }
 
@@ -40,7 +45,7 @@ package "Laser Depth" {
     }
 
     class LaserCalibrator {
-        LaserCalibration calibrate_with_checkerboard(int[][][3] undistorted_images)
+        LaserCalibration calibrate_with_checkerboard(Image undistorted_images)
     }
 
     class LaserProcessor {
@@ -59,12 +64,20 @@ package "Fish Analyzer" {
 
 package "FishSense Lite Business Layer Handlers" {
     class CalibrationHandler {
+        vector<float[3]> laser_locations
+        LensCalibration lens_calibration
+
         LensCalibration calibrate_lens(string[] file_paths)
-        LaserCalibration calibrate_laser(string[] file_paths, LensCalibration lens_calibration)
+        void queue_laser_calibration_image(float[2] laser_location, Image image)
+        LaserCalibration calibrate_laser()
     }
 
     class RawProcessHandler {
-        int[][][3] process_image(string file_path, LensCalibration lens_calibration)
+        Image process_image(string file_path, LensCalibration lens_calibration)
+    }
+
+    class CheckerboardHandler {
+        float[3][3], float[3] find_checkerboard_pose(Image image, LensCalibration lens_calibration)
     }
 
     class FishAnalyzerHandler {

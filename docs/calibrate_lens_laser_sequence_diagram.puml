@@ -4,6 +4,7 @@ participant UI
 participant Backend
 database Database
 
+activate Actor
 Actor -> UI: Request to calibrate lens and laser
 UI -> Actor: Display UI to select lens calibration RAWs
 Actor -> UI: Select lens calibration RAWs
@@ -11,6 +12,7 @@ UI -> Backend: Request calibrate lens
 Backend -> UI: Return lens calibration parameters
 
 UI -> Actor: Display UI to select laser calibration RAWs
+Actor -> UI: Select laser calibration RAWs
 UI -> Backend: Request process and undistort RAWs
 Backend -> UI: Provide undistorted and processed RAW bytes
 UI -> Actor: Display UI to label laser dots
@@ -18,6 +20,10 @@ Actor -> UI: Label laser dots
 UI -> Backend: Request calibrate laser
 Backend -> UI: Return laser calibration parameters
 
+activate UI
 UI -> Database: Request to store lens and laser calibration
+Database -> UI: Report lens and laser calibration saved successfully
 UI -> Actor: Report success of laser and lens calibration
+deactivate UI
+deactivate Actor
 @enduml
