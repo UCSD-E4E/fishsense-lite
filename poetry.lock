@@ -600,7 +600,7 @@ tqdm = "^4.64.1"
 type = "git"
 url = "https://github.com/UCSD-E4E/fishsense-lite-python-pipeline.git"
 reference = "main"
-resolved_reference = "49dde3d235bd567473af539273712fae57c15ae9"
+resolved_reference = "82061ffe183c35cafb44b85c343695a4a49041b4"
 
 [[package]]
 name = "fonttools"
