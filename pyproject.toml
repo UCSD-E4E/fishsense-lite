@@ -6,8 +6,13 @@ authors = []
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = ">=3.9,<3.12"
+fishsense-lite-python-pipeline = { git = "https://github.com/UCSD-E4E/fishsense-lite-python-pipeline.git", branch = "main" }
+matplotlib = "^3.8.0"
 
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.25.2"
+pandas = "^2.1.1"
 
 [build-system]
 requires = ["poetry-core"]

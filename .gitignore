@@ -298,3 +298,6 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/windows,linux,macos,visualstudiocode,python,rust,rust-analyzer,jupyternotebooks
+
+demo/data/*
+!demo/data/P7170081.ORF
