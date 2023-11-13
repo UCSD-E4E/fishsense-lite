@@ -11,7 +11,7 @@ fishsense-lite-python-pipeline = { git = "https://github.com/UCSD-E4E/fishsense-
 matplotlib = "^3.8.0"
 
 [tool.poetry.group.dev.dependencies]
-ipykernel = "^6.25.2"
+ipykernel = "^6.26.0"
 pandas = "^2.1.1"
 
 [build-system]
