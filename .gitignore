@@ -307,3 +307,5 @@ demo/data/models/*
 !demo/data/laser-calibration.pkg
 !demo/data/lens-calibration.pkg
 !demo/data/models/laser_detection.pth
+
+docs/.$*
