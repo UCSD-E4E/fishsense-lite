@@ -5,7 +5,9 @@
 	// List of extensions which should be recommended for users of this workspace.
 	"recommendations": [
 		"ms-python.python",
-		"ms-toolsai.jupyter"
+		"ms-toolsai.jupyter",
+		"jebbs.plantuml",
+		"hediet.vscode-drawio"
 	],
 	// List of extensions recommended by VS Code that should not be recommended for users of this workspace.
 	"unwantedRecommendations": [

@@ -1,0 +1,59 @@
+@startuml
+start
+:Read RAW;
+:Load lens calibration parameters;
+:Load laser calibration parameters;
+
+fork
+    :Process RAW for
+    laser detection;
+    :Undistort image;
+    :Find local intensity peaks
+    to use as laser canidates;
+    :Use laser calibration
+    parameters to reduce list
+    of laser canidates;
+    :Use neural network to
+    choose laser;
+fork again
+    :Process RAW for
+    fish detection;
+    :Undistort Image;
+    :Use Fishial to find
+    fish mask;
+end fork
+
+if (Laser and fish found) then
+    :Choose fish mask which
+    contains laser;
+
+    if (Fish mask contains laser) then
+        fork
+            :Use laser location and laser
+            calibration parameters to calculate
+            distance to fish;
+        fork again
+            :Use PCA to find the
+            axis of greatest symmetry
+            of Fish mask found by Fishial
+            and intersection of laser location;
+            :Intersect axis of greatest
+            symmetry with countours
+            of fish mask to find
+            head and fork locations;
+        end fork
+
+        :Project the head and fork locations
+        onto a plane at the distance calculated
+        using laser parallax with a normal
+        along the camera axis;
+        :Calculate the distance between the head
+        and fork points in 3D space;
+
+        stop
+    endif
+endif
+
+:No data found;
+end
+@enduml

@@ -1,13 +1,13 @@
 # Architecture Decisions
 
 ## System Requirements
-* Cross-platform
-    * macOS
-    * Windows
-    * Linux
-* Vector-based graphics
+* Multiarchitecture
+    * aarch64
+    * x86-64
+* Linux
+    * Ubuntu 22.04
 * Performant
-    * Can support CUDA/Metal/etc
+    * Can support CUDA
 
 ## Language Choice
 In order to meet the above requirements, we aim to use an application language to write the UI and a system language for the backend.
