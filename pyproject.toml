@@ -9,6 +9,7 @@ readme = "README.md"
 python = "^3.11"
 pyFishSense = { git = "https://github.com/UCSD-E4E/pyFishSense.git", branch = "feature/pyfishsense" }
 bom-common = {git = "https://github.com/UCSD-E4E/bom-common", rev = "main"}
+wakepy = {git = "https://github.com/ccrutchf/wakepy", rev = "dev"}
 matplotlib = "^3.8.0"
 pandas = "^2.1.1"
 ray = "^2.9.3"

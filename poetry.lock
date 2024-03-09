@@ -1929,7 +1929,7 @@ wheel = "^0.41.3"
 type = "git"
 url = "https://github.com/UCSD-E4E/pyFishSense.git"
 reference = "feature/pyfishsense"
-resolved_reference = "6824b256136c1e6d932d4fe3e47bd41df183f140"
+resolved_reference = "6eb6652c599c12b50a225447b342596f375c94b3"
 
 [[package]]
 name = "pygments"
@@ -2854,4 +2854,4 @@ test = ["pytest (>=6.0.0)", "setuptools (>=65)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "ffb3484c02fb183b0ce588637b23f3883c0daf06b95c22475617bcf08c905750"
+content-hash = "9dae8cc412243c05938bbec4e1be1ee0a708e9fe14d661a8fb8ce7b92631df94"

@@ -11,7 +11,11 @@
             "module": "fishsense_lite",
             "args": [
                 "process",
-                "~/data/**/*.ORF"
+                "~/data/**/*.ORF",
+                "--lens-calibration",
+                "~/data/fsl-01d-lens-raw.pkg",
+                "--laser-calibration",
+                "~/data/laser-calibration.pkg"
             ]
         }
     ]
