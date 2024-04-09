@@ -15,7 +15,10 @@
                 "--lens-calibration",
                 "~/data/fsl-01d-lens-raw.pkg",
                 "--laser-calibration",
-                "~/data/laser-calibration.pkg"
+                "~/data/laser-calibration.pkg",
+                "--output",
+                "./output/results.db",
+                // "--overwrite"
             ]
         }
     ]

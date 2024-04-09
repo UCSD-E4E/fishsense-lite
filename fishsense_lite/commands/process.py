@@ -1,6 +1,7 @@
 from argparse import ArgumentParser, Namespace
 from glob import glob
 from pathlib import Path
+from typing import Iterable, Tuple
 
 import numpy as np
 import ray
@@ -15,6 +16,9 @@ from pyfishsense import (
     WorldPointHandler,
 )
 from tqdm import tqdm
+
+from fishsense_lite.database import Database
+from fishsense_lite.result_status import ResultStatus
 
 
 def to_iterator(obj_ids):
@@ -34,7 +38,7 @@ def uint16_2_uint8(img: np.ndarray) -> np.ndarray:
 @ray.remote(num_gpus=0.1)
 def execute(
     input_file: Path, lens_calibration_path: Path, laser_calibration_path: Path
-) -> float | None:
+) -> Tuple[Path, ResultStatus, float]:
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     raw_processor_hist_eq = RawProcessor()
@@ -57,19 +61,19 @@ def execute(
     laser_coords = laser_detector.find_laser(img_dark8)
 
     if laser_coords is None:
-        return input_file, None
+        return input_file, ResultStatus.FAILED_LASER_COORDS, None
 
     fish_segmentation_inference = FishSegmentationInference(device)
     segmentations = fish_segmentation_inference.inference(img8)
 
     if segmentations.sum() == 0:
-        return input_file, None
+        return input_file, ResultStatus.FAILED_SEGMENTATION, None
 
     mask = np.zeros_like(segmentations, dtype=bool)
     mask[segmentations == segmentations[laser_coords[1], laser_coords[0]]] = True
 
     if mask.sum() == 0:
-        return input_file, None
+        return input_file, ResultStatus.FAILED_LASER_SEGMENTATION_INTERSECTION, None
 
     fish_head_tail_detector = FishHeadTailDetector()
     left_coord, right_coord = fish_head_tail_detector.find_head_tail(mask)
@@ -86,7 +90,7 @@ def execute(
     )
     length = np.linalg.norm(left_coord3d - right_coord3d)
 
-    return input_file, length
+    return input_file, ResultStatus.SUCCESS, length
 
 
 class Process(Plugin):
@@ -98,22 +102,52 @@ class Process(Plugin):
         )
 
         parser.add_argument(
-            "-c", "--lens-calibration", dest="lens_calibration", required=True
+            "-c",
+            "--lens-calibration",
+            dest="lens_calibration",
+            required=True,
+            help="Lens calibration package for the FishSense Lite.",
+        )
+        parser.add_argument(
+            "-l",
+            "--laser-calibration",
+            dest="laser_calibration",
+            required=True,
+            help="Laser calibration package for the FishSense Lite.",
         )
 
         parser.add_argument(
-            "-l", "--laser-calibration", dest="laser_calibration", required=True
+            "-o",
+            "--output",
+            required=True,
+            help="The output file containing length data.",
+        )
+
+        parser.add_argument(
+            "--overwrite",
+            action="store_true",
+            help="Overwrite images previously computed.",
         )
 
     def __call__(self, args: Namespace):
-        files = {Path(f) for g in args.data for f in glob(g, recursive=True)}
-        lens_calibration_path = Path(args.lens_calibration)
-        laser_calibration_path = Path(args.laser_calibration)
+        with Database(Path(args.output)) as database:
+            files = {Path(f) for g in args.data for f in glob(g, recursive=True)}
 
-        futures = [
-            execute.remote(f, lens_calibration_path, laser_calibration_path)
-            for f in files
-        ]
+            if not args.overwrite:
+                prev_files = database.get_files()
+                files.difference_update(prev_files)
 
-        files, lengths = list(zip(*tqdm(to_iterator(futures), total=len(files))))
-        print(lengths)
+            lens_calibration_path = Path(args.lens_calibration)
+            laser_calibration_path = Path(args.laser_calibration)
+
+            futures = [
+                execute.remote(f, lens_calibration_path, laser_calibration_path)
+                for f in files
+            ]
+
+            results: Iterable[Tuple[Path, ResultStatus, float]] = tqdm(
+                to_iterator(futures), total=len(files)
+            )
+
+            for file, result_status, length in results:
+                database.insert_data(file, result_status, length)

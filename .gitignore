@@ -310,3 +310,4 @@ demo/data/models/*
 
 docs/.$*
 data/*
+output/*
