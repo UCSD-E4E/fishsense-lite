@@ -9,6 +9,7 @@
             "type": "debugpy",
             "request": "launch",
             "module": "fishsense_lite",
+            "justMyCode": false,
             "args": [
                 "process",
                 "~/data/**/*.ORF",

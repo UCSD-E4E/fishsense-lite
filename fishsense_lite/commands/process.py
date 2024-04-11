@@ -149,5 +149,13 @@ class Process(Plugin):
                 to_iterator(futures), total=len(files)
             )
 
+            # results = tqdm(
+            #     (
+            #         execute(f, lens_calibration_path, laser_calibration_path)
+            #         for f in files
+            #     ),
+            #     total=len(files),
+            # )
+
             for file, result_status, length in results:
                 database.insert_data(file, result_status, length)
