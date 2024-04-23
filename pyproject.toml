@@ -6,10 +6,18 @@ authors = []
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.12"
-fishsense-lite-python-pipeline = { git = "https://github.com/UCSD-E4E/fishsense-lite-python-pipeline.git", branch = "main" }
+python = "^3.11"
+pyFishSense = { git = "https://github.com/UCSD-E4E/pyFishSense.git", branch = "feature/pyfishsense" }
+bom-common = {git = "https://github.com/UCSD-E4E/bom-common", rev = "main"}
+wakepy = {git = "https://github.com/ccrutchf/wakepy", rev = "dev"}
 matplotlib = "^3.8.0"
 pandas = "^2.1.1"
+ray = "^2.9.3"
+gitpython = "^3.1.42"
+backoff = "^2.2.1"
+
+[tool.poetry.dev-dependencies]
+black = "^23.12.0"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.26.0"

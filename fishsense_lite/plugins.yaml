@@ -1,0 +1,7 @@
+process:
+  module: process
+  class: Process
+  package: fishsense_lite.commands
+  subcommands:
+    - process
+  description: "Process data from the FishSense Lite product line."

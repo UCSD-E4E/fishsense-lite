@@ -309,3 +309,5 @@ demo/data/models/*
 !demo/data/models/laser_detection.pth
 
 docs/.$*
+data/*
+output/*

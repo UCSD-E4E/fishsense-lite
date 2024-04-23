@@ -30,6 +30,10 @@ pip install --upgrade pip
 
 In the root of this project, run the following.  If you do not have x86 with CUDA, you may need to delete poetry.lock.
 ```
-poetry install --no-root
-poetry run python -m pip install git+https://github.com/facebookresearch/detectron2.git@3c7bb714795edc7a96c9a1a6dd83663ecd293e36 –no-build-isolation
+poetry install
+```
+
+To run the CLI to process data.  Note that this will not rerun files previously stored in `./output/results.db`.
+```
+poetry run python -m fishsense_lite process ~/data/**/*.ORF --lens-calibration ~/data/fsl-01d-lens-raw.pkg --laser-calibration ~/data/laser-calibration.pkg --output ./output/results.db
 ```
