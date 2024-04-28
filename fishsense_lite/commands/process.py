@@ -7,7 +7,8 @@ import numpy as np
 import ray
 import torch
 from bom_common.pluggable_cli import Plugin
-from pyfishsense import (
+from pyfishsense import sum_as_string
+from pyfishsensedev import (
     FishHeadTailDetector,
     FishSegmentationInference,
     ImageRectifier,
@@ -39,6 +40,8 @@ def uint16_2_uint8(img: np.ndarray) -> np.ndarray:
 def execute(
     input_file: Path, lens_calibration_path: Path, laser_calibration_path: Path
 ) -> Tuple[Path, ResultStatus, float]:
+    print(f"sum_as_string(1, 2) in Rust: {sum_as_string(1, 2)}")
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     raw_processor_hist_eq = RawProcessor()

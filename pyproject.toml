@@ -7,7 +7,8 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-pyFishSense = { git = "https://github.com/UCSD-E4E/pyFishSense.git", branch = "main" }
+pyFishSenseDev = { git = "https://github.com/UCSD-E4E/pyFishSenseDev", branch = "main" }
+pyFishSense = { git = "https://github.com/UCSD-E4E/pyFishSense", branch = "main" }
 bom-common = {git = "https://github.com/UCSD-E4E/bom-common", rev = "main"}
 wakepy = {git = "https://github.com/ccrutchf/wakepy", rev = "dev"}
 matplotlib = "^3.8.0"
