@@ -28,6 +28,11 @@ pip install poetry
 pip install --upgrade pip
 ```
 
+Install rustup
+```
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
 In the root of this project, run the following.  If you do not have x86 with CUDA, you may need to delete poetry.lock.
 ```
 poetry install
