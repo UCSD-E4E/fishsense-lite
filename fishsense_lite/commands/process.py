@@ -1,9 +1,11 @@
 from argparse import ArgumentParser, Namespace
 from glob import glob
+from itertools import chain
 from pathlib import Path
-from typing import Iterable, Tuple
+from typing import Iterable, List, Set, Tuple
 
 import numpy as np
+import pandas as pd
 import ray
 import torch
 from bom_common.pluggable_cli import Plugin
@@ -37,11 +39,9 @@ def uint16_2_uint8(img: np.ndarray) -> np.ndarray:
 
 
 @ray.remote(num_gpus=0.1)
-def execute(
+def execute_orf(
     input_file: Path, lens_calibration_path: Path, laser_calibration_path: Path
 ) -> Tuple[Path, ResultStatus, float]:
-    print(f"sum_as_string(1, 2) in Rust: {sum_as_string(1, 2)}")
-
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     raw_processor_hist_eq = RawProcessor()
@@ -96,6 +96,91 @@ def execute(
     return input_file, ResultStatus.SUCCESS, length
 
 
+def _execute_csv_python_tool(
+    csv_path: Path, df: pd.DataFrame, world_point_handler: WorldPointHandler
+):
+    for index, row in df.iterrows():
+        # name	laser.x	laser.y	head.x	head.y	tail.x	tail.y
+        file_name = Path(row["name"]).parts[-1]
+
+        head_coords = np.array([row["head.x"], row["head.y"]])
+        tail_coords = np.array([row["tail.x"], row["tail.y"]])
+        laser_coords = np.array([row["laser.x"], row["laser.y"]])
+
+        laser_coords3d = world_point_handler.calculate_laser_parallax(laser_coords)
+
+        left_coord3d, right_coord3d = (
+            world_point_handler.calculate_world_coordinates_with_depth(
+                head_coords, tail_coords, laser_coords3d[2]
+            )
+        )
+        length = np.linalg.norm(left_coord3d - right_coord3d)
+
+        yield csv_path.parent / file_name, ResultStatus.SUCCESS, length
+
+
+def _execute_csv_viame(
+    csv_path: Path, lines: List[str], world_point_handler: WorldPointHandler
+):
+    for line in lines[2:]:
+        parts = [p.strip() for p in line.split(",") if p.strip()]
+        file_name = parts[1]
+
+        is_head_tail = parts[-2].startswith("(kp) head") and parts[-1].startswith(
+            "(kp) tail"
+        )
+        is_laser = parts[-1].startswith("(kp) head")
+
+        if is_head_tail:
+            # (kp) head 1632 1497
+            head_coords = np.array([int(p) for p in parts[-2].split(" ")[-2:]])
+            # (kp) tail 2340 1186
+            tail_coords = np.array([int(p) for p in parts[-1].split(" ")[-2:]])
+        elif is_laser:
+            if prev_file_name != file_name:
+                continue
+
+            # (kp) head 1632 1497
+            laser_coords = np.array([int(p) for p in parts[-1].split(" ")[-2:]])
+            laser_coords3d = world_point_handler.calculate_laser_parallax(laser_coords)
+
+            left_coord3d, right_coord3d = (
+                world_point_handler.calculate_world_coordinates_with_depth(
+                    head_coords, tail_coords, laser_coords3d[2]
+                )
+            )
+            length = np.linalg.norm(left_coord3d - right_coord3d)
+
+            yield csv_path.parent / file_name, ResultStatus.SUCCESS, length
+        else:
+            continue
+
+        prev_file_name = file_name
+
+
+def execute_csv(
+    input_files: Set[Path], lens_calibration_path: Path, laser_calibration_path: Path
+):
+    world_point_handler = WorldPointHandler(
+        lens_calibration_path.absolute(), laser_calibration_path.absolute()
+    )
+
+    for file in input_files:
+        with file.open("r") as f:
+            lines = f.readlines()
+
+        is_viame = lines[0].startswith("# 1: Detection or Track-id")
+        is_python_tool = lines[0].startswith("name")
+
+        if is_viame:
+            for result in _execute_csv_viame(file, lines, world_point_handler):
+                yield result
+        elif is_python_tool:
+            df = pd.read_csv(file.as_posix())
+            for result in _execute_csv_python_tool(file, df, world_point_handler):
+                yield result
+
+
 class Process(Plugin):
     def __init__(self, parser: ArgumentParser):
         super().__init__(parser)
@@ -134,22 +219,33 @@ class Process(Plugin):
 
     def __call__(self, args: Namespace):
         with Database(Path(args.output)) as database:
+            print(f"sum_as_string(1, 2) in Rust: {sum_as_string(1, 2)}")
+
             files = {Path(f) for g in args.data for f in glob(g, recursive=True)}
 
             if not args.overwrite:
                 prev_files = database.get_files()
                 files.difference_update(prev_files)
 
+            orf_files = {f for f in files if f.suffix.lower() == ".orf"}
+            csv_files = {f for f in files if f.suffix.lower() == ".csv"}
+
             lens_calibration_path = Path(args.lens_calibration)
             laser_calibration_path = Path(args.laser_calibration)
 
-            futures = [
-                execute.remote(f, lens_calibration_path, laser_calibration_path)
-                for f in files
+            orf_futures = [
+                execute_orf.remote(f, lens_calibration_path, laser_calibration_path)
+                for f in orf_files
             ]
 
             results: Iterable[Tuple[Path, ResultStatus, float]] = tqdm(
-                to_iterator(futures), total=len(files)
+                chain(
+                    to_iterator(orf_futures),
+                    execute_csv(
+                        csv_files, lens_calibration_path, laser_calibration_path
+                    ),
+                ),
+                total=len(orf_files) + len(csv_files),
             )
 
             # results = tqdm(
