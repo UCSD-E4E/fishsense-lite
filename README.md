@@ -1,8 +1,8 @@
 # FishSense Lite
 
 ## Dependencies
-https://github.com/UCSD_E4E/pyFishSense
-https://github.com/UCSD_E4E/pyFishSenseDev
+* https://github.com/UCSD_E4E/pyFishSense
+* https://github.com/UCSD_E4E/pyFishSenseDev
 
 ## Setup
 
