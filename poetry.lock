@@ -2000,7 +2000,7 @@ wheel = "^0.41.3"
 type = "git"
 url = "https://github.com/UCSD-E4E/pyFishSenseDev"
 reference = "main"
-resolved_reference = "7334c50511381fe71c3d71bc8c9672deeb618cdc"
+resolved_reference = "544e0529ec92c7e7e2cd159c9ce338c1947a4d4c"
 
 [[package]]
 name = "pygments"
