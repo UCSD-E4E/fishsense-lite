@@ -10,14 +10,10 @@ import ray
 import torch
 from bom_common.pluggable_cli import Plugin
 from pyfishsense import sum_as_string
-from pyfishsensedev import (
-    FishHeadTailDetector,
-    FishSegmentationInference,
-    ImageRectifier,
-    LaserDetector,
-    RawProcessor,
-    WorldPointHandler,
-)
+from pyfishsensedev import WorldPointHandler
+from pyfishsensedev.fish import FishHeadTailDetector, FishSegmentationInference
+from pyfishsensedev.image import ImageRectifier, RawProcessor
+from pyfishsensedev.laser import LaserDetector
 from tqdm import tqdm
 
 from fishsense_lite.database import Database

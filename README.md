@@ -1,7 +1,9 @@
 # FishSense Lite
 
-## To Run Demo
-On Ubuntu 22.04, install
+## Setup
+
+## Ubuntu 22.04
+Install the dependencies
 ```
 sudo apt-get install -y build-essential git libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev python3-openssl
 ```
@@ -23,9 +25,6 @@ Source your `~/.bashrc`, install Python `3.11`, and poetry
 ```
 source ~/.bashrc
 pyenv install 3.11
-
-pip install poetry
-pip install --upgrade pip
 ```
 
 Install rustup
@@ -35,9 +34,16 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 In the root of this project, run the following.  If you do not have x86 with CUDA, you may need to delete poetry.lock.
 ```
+pip install poetry
+pip install --upgrade pip
+
 poetry install
 ```
 
+## To Run Demo
+Open the notebook in demo/pipeline.ipynb
+
+## To run the CLI
 To run the CLI to process data.  Note that this will not rerun files previously stored in `./output/results.db`.
 ```
 poetry run python -m fishsense_lite process ~/data/**/*.ORF --lens-calibration ~/data/fsl-01d-lens-raw.pkg --laser-calibration ~/data/laser-calibration.pkg --output ./output/results.db
