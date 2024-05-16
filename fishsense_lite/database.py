@@ -1,3 +1,5 @@
+"""Module for accessing the sqlite database used to store the results."""
+
 import datetime
 from os import makedirs
 from pathlib import Path
@@ -86,7 +88,7 @@ class Database:
     def insert_metadata(self, metadata: Dict[str, str]):
         self._cursor.executemany(
             "INSERT INTO metadata VALUES (?, ?)",
-            [(k, v) for k, v in metadata.items()],
+            list(metadata.items()),
         )
         self._connection.commit()
 
@@ -105,6 +107,11 @@ class Database:
 
     @backoff.on_exception(backoff.expo, OperationalError)
     def get_files(self) -> Set[Path] | None:
+        """Returns a set of Pathlib Paths which we have previously executed on.
+
+        Returns:
+            Set[Path] | None: A set of Pathlib paths we have previously executed on.
+        """
         results = self._cursor.execute("SELECT file FROM data")
 
         if results:

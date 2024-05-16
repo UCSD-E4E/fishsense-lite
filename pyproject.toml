@@ -19,11 +19,13 @@ backoff = "^2.2.1"
 xlrd = "^2.0.1"
 seaborn = "^0.13.2"
 
-[tool.poetry.dev-dependencies]
-black = "^24.3.0"
-
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.26.0"
+black = "^24.3.0"
+pylint = "^3.2.0"
+
+[tool.poetry.scripts]
+fsl = "fishsense_lite.run:main"
 
 [build-system]
 requires = ["poetry-core"]

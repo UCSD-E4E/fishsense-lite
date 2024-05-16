@@ -1,7 +1,6 @@
-from bom_common.pluggable_cli import Cli
-from wakepy import keep
+"""Entry point for the module when running `python -m`"""
+
+from fishsense_lite.run import main
 
 if __name__ == "__main__":
-    with keep.running():
-        cli = Cli("./fishsense_lite/plugins.yaml", prog="fishsense-lite")
-        cli()
+    main()
