@@ -11,7 +11,7 @@ import torch
 from bom_common.pluggable_cli import Plugin
 from pyfishsense import sum_as_string
 from pyfishsensedev import WorldPointHandler
-from pyfishsensedev.fish import FishHeadTailDetector, FishSegmentationInference
+from pyfishsensedev.fish import FishHeadTailDetector, FishSegmentationFishialPyTorch
 from pyfishsensedev.image import ImageRectifier, RawProcessor
 from pyfishsensedev.laser import LaserDetector
 from tqdm import tqdm
@@ -62,7 +62,7 @@ def execute_orf(
     if laser_coords is None:
         return input_file, ResultStatus.FAILED_LASER_COORDS, None
 
-    fish_segmentation_inference = FishSegmentationInference(device)
+    fish_segmentation_inference = FishSegmentationFishialPyTorch(device)
     segmentations = fish_segmentation_inference.inference(img8)
 
     if segmentations.sum() == 0:
