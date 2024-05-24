@@ -44,6 +44,9 @@ pip install --upgrade pip
 poetry install
 ```
 
+## Development Dependencies
+We provide a `docker` container which has the dependencies pre-installed.  In order to use this, please ensure you have `docker` installed on your system.  When running Visual Studio Code, ensure that you use the option to reopen in the container.  This step will time for the intial setup.
+
 ## To Run Demo
 Open the notebook in demo/pipeline.ipynb
 
