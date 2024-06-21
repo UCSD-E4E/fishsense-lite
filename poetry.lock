@@ -2111,7 +2111,7 @@ develop = false
 type = "git"
 url = "https://github.com/UCSD-E4E/pyFishSense"
 reference = "main"
-resolved_reference = "4af45e62b412160a448dbfbf8421e6457b935a12"
+resolved_reference = "2b33b301c8f468ac9e63514f63f538e82a700009"
 
 [[package]]
 name = "pyfishsensedev"
@@ -2132,7 +2132,7 @@ opencv-python = "4.7.0.72"
 pandas = "^2.2.1"
 Pillow = "^10.0.1"
 rawpy = "^0.18.1"
-requests = "^2.31.0"
+requests = "^2.32.2"
 scikit-image = "^0.21.0"
 torch = "^2.1.0"
 torchvision = "^0.16.0"
@@ -2143,7 +2143,7 @@ wheel = "^0.41.3"
 type = "git"
 url = "https://github.com/UCSD-E4E/pyFishSenseDev"
 reference = "main"
-resolved_reference = "61a177691f5749e88a9efed112de07faf8757e02"
+resolved_reference = "8f59b26fb52daf7aba6c6e1ff9bd2fb0d0a712a4"
 
 [[package]]
 name = "pygments"
