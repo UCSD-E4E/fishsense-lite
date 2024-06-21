@@ -6,6 +6,7 @@ from typing import Iterable, List, Set, Tuple
 
 import numpy as np
 import pandas as pd
+import pyfishsense
 import ray
 import torch
 from bom_common.pluggable_cli import Plugin
@@ -18,6 +19,8 @@ from tqdm import tqdm
 
 from fishsense_lite.database import Database
 from fishsense_lite.result_status import ResultStatus
+
+FishSegmentation = pyfishsense.fish.FishSegmentation
 
 
 def to_iterator(obj_ids):
@@ -62,7 +65,7 @@ def execute_orf(
     if laser_coords is None:
         return input_file, ResultStatus.FAILED_LASER_COORDS, None
 
-    fish_segmentation_inference = FishSegmentationFishialPyTorch(device)
+    fish_segmentation_inference = FishSegmentation(device)
     segmentations = fish_segmentation_inference.inference(img8)
 
     if segmentations.sum() == 0:
