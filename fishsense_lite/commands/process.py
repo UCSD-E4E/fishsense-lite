@@ -4,13 +4,13 @@ from itertools import chain
 from pathlib import Path
 from typing import Iterable, List, Set, Tuple
 
+import cv2
 import numpy as np
 import pandas as pd
 import pyfishsense
 import ray
 import torch
 from bom_common.pluggable_cli import Plugin
-from pyfishsense import sum_as_string
 from pyfishsensedev import WorldPointHandler
 from pyfishsensedev.fish import FishHeadTailDetector, FishSegmentationFishialPyTorch
 from pyfishsensedev.image import ImageRectifier, RawProcessor
@@ -20,7 +20,7 @@ from tqdm import tqdm
 from fishsense_lite.database import Database
 from fishsense_lite.result_status import ResultStatus
 
-FishSegmentation = pyfishsense.fish.FishSegmentation
+# FishSegmentation = pyfishsense.fish.FishSegmentation
 
 
 def to_iterator(obj_ids):
@@ -37,7 +37,7 @@ def uint16_2_uint8(img: np.ndarray) -> np.ndarray:
     return (uint16_2_double(img) * 255).astype(np.uint8)
 
 
-@ray.remote(num_gpus=0.1)
+# @ray.remote(num_gpus=0.1)
 def execute_orf(
     input_file: Path, lens_calibration_path: Path, laser_calibration_path: Path
 ) -> Tuple[Path, ResultStatus, float]:
@@ -57,40 +57,86 @@ def execute_orf(
     img8 = uint16_2_uint8(img)
     img_dark8 = uint16_2_uint8(img_dark)
 
+    debug_output = img8.copy()
+
     laser_detector = LaserDetector(
         lens_calibration_path, laser_calibration_path, device
     )
     laser_coords = laser_detector.find_laser(img_dark8)
 
     if laser_coords is None:
+        debug_file = Path(
+            f"{input_file.absolute().as_posix()[:-4]}_{ResultStatus.FAILED_LASER_COORDS}.png"
+        )
+        cv2.imwrite(debug_file.as_posix(), debug_output)
         return input_file, ResultStatus.FAILED_LASER_COORDS, None
 
-    fish_segmentation_inference = FishSegmentation(device)
-    segmentations = fish_segmentation_inference.inference(img8)
+    debug_output = cv2.circle(
+        debug_output,
+        (laser_coords[0], laser_coords[1]),
+        radius=25,
+        color=(0, 0, 255),
+        thickness=-1,
+    )
+
+    fish_segmentation_inference = FishSegmentationFishialPyTorch(device)
+    segmentations: np.ndarray = fish_segmentation_inference.inference(img8)
 
     if segmentations.sum() == 0:
+        debug_file = Path(
+            f"{input_file.absolute().as_posix()[:-4]}_{ResultStatus.FAILED_SEGMENTATION}.png"
+        )
+        cv2.imwrite(debug_file.as_posix(), debug_output)
         return input_file, ResultStatus.FAILED_SEGMENTATION, None
 
     mask = np.zeros_like(segmentations, dtype=bool)
     mask[segmentations == segmentations[laser_coords[1], laser_coords[0]]] = True
 
     if mask.sum() == 0:
+        debug_file = Path(
+            f"{input_file.absolute().as_posix()[:-4]}_{ResultStatus.FAILED_LASER_SEGMENTATION_INTERSECTION}.png"
+        )
+        cv2.imwrite(debug_file.as_posix(), debug_output)
         return input_file, ResultStatus.FAILED_LASER_SEGMENTATION_INTERSECTION, None
 
+    debug_output[mask == False, :] = (debug_output[mask == False, :] * 0.5).astype(
+        np.uint8
+    )
+
     fish_head_tail_detector = FishHeadTailDetector()
-    left_coord, right_coord = fish_head_tail_detector.find_head_tail(mask)
+    tail_coord, head_coord = fish_head_tail_detector.find_head_tail(mask)
+
+    debug_output = cv2.circle(
+        debug_output,
+        (tail_coord[0], tail_coord[1]),
+        radius=25,
+        color=(0, 255, 0),
+        thickness=-1,
+    )
+    debug_output = cv2.circle(
+        debug_output,
+        (head_coord[0], head_coord[1]),
+        radius=25,
+        color=(255, 0, 0),
+        thickness=-1,
+    )
 
     world_point_handler = WorldPointHandler(
         lens_calibration_path, laser_calibration_path
     )
     laser_coords3d = world_point_handler.calculate_laser_parallax(laser_coords)
 
-    left_coord3d, right_coord3d = (
+    tail_coord3d, head_coord3d = (
         world_point_handler.calculate_world_coordinates_with_depth(
-            left_coord, right_coord, laser_coords3d[2]
+            tail_coord, head_coord, laser_coords3d[2]
         )
     )
-    length = np.linalg.norm(left_coord3d - right_coord3d)
+    length = np.linalg.norm(tail_coord3d - head_coord3d)
+
+    debug_file = Path(
+        f"{input_file.absolute().as_posix()[:-4]}_{ResultStatus.SUCCESS}.png"
+    )
+    cv2.imwrite(debug_file.as_posix(), debug_output)
 
     return input_file, ResultStatus.SUCCESS, length
 
@@ -217,9 +263,9 @@ class Process(Plugin):
         )
 
     def __call__(self, args: Namespace):
-        with Database(Path(args.output)) as database:
-            print(f"sum_as_string(1, 2) in Rust: {sum_as_string(1, 2)}")
+        ray.init()
 
+        with Database(Path(args.output)) as database:
             files = {Path(f) for g in args.data for f in glob(g, recursive=True)}
 
             if not args.overwrite:
@@ -232,28 +278,28 @@ class Process(Plugin):
             lens_calibration_path = Path(args.lens_calibration)
             laser_calibration_path = Path(args.laser_calibration)
 
-            orf_futures = [
-                execute_orf.remote(f, lens_calibration_path, laser_calibration_path)
-                for f in orf_files
-            ]
+            # orf_futures = [
+            #     execute_orf.remote(f, lens_calibration_path, laser_calibration_path)
+            #     for f in orf_files
+            # ]
 
-            results: Iterable[Tuple[Path, ResultStatus, float]] = tqdm(
-                chain(
-                    to_iterator(orf_futures),
-                    execute_csv(
-                        csv_files, lens_calibration_path, laser_calibration_path
-                    ),
-                ),
-                total=len(orf_files) + len(csv_files),
-            )
-
-            # results = tqdm(
-            #     (
-            #         execute(f, lens_calibration_path, laser_calibration_path)
-            #         for f in files
+            # results: Iterable[Tuple[Path, ResultStatus, float]] = tqdm(
+            #     chain(
+            #         to_iterator(orf_futures),
+            #         execute_csv(
+            #             csv_files, lens_calibration_path, laser_calibration_path
+            #         ),
             #     ),
-            #     total=len(files),
+            #     total=len(orf_files) + len(csv_files),
             # )
+
+            results = tqdm(
+                (
+                    execute_orf(f, lens_calibration_path, laser_calibration_path)
+                    for f in files
+                ),
+                total=len(files),
+            )
 
             for file, result_status, length in results:
                 database.insert_data(file, result_status, length)

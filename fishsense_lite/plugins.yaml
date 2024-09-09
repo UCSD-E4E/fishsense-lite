@@ -1,3 +1,11 @@
+preprocess:
+  module: preprocess
+  class: Preprocess
+  package: fishsense_lite.commands
+  subcommands:
+    - preprocess
+  description: "Preprocess data from the FishSense Lite product line."
+
 process:
   module: process
   class: Process
