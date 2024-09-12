@@ -6,6 +6,14 @@ calibrate_lens:
     - calibrate-lens
   description: "Calibrates the lens for the FishSense Lite product line."
 
+calibrate_laser:
+  module: calibrate_laser
+  class: CalibrateLaser
+  package: fishsense_lite.commands
+  subcommands:
+    - calibrate-laser
+  description: "Calibrates the laser for the FishSense Lite product line."
+
 preprocess:
   module: preprocess
   class: Preprocess
