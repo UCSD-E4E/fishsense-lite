@@ -1,3 +1,11 @@
+calibrate_lens:
+  module: calibrate_lens
+  class: CalibrateLens
+  package: fishsense_lite.commands
+  subcommands:
+    - calibrate-lens
+  description: "Calibrates the lens for the FishSense Lite product line."
+
 preprocess:
   module: preprocess
   class: Preprocess
@@ -6,10 +14,10 @@ preprocess:
     - preprocess
   description: "Preprocess data from the FishSense Lite product line."
 
-process:
-  module: process
-  class: Process
-  package: fishsense_lite.commands
-  subcommands:
-    - process
-  description: "Process data from the FishSense Lite product line."
+# process:
+#   module: process
+#   class: Process
+#   package: fishsense_lite.commands
+#   subcommands:
+#     - process
+#   description: "Process data from the FishSense Lite product line."

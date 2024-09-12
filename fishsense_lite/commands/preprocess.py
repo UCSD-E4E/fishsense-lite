@@ -1,13 +1,13 @@
 from argparse import ArgumentParser, Namespace
 from glob import glob
 from pathlib import Path
-from typing import Iterable
 
 import cv2
 import ray
 from bom_common.pluggable_cli import Plugin
 from pyfishsensedev.image import ImageRectifier, RawProcessor
 from tqdm import tqdm
+from wakepy import keep
 
 
 def to_iterator(obj_ids):
@@ -52,12 +52,13 @@ class Preprocess(Plugin):
         )
 
     def __call__(self, args: Namespace):
-        ray.init()
+        with keep.running():
+            ray.init()
 
-        files = {Path(f) for g in args.data for f in glob(g, recursive=True)}
-        lens_calibration_path = Path(args.lens_calibration)
+            files = {Path(f) for g in args.data for f in glob(g, recursive=True)}
+            lens_calibration_path = Path(args.lens_calibration)
 
-        futures = [execute.remote(f, lens_calibration_path) for f in files]
+            futures = [execute.remote(f, lens_calibration_path) for f in files]
 
-        # Hack to force processing
-        _ = list(tqdm(to_iterator(futures), total=len(files)))
+            # Hack to force processing
+            _ = list(tqdm(to_iterator(futures), total=len(files)))

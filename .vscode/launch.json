@@ -5,28 +5,23 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python Debugger: Module",
+            "name": "Calibrate Lens",
             "type": "debugpy",
             "request": "launch",
             "module": "fishsense_lite",
             "justMyCode": false,
             "args": [
-                "process",
-                //"~/data/fishsense/__labeling_0504/080323_0855_MolHITW/*.csv",
-                //"~/data/fishsense/__labeling_0504/080323_1015_MolPeLe/*.csv",
-                //"~/data/fishsense/__labeling_0504/080323_1419_ConchReef/*.csv",
-                // "~/data/fishsense/__labeling_0504/080323_1535_SnapperLedge/*.csv",
-                "~/data/fishsense/*Mol*/*.ORF",
-                "--lens-calibration",
-                "~/data/fishsense/fsl-01d-lens-raw.pkg",
-                "--laser-calibration",
-                "~/data/fishsense/laser-params-dive-1.pkg",
-                //"~/data/fishsense/__labeling_0504/080323_1015_MolPeLe/laser-params-dive-1.pkg",
-                //"~/data/fishsense/__labeling_0504/080323_1419_ConchReef/laser-params-dive-3.pkg",
-                // "~/data/fishsense/__labeling_0504/080323_1535_SnapperLedge/laser-params-dive-4.pkg",
+                "calibrate-lens",
+                "/mnt/c/Users/chris/Data/fsl-08d/lens/*.ORF",
+                "--rows",
+                "17",
+                "--columns",
+                "24",
+                "--square-size",
+                "30",
                 "--output",
-                "./output/results.db",
-                // "--overwrite"
+                "fsl-08d-lens-raw.pkg",
+                "--overwrite"
             ]
         }
     ]
