@@ -10,7 +10,6 @@ from pyfishsensedev.calibration import LensCalibration
 from pyfishsensedev.image.image_processors import RawProcessor
 from pyfishsensedev.plane_detector.checkerboard_detector import CheckerboardDetector
 from tqdm import tqdm
-from wakepy import keep
 
 
 def to_iterator(obj_ids):
@@ -31,6 +30,8 @@ def uint16_2_uint8(img: np.ndarray) -> np.ndarray:
 def execute(
     input_file: Path, rows: int, columns: int, square_size: float
 ) -> Tuple[np.ndarray | None, np.ndarray | None, int | None, int | None] | None:
+    square_size *= 10**-3
+
     raw_processor = RawProcessor()
 
     try:
@@ -103,34 +104,32 @@ class CalibrateLens(Plugin):
         )
 
     def __call__(self, args: Namespace):
-        with keep.running():
-            ray.init()
+        ray.init()
 
-            files = [Path(f) for g in args.data for f in glob(g)]
+        files = [Path(f) for g in args.data for f in glob(g)]
 
-            futures = [
-                execute.remote(f, args.rows, args.columns, args.square_size)
-                for f in files
-            ]
+        futures = [
+            execute.remote(f, args.rows, args.columns, args.square_size) for f in files
+        ]
 
-            points_body_space, points_image_space, width, height = list(
-                zip(
-                    *(
-                        (b, i, w, h)
-                        for b, i, w, h in tqdm(to_iterator(futures), total=len(files))
-                        if b is not None
-                    )
+        points_body_space, points_image_space, width, height = list(
+            zip(
+                *(
+                    (b, i, w, h)
+                    for b, i, w, h in tqdm(to_iterator(futures), total=len(files))
+                    if b is not None
                 )
             )
+        )
 
-            lens_calibration = LensCalibration()
-            lens_calibration.plane_calibrate(
-                points_body_space, points_image_space, width[0], height[0]
-            )
+        lens_calibration = LensCalibration()
+        lens_calibration.plane_calibrate(
+            points_body_space, points_image_space, width[0], height[0]
+        )
 
-            output_path = Path(args.output_path)
+        output_path = Path(args.output_path)
 
-            if output_path.exists() and args.overwrite:
-                output_path.unlink()
+        if output_path.exists() and args.overwrite:
+            output_path.unlink()
 
-            lens_calibration.save(output_path)
+        lens_calibration.save(output_path)

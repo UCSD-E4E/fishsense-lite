@@ -5,9 +5,9 @@ from pathlib import Path
 import cv2
 import ray
 from bom_common.pluggable_cli import Plugin
+from pyfishsensedev.calibration import LensCalibration
 from pyfishsensedev.image import ImageRectifier, RawProcessor
 from tqdm import tqdm
-from wakepy import keep
 
 
 def to_iterator(obj_ids):
@@ -17,9 +17,15 @@ def to_iterator(obj_ids):
 
 
 @ray.remote(num_gpus=0.1)
-def execute(input_file: Path, lens_calibration_path: Path):
-    raw_processor_hist_eq = RawProcessor()
-    image_rectifier = ImageRectifier(lens_calibration_path)
+def execute(
+    input_file: Path,
+    disable_histogram_equalization: bool,
+    lens_calibration: LensCalibration,
+):
+    raw_processor_hist_eq = RawProcessor(
+        enable_histogram_equalization=not disable_histogram_equalization
+    )
+    image_rectifier = ImageRectifier(lens_calibration)
 
     img = raw_processor_hist_eq.load_and_process(input_file)
     img = image_rectifier.rectify(img)
@@ -46,19 +52,26 @@ class Preprocess(Plugin):
         )
 
         parser.add_argument(
+            "--disable-histogram-equalization",
+            action="store_true",
+            dest="disable_histogram_equalization",
+            help="Disables histogram equalization when processing images.",
+        )
+
+        parser.add_argument(
             "--overwrite",
             action="store_true",
             help="Overwrite images previously computed.",
         )
 
     def __call__(self, args: Namespace):
-        with keep.running():
-            ray.init()
+        ray.init()
 
-            files = {Path(f) for g in args.data for f in glob(g, recursive=True)}
-            lens_calibration_path = Path(args.lens_calibration)
+        files = {Path(f) for g in args.data for f in glob(g, recursive=True)}
+        lens_calibration = LensCalibration()
+        lens_calibration.load(Path(args.lens_calibration))
 
-            futures = [execute.remote(f, lens_calibration_path) for f in files]
+        futures = [execute.remote(f, args.disable_histogram_equalization, lens_calibration) for f in files]
 
-            # Hack to force processing
-            _ = list(tqdm(to_iterator(futures), total=len(files)))
+        # Hack to force processing
+        _ = list(tqdm(to_iterator(futures), total=len(files)))

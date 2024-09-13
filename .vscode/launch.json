@@ -12,15 +12,15 @@
             "justMyCode": false,
             "args": [
                 "calibrate-lens",
-                "/mnt/c/Users/chris/Data/fsl-08d/lens/*.ORF",
+                "~/Data/fsl-02d/lens/*.ORF",
                 "--rows",
-                "17",
+                "14",
                 "--columns",
-                "24",
+                "10",
                 "--square-size",
-                "30",
+                "41.3",
                 "--output",
-                "fsl-08d-lens-raw.pkg",
+                "fsl-02d-lens-raw.pkg",
                 "--overwrite"
             ]
         },
@@ -32,13 +32,37 @@
             "justMyCode": false,
             "args": [
                 "calibrate-laser",
-                "/mnt/c/Users/chris/Data/fsl-02d/laser/*.ORF",
+                "~/Data/fsl-02d/laser/*.ORF",
                 "--lens-calibration",
-                "/mnt/c/Users/chris/Data/fsl-02d/fsl-02d-lens-raw.pkg",
+                "fsl-02d-lens-raw.pkg",
                 "--laser-position",
-                "-3", "-10", "0",
+                "-4", "-11", "0",
                 "--laser-axis",
-                "0", "0", "1"
+                "0", "0", "1",
+                "--rows",
+                "14",
+                "--columns",
+                "10",
+                "--square-size",
+                "41.3",
+                "--output",
+                "fsl-02d-laser.pkg",
+                "--overwrite"
+            ]
+        },
+        {
+            "name": "Preprocess",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "fishsense_lite",
+            "justMyCode": false,
+            "args": [
+                "preprocess",
+                "~/Data/fsl-02d/laser/*.ORF",
+                "--lens-calibration",
+                "fsl-02d-lens-raw.pkg",
+                "--disable-histogram-equalization",
+                "--overwrite"
             ]
         }
     ]
