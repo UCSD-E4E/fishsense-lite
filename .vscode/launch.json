@@ -64,6 +64,24 @@
                 "--disable-histogram-equalization",
                 "--overwrite"
             ]
-        }
+        },
+        {
+            "name": "Process",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "fishsense_lite",
+            "justMyCode": false,
+            "args": [
+                "process",
+                "~/Data/fsl-02d/george/*.ORF",
+                "--lens-calibration",
+                "fsl-02d-lens-raw.pkg",
+                "--laser-calibration",
+                "fsl-02d-laser.pkg",
+                "--output",
+                "./output/output.db",
+                "--overwrite"
+            ]
+        },
     ]
 }
