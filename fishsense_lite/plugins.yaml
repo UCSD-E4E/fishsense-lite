@@ -14,6 +14,14 @@ calibrate_laser:
     - calibrate-laser
   description: "Calibrates the laser for the FishSense Lite product line."
 
+field_calibrate_laser:
+  module: field_calibrate_laser
+  class: FieldCalibrateLaser
+  package: fishsense_lite.commands
+  subcommands:
+    - field-calibrate-laser
+  description: "Calibrates the laser for the FishSense Lite product line using the field calibration procedure."
+
 preprocess:
   module: preprocess
   class: Preprocess

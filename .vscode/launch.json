@@ -51,6 +51,25 @@
             ]
         },
         {
+            "name": "Field Calibrate Laser",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "fishsense_lite",
+            "justMyCode": false,
+            "args": [
+                "field-calibrate-laser",
+                "~/Data/082923_Pool Calibration/082929_Slate_FSL01/*.ORF",
+                "--lens-calibration",
+                "~/Data/calibration-parameters/FSL-01D/fsl-01d-lens-raw.pkg",
+                "--laser-position",
+                "-4", "-11", "0",
+                "--laser-axis",
+                "0", "0", "1",
+                "--pdf",
+                "~/Data/calibration-parameters/Dive Slate#1.pdf"
+            ]
+        },
+        {
             "name": "Preprocess",
             "type": "debugpy",
             "request": "launch",
@@ -58,9 +77,9 @@
             "justMyCode": false,
             "args": [
                 "preprocess",
-                "~/Data/fsl-02d/laser/*.ORF",
+                "~/Data/082923_Pool Calibration/082929_Slate_FSL01/*.ORF",
                 "--lens-calibration",
-                "fsl-02d-lens-raw.pkg",
+                "~/Data/calibration-parameters/FSL-01D/fsl-01d-lens-raw.pkg",
                 "--disable-histogram-equalization",
                 "--overwrite"
             ]
