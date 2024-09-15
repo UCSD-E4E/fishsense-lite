@@ -43,7 +43,7 @@ def execute(
     laser_calibration: LaserCalibration,
 ) -> Tuple[Path, ResultStatus, float]:
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    debug_path = Path("~/.fishsense-lite") / "debug" / "process"
+    debug_path = Path(".debug") / "process"
     debug_path.mkdir(exist_ok=True, parents=True)
 
     raw_processor_hist_eq = RawProcessor()

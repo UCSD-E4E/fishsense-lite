@@ -313,3 +313,4 @@ data/*
 output/*
 experiments/output/*
 *.pkg
+.debug/

@@ -39,7 +39,7 @@ def execute(
     square_size: float,
 ) -> np.ndarray | None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    debug_path = Path("~/.fishsense-lite") / "debug" / "calibration" / "laser"
+    debug_path = Path(".debug") / "calibration" / "laser"
     debug_path.mkdir(exist_ok=True, parents=True)
 
     png_name = input_file.name.replace("ORF", "PNG").replace("orf", "png")

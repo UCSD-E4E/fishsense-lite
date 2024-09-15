@@ -66,7 +66,10 @@
                 "--laser-axis",
                 "0", "0", "1",
                 "--pdf",
-                "~/Data/calibration-parameters/Dive Slate#1.pdf"
+                "~/Data/calibration-parameters/Dive Slate#1.pdf",
+                "--output",
+                "~/Data/082923_Pool Calibration/082929_Slate_FSL01/laser-calibration.pkg",
+                "--overwrite"
             ]
         },
         {
@@ -92,13 +95,13 @@
             "justMyCode": false,
             "args": [
                 "process",
-                "~/Data/fsl-02d/george/*.ORF",
+                "~/Data/082923_Pool Calibration/082929_FishModels_FSL01/*.ORF",
                 "--lens-calibration",
-                "fsl-02d-lens-raw.pkg",
+                "~/Data/calibration-parameters/FSL-01D/fsl-01d-lens-raw.pkg",
                 "--laser-calibration",
-                "fsl-02d-laser.pkg",
+                "~/Data/082923_Pool Calibration/082929_Slate_FSL01/laser-calibration.pkg",
                 "--output",
-                "./output/output.db",
+                "./output/082929_FishModels_FSL01.db",
                 "--overwrite"
             ]
         },
