@@ -16,7 +16,8 @@ RUN apt-get install -y build-essential \
                         llvm \
                         libncurses5-dev \
                         libncursesw5-dev \
-                        xz-utils tk-dev \
+                        xz-utils \
+                        tk-dev \
                         libffi-dev \
                         liblzma-dev \
                         python3-openssl \
@@ -24,16 +25,16 @@ RUN apt-get install -y build-essential \
                         clang \
                         libclang-dev
 
-USER ubuntu
+USER 1000:1000
 ENV HOME="/home/ubuntu"
 RUN mkdir -p ${HOME}
 WORKDIR ${HOME}
 
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
 RUN git clone --depth=1 https://github.com/pyenv/pyenv.git .pyenv
 ENV PYENV_ROOT="${HOME}/.pyenv"
 ENV PATH="${PYENV_ROOT}/shims:${PYENV_ROOT}/bin:${PATH}"
-
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
 RUN pyenv install 3.11
 RUN pyenv global 3.11
