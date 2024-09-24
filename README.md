@@ -6,10 +6,15 @@
 
 ## Setup
 
+### System Requirements
+- NVidia CUDA 12
+- x86 CPU
+- 20 GB free space
+
 ### Ubuntu 22.04
 Install the dependencies
 ```
-sudo apt-get install -y build-essential git libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev python3-openssl
+sudo apt-get install -y build-essential git libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev python3-openssl libopencv-dev clang libclang-dev
 ```
 
 Then, make sure you have `pyenv` installed.
