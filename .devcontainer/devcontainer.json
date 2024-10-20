@@ -1,8 +1,9 @@
 {
 	"build": { "dockerfile": "Dockerfile" },
 	"runArgs": [
-		"--device",
-		"nvidia.com/gpu=all"
+		"--gpus=all",
+		"--runtime=nvidia",
+		"-e", "NVIDIA_DRIVER_CAPABILITIES=all"
 	],
 	"postCreateCommand": "poetry install --with dev",
 	"customizations": {
@@ -15,6 +16,7 @@
 				"ms-python.isort",
 				"eamodio.gitlens",
 				"VisualStudioExptTeam.vscodeintellicode",
+				"github.vscode-github-actions",
 				"ms-python.black-formatter",
 				"ms-azuretools.vscode-docker"
 			]
