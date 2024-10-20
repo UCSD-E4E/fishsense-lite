@@ -198,13 +198,6 @@ class Process(Plugin):
             lens_calibration.load(Path(args.lens_calibration))
             laser_calibration.load(Path(args.laser_calibration))
 
-            # list(
-            #     tqdm(
-            #         (execute(f, lens_calibration, laser_calibration) for f in files),
-            #         total=len(files),
-            #     )
-            # )
-
             futures = [
                 execute.remote(f, lens_calibration, laser_calibration) for f in files
             ]

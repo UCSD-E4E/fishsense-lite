@@ -1,0 +1,20 @@
+{
+	"build": { "dockerfile": "Dockerfile" },
+	"postCreateCommand": "poetry install --with dev",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-python.vscode-pylance",
+				"ms-python.python",
+				"ms-toolsai.jupyter",
+				"njpwerner.autodocstring",
+				"ms-python.isort",
+				"eamodio.gitlens",
+				"VisualStudioExptTeam.vscodeintellicode",
+				"github.vscode-github-actions",
+				"ms-python.black-formatter",
+				"ms-azuretools.vscode-docker"
+			]
+		}
+	}
+}

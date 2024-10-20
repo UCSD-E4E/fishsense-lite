@@ -54,4 +54,5 @@ echo "  cpu_only:               $cpu_only"
 echo "  cuda_supported:         $cuda_supported"
 echo "  devcontainer_directory: $devcontainer_directory"
 
+rm .devcontainer
 ln -s $devcontainer_directory .devcontainer 
