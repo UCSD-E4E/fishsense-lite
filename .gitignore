@@ -314,3 +314,5 @@ output/*
 experiments/output/*
 *.pkg
 .debug/
+
+.devcontainer
