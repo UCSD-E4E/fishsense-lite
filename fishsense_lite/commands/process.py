@@ -40,9 +40,10 @@ def execute(
     input_file: Path,
     lens_calibration: LensCalibration,
     laser_calibration: LaserCalibration,
+    debug_root: Path,
 ) -> Tuple[Path, ResultStatus, float]:
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    debug_path = Path(".debug") / "process"
+    debug_path = debug_root / "process"
     debug_path.mkdir(exist_ok=True, parents=True)
 
     raw_processor_hist_eq = RawProcessor()
@@ -214,6 +215,15 @@ class Process(Command):
     def overwrite(self, value: bool):
         self.__overwrite = value
 
+    @property
+    @argument("--debug-path", help="Sets the debug path for storing debug images.")
+    def debug_path(self) -> str:
+        return self.__debug_path
+
+    @debug_path.setter
+    def debug_path(self, value: str):
+        self.__debug_path = value
+
     def __init__(self):
         super().__init__()
 
@@ -222,9 +232,15 @@ class Process(Command):
         self.__laser_calibration: str = None
         self.__output_path: str = None
         self.__overwrite: bool = None
+        self.__debug_path: str = None
 
     def __call__(self):
         self.init_ray()
+
+        if self.debug_path is None:
+            self.debug_path = ".debug"
+
+        debug_path = Path(self.debug_path)
 
         with Database(Path(self.output_path)) as database:
             files = {Path(f) for g in self.data for f in glob(g, recursive=True)}
@@ -240,7 +256,8 @@ class Process(Command):
             laser_calibration.load(Path(self.laser_calibration))
 
             futures = [
-                execute.remote(f, lens_calibration, laser_calibration) for f in files
+                execute.remote(f, lens_calibration, laser_calibration, debug_path)
+                for f in files
             ]
 
             # for file, result_status, length in tqdm(
