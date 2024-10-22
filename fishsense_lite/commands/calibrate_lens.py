@@ -146,7 +146,7 @@ class CalibrateLens(Command):
         self.__overwrite: bool = None
 
     def __call__(self):
-        ray.init()
+        self.init_ray()
 
         files = [Path(f) for g in self.data for f in glob(g)]
 

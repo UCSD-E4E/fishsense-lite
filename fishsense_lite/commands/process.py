@@ -196,7 +196,7 @@ class Process(Command):
         "--output",
         short_name="-o",
         required=True,
-        help="The path to store the resulting calibration.",
+        help="The path to store the resulting database.",
     )
     def output_path(self) -> str:
         return self.__output_path
@@ -206,7 +206,7 @@ class Process(Command):
         self.__output_path = value
 
     @property
-    @argument("--overwrite", flag=True, help="Overwrite the calibration if it exists.")
+    @argument("--overwrite", flag=True, help="Overwrite the database if it exists.")
     def overwrite(self) -> bool:
         return self.__overwrite
 
@@ -224,7 +224,7 @@ class Process(Command):
         self.__overwrite: bool = None
 
     def __call__(self):
-        ray.init()
+        self.init_ray()
 
         with Database(Path(self.output_path)) as database:
             files = {Path(f) for g in self.data for f in glob(g, recursive=True)}

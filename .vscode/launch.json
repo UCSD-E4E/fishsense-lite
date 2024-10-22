@@ -106,14 +106,16 @@
             "justMyCode": false,
             "args": [
                 "process",
-                "~/Data/082923_Pool Calibration/082929_FishModels_FSL01/*.ORF",
-                "--lens-calibration",
-                "~/Data/calibration-parameters/FSL-01D/fsl-01d-lens-raw.pkg",
-                "--laser-calibration",
-                "~/Data/082923_Pool Calibration/082929_Slate_FSL01/laser-calibration.pkg",
-                "--output",
-                "./output/082929_FishModels_FSL01.db",
-                "--overwrite"
+                "--config",
+                "output/config.yaml"
+                // "~/Data/082923_Pool Calibration/082929_FishModels_FSL01/*.ORF",
+                // "--lens-calibration",
+                // "~/Data/calibration-parameters/FSL-01D/fsl-01d-lens-raw.pkg",
+                // "--laser-calibration",
+                // "~/Data/082923_Pool Calibration/082929_Slate_FSL01/laser-calibration.pkg",
+                // "--output",
+                // "./output/082929_FishModels_FSL01.db",
+                // "--overwrite",
             ]
         },
     ]

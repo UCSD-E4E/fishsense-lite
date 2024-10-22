@@ -602,14 +602,17 @@ files = []
 develop = false
 
 [package.dependencies]
+appdirs = "^1.4.4"
 pyyaml = "^6.0.2"
+ray = "^2.37.0"
+torch = "^2.4.0"
 wakepy = "^0.10.1"
 
 [package.source]
 type = "git"
 url = "https://github.com/UCSD-E4E/fishsense-common"
 reference = "main"
-resolved_reference = "9f429d75abc861e16495b885f1d36fc00f5b53a1"
+resolved_reference = "1740a3e9709096bba5561d04408d1d3212c8a13c"
 
 [[package]]
 name = "flatbuffers"
