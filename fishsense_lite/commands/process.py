@@ -97,7 +97,7 @@ def execute(
         True
     )
 
-    if mask.sum() == 0:
+    if segmentations[laser_coords_int[1], laser_coords_int[0]] == 0 or mask.sum() == 0:
         debug_file = (
             debug_path
             / f"{input_file.name[:-4]}_{ResultStatus.FAILED_LASER_SEGMENTATION_INTERSECTION}.png"
@@ -243,6 +243,10 @@ class Process(Command):
                 execute.remote(f, lens_calibration, laser_calibration) for f in files
             ]
 
+            # for file, result_status, length in tqdm(
+            #     (execute(f, lens_calibration, laser_calibration) for f in files),
+            #     total=len(files),
+            # ):
             for file, result_status, length in tqdm(
                 to_iterator(futures), total=len(files)
             ):
