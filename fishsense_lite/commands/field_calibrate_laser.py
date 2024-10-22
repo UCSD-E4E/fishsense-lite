@@ -1,13 +1,13 @@
-from argparse import ArgumentParser, Namespace
 from glob import glob
 from pathlib import Path
+from typing import List
 
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import ray
 import torch
-from bom_common.pluggable_cli import Plugin
+from fishsense_common.pluggable_cli import Command, argument
 from pyfishsensedev.calibration import LaserCalibration, LensCalibration
 from pyfishsensedev.image.image_processors import RawProcessor
 from pyfishsensedev.image.image_rectifier import ImageRectifier
@@ -104,84 +104,125 @@ def execute(
     return laser_coord_3d
 
 
-class FieldCalibrateLaser(Plugin):
-    def __init__(self, parser: ArgumentParser):
-        super().__init__(parser)
+class FieldCalibrateLaser(Command):
+    @property
+    def name(self) -> str:
+        return "field-calibrate-laser"
 
-        parser.add_argument(
-            "data", nargs="+", help="A glob that represents the data to process."
-        )
+    @property
+    def description(self) -> str:
+        return "Calibrates the laser for the FishSense Lite product line using the field calibration procedure."
 
-        parser.add_argument(
-            "-l",
-            "--lens-calibration",
-            dest="lens_calibration",
-            required=True,
-            help="Lens calibration package for the FishSense Lite.",
-        )
+    @property
+    @argument("data", required=True, help="A glob that represents the data to process.")
+    def data(self) -> List[str]:
+        return self.__data
 
-        parser.add_argument(
-            "-p",
-            "--laser-position",
-            nargs="+",
-            dest="laser_position",
-            type=int,
-            required=True,
-            help="The laser position in centimeter inputed as x y z for the FishSense Lite product line.",
-        )
+    @data.setter
+    def data(self, value: List[str]):
+        self.__data = value
 
-        parser.add_argument(
-            "-a",
-            "--laser-axis",
-            nargs="+",
-            dest="laser_axis",
-            type=float,
-            required=True,
-            help="The laser axis unit vector inputed as x y z for the FishSense Lite product line.",
-        )
+    @property
+    @argument(
+        "--lens-calibration",
+        short_name="-l",
+        required=True,
+        help="Lens calibration package for the FishSense Lite.",
+    )
+    def lens_calibration(self) -> str:
+        return self.__lens_calibration
 
-        parser.add_argument(
-            "--pdf",
-            dest="pdf",
-            required=True,
-            help="The PDF scan of a dive slate configured to be used for the FishSense Lite product line.",
-        )
+    @lens_calibration.setter
+    def lens_calibration(self, value: str):
+        self.__lens_calibration = value
 
-        parser.add_argument(
-            "-o",
-            "--output",
-            dest="output_path",
-            required=True,
-            help="The path to store the resulting calibration.",
-        )
+    @property
+    @argument(
+        "--laser-position",
+        short_name="-p",
+        nargs=3,
+        help="The laser position in centimeter inputed as x y z for the FishSense Lite product line.",
+    )
+    def laser_position(self) -> List[int]:
+        return self.__laser_position
 
-        parser.add_argument(
-            "--overwrite",
-            dest="overwrite",
-            action="store_true",
-            help="The path to store the resulting calibration.",
-        )
+    @laser_position.setter
+    def laser_position(self, value: List[int]):
+        self.__laser_position = value
 
-    def __call__(self, args: Namespace):
-        files = [Path(f) for g in args.data for f in glob(g)]
+    @property
+    @argument(
+        "--laser-axis",
+        short_name="-a",
+        nargs=3,
+        help="The laser axis unit vector inputed as x y z for the FishSense Lite product line.",
+    )
+    def laser_axis(self) -> List[float]:
+        return self.__laser_axis
+
+    @laser_axis.setter
+    def laser_axis(self, value: List[float]):
+        self.__laser_axis = value
+
+    @property
+    @argument(
+        "--pdf",
+        required=True,
+        help="The PDF scan of a dive slate configured to be used for the FishSense Lite product line.",
+    )
+    def pdf(self) -> str:
+        return self.__pdf
+
+    @pdf.setter
+    def pdf(self, value: str):
+        self.__pdf = value
+
+    @property
+    @argument(
+        "--output",
+        short_name="-o",
+        required=True,
+        help="The path to store the resulting calibration.",
+    )
+    def output_path(self) -> str:
+        return self.__output_path
+
+    @output_path.setter
+    def output_path(self, value: str):
+        self.__output_path = value
+
+    @property
+    @argument("--overwrite", flag=True, help="Overwrite the calibration if it exists.")
+    def overwrite(self) -> bool:
+        return self.__overwrite
+
+    @overwrite.setter
+    def overwrite(self, value: bool):
+        self.__overwrite = value
+
+    def __init__(self):
+        super().__init__()
+
+        self.__data: List[str] = None
+        self.__lens_calibration: str = None
+        self.__laser_position: List[int] = None
+        self.__laser_axis: List[float] = None
+        self.__pdf: str = None
+        self.__output_path: str = None
+        self.__overwrite: bool = None
+
+    def __call__(self):
+        ray.init()
+
+        files = [Path(f) for g in self.data for f in glob(g)]
         lens_calibration = LensCalibration()
-        lens_calibration.load(Path(args.lens_calibration))
+        lens_calibration.load(Path(self.lens_calibration))
 
         estimated_laser_calibration = LaserCalibration(
-            np.array(args.laser_axis), np.array(args.laser_position)
+            np.array(self.laser_axis), np.array(self.laser_position)
         )
 
-        pdf = Pdf(Path(args.pdf))
-
-        # list(
-        #     tqdm(
-        #         (
-        #             execute(f, lens_calibration, estimated_laser_calibration, pdf)
-        #             for f in files
-        #         ),
-        #         total=len(files),
-        #     )
-        # )
+        pdf = Pdf(Path(self.pdf))
 
         futures = [
             execute.remote(f, lens_calibration, estimated_laser_calibration, pdf)
@@ -199,9 +240,9 @@ class FieldCalibrateLaser(Plugin):
             laser_points_3d, estimated_laser_calibration, use_gauss_newton=False
         )
 
-        output_path = Path(args.output_path)
+        output_path = Path(self.output_path)
 
-        if output_path.exists() and args.overwrite:
+        if output_path.exists() and self.overwrite:
             output_path.unlink()
 
         laser_calibration.save(output_path)

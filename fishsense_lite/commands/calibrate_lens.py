@@ -1,11 +1,10 @@
-from argparse import ArgumentParser, Namespace
 from glob import glob
 from pathlib import Path
-from typing import Tuple
+from typing import List, Tuple
 
 import numpy as np
 import ray
-from bom_common.pluggable_cli import Plugin
+from fishsense_common.pluggable_cli import Command, argument
 from pyfishsensedev.calibration import LensCalibration
 from pyfishsensedev.image.image_processors import RawProcessor
 from pyfishsensedev.plane_detector.checkerboard_detector import CheckerboardDetector
@@ -53,63 +52,106 @@ def execute(
     )
 
 
-class CalibrateLens(Plugin):
-    def __init__(self, parser: ArgumentParser):
-        super().__init__(parser)
+class CalibrateLens(Command):
+    @property
+    def name(self) -> str:
+        return "calibrate-lens"
 
-        parser.add_argument(
-            "data", nargs="+", help="A glob that represents the data to process."
-        )
+    @property
+    def description(self) -> str:
+        return "Calibrates the lens for the FishSense Lite product line."
 
-        parser.add_argument(
-            "-r",
-            "--rows",
-            dest="rows",
-            required=True,
-            type=int,
-            help="The number of rows in the checkerboard.",
-        )
+    @property
+    @argument("data", required=True, help="A glob that represents the data to process.")
+    def data(self) -> List[str]:
+        return self.__data
 
-        parser.add_argument(
-            "-c",
-            "--columns",
-            dest="columns",
-            required=True,
-            type=int,
-            help="The number of columns in the checkerboard.",
-        )
+    @data.setter
+    def data(self, value: List[str]):
+        self.__data = value
 
-        parser.add_argument(
-            "-s",
-            "--square-size",
-            dest="square_size",
-            required=True,
-            type=float,
-            help="The size of a checkerboard square in mm.",
-        )
+    @property
+    @argument(
+        "--rows",
+        short_name="-r",
+        required=True,
+        help="The number of rows in the checkerboard.",
+    )
+    def rows(self) -> int:
+        return self.__rows
 
-        parser.add_argument(
-            "-o",
-            "--output",
-            dest="output_path",
-            required=True,
-            help="The path to store the resulting calibration.",
-        )
+    @rows.setter
+    def rows(self, value: int):
+        self.__rows = value
 
-        parser.add_argument(
-            "--overwrite",
-            dest="overwrite",
-            action="store_true",
-            help="The path to store the resulting calibration.",
-        )
+    @property
+    @argument(
+        "--columns",
+        short_name="-c",
+        required=True,
+        help="The number of columns in the checkerboard.",
+    )
+    def columns(self) -> int:
+        return self.__columns
 
-    def __call__(self, args: Namespace):
+    @columns.setter
+    def columns(self, value: int):
+        self.__columns = value
+
+    @property
+    @argument(
+        "--square-size",
+        short_name="-s",
+        required=True,
+        help="The size of a checkerboard square in mm.",
+    )
+    def square_size(self) -> float:
+        return self.__square_size
+
+    @square_size.setter
+    def square_size(self, value: float):
+        self.__square_size = value
+
+    @property
+    @argument(
+        "--output",
+        short_name="-o",
+        required=True,
+        help="The path to store the resulting calibration.",
+    )
+    def output_path(self) -> str:
+        return self.__output_path
+
+    @output_path.setter
+    def output_path(self, value: str):
+        self.__output_path = value
+
+    @property
+    @argument("--overwrite", flag=True, help="Overwrite the calibration if it exists.")
+    def overwrite(self) -> bool:
+        return self.__overwrite
+
+    @overwrite.setter
+    def overwrite(self, value: bool):
+        self.__overwrite = value
+
+    def __init__(self) -> None:
+        super().__init__()
+
+        self.__data: List[str] = None
+        self.__rows: int = None
+        self.__columns: int = None
+        self.__square_size: float = None
+        self.__output_path: str = None
+        self.__overwrite: bool = None
+
+    def __call__(self):
         ray.init()
 
-        files = [Path(f) for g in args.data for f in glob(g)]
+        files = [Path(f) for g in self.data for f in glob(g)]
 
         futures = [
-            execute.remote(f, args.rows, args.columns, args.square_size) for f in files
+            execute.remote(f, self.rows, self.columns, self.square_size) for f in files
         ]
 
         points_body_space, points_image_space, width, height = list(
@@ -127,9 +169,9 @@ class CalibrateLens(Plugin):
             points_body_space, points_image_space, width[0], height[0]
         )
 
-        output_path = Path(args.output_path)
+        output_path = Path(self.output_path)
 
-        if output_path.exists() and args.overwrite:
+        if output_path.exists() and self.overwrite:
             output_path.unlink()
 
         lens_calibration.save(output_path)

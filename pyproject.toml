@@ -9,8 +9,7 @@ readme = "README.md"
 python = "^3.11"
 pyFishSenseDev = { git = "https://github.com/UCSD-E4E/pyFishSenseDev", branch = "main" }
 pyFishSense = { git = "https://github.com/UCSD-E4E/pyFishSense", branch = "main" }
-bom-common = {git = "https://github.com/UCSD-E4E/bom-common", rev = "main"}
-wakepy = {git = "https://github.com/ccrutchf/wakepy", rev = "dev"}
+fishsense-common = {git = "https://github.com/UCSD-E4E/fishsense-common", rev = "main"}
 matplotlib = "^3.8.0"
 pandas = "^2.1.1"
 ray = "^2.9.3"
@@ -18,6 +17,7 @@ gitpython = "^3.1.42"
 backoff = "^2.2.1"
 xlrd = "^2.0.1"
 seaborn = "^0.13.2"
+tqdm = "^4.66.5"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.26.0"

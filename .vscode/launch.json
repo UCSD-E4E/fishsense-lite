@@ -5,6 +5,17 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Help",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "fishsense_lite",
+            "justMyCode": false,
+            "args": [
+                "process",
+                "--help"
+            ]
+        },
+        {
             "name": "Calibrate Lens",
             "type": "debugpy",
             "request": "launch",

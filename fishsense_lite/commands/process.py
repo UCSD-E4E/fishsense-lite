@@ -1,13 +1,12 @@
-from argparse import ArgumentParser, Namespace
 from glob import glob
 from pathlib import Path
-from typing import Tuple
+from typing import List, Tuple
 
 import cv2
 import numpy as np
 import ray
 import torch
-from bom_common.pluggable_cli import Plugin
+from fishsense_common.pluggable_cli import Command, argument
 from pyfishsensedev.calibration import LaserCalibration, LensCalibration
 from pyfishsensedev.depth_map import LaserDepthMap
 from pyfishsensedev.image import ImageRectifier, RawProcessor
@@ -146,57 +145,99 @@ def execute(
     return input_file, ResultStatus.SUCCESS, length
 
 
-class Process(Plugin):
-    def __init__(self, parser: ArgumentParser):
-        super().__init__(parser)
+class Process(Command):
+    @property
+    def name(self) -> str:
+        return "process"
 
-        parser.add_argument(
-            "data", nargs="+", help="A glob that represents the data to process."
-        )
+    @property
+    def description(self) -> str:
+        return "Process data from the FishSense Lite product line."
 
-        parser.add_argument(
-            "-c",
-            "--lens-calibration",
-            dest="lens_calibration",
-            required=True,
-            help="Lens calibration package for the FishSense Lite.",
-        )
-        parser.add_argument(
-            "-l",
-            "--laser-calibration",
-            dest="laser_calibration",
-            required=True,
-            help="Laser calibration package for the FishSense Lite.",
-        )
+    @property
+    @argument("data", required=True, help="A glob that represents the data to process.")
+    def data(self) -> List[str]:
+        return self.__data
 
-        parser.add_argument(
-            "-o",
-            "--output",
-            required=True,
-            help="The output file containing length data.",
-        )
+    @data.setter
+    def data(self, value: List[str]):
+        self.__data = value
 
-        parser.add_argument(
-            "--overwrite",
-            action="store_true",
-            help="Overwrite images previously computed.",
-        )
+    @property
+    @argument(
+        "--lens-calibration",
+        short_name="-l",
+        required=True,
+        help="Lens calibration package for the FishSense Lite.",
+    )
+    def lens_calibration(self) -> str:
+        return self.__lens_calibration
 
-    def __call__(self, args: Namespace):
+    @lens_calibration.setter
+    def lens_calibration(self, value: str):
+        self.__lens_calibration = value
+
+    @property
+    @argument(
+        "--laser-calibration",
+        short_name="-k",
+        required=True,
+        help="Laser calibration package for the FishSense Lite.",
+    )
+    def laser_calibration(self) -> str:
+        return self.__laser_calibration
+
+    @laser_calibration.setter
+    def laser_calibration(self, value: str):
+        self.__laser_calibration = value
+
+    @property
+    @argument(
+        "--output",
+        short_name="-o",
+        required=True,
+        help="The path to store the resulting calibration.",
+    )
+    def output_path(self) -> str:
+        return self.__output_path
+
+    @output_path.setter
+    def output_path(self, value: str):
+        self.__output_path = value
+
+    @property
+    @argument("--overwrite", flag=True, help="Overwrite the calibration if it exists.")
+    def overwrite(self) -> bool:
+        return self.__overwrite
+
+    @overwrite.setter
+    def overwrite(self, value: bool):
+        self.__overwrite = value
+
+    def __init__(self):
+        super().__init__()
+
+        self.__data: List[str] = None
+        self.__lens_calibration: str = None
+        self.__laser_calibration: str = None
+        self.__output_path: str = None
+        self.__overwrite: bool = None
+
+    def __call__(self):
         ray.init()
 
-        with Database(Path(args.output)) as database:
-            files = {Path(f) for g in args.data for f in glob(g, recursive=True)}
+        with Database(Path(self.output_path)) as database:
+            files = {Path(f) for g in self.data for f in glob(g, recursive=True)}
 
-            if not args.overwrite:
+            if not self.overwrite:
                 prev_files = database.get_files()
                 files.difference_update(prev_files)
 
             lens_calibration = LensCalibration()
             laser_calibration = LaserCalibration()
 
-            lens_calibration.load(Path(args.lens_calibration))
-            laser_calibration.load(Path(args.laser_calibration))
+            lens_calibration.load(Path(self.lens_calibration))
+            laser_calibration.load(Path(self.laser_calibration))
 
             futures = [
                 execute.remote(f, lens_calibration, laser_calibration) for f in files

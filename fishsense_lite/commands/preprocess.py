@@ -1,10 +1,10 @@
-from argparse import ArgumentParser, Namespace
 from glob import glob
 from pathlib import Path
+from typing import List
 
 import cv2
 import ray
-from bom_common.pluggable_cli import Plugin
+from fishsense_common.pluggable_cli import Command, argument
 from pyfishsensedev.calibration import LensCalibration
 from pyfishsensedev.image import ImageRectifier, RawProcessor
 from tqdm import tqdm
@@ -35,43 +35,79 @@ def execute(
     cv2.imwrite(output_file.absolute().as_posix(), img)
 
 
-class Preprocess(Plugin):
-    def __init__(self, parser: ArgumentParser):
-        super().__init__(parser)
+class Preprocess(Command):
+    @property
+    def name(self) -> str:
+        return "preprocess"
 
-        parser.add_argument(
-            "data", nargs="+", help="A glob that represents the data to process."
-        )
+    @property
+    def description(self) -> str:
+        return "Preprocess data from the FishSense Lite product line."
 
-        parser.add_argument(
-            "-c",
-            "--lens-calibration",
-            dest="lens_calibration",
-            required=True,
-            help="Lens calibration package for the FishSense Lite.",
-        )
+    @property
+    @argument("data", required=True, help="A glob that represents the data to process.")
+    def data(self) -> List[str]:
+        return self.__data
 
-        parser.add_argument(
-            "--disable-histogram-equalization",
-            action="store_true",
-            dest="disable_histogram_equalization",
-            help="Disables histogram equalization when processing images.",
-        )
+    @data.setter
+    def data(self, value: List[str]):
+        self.__data = value
 
-        parser.add_argument(
-            "--overwrite",
-            action="store_true",
-            help="Overwrite images previously computed.",
-        )
+    @property
+    @argument(
+        "--lens-calibration",
+        short_name="-l",
+        required=True,
+        help="Lens calibration package for the FishSense Lite.",
+    )
+    def lens_calibration(self) -> str:
+        return self.__lens_calibration
 
-    def __call__(self, args: Namespace):
+    @lens_calibration.setter
+    def lens_calibration(self, value: str):
+        self.__lens_calibration = value
+
+    @property
+    @argument(
+        "--disable-histogram-equalization",
+        flag=True,
+        help="Disables histogram equalization when processing images.",
+    )
+    def disable_histogram_equalization(self) -> bool:
+        return self.__disable_histogram_equalization
+
+    @disable_histogram_equalization.setter
+    def disable_histogram_equalization(self, value: bool):
+        self.__disable_histogram_equalization = value
+
+    @property
+    @argument("--overwrite", flag=True, help="Overwrite the calibration if it exists.")
+    def overwrite(self) -> bool:
+        return self.__overwrite
+
+    @overwrite.setter
+    def overwrite(self, value: bool):
+        self.__overwrite = value
+
+    def __init__(self):
+        super().__init__()
+
+        self.__data: List[str] = None
+        self.__lens_calibration: str = None
+        self.__disable_histogram_equalization: bool = None
+        self.__overwrite: bool = None
+
+    def __call__(self):
         ray.init()
 
-        files = {Path(f) for g in args.data for f in glob(g, recursive=True)}
+        files = {Path(f) for g in self.data for f in glob(g, recursive=True)}
         lens_calibration = LensCalibration()
-        lens_calibration.load(Path(args.lens_calibration))
+        lens_calibration.load(Path(self.lens_calibration))
 
-        futures = [execute.remote(f, args.disable_histogram_equalization, lens_calibration) for f in files]
+        futures = [
+            execute.remote(f, self.disable_histogram_equalization, lens_calibration)
+            for f in files
+        ]
 
         # Hack to force processing
         _ = list(tqdm(to_iterator(futures), total=len(files)))
