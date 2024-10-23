@@ -43,7 +43,10 @@ def execute(
     )
     image_rectifier = ImageRectifier(lens_calibration)
 
-    img = raw_processor_hist_eq.load_and_process(input_file)
+    try:
+        img = raw_processor_hist_eq.load_and_process(input_file)
+    except:
+        return
     img = image_rectifier.rectify(img)
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
