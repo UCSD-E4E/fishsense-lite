@@ -42,6 +42,7 @@ def execute(
         )
     )
 
+    output_file.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(output_file.absolute().as_posix(), img)
 
 
