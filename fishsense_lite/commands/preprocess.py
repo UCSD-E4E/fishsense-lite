@@ -21,6 +21,8 @@ def execute(
     input_file: Path,
     disable_histogram_equalization: bool,
     lens_calibration: LensCalibration,
+    root: Path,
+    output: Path,
 ):
     raw_processor_hist_eq = RawProcessor(
         enable_histogram_equalization=not disable_histogram_equalization
@@ -30,7 +32,13 @@ def execute(
     img = raw_processor_hist_eq.load_and_process(input_file)
     img = image_rectifier.rectify(img)
 
-    output_file = Path(input_file.as_posix().replace(input_file.suffix, ".png"))
+    output_file = Path(
+        input_file.absolute()
+        .as_posix()
+        .replace(root.as_posix(), output)
+        .replace(input_file.suffix),
+        ".png",
+    )
 
     cv2.imwrite(output_file.absolute().as_posix(), img)
 
@@ -81,6 +89,20 @@ class Preprocess(Command):
         self.__disable_histogram_equalization = value
 
     @property
+    @argument(
+        "--output",
+        short_name="-o",
+        required=True,
+        help="The path to store the resulting database.",
+    )
+    def output_path(self) -> str:
+        return self.__output_path
+
+    @output_path.setter
+    def output_path(self, value: str):
+        self.__output_path = value
+
+    @property
     @argument("--overwrite", flag=True, help="Overwrite the calibration if it exists.")
     def overwrite(self) -> bool:
         return self.__overwrite
@@ -95,17 +117,29 @@ class Preprocess(Command):
         self.__data: List[str] = None
         self.__lens_calibration: str = None
         self.__disable_histogram_equalization: bool = None
+        self.__output_path: str = None
         self.__overwrite: bool = None
 
     def __call__(self):
         self.init_ray()
 
-        files = {Path(f) for g in self.data for f in glob(g, recursive=True)}
+        files = {Path(f).absolute() for g in self.data for f in glob(g, recursive=True)}
+
+        # Find the singular path that defines the root of all of our data.
+        root = files
+        while len(root) > 1:
+            root = {f.parent for f in root}
+        root = root.pop()
+
         lens_calibration = LensCalibration()
         lens_calibration.load(Path(self.lens_calibration))
 
+        output = Path(self.output_path)
+
         futures = [
-            execute.remote(f, self.disable_histogram_equalization, lens_calibration)
+            execute.remote(
+                f, self.disable_histogram_equalization, lens_calibration, root, output
+            )
             for f in files
         ]
 
