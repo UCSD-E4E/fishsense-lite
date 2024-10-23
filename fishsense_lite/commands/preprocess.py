@@ -145,7 +145,12 @@ class Preprocess(Command):
 
         futures = [
             execute.remote(
-                f, self.disable_histogram_equalization, lens_calibration, root, output
+                f,
+                self.disable_histogram_equalization,
+                lens_calibration,
+                root,
+                output,
+                self.overwrite,
             )
             for f in files
         ]
