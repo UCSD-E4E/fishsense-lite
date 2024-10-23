@@ -135,7 +135,8 @@ class Preprocess(Command):
         # Find the singular path that defines the root of all of our data.
         root = files
         while len(root) > 1:
-            root = {f.parent for f in root}
+            max_count = max(len(f.parts) for f in root)
+            root = {f.parent if len(f.parts) == max_count else f for f in root}
         root = root.pop()
 
         lens_calibration = LensCalibration()
