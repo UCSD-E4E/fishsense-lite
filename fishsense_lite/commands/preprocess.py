@@ -23,15 +23,8 @@ def execute(
     lens_calibration: LensCalibration,
     root: Path,
     output: Path,
+    overwrite: bool,
 ):
-    raw_processor_hist_eq = RawProcessor(
-        enable_histogram_equalization=not disable_histogram_equalization
-    )
-    image_rectifier = ImageRectifier(lens_calibration)
-
-    img = raw_processor_hist_eq.load_and_process(input_file)
-    img = image_rectifier.rectify(img)
-
     output_file = Path(
         input_file.absolute()
         .as_posix()
@@ -41,6 +34,17 @@ def execute(
             ".png",
         )
     )
+
+    if not overwrite and output_file.exists():
+        return
+
+    raw_processor_hist_eq = RawProcessor(
+        enable_histogram_equalization=not disable_histogram_equalization
+    )
+    image_rectifier = ImageRectifier(lens_calibration)
+
+    img = raw_processor_hist_eq.load_and_process(input_file)
+    img = image_rectifier.rectify(img)
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(output_file.absolute().as_posix(), img)
