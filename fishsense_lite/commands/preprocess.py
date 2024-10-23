@@ -35,9 +35,11 @@ def execute(
     output_file = Path(
         input_file.absolute()
         .as_posix()
-        .replace(root.as_posix(), output)
-        .replace(input_file.suffix),
-        ".png",
+        .replace(root.as_posix(), output.absolute().as_posix())
+        .replace(
+            input_file.suffix,
+            ".png",
+        )
     )
 
     cv2.imwrite(output_file.absolute().as_posix(), img)
