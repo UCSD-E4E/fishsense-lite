@@ -50,7 +50,9 @@ def execute(
     img = image_rectifier.rectify(img)
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(output_file.absolute().as_posix(), img)
+    cv2.imwrite(
+        output_file.absolute().as_posix(), img, [cv2.IMWRITE_PNG_COMPRESSION, 9]
+    )
 
 
 class Preprocess(Command):
