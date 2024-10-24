@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import List
 
 import cv2
+import numpy as np
 import ray
 from fishsense_common.pluggable_cli import Command, argument
 from pyfishsensedev.calibration import LensCalibration
@@ -16,6 +17,14 @@ def to_iterator(obj_ids):
         yield ray.get(done[0])
 
 
+def uint16_2_double(img: np.ndarray) -> np.ndarray:
+    return img.astype(np.float64) / 65535
+
+
+def uint16_2_uint8(img: np.ndarray) -> np.ndarray:
+    return (uint16_2_double(img) * 255).astype(np.uint8)
+
+
 @ray.remote(num_gpus=0.1)
 def execute(
     input_file: Path,
@@ -23,6 +32,7 @@ def execute(
     lens_calibration: LensCalibration,
     root: Path,
     output: Path,
+    format: str,
     overwrite: bool,
 ):
     output_file = Path(
@@ -31,7 +41,7 @@ def execute(
         .replace(root.as_posix(), output.absolute().as_posix())
         .replace(
             input_file.suffix,
-            ".png",
+            f".{format}",
         )
     )
 
@@ -50,9 +60,11 @@ def execute(
     img = image_rectifier.rectify(img)
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(
-        output_file.absolute().as_posix(), img, [cv2.IMWRITE_PNG_COMPRESSION, 9]
-    )
+
+    if format == "jpg":
+        img = uint16_2_uint8(img)
+
+    cv2.imwrite(output_file.absolute().as_posix(), img)
 
 
 class Preprocess(Command):
@@ -115,6 +127,20 @@ class Preprocess(Command):
         self.__output_path = value
 
     @property
+    @argument(
+        "--format",
+        short_name="-f",
+        default="png",
+        help="The image format to save the preprocessed ata in.  PNG is saved as 16 bit.  JPG is saved as 8 bit.",
+    )
+    def format(self) -> str:
+        return self.__format
+
+    @format.setter
+    def format(self, value: str):
+        self.__format = value
+
+    @property
     @argument("--overwrite", flag=True, help="Overwrite the calibration if it exists.")
     def overwrite(self) -> bool:
         return self.__overwrite
@@ -130,6 +156,7 @@ class Preprocess(Command):
         self.__lens_calibration: str = None
         self.__disable_histogram_equalization: bool = None
         self.__output_path: str = None
+        self.__format: str = None
         self.__overwrite: bool = None
 
     def __call__(self):
@@ -156,6 +183,7 @@ class Preprocess(Command):
                 lens_calibration,
                 root,
                 output,
+                self.format,
                 self.overwrite,
             )
             for f in files
