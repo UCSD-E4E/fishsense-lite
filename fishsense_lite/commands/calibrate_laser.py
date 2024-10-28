@@ -12,13 +12,6 @@ from pyfishsensedev.image.image_processors import RawProcessor
 from pyfishsensedev.image.image_rectifier import ImageRectifier
 from pyfishsensedev.laser.nn_laser_detector import NNLaserDetector
 from pyfishsensedev.plane_detector.checkerboard_detector import CheckerboardDetector
-from tqdm import tqdm
-
-
-def to_iterator(obj_ids):
-    while obj_ids:
-        done, obj_ids = ray.wait(obj_ids)
-        yield ray.get(done[0])
 
 
 def uint16_2_double(img: np.ndarray) -> np.ndarray:
@@ -273,7 +266,7 @@ class CalibrateLaser(Command):
         ]
 
         laser_points_3d = [
-            p for p in tqdm(to_iterator(futures), total=len(files)) if p is not None
+            p for p in self.tqdm(futures, total=len(files)) if p is not None
         ]
         laser_points_3d.sort(key=lambda x: x[2])
         laser_points_3d = np.array(laser_points_3d)

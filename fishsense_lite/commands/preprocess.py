@@ -8,13 +8,6 @@ import ray
 from fishsense_common.pluggable_cli import Command, argument
 from pyfishsensedev.calibration import LensCalibration
 from pyfishsensedev.image import ImageRectifier, RawProcessor
-from tqdm import tqdm
-
-
-def to_iterator(obj_ids):
-    while obj_ids:
-        done, obj_ids = ray.wait(obj_ids)
-        yield ray.get(done[0])
 
 
 def uint16_2_double(img: np.ndarray) -> np.ndarray:
@@ -190,4 +183,4 @@ class Preprocess(Command):
         ]
 
         # Hack to force processing
-        _ = list(tqdm(to_iterator(futures), total=len(files)))
+        _ = list(self.tqdm(futures, total=len(files)))

@@ -15,16 +15,9 @@ from pyfishsensedev.points_of_interest.fish import FishPointsOfInterestDetector
 from pyfishsensedev.segmentation.fish.fish_segmentation_fishial_pytorch import (
     FishSegmentationFishialPyTorch,
 )
-from tqdm import tqdm
 
 from fishsense_lite.database import Database
 from fishsense_lite.result_status import ResultStatus
-
-
-def to_iterator(obj_ids):
-    while obj_ids:
-        done, obj_ids = ray.wait(obj_ids)
-        yield ray.get(done[0])
 
 
 def uint16_2_double(img: np.ndarray) -> np.ndarray:
@@ -264,7 +257,5 @@ class Process(Command):
             #     (execute(f, lens_calibration, laser_calibration) for f in files),
             #     total=len(files),
             # ):
-            for file, result_status, length in tqdm(
-                to_iterator(futures), total=len(files)
-            ):
+            for file, result_status, length in self.tqdm(futures, total=len(files)):
                 database.insert_data(file, result_status, length)

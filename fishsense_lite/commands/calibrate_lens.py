@@ -8,13 +8,6 @@ from fishsense_common.pluggable_cli import Command, argument
 from pyfishsensedev.calibration import LensCalibration
 from pyfishsensedev.image.image_processors import RawProcessor
 from pyfishsensedev.plane_detector.checkerboard_detector import CheckerboardDetector
-from tqdm import tqdm
-
-
-def to_iterator(obj_ids):
-    while obj_ids:
-        done, obj_ids = ray.wait(obj_ids)
-        yield ray.get(done[0])
 
 
 def uint16_2_double(img: np.ndarray) -> np.ndarray:
@@ -158,7 +151,7 @@ class CalibrateLens(Command):
             zip(
                 *(
                     (b, i, w, h)
-                    for b, i, w, h in tqdm(to_iterator(futures), total=len(files))
+                    for b, i, w, h in self.tqdm(futures, total=len(files))
                     if b is not None
                 )
             )

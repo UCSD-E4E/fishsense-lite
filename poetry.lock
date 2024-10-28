@@ -606,13 +606,14 @@ appdirs = "^1.4.4"
 pyyaml = "^6.0.2"
 ray = "^2.37.0"
 torch = "^2.4.0"
+tqdm = "^4.66.5"
 wakepy = "^0.10.1"
 
 [package.source]
 type = "git"
 url = "https://github.com/UCSD-E4E/fishsense-common"
 reference = "main"
-resolved_reference = "8dae8e5b229d60e98bb8bf7f4068af05026f09c3"
+resolved_reference = "687927dbd5e4de90fe3ebdf8d7bc0f6df052c1a7"
 
 [[package]]
 name = "flatbuffers"
@@ -3354,4 +3355,4 @@ test = ["pytest", "pytest-cov"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "a718ac52b1d499b53c23b4b4108e3b5cb7bb8ef999bfe40bbe31168bcb3af033"
+content-hash = "a51dc62b82605c3bbe193b9ab3bc2ef463143634c44aab42223c80fc989b8615"
