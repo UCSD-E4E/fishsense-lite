@@ -1,0 +1,3 @@
+#! /bin/bash
+
+docker run --rm -it --gpus=all -e NVIDIA_DRIVER_CAPABILITIES=all -v ~/mnt/:/home/ubuntu/mnt/ -v ~/Results/:/home/ubuntu/Results -v ~/Configs:/home/ubuntu/Configs `whoami`/fishsense-lite
