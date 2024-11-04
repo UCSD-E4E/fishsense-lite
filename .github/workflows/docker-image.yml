@@ -31,6 +31,7 @@ jobs:
         with:
           context: .
           file: docker/Dockerfile.gpu
+          tags: ghcr.io/UCSD-E4E/fishsense-lite-gpu:latest
           # push: true
           # tags: user/app:latest
     # - name: Build the GPU Docker image
