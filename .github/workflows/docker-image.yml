@@ -15,7 +15,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build the GPU Docker image
-      run: docker build . --file docker/Dockerfile.gpu --tag fishsense-lite:gpu-$(date +%s)
+      run: docker build . --file docker/Dockerfile.gpu --tag fishsense-lite:gpu-$(date +%s) --tag fishsense-lite:gpu-latest
 
   build-cpu:
 
@@ -24,4 +24,4 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build the CPU Docker image
-      run: docker build . --file docker/Dockerfile.cpu --tag fishsense-lite:cpu-$(date +%s)
+      run: docker build . --file docker/Dockerfile.cpu --tag fishsense-lite:cpu-$(date +%s) --tag fishsense-lite:cpu-latest
