@@ -32,10 +32,7 @@ jobs:
           context: .
           file: docker/Dockerfile.gpu
           tags: ghcr.io/ucsd-e4e/fishsense-lite-gpu:latest
-          # push: true
-          # tags: user/app:latest
-    # - name: Build the GPU Docker image
-    #   run: docker build . --file docker/Dockerfile.gpu --tag fishsense-lite:gpu-$(date +%s) --tag fishsense-lite:gpu-latest
+          push: true
 
   build-cpu:
 
