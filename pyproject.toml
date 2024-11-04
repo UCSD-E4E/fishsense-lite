@@ -32,8 +32,8 @@ priority = "supplemental"
 fsl = "fishsense_lite.run:main"
 
 [tool.poetry-dynamic-versioning]
-enable: true
-bump: true
+enable = true
+bump = true
 
 [build-system]
 requires = ["poetry-core"]
