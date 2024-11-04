@@ -1,6 +1,6 @@
 FROM ghcr.io/ucsd-e4e/fishsense-lite:base-cuda
 
-# Do work that is specific to the CPU dockerfile here.
+# Do work that is specific to the GPU dockerfile here.
 # This should end as root.
 
 RUN apt-get update && apt-get install -y \
