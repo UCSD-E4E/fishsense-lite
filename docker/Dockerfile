@@ -1,4 +1,4 @@
-ARG IMAGE=ghcr.io/ucsd-e4e/fishsense-lite:base-cpu
+ARG IMAGE=ghcr.io/ucsd-e4e/fishsense-lite:mid-cpu
 FROM $IMAGE
 
 RUN echo 'ubuntu ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
