@@ -13,9 +13,27 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Build the GPU Docker image
-      run: docker build . --file docker/Dockerfile.gpu --tag fishsense-lite:gpu-$(date +%s) --tag fishsense-lite:gpu-latest
+    - 
+      uses: actions/checkout@v4
+    -
+        name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+    -
+        name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+    -
+        name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.gpu
+          # push: true
+          # tags: user/app:latest
+    # - name: Build the GPU Docker image
+    #   run: docker build . --file docker/Dockerfile.gpu --tag fishsense-lite:gpu-$(date +%s) --tag fishsense-lite:gpu-latest
 
   build-cpu:
 
