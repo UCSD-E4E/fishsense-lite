@@ -1,4 +1,4 @@
-ARG IMAGE=ghcr.io/ucsd-e4e/fishsense-lite:mid-cpu
+ARG IMAGE=ubuntu:24.04
 FROM $IMAGE
 
 SHELL ["/bin/bash", "-c"] 

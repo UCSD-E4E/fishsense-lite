@@ -40,7 +40,7 @@ jobs:
       uses: docker/build-push-action@v6
       with:
         context: .
-        file: docker/Dockerfile.cuda
+        file: docker/Dockerfile.mid-cuda
         tags: ghcr.io/ucsd-e4e/fishsense-lite:mid-cuda
         push: false
     -
@@ -86,7 +86,7 @@ jobs:
       uses: docker/build-push-action@v6
       with:
         context: .
-        file: docker/Dockerfile.cpu
+        file: docker/Dockerfile.mid-cpu
         tags: ghcr.io/ucsd-e4e/fishsense-lite:mid-cpu
         push: false
     -
