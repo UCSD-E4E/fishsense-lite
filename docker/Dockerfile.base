@@ -1,0 +1,33 @@
+ARG IMAGE=ghcr.io/ucsd-e4e/fishsense-lite:mid-cpu
+FROM $IMAGE
+
+SHELL ["/bin/bash", "-c"] 
+
+RUN apt-get update && apt-get upgrade -y && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y sudo \
+                        build-essential \
+                        git \
+                        libssl-dev \
+                        zlib1g-dev \
+                        libbz2-dev \
+                        libreadline-dev \
+                        libsqlite3-dev \
+                        wget \
+                        curl \
+                        llvm \
+                        libncurses5-dev \
+                        libncursesw5-dev \
+                        xz-utils \
+                        tk-dev \
+                        libffi-dev \
+                        liblzma-dev \
+                        python3-openssl \
+                        libopencv-dev \
+                        clang \
+                        libclang-dev \
+                        llvm \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+CMD ["/bin/bash"]
