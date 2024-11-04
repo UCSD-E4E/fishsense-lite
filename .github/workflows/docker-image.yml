@@ -31,7 +31,7 @@ jobs:
       with:
         context: .
         file: docker/Dockerfile.cuda
-        tags: ghcr.io/ucsd-e4e/fishsense-lite-cuda:latest
+        tags: ghcr.io/ucsd-e4e/fishsense-lite:cuda
         push: true
 
   build-cpu:
@@ -57,5 +57,5 @@ jobs:
       with:
         context: .
         file: docker/Dockerfile.cpu
-        tags: ghcr.io/ucsd-e4e/fishsense-lite-cpu:latest
+        tags: ghcr.io/ucsd-e4e/fishsense-lite:latest
         push: true
