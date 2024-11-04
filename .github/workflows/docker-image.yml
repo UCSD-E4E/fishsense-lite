@@ -31,10 +31,10 @@ jobs:
       with:
         context: .
         file: docker/Dockerfile.base
-        build-args:
-          -IMAGE=nvidia/cuda:12.6.1-devel-ubuntu24.04
+        build-args: |
+          IMAGE=nvidia/cuda:12.6.1-devel-ubuntu24.04
         tags: ghcr.io/ucsd-e4e/fishsense-lite:base-cuda
-        push: true
+        push: false
     -
       name: Build Middle
       uses: docker/build-push-action@v6
@@ -42,7 +42,7 @@ jobs:
         context: .
         file: docker/Dockerfile.mid-cuda
         tags: ghcr.io/ucsd-e4e/fishsense-lite:mid-cuda
-        push: true
+        push: false
     -
       name: Build and push
       uses: docker/build-push-action@v6
@@ -50,8 +50,8 @@ jobs:
         context: .
         file: docker/Dockerfile
         tags: ghcr.io/ucsd-e4e/fishsense-lite:cuda
-        build-args:
-          -IMAGE=ghcr.io/ucsd-e4e/fishsense-lite:mid-cuda
+        build-args: |
+          IMAGE=ghcr.io/ucsd-e4e/fishsense-lite:mid-cuda
         push: true
 
   build-cpu:
