@@ -1,6 +1,0 @@
-FROM ghcr.io/ucsd-e4e/fishsense-lite:base-cpu
-
-# Do work that is specific to the CPU dockerfile here.
-# This should end as root.
-
-CMD ["/bin/bash"]

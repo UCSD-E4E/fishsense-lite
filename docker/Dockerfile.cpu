@@ -1,5 +1,4 @@
-ARG IMAGE=nvidia/cuda:12.6.1-devel-ubuntu24.04
-FROM $IMAGE
+FROM ubuntu:24.04
 
 SHELL ["/bin/bash", "-c"] 
 
@@ -29,5 +28,22 @@ RUN apt-get update && apt-get install -y sudo \
                         libclang-dev \
                         llvm \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN echo 'ubuntu ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+
+USER ubuntu
+ENV HOME="/home/ubuntu"
+RUN mkdir -p ${HOME}
+WORKDIR ${HOME}
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+RUN git clone --depth=1 https://github.com/pyenv/pyenv.git .pyenv
+ENV PYENV_ROOT="${HOME}/.pyenv"
+ENV PATH="${PYENV_ROOT}/shims:${PYENV_ROOT}/bin:${PATH}"
+
+RUN pyenv install 3.11
+RUN pyenv global 3.11
+RUN pip install --upgrade pip && pip cache purge
 
 CMD ["/bin/bash"]
