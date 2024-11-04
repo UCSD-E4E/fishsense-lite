@@ -31,6 +31,9 @@ priority = "supplemental"
 [tool.poetry.scripts]
 fsl = "fishsense_lite.run:main"
 
+[tool.poetry-dynamic-versioning]
+enable: true
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
