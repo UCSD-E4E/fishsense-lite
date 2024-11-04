@@ -1,6 +1,6 @@
 FROM nvidia/cuda:12.6.1-devel-ubuntu24.04
 
-#SHELL ["/bin/bash", "-c"] 
+SHELL ["/bin/bash", "-c"]
 
 RUN apt-get update && apt-get upgrade -y
 
@@ -55,16 +55,15 @@ RUN cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/ -DENABLE_CUDA=ON .
     make -j && \
     make install
 
-ARG GID=1000
-ARG UID=1000
-RUN groupmod -g ${GID} ubuntu && usermod -u ${UID} -g ${GID} ubuntu
-
 RUN echo 'ubuntu ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
 
 USER ubuntu
 ENV HOME="/home/ubuntu"
 RUN mkdir -p ${HOME}
 WORKDIR ${HOME}
+
+# We want access to all of the GPUs but do not want to expose any CPU devices
+RUN echo "export POCL_DEVICES=cuda" >> ${HOME}/.bashrc
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 RUN echo ". \"\$HOME/.cargo/env\"" >> ${HOME}/.bashrc
@@ -80,14 +79,22 @@ RUN echo "export PYENV_ROOT=\"\$HOME/.pyenv\"" >> ${HOME}/.bashrc && \
 RUN pyenv install 3.11
 RUN pyenv global 3.11
 RUN pip install --upgrade pip
+
 RUN pip install pipx
 RUN pipx ensurepath
 
-# We want access to all of the GPUs but do not want to expose any CPU devices
-RUN echo "export POCL_DEVICES=cuda" >> ${HOME}/.bashrc
-
 ARG BUMP=1
 RUN . ${HOME}/.cargo/env && pipx install git+https://github.com/UCSD-E4E/fishsense-lite.git
-RUN ${HOME}/.local/bin/fsl generate-ray-config --max-cpu 32 --max-gpu 1
+
+ARG MAX_CPU=1
+ARG MAX_GPU=1
+
+RUN ${HOME}/.local/bin/fsl generate-ray-config --max-cpu ${MAX_CPU} --max-gpu ${MAX_GPU}
+
+USER root
+ARG GID=1000
+ARG UID=1000
+RUN groupmod -g ${GID} ubuntu && usermod -u ${UID} -g ${GID} ubuntu
+USER ubuntu
 
 CMD ["/bin/bash"]

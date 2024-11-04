@@ -1,0 +1,31 @@
+#! /bin/bash
+
+# Do we have a CPU config?
+if [ -f .max-cpu ]; then
+    MAX_CPU=`cat .max-cpu`
+else
+    threads_per_core=`lscpu | grep "Thread(s) per core:" | sed -E 's/Thread\(s\) per core:\s+//'`
+    cores_per_thread=`lscpu | grep "Core(s) per socket:" | sed -E 's/Core\(s\) per socket:\s+//'`
+    sockets=`lscpu | grep "Socket(s):" | sed -E 's/Socket\(s\):\s+//'`
+    
+    total_num_cpus=$((threads_per_core*cores_per_thread*sockets))
+
+    echo "WARNING: Max CPU config missing. Computer has $total_num_cpus. Defaulting to 1."
+
+    MAX_CPU=1
+fi
+
+# Do we have a GPU config?
+if [ -f .max-gpu ]; then
+    MAX_GPU=`cat .max-gpu`
+else
+    total_num_gpus=`nvidia-smi --query-gpu=name --format=csv,noheader | wc -l`
+
+    echo "WARNING: Max GPU config missing. Computer has $total_num_gpus. Defaulting to 1."
+
+    MAX_GPU=1
+fi
+
+# We use the git hash of the main remote to ensure that we bump only when necessary.
+git remote update
+docker build --build-arg UID=`id -u` --build-arg GID=`id -g` --build-arg BUMP=`git diff origin/main | md5sum | sed -E 's/\s+-//'` --build-arg MAX_CPU=$MAX_CPU --build-arg MAX_GPU=$MAX_GPU . --tag `whoami`/fishsense-lite
