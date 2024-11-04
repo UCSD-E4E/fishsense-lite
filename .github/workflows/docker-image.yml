@@ -26,20 +26,12 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     -
-      name: Build and push dev
+      name: Build and push
       uses: docker/build-push-action@v6
       with:
         context: .
         file: docker/Dockerfile.cuda
         tags: ghcr.io/ucsd-e4e/fishsense-lite:cuda
-        push: true
-    -
-      name: Build and push runtime
-      uses: docker/build-push-action@v6
-      with:
-        context: .
-        file: docker/Dockerfile.runtime-cuda
-        tags: ghcr.io/ucsd-e4e/fishsense-lite:runtime-cuda
         push: true
 
   build-cpu:
@@ -60,18 +52,10 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     -
-      name: Build and push dev
+      name: Build and push
       uses: docker/build-push-action@v6
       with:
         context: .
         file: docker/Dockerfile.cpu
         tags: ghcr.io/ucsd-e4e/fishsense-lite:cpu
-        push: true
-    -
-      name: Build and push runtime
-      uses: docker/build-push-action@v6
-      with:
-        context: .
-        file: docker/Dockerfile.runtime-cpu
-        tags: ghcr.io/ucsd-e4e/fishsense-lite:runtime-cpu
         push: true

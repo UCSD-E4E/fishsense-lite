@@ -2,6 +2,11 @@ FROM ghcr.io/ucsd-e4e/fishsense-lite:runtime-cuda
 
 SHELL ["/bin/bash", "-c"]
 
+RUN pip install pipx
+RUN pipx ensurepath
+
+RUN . ${HOME}/.cargo/env && pipx install git+https://github.com/UCSD-E4E/fishsense-lite.git
+
 ARG MAX_CPU=1
 ARG MAX_GPU=1
 
