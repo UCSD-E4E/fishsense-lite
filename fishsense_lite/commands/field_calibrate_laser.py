@@ -16,13 +16,7 @@ from pyfishsensedev.laser.nn_laser_detector import NNLaserDetector
 from pyfishsensedev.library.homography import viz2d
 from pyfishsensedev.plane_detector.slate_detector import SlateDetector
 
-
-def uint16_2_double(img: np.ndarray) -> np.ndarray:
-    return img.astype(np.float64) / 65535
-
-
-def uint16_2_uint8(img: np.ndarray) -> np.ndarray:
-    return (uint16_2_double(img) * 255).astype(np.uint8)
+from fishsense_lite.utils import uint16_2_uint8
 
 
 @ray.remote(num_gpus=0.25)
@@ -135,6 +129,7 @@ class FieldCalibrateLaser(Command):
         "--laser-position",
         short_name="-p",
         nargs=3,
+        required=True,
         help="The laser position in centimeter inputed as x y z for the FishSense Lite product line.",
     )
     def laser_position(self) -> List[int]:
@@ -149,6 +144,7 @@ class FieldCalibrateLaser(Command):
         "--laser-axis",
         short_name="-a",
         nargs=3,
+        required=True,
         help="The laser axis unit vector inputed as x y z for the FishSense Lite product line.",
     )
     def laser_axis(self) -> List[float]:

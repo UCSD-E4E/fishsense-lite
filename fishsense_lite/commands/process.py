@@ -18,14 +18,7 @@ from pyfishsensedev.segmentation.fish.fish_segmentation_fishial_pytorch import (
 
 from fishsense_lite.database import Database
 from fishsense_lite.result_status import ResultStatus
-
-
-def uint16_2_double(img: np.ndarray) -> np.ndarray:
-    return img.astype(np.float64) / 65535
-
-
-def uint16_2_uint8(img: np.ndarray) -> np.ndarray:
-    return (uint16_2_double(img) * 255).astype(np.uint8)
+from fishsense_lite.utils import uint16_2_uint8
 
 
 @ray.remote(num_gpus=0.25)

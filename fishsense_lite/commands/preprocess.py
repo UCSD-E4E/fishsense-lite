@@ -9,13 +9,7 @@ from fishsense_common.pluggable_cli import Command, argument
 from pyfishsensedev.calibration import LensCalibration
 from pyfishsensedev.image import ImageRectifier, RawProcessor
 
-
-def uint16_2_double(img: np.ndarray) -> np.ndarray:
-    return img.astype(np.float64) / 65535
-
-
-def uint16_2_uint8(img: np.ndarray) -> np.ndarray:
-    return (uint16_2_double(img) * 255).astype(np.uint8)
+from fishsense_lite.utils import get_output_file, get_root, uint16_2_uint8
 
 
 @ray.remote(num_gpus=0.1)
@@ -28,15 +22,7 @@ def execute(
     format: str,
     overwrite: bool,
 ):
-    output_file = Path(
-        input_file.absolute()
-        .as_posix()
-        .replace(root.as_posix(), output.absolute().as_posix())
-        .replace(
-            input_file.suffix,
-            f".{format}",
-        )
-    )
+    output_file = get_output_file(input_file, root, output, format)
 
     if not overwrite and output_file.exists():
         return
@@ -158,11 +144,7 @@ class Preprocess(Command):
         files = {Path(f).absolute() for g in self.data for f in glob(g, recursive=True)}
 
         # Find the singular path that defines the root of all of our data.
-        root = files
-        while len(root) > 1:
-            max_count = max(len(f.parts) for f in root)
-            root = {f.parent if len(f.parts) == max_count else f for f in root}
-        root = root.pop()
+        root = get_root(files)
 
         lens_calibration = LensCalibration()
         lens_calibration.load(Path(self.lens_calibration))

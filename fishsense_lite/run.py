@@ -5,6 +5,7 @@ from fishsense_common.pluggable_cli import Cli
 from fishsense_lite.commands.calibrate_laser import CalibrateLaser
 from fishsense_lite.commands.calibrate_lens import CalibrateLens
 from fishsense_lite.commands.field_calibrate_laser import FieldCalibrateLaser
+from fishsense_lite.commands.label_studio import LabelStudioCommand
 from fishsense_lite.commands.preprocess import Preprocess
 from fishsense_lite.commands.process import Process
 
@@ -21,6 +22,7 @@ def main():
     cli.add(FieldCalibrateLaser())
     cli.add(Preprocess())
     cli.add(Process())
+    cli.add(LabelStudioCommand())
 
     cli()
 

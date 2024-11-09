@@ -11,7 +11,7 @@
             "module": "fishsense_lite",
             "justMyCode": false,
             "args": [
-                "process",
+                "label-studio",
                 "--help"
             ]
         },
@@ -116,6 +116,26 @@
                 // "--output",
                 // "./output/082929_FishModels_FSL01.db",
                 // "--overwrite",
+            ]
+        },
+        {
+            "name": "Label Studio",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "fishsense_lite",
+            "justMyCode": false,
+            "args": [
+                "label-studio",
+                "~/Data/082923_Pool Calibration/082929_Slate_FSL01/*.ORF",
+                "--lens-calibration",
+                "~/Data/calibration-parameters/FSL-01D/fsl-01d-lens-raw.pkg",
+                "--laser-position",
+                "-4", "-11", "0",
+                "--laser-axis",
+                "0", "0", "1",
+                "--output",
+                "./output",
+                "--overwrite",
             ]
         },
     ]
