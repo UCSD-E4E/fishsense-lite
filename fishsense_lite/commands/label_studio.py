@@ -57,7 +57,7 @@ def execute_laser(
 
 class Data:
     def __init__(self, img: str):
-        self.img = img
+        self.__dict__["img-1"] = img
 
 
 class LaserValue:
