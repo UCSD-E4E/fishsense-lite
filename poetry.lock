@@ -613,7 +613,7 @@ wakepy = "^0.10.1"
 type = "git"
 url = "https://github.com/UCSD-E4E/fishsense-common"
 reference = "main"
-resolved_reference = "0b5ab530b12aaebf502fc2747630f838c4706196"
+resolved_reference = "1d0a64cda9fedcafc7e186c8f343fcf17dfaf530"
 
 [[package]]
 name = "flatbuffers"
