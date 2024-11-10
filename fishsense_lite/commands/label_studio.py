@@ -194,7 +194,6 @@ class LabelStudioCommand(Command):
     @property
     @argument(
         "--prefix",
-        short_name="-p",
         required=True,
         help="The prefix to add to the output json file.",
     )
