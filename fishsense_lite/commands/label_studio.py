@@ -102,7 +102,7 @@ def execute_laser(
     cv2.imwrite(output_file.absolute().as_posix(), image_dark)
 
     json_objects = LaserLabelStudioJSON(
-        output_file.relative_to(output.absolute()).as_posix(),
+        output_file.name,
         laser_image_coord,
         width,
         height,
