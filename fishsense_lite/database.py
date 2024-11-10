@@ -68,7 +68,7 @@ class Database:
             {
                 "start_time": datetime.datetime.now(datetime.UTC),
                 "git_commit": sha,
-                "version": importlib.metadata.version(),
+                "version": importlib.metadata.version("fishsense_lite"),
             }
         )
 
