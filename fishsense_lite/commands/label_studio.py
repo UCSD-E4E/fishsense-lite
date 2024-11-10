@@ -76,6 +76,7 @@ def execute_laser(
     estimated_laser_calibration: LaserCalibration,
     root: Path,
     output: Path,
+    prefix: str,
     overwrite: bool,
 ) -> Tuple[np.ndarray, int, int]:
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -102,7 +103,7 @@ def execute_laser(
     cv2.imwrite(output_file.absolute().as_posix(), image_dark)
 
     json_objects = LaserLabelStudioJSON(
-        output_file.name,
+        f"{prefix}{output_file.relative_to(output.absolute()).as_posix()}",
         laser_image_coord,
         width,
         height,
@@ -191,6 +192,20 @@ class LabelStudioCommand(Command):
         self.__output_path = value
 
     @property
+    @argument(
+        "--prefix",
+        short_name="-p",
+        required=True,
+        help="The prefix to add to the output json file.",
+    )
+    def prefix(self) -> str:
+        return self.__prefix
+
+    @prefix.setter
+    def prefix(self, value: str):
+        self.__prefix = value
+
+    @property
     @argument("--overwrite", flag=True, help="Overwrite the calibration if it exists.")
     def overwrite(self) -> bool:
         return self.__overwrite
@@ -207,6 +222,7 @@ class LabelStudioCommand(Command):
         self.__laser_position: List[int] = None
         self.__laser_axis: List[float] = None
         self.__output_path: str = None
+        self.__prefix: str = None
         self.__overwrite: bool = None
 
     def __call__(self):
@@ -250,6 +266,7 @@ class LabelStudioCommand(Command):
                 estimated_laser_calibration,
                 root,
                 output,
+                self.prefix,
                 self.overwrite,
             )
             for f in files
