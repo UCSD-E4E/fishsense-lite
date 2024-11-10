@@ -83,7 +83,7 @@ def execute_laser(
     output_file = get_output_file(input_file, root, output, "jpg")
     json_file = output_file.with_suffix(".json")
 
-    if output_file.exists() and not overwrite:
+    if output_file.exists() and json_file.exists() and not overwrite:
         return
 
     dark_raw_processor = RawProcessor(enable_histogram_equalization=False)
