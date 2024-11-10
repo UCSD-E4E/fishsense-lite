@@ -10,6 +10,7 @@ RUN . ${HOME}/.cargo/env && pipx install git+https://github.com/UCSD-E4E/fishsen
 ARG MAX_CPU=1
 ARG MAX_GPU=1
 
+ARG BUMP=0
 RUN ${HOME}/.local/bin/fsl generate-ray-config --max-cpu ${MAX_CPU} --max-gpu ${MAX_GPU}
 
 USER root
