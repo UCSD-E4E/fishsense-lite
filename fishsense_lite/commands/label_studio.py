@@ -23,7 +23,7 @@ from fishsense_lite.utils import get_output_file, get_root, uint16_2_uint8
 
 class Data:
     def __init__(self, img: str):
-        self.__dict__["img-1"] = img
+        self.img = img
 
 
 class LaserValue:
