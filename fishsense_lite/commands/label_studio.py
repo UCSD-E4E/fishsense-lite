@@ -101,14 +101,12 @@ def execute_laser(
     output_file.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(output_file.absolute().as_posix(), image_dark)
 
-    json_objects = [
-        LaserLabelStudioJSON(
-            output_file.relative_to(output.absolute()).as_posix(),
-            laser_image_coord,
-            width,
-            height,
-        )
-    ]
+    json_objects = LaserLabelStudioJSON(
+        output_file.relative_to(output.absolute()).as_posix(),
+        laser_image_coord,
+        width,
+        height,
+    )
 
     with open(json_file, "w") as f:
         f.write(json.dumps(json_objects, default=vars))
