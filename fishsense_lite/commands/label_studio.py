@@ -194,7 +194,6 @@ class LabelStudioCommand(Command):
     @property
     @argument(
         "--prefix",
-        required=True,
         help="The prefix to add to the output json file.",
     )
     def prefix(self) -> str:
