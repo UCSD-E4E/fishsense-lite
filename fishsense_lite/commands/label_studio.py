@@ -62,7 +62,11 @@ class LaserLabelStudioJSON:
         self, img: str, laser_image_coord: np.ndarray, width: int, height: int
     ):
         self.data = Data(img)
-        self.predictions = [LaserPrediction(laser_image_coord, width, height)]
+        self.predictions = (
+            [LaserPrediction(laser_image_coord, width, height)]
+            if laser_image_coord is not None
+            else []
+        )
 
 
 @ray.remote(num_gpus=0.25)
