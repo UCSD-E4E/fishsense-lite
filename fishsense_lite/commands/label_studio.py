@@ -54,7 +54,7 @@ class LaserResult:
 class LaserPrediction:
     def __init__(self, laser_image_coord: np.ndarray, width: int, height: int):
         self.model_version = importlib.metadata.version("fishsense_lite")
-        self.results = [LaserResult(laser_image_coord, width, height)]
+        self.result = [LaserResult(laser_image_coord, width, height)]
 
 
 class LaserLabelStudioJSON:
