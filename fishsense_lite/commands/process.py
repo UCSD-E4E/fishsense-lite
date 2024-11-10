@@ -3,8 +3,8 @@ from pathlib import Path
 from typing import List, Tuple
 
 import cv2
+import fishsense_common.ray as ray
 import numpy as np
-import ray
 import torch
 from fishsense_common.pluggable_cli import Command, argument
 from pyfishsensedev.calibration import LaserCalibration, LensCalibration
@@ -21,7 +21,7 @@ from fishsense_lite.result_status import ResultStatus
 from fishsense_lite.utils import uint16_2_uint8
 
 
-@ray.remote(num_gpus=0.25)
+@ray.remote(vram_mb=1536)
 def execute(
     input_file: Path,
     lens_calibration: LensCalibration,

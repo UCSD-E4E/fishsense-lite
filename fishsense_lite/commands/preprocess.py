@@ -3,8 +3,7 @@ from pathlib import Path
 from typing import List
 
 import cv2
-import numpy as np
-import ray
+import fishsense_common.ray as ray
 from fishsense_common.pluggable_cli import Command, argument
 from pyfishsensedev.calibration import LensCalibration
 from pyfishsensedev.image import ImageRectifier, RawProcessor
@@ -12,7 +11,7 @@ from pyfishsensedev.image import ImageRectifier, RawProcessor
 from fishsense_lite.utils import get_output_file, get_root, uint16_2_uint8
 
 
-@ray.remote(num_gpus=0.1)
+@ray.remote(vram_mb=615)
 def execute(
     input_file: Path,
     disable_histogram_equalization: bool,

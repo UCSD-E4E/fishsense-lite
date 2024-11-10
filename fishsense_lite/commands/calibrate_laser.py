@@ -4,7 +4,7 @@ from typing import List
 
 import cv2
 import numpy as np
-import ray
+import fishsense_common.ray as ray
 import torch
 from fishsense_common.pluggable_cli import Command, argument
 from pyfishsensedev.calibration import LaserCalibration, LensCalibration
@@ -16,7 +16,7 @@ from pyfishsensedev.plane_detector.checkerboard_detector import CheckerboardDete
 from fishsense_lite.utils import uint16_2_uint8
 
 
-@ray.remote(num_gpus=0.25)
+@ray.remote(vram_mb=1536)
 def execute(
     input_file: Path,
     lens_calibration: LensCalibration,

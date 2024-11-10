@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import List, Tuple
 
 import cv2
+import fishsense_common.ray as ray
 import numpy as np
-import ray
 import torch
 from fishsense_common.pluggable_cli import Command, argument
 from pyfishsensedev.calibration import LaserCalibration, LensCalibration
@@ -69,7 +69,7 @@ class LaserLabelStudioJSON:
         )
 
 
-@ray.remote(num_gpus=0.25)
+@ray.remote(vram_mb=1536)
 def execute_laser(
     input_file: Path,
     lens_calibration: LensCalibration,
@@ -194,6 +194,7 @@ class LabelStudioCommand(Command):
     @property
     @argument(
         "--prefix",
+        default="",
         help="The prefix to add to the output json file.",
     )
     def prefix(self) -> str:
