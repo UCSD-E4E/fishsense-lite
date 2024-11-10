@@ -84,10 +84,13 @@ def execute_laser(
     json_file = output_file.with_suffix(".json")
 
     if output_file.exists() and not overwrite:
-        return None, None, None
+        return
 
     dark_raw_processor = RawProcessor(enable_histogram_equalization=False)
-    image_dark = uint16_2_uint8(dark_raw_processor.load_and_process(input_file))
+    try:
+        image_dark = uint16_2_uint8(dark_raw_processor.load_and_process(input_file))
+    except:
+        return
 
     height, width, _ = image_dark.shape
 
