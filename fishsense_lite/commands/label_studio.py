@@ -245,6 +245,7 @@ class LabelStudioCommand(Command):
         laser_json_objects = [
             LaserLabelStudioJSON(f.relative_to(output.absolute()).as_posix(), l, w, h)
             for f, l, w, h in self.tqdm(futures, total=len(files))
+            if l is not None
         ]
 
         with open(laser_json_path, "w") as f:
