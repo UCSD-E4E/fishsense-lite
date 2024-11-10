@@ -1,5 +1,6 @@
 """Module which represents the FishSense Lite Label Studio CLI."""
 
+import importlib
 import json
 import random
 import string
@@ -17,7 +18,6 @@ from pyfishsensedev.image.image_processors import RawProcessor
 from pyfishsensedev.image.image_rectifier import ImageRectifier
 from pyfishsensedev.laser.nn_laser_detector import NNLaserDetector
 
-from fishsense_lite import __version__
 from fishsense_lite.utils import get_output_file, get_root, uint16_2_uint8
 
 
@@ -53,7 +53,7 @@ class LaserResult:
 
 class LaserPrediction:
     def __init__(self, laser_image_coord: np.ndarray, width: int, height: int):
-        self.model_version = __version__
+        self.model_version = importlib.metadata.version()
         self.results = [LaserResult(laser_image_coord, width, height)]
 
 

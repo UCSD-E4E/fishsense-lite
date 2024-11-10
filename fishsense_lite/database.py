@@ -1,6 +1,7 @@
 """Module for accessing the sqlite database used to store the results."""
 
 import datetime
+import importlib
 from os import makedirs
 from pathlib import Path
 from sqlite3 import Connection, Cursor, OperationalError, connect
@@ -9,7 +10,6 @@ from typing import Dict, Set
 import backoff
 import git
 
-import fishsense_lite
 from fishsense_lite.result_status import ResultStatus
 
 
@@ -68,7 +68,7 @@ class Database:
             {
                 "start_time": datetime.datetime.now(datetime.UTC),
                 "git_commit": sha,
-                "version": fishsense_lite.__version__,
+                "version": importlib.metadata.version(),
             }
         )
 
