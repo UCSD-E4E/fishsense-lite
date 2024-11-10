@@ -2287,7 +2287,7 @@ torchvision = "^0.19.0"
 type = "git"
 url = "https://github.com/UCSD-E4E/pyFishSenseDev"
 reference = "main"
-resolved_reference = "6ffaa7a5100ab58e7cbbf41989334d54d0aebe24"
+resolved_reference = "fb0dd42b56eb77cc7b4a193d320ecf67a4f22da6"
 
 [[package]]
 name = "pygments"
