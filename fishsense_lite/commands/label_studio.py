@@ -21,40 +21,6 @@ from fishsense_lite import __version__
 from fishsense_lite.utils import get_output_file, get_root, uint16_2_uint8
 
 
-@ray.remote(num_gpus=0.25)
-def execute_laser(
-    input_file: Path,
-    lens_calibration: LensCalibration,
-    estimated_laser_calibration: LaserCalibration,
-    root: Path,
-    output: Path,
-    overwrite: bool,
-) -> Tuple[np.ndarray, int, int]:
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    output_file = get_output_file(input_file, root, output, "jpg")
-
-    if output_file.exists() and not overwrite:
-        return None, None, None
-
-    dark_raw_processor = RawProcessor(enable_histogram_equalization=False)
-    image_dark = uint16_2_uint8(dark_raw_processor.load_and_process(input_file))
-
-    height, width, _ = image_dark.shape
-
-    image_rectifier = ImageRectifier(lens_calibration)
-    image_dark = image_rectifier.rectify(image_dark)
-
-    laser_detector = NNLaserDetector(
-        lens_calibration, estimated_laser_calibration, device
-    )
-    laser_image_coord = laser_detector.find_laser(image_dark)
-
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(output_file.absolute().as_posix(), image_dark)
-
-    return output_file, laser_image_coord, width, height
-
-
 class Data:
     def __init__(self, img: str):
         self.__dict__["img-1"] = img
@@ -97,6 +63,51 @@ class LaserLabelStudioJSON:
     ):
         self.data = Data(img)
         self.predictions = [LaserPrediction(laser_image_coord, width, height)]
+
+
+@ray.remote(num_gpus=0.25)
+def execute_laser(
+    input_file: Path,
+    lens_calibration: LensCalibration,
+    estimated_laser_calibration: LaserCalibration,
+    root: Path,
+    output: Path,
+    overwrite: bool,
+) -> Tuple[np.ndarray, int, int]:
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    output_file = get_output_file(input_file, root, output, "jpg")
+    json_file = output_file.with_suffix(".json")
+
+    if output_file.exists() and not overwrite:
+        return None, None, None
+
+    dark_raw_processor = RawProcessor(enable_histogram_equalization=False)
+    image_dark = uint16_2_uint8(dark_raw_processor.load_and_process(input_file))
+
+    height, width, _ = image_dark.shape
+
+    image_rectifier = ImageRectifier(lens_calibration)
+    image_dark = image_rectifier.rectify(image_dark)
+
+    laser_detector = NNLaserDetector(
+        lens_calibration, estimated_laser_calibration, device
+    )
+    laser_image_coord = laser_detector.find_laser(image_dark)
+
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(output_file.absolute().as_posix(), image_dark)
+
+    json_objects = [
+        LaserLabelStudioJSON(
+            output_file.relative_to(output.absolute()).as_posix(),
+            laser_image_coord,
+            width,
+            height,
+        )
+    ]
+
+    with open(json_file, "w") as f:
+        f.write(json.dumps(json_objects, default=vars))
 
 
 class LabelStudioCommand(Command):
@@ -242,11 +253,4 @@ class LabelStudioCommand(Command):
             for f in files
         ]
 
-        laser_json_objects = [
-            LaserLabelStudioJSON(f.relative_to(output.absolute()).as_posix(), l, w, h)
-            for f, l, w, h in self.tqdm(futures, total=len(files))
-            if l is not None
-        ]
-
-        with open(laser_json_path, "w") as f:
-            f.write(json.dumps(laser_json_objects, default=vars))
+        list(self.tqdm(futures, total=len(files)))
