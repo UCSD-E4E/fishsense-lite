@@ -79,8 +79,8 @@ RUN echo "export PYENV_ROOT=\"\$HOME/.pyenv\"" >> ${HOME}/.bashrc && \
 	echo "eval \"\$(pyenv init -)\"" >> ${HOME}/.bashrc && \
 	echo "\"$(pyenv virtualenv-init -)\"" >> ${HOME}/.bashrc
 
-RUN pyenv install 3.11
-RUN pyenv global 3.11
+RUN pyenv install 3.12
+RUN pyenv global 3.12
 RUN pip install --upgrade pip && pip cache purge
 
 CMD ["/bin/bash"]

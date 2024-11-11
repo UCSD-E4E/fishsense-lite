@@ -1,6 +1,16 @@
 {
-	"build": { "dockerfile": "Dockerfile" },
-	"postCreateCommand": "poetry install --with dev",
+	"image": "ghcr.io/ucsd-e4e/fishsense-lite:cpu",
+	"postCreateCommand": [
+		"pip install poetry",
+		"poetry install --with dev"
+	],
+	"mounts": [
+		{
+			"source": "${localEnv:HOME}/mnt",
+			"target": "/home/ubuntu/mnt",
+			"type": "volume"
+		}
+	],
 	"customizations": {
 		"vscode": {
 			"extensions": [
