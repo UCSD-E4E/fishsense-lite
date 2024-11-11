@@ -5,16 +5,9 @@
 		"--runtime=nvidia",
 		"-e", "NVIDIA_DRIVER_CAPABILITIES=all"
 	],
-	"postCreateCommand": [
-		"pip install poetry",
-		"poetry install --with dev"
-	],
+	"postCreateCommand": "pip install poetry && poetry install --with dev",
 	"mounts": [
-		{
-			"source": "${localEnv:HOME}/mnt",
-			"target": "/home/ubuntu/mnt",
-			"type": "volume"
-		}
+		"source=${localEnv:HOME}/mnt,target=/home/ubuntu/mnt,type=bind"
 	],
 	"customizations": {
 		"vscode": {
