@@ -240,7 +240,7 @@ class LabelStudioCommand(Command):
             files, lens_calibration, estimated_laser_calibration, root, output
         )
 
-        self.__build_fishial_json(files, output)
+        self.__build_fishial_json(files, output, root)
 
     def __build_nn_laser_json(
         self,
