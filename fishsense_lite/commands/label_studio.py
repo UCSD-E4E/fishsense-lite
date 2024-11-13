@@ -83,6 +83,10 @@ def execute_fishial(
 ):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     output_file = get_output_file(input_file, root, output, "jpg")
+    mask_file = (
+        output_file.parent
+        / f"{output_file.name.removesuffix(output_file.suffix)}.mask.png"
+    )
     json_file = output_file.with_suffix(".json")
 
     if output_file.exists() and json_file.exists() and not overwrite:
@@ -99,6 +103,11 @@ def execute_fishial(
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(output_file.absolute().as_posix(), image)
+
+    debug_output = (segmentations.astype(float) / segmentations.max() * 255).astype(
+        np.uint8
+    )
+    cv2.imwrite(mask_file.absolute().as_posix(), debug_output)
 
     json_objects = SegmentationLabelStudioJSON(
         f"{prefix}{output_file.relative_to(output.absolute()).as_posix()}",
