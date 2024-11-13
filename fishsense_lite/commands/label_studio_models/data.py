@@ -1,3 +1,6 @@
+import urllib
+
+
 class Data:
     def __init__(self, img: str):
-        self.img = img
+        self.img = urllib.parse.quote(img)
