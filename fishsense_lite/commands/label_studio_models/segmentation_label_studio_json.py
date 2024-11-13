@@ -17,9 +17,9 @@ class SegmentationValue:
     def __convert_mask(self, mask: np.ndarray):
         unique_values = np.unique_values(mask[mask != 0])
 
-        converted_mask = np.zeros_like(mask)
+        converted_mask = np.zeros_like(mask, dtype=np.uint8)
         for value in unique_values:
-            converted_mask[mask == value] = 1
+            converted_mask[mask == value] = 255
 
         return converted_mask
 
