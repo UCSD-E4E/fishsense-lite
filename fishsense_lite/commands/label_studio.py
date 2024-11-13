@@ -29,7 +29,7 @@ from fishsense_lite.commands.label_studio_models.segmentation_label_studio_json 
 from fishsense_lite.utils import get_output_file, get_root, uint16_2_uint8
 
 
-@ray.remote(vram_mb=900)
+@ray.remote(vram_mb=1200)
 def execute_nn_laser(
     input_file: Path,
     lens_calibration: LensCalibration,
