@@ -45,13 +45,14 @@ class LaserPrediction:
 class LaserLabelStudioJSON:
     def __init__(
         self,
+        prefix: str,
         img: str,
         laser_image_coord: np.ndarray,
         width: int,
         height: int,
         model_name: str,
     ):
-        self.data = Data(img)
+        self.data = Data(prefix, img)
         self.predictions = (
             [LaserPrediction(laser_image_coord, width, height, model_name)]
             if laser_image_coord is not None

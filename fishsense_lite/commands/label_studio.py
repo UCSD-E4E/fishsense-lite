@@ -66,7 +66,8 @@ def execute_nn_laser(
     cv2.imwrite(output_file.absolute().as_posix(), image_dark)
 
     json_objects = LaserLabelStudioJSON(
-        f"{prefix}{output_file.relative_to(output.absolute()).as_posix()}",
+        prefix,
+        output_file.relative_to(output.absolute()).as_posix(),
         laser_image_coord,
         width,
         height,
@@ -110,7 +111,8 @@ def execute_fishial(
     cv2.imwrite(mask_file.absolute().as_posix(), debug_output)
 
     json_objects = SegmentationLabelStudioJSON(
-        f"{prefix}{output_file.relative_to(output.absolute()).as_posix()}",
+        prefix,
+        output_file.relative_to(output.absolute()).as_posix(),
         segmentations,
         fish_segmentation_inference.name,
     )

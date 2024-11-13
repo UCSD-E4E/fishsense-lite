@@ -210,11 +210,12 @@ class SegmentationPrediction:
 class SegmentationLabelStudioJSON:
     def __init__(
         self,
+        prefix: str,
         img: str,
         mask: np.ndarray,
         model_name: str,
     ):
-        self.data = Data(img)
+        self.data = Data(prefix, img)
         self.predictions = (
             [SegmentationPrediction(mask, model_name)] if mask.sum() > 0 else []
         )
