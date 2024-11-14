@@ -29,9 +29,21 @@ def get_root(files: List[Path]) -> Path | None:
     return root
 
 
+def uint8_2_double(img: np.ndarray) -> np.ndarray:
+    return img.astype(np.float64) / 255
+
+
 def uint16_2_double(img: np.ndarray) -> np.ndarray:
     return img.astype(np.float64) / 65535
 
 
+def double_2_uint8(img: np.ndarray) -> np.ndarray:
+    return (img * 255).astype(np.uint8)
+
+
+def double_2_uint16(img: np.ndarray) -> np.ndarray:
+    return (img * 65535).astype(np.uint16)
+
+
 def uint16_2_uint8(img: np.ndarray) -> np.ndarray:
-    return (uint16_2_double(img) * 255).astype(np.uint8)
+    return double_2_uint8(uint16_2_double(img))

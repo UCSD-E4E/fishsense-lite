@@ -127,7 +127,7 @@ def execute_fishial(
 
     ml_depth_map = DepthAnythingDepthMap(img8, device)
 
-    if laser_coords:
+    if laser_coords is not None:
         laser_coords_int = np.round(laser_coords).astype(int)
         depth_map = LaserDepthMap(
             laser_coords, lens_calibration, estimated_laser_calibration
