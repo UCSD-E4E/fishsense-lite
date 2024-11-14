@@ -118,12 +118,14 @@ def execute_fishial(
     img = image_rectifier.rectify(img)
     img_dark = image_rectifier.rectify(img_dark)
 
+    img8 = uint16_2_uint8(img)
+
     laser_detector = NNLaserDetector(
         lens_calibration, estimated_laser_calibration, device
     )
     laser_coords = laser_detector.find_laser(img_dark)
 
-    ml_depth_map = DepthAnythingDepthMap(img, device)
+    ml_depth_map = DepthAnythingDepthMap(img8, device)
 
     if laser_coords:
         laser_coords_int = np.round(laser_coords).astype(int)
@@ -137,7 +139,7 @@ def execute_fishial(
         ml_depth_map.rescale(scale)
 
     color_correction = ColorCorrection()
-    img = color_correction.correct_color(img, ml_depth_map)
+    img = uint16_2_uint8(color_correction.correct_color(img, ml_depth_map))
 
     fish_segmentation_inference = FishSegmentationFishialPyTorch(device)
     segmentations: np.ndarray = fish_segmentation_inference.inference(img)
