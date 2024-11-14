@@ -138,14 +138,17 @@ def execute_fishial(
         )
         ml_depth_map.rescale(scale)
 
-    color_correction = ColorCorrection()
-    img = uint16_2_uint8(color_correction.correct_color(img, ml_depth_map))
+    try:
+        color_correction = ColorCorrection()
+        img8 = uint16_2_uint8(color_correction.correct_color(img, ml_depth_map))
+    except:
+        pass
 
     fish_segmentation_inference = FishSegmentationFishialPyTorch(device)
-    segmentations: np.ndarray = fish_segmentation_inference.inference(img)
+    segmentations: np.ndarray = fish_segmentation_inference.inference(img8)
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(output_file.absolute().as_posix(), img)
+    cv2.imwrite(output_file.absolute().as_posix(), img8)
 
     debug_output = (segmentations.astype(float) / segmentations.max() * 255).astype(
         np.uint8
