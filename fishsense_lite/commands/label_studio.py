@@ -125,7 +125,7 @@ def execute_fishial(
     )
     laser_coords = laser_detector.find_laser(img_dark)
 
-    ml_depth_map = DepthAnythingDepthMap(img8, "device")
+    ml_depth_map = DepthAnythingDepthMap(img8, device)
 
     if laser_coords is not None:
         laser_coords_int = np.round(laser_coords).astype(int)
