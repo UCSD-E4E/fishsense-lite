@@ -6,7 +6,10 @@ import cv2
 import fishsense_common.ray as ray
 from fishsense_common.pluggable_cli import Command, argument
 from pyfishsensedev.calibration import LensCalibration
-from pyfishsensedev.image import ImageRectifier, RawProcessor
+from pyfishsensedev.image import ImageRectifier
+from pyfishsensedev.image.image_processors.raw_processor_old import (
+    RawProcessorOld as RawProcessor,
+)
 
 from fishsense_lite.utils import get_output_file, get_root, uint16_2_uint8
 
