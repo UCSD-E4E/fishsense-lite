@@ -30,12 +30,12 @@ def execute(
         return
 
     raw_processor_hist_eq = RawProcessor(
-        enable_histogram_equalization=not disable_histogram_equalization
+        input_file, enable_histogram_equalization=not disable_histogram_equalization
     )
     image_rectifier = ImageRectifier(lens_calibration)
 
     try:
-        img = raw_processor_hist_eq.load_and_process(input_file)
+        img = next(raw_processor_hist_eq.__iter__())
     except:
         return
     img = image_rectifier.rectify(img)
