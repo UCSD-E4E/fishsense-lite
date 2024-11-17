@@ -42,7 +42,7 @@ def execute(
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    if format == "jpg":
+    if format.lower() == "jpg":
         img = uint16_2_uint8(img)
 
     cv2.imwrite(output_file.absolute().as_posix(), img)
