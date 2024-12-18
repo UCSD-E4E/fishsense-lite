@@ -27,36 +27,16 @@ RUN apt-get update && apt-get install -y sudo \
                         clang \
                         libclang-dev \
                         llvm \
-                        python3-dev \
-                        libpython3-dev \
-                        ocl-icd-libopencl1 \
-                        cmake \
-                        pkg-config \
-                        make \
-                        ninja-build \
-                        ocl-icd-libopencl1 \
-                        ocl-icd-dev \
-                        ocl-icd-opencl-dev \
-                        libhwloc-dev \
+                        kmod \
+                        vulkan-tools \
                         clinfo \
-                        dialog \
-                        apt-utils \
-                        libxml2-dev \
-                        libclang-cpp-dev \
-                        llvm-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# NVIDIA does not provide OpenCL passthru.
-# POCL supports a CUDA-based OpenCL driver
-RUN git clone https://github.com/pocl/pocl.git /pocl
-WORKDIR /pocl
-RUN git checkout v6.0
-RUN mkdir build
-WORKDIR /pocl/build
-RUN cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/ -DENABLE_CUDA=ON .. && \
-    make -j && \
-    make install && \
-    rm -rf /pocl
+ARG NVIDIA_DRIVER_VERSION=560.35.03
+RUN curl https://us.download.nvidia.com/XFree86/Linux-x86_64/560.35.03/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}.run > /driver.run && \
+                        chmod +x /driver.run && \
+                        /driver.run --no-kernel-modules --no-questions --silent && \
+                        rm /driver.run
 
 RUN echo 'ubuntu ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
 
@@ -64,9 +44,6 @@ USER ubuntu
 ENV HOME="/home/ubuntu"
 RUN mkdir -p ${HOME}
 WORKDIR ${HOME}
-
-# We want access to all of the GPUs but do not want to expose any CPU devices
-RUN echo "export POCL_DEVICES=cuda" >> ${HOME}/.bashrc
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 RUN echo ". \"\$HOME/.cargo/env\"" >> ${HOME}/.bashrc
