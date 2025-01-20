@@ -17,17 +17,14 @@ gitpython = "^3.1.42"
 backoff = "^2.2.1"
 xlrd = "^2.0.1"
 seaborn = "^0.13.2"
+torch = "^2.5.1"
+torchvision = "^0.20.1"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.26.0"
 black = "^24.3.0"
 pylint = "^3.2.0"
 ipywidgets = "^8.1.5"
-
-[[tool.poetry.source]]
-name = "torch"
-url = "https://download.pytorch.org/whl/cu124"
-priority = "supplemental"
 
 [tool.poetry.scripts]
 fsl = "fishsense_lite.run:main"
