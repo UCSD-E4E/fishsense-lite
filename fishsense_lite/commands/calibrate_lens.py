@@ -21,7 +21,7 @@ def execute(
     raw_processor = RawProcessor()
 
     try:
-        image = uint16_2_uint8(raw_processor.load_and_process(input_file))
+        image = uint16_2_uint8(raw_processor.process(input_file))
     except:
         return None, None, None, None
 

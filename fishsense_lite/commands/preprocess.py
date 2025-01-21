@@ -7,9 +7,7 @@ import fishsense_common.ray as ray
 from fishsense_common.pluggable_cli import Command, argument
 from pyfishsensedev.calibration import LensCalibration
 from pyfishsensedev.image import ImageRectifier
-from pyfishsensedev.image.image_processors.raw_processor_old import (
-    RawProcessorOld as RawProcessor,
-)
+from pyfishsensedev.image.image_processors import RawProcessor
 
 from fishsense_lite.utils import get_output_file, get_root, uint16_2_uint8
 
@@ -17,7 +15,6 @@ from fishsense_lite.utils import get_output_file, get_root, uint16_2_uint8
 @ray.remote(vram_mb=615)
 def execute(
     input_file: Path,
-    disable_histogram_equalization: bool,
     lens_calibration: LensCalibration,
     root: Path,
     output: Path,
@@ -29,13 +26,11 @@ def execute(
     if not overwrite and output_file.exists():
         return
 
-    raw_processor_hist_eq = RawProcessor(
-        input_file, enable_histogram_equalization=not disable_histogram_equalization
-    )
+    raw_processor = RawProcessor()
     image_rectifier = ImageRectifier(lens_calibration)
 
     try:
-        img = next(raw_processor_hist_eq.__iter__())
+        img = raw_processor.process(input_file)
     except:
         return
     img = image_rectifier.rectify(img)
@@ -45,6 +40,7 @@ def execute(
     if format.lower() == "jpg":
         img = uint16_2_uint8(img)
 
+    output_file.parent.mkdir(exist_ok=True, parents=True)
     cv2.imwrite(output_file.absolute().as_posix(), img)
 
 
@@ -79,19 +75,6 @@ class Preprocess(Command):
     @lens_calibration.setter
     def lens_calibration(self, value: str):
         self.__lens_calibration = value
-
-    @property
-    @argument(
-        "--disable-histogram-equalization",
-        flag=True,
-        help="Disables histogram equalization when processing images.",
-    )
-    def disable_histogram_equalization(self) -> bool:
-        return self.__disable_histogram_equalization
-
-    @disable_histogram_equalization.setter
-    def disable_histogram_equalization(self, value: bool):
-        self.__disable_histogram_equalization = value
 
     @property
     @argument(
@@ -135,7 +118,6 @@ class Preprocess(Command):
 
         self.__data: List[str] = None
         self.__lens_calibration: str = None
-        self.__disable_histogram_equalization: bool = None
         self.__output_path: str = None
         self.__format: str = None
         self.__overwrite: bool = None
@@ -156,7 +138,6 @@ class Preprocess(Command):
         futures = [
             execute.remote(
                 f,
-                self.disable_histogram_equalization,
                 lens_calibration,
                 root,
                 output,

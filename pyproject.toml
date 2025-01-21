@@ -8,6 +8,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.12"
 pyFishSenseDev = { git = "https://github.com/UCSD-E4E/pyFishSenseDev", branch = "main" }
+pyAqua3dDev = { git = "https://github.com/UCSD-E4E/pyAqua3dDev", branch = "main" }
 pyFishSense = { git = "https://github.com/UCSD-E4E/pyFishSense", branch = "main" }
 fishsense-common = {git = "https://github.com/UCSD-E4E/fishsense-common", rev = "main"}
 matplotlib = "^3.8.0"

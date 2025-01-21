@@ -1,14 +1,18 @@
+import json
 from glob import glob
 from pathlib import Path
 from typing import List
+from urllib.parse import urlparse
 
 import cv2
-import numpy as np
 import fishsense_common.ray as ray
-import torch
+import numpy as np
 from fishsense_common.pluggable_cli import Command, argument
+from pyaqua3ddev.image.image_processors import RawProcessor
+from pyaqua3ddev.laser.single_laser.label_studio_laser_detector import (
+    LabelStudioLaserDetector,
+)
 from pyfishsensedev.calibration import LaserCalibration, LensCalibration
-from pyfishsensedev.image.image_processors import RawProcessor
 from pyfishsensedev.image.image_rectifier import ImageRectifier
 from pyfishsensedev.laser.nn_laser_detector import NNLaserDetector
 from pyfishsensedev.plane_detector.checkerboard_detector import CheckerboardDetector
@@ -19,34 +23,37 @@ from fishsense_lite.utils import uint16_2_uint8
 @ray.remote(vram_mb=1536)
 def execute(
     input_file: Path,
+    label_studio_json_path: Path | None,
     lens_calibration: LensCalibration,
-    estimated_laser_calibration: LaserCalibration,
     rows: int,
     columns: int,
     square_size: float,
     debug_root: Path,
 ) -> np.ndarray | None:
-    device = "cuda" if torch.cuda.is_available() else "cpu"
     debug_path = debug_root / "calibration" / "laser"
     debug_path.mkdir(exist_ok=True, parents=True)
 
     png_name = input_file.name.replace("ORF", "PNG").replace("orf", "png")
 
-    raw_processor = RawProcessor(enable_histogram_equalization=False)
+    raw_processor = RawProcessor()
 
     try:
-        image = uint16_2_uint8(raw_processor.load_and_process(input_file))
+        image = uint16_2_uint8(raw_processor.process(input_file))
     except:
         return None
 
     image_rectifier = ImageRectifier(lens_calibration)
     image = image_rectifier.rectify(image)
 
-    laser_detector = NNLaserDetector(
-        lens_calibration, estimated_laser_calibration, device
-    )
-    laser_image_coord = laser_detector.find_laser(image)
+    if label_studio_json_path is not None:
+        laser_detector = LabelStudioLaserDetector(input_file, label_studio_json_path)
+    else:
+        # laser_detector = NNLaserDetector(
+        #     lens_calibration, estimated_laser_calibration, device
+        # )
+        raise NotImplementedError
 
+    laser_image_coord = laser_detector.find_laser(image)
     if laser_image_coord is None:
         return None
 
@@ -58,7 +65,7 @@ def execute(
         image,
         np.round(laser_image_coord).astype(int),
         radius=5,
-        color=(0, 255, 0),
+        color=(255, 0, 0),
         thickness=-1,
     )
     cv2.imwrite(laser_detection_path.absolute().as_posix(), laser_detection)
@@ -116,33 +123,16 @@ class CalibrateLaser(Command):
 
     @property
     @argument(
-        "--laser-position",
-        short_name="-p",
-        nargs=3,
-        required=True,
-        help="The laser position in centimeter inputed as x y z for the FishSense Lite product line.",
+        "--label-studio-json",
+        short_name="-j",
+        help="An export of JSON tasks from Label Studio",
     )
-    def laser_position(self) -> List[int]:
-        return self.__laser_position
+    def label_studio_json(self) -> str:
+        return self.__label_studio_json
 
-    @laser_position.setter
-    def laser_position(self, value: List[int]):
-        self.__laser_position = value
-
-    @property
-    @argument(
-        "--laser-axis",
-        short_name="-a",
-        nargs=3,
-        required=True,
-        help="The laser axis unit vector inputed as x y z for the FishSense Lite product line.",
-    )
-    def laser_axis(self) -> List[float]:
-        return self.__laser_axis
-
-    @laser_axis.setter
-    def laser_axis(self, value: List[float]):
-        self.__laser_axis = value
+    @label_studio_json.setter
+    def label_studio_json(self, value: str):
+        self.__label_studio_json = value
 
     @property
     @argument(
@@ -223,8 +213,7 @@ class CalibrateLaser(Command):
 
         self.__data: List[str] = None
         self.__lens_calibration: str = None
-        self.__laser_position: List[int] = None
-        self.__laser_axis: List[float] = None
+        self.__label_studio_json: str = None
         self.__rows: int = None
         self.__columns: int = None
         self.__square_size: float = None
@@ -239,20 +228,19 @@ class CalibrateLaser(Command):
             self.debug_path = ".debug"
 
         debug_path = Path(self.debug_path)
+        label_studio_json_path = (
+            Path(self.label_studio_json) if self.label_studio_json is not None else None
+        )
 
         files = [Path(f) for g in self.data for f in glob(g)]
         lens_calibration = LensCalibration()
         lens_calibration.load(Path(self.lens_calibration))
 
-        estimated_laser_calibration = LaserCalibration(
-            np.array(self.laser_axis), np.array(self.laser_position)
-        )
-
         futures = [
             execute.remote(
                 f,
+                label_studio_json_path,
                 lens_calibration,
-                estimated_laser_calibration,
                 self.rows,
                 self.columns,
                 self.square_size,
@@ -268,9 +256,7 @@ class CalibrateLaser(Command):
         laser_points_3d = np.array(laser_points_3d)
 
         laser_calibration = LaserCalibration()
-        laser_calibration.plane_calibrate(
-            laser_points_3d, estimated_laser_calibration, use_gauss_newton=False
-        )
+        laser_calibration.plane_calibrate(laser_points_3d)
 
         output_path = Path(self.output_path)
 
