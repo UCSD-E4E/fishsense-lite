@@ -61,13 +61,13 @@ class Database:
 
     @backoff.on_exception(backoff.expo, OperationalError)
     def _insert_start_metadata(self):
-        repo = git.Repo(".")
-        sha = repo.head.object.hexsha
+        # repo = git.Repo(".")
+        # sha = repo.head.object.hexsha
 
         self.insert_metadata(
             {
                 "start_time": datetime.datetime.now(datetime.UTC),
-                "git_commit": sha,
+                # "git_commit": sha,
                 "version": importlib.metadata.version("fishsense_lite"),
             }
         )

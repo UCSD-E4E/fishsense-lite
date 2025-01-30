@@ -104,16 +104,22 @@
             "justMyCode": false,
             "args": [
                 "process",
-                "--config",
-                "output/config.yaml"
-                // "~/Data/082923_Pool Calibration/082929_FishModels_FSL01/*.ORF",
-                // "--lens-calibration",
-                // "~/Data/calibration-parameters/FSL-01D/fsl-01d-lens-raw.pkg",
-                // "--laser-calibration",
-                // "~/Data/082923_Pool Calibration/082929_Slate_FSL01/laser-calibration.pkg",
-                // "--output",
-                // "./output/082929_FishModels_FSL01.db",
-                // "--overwrite",
+                "~/Data/2025.01.17.FishSense.San Diego/ED-00/FSL-10D/**/*.ORF",
+                "--debug-path",
+                ".debug",
+                "--headtail-label-studio-json",
+                "~/Data/project-29-at-2025-01-22-02-06-826d828c.json",
+                "--laser-calibration",
+                "~/Data/2025.01.17.FishSense.San Diego/ED-00/Fishsense Lite Calibration Parameters/FSL-01D/laser-calibration.pkg",
+                // "~/Data/2025.01.17.FishSense.San Diego/ED-00/FSL-10D/LaserCalibration/fsl-10d-laser.pkg",
+                "--laser-label-studio-json",
+                "~/Data/project-25-at-2025-01-21-06-53-49e99adf.json",
+                "--lens-calibration",
+                "~/Data/2025.01.17.FishSense.San Diego/ED-00/Fishsense Lite Calibration Parameters/FSL-01D/fsl-01d-lens-raw.pkg",
+                // "~/Data/2025.01.17.FishSense.San Diego/ED-00/FSL-10D/LensCalibration/fsl-10d-lens-raw.pkg",
+                "--output",
+                "~/Data/2025.01.17.FishSense.San Diego/ED-00/results.db",
+                "--overwrite"
             ]
         },
         {

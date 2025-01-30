@@ -14,7 +14,6 @@ from pyaqua3ddev.laser.single_laser.label_studio_laser_detector import (
 )
 from pyfishsensedev.calibration import LaserCalibration, LensCalibration
 from pyfishsensedev.image.image_rectifier import ImageRectifier
-from pyfishsensedev.laser.nn_laser_detector import NNLaserDetector
 from pyfishsensedev.plane_detector.checkerboard_detector import CheckerboardDetector
 
 from fishsense_lite.utils import uint16_2_uint8
@@ -23,7 +22,7 @@ from fishsense_lite.utils import uint16_2_uint8
 @ray.remote(vram_mb=1536)
 def execute(
     input_file: Path,
-    label_studio_json_path: Path | None,
+    laser_label_studio_json_path: Path | None,
     lens_calibration: LensCalibration,
     rows: int,
     columns: int,
@@ -45,12 +44,11 @@ def execute(
     image_rectifier = ImageRectifier(lens_calibration)
     image = image_rectifier.rectify(image)
 
-    if label_studio_json_path is not None:
-        laser_detector = LabelStudioLaserDetector(input_file, label_studio_json_path)
+    if laser_label_studio_json_path is not None:
+        laser_detector = LabelStudioLaserDetector(
+            input_file, laser_label_studio_json_path
+        )
     else:
-        # laser_detector = NNLaserDetector(
-        #     lens_calibration, estimated_laser_calibration, device
-        # )
         raise NotImplementedError
 
     laser_image_coord = laser_detector.find_laser(image)
@@ -123,16 +121,16 @@ class CalibrateLaser(Command):
 
     @property
     @argument(
-        "--label-studio-json",
+        "--laser-label-studio-json",
         short_name="-j",
         help="An export of JSON tasks from Label Studio",
     )
-    def label_studio_json(self) -> str:
-        return self.__label_studio_json
+    def laser_label_studio_json(self) -> str:
+        return self.__laser_label_studio_json
 
-    @label_studio_json.setter
-    def label_studio_json(self, value: str):
-        self.__label_studio_json = value
+    @laser_label_studio_json.setter
+    def laser_label_studio_json(self, value: str):
+        self.__laser_label_studio_json = value
 
     @property
     @argument(
@@ -213,7 +211,7 @@ class CalibrateLaser(Command):
 
         self.__data: List[str] = None
         self.__lens_calibration: str = None
-        self.__label_studio_json: str = None
+        self.__laser_label_studio_json: str = None
         self.__rows: int = None
         self.__columns: int = None
         self.__square_size: float = None
@@ -228,8 +226,10 @@ class CalibrateLaser(Command):
             self.debug_path = ".debug"
 
         debug_path = Path(self.debug_path)
-        label_studio_json_path = (
-            Path(self.label_studio_json) if self.label_studio_json is not None else None
+        laser_label_studio_json_path = (
+            Path(self.laser_label_studio_json)
+            if self.laser_label_studio_json is not None
+            else None
         )
 
         files = [Path(f) for g in self.data for f in glob(g)]
@@ -239,7 +239,7 @@ class CalibrateLaser(Command):
         futures = [
             execute.remote(
                 f,
-                label_studio_json_path,
+                laser_label_studio_json_path,
                 lens_calibration,
                 self.rows,
                 self.columns,
