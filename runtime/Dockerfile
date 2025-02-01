@@ -2,6 +2,8 @@ FROM ghcr.io/ucsd-e4e/fishsense-lite:cuda
 
 SHELL ["/bin/bash", "-c"]
 
+RUN mkdir -p ~/.ssh && ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+
 RUN pip install pipx
 RUN pipx ensurepath
 
