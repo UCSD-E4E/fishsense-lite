@@ -12,11 +12,12 @@ import fishsense_common.ray as ray
 import numpy as np
 import torch
 from fishsense_common.pluggable_cli import Command, argument
+from pyaqua3ddev.image.image_processors import RawProcessor
 from pyfishsensedev.calibration import LaserCalibration, LensCalibration
 from pyfishsensedev.depth_map import DepthAnythingDepthMap, LaserDepthMap
 from pyfishsensedev.image import ColorCorrection, ImageRectifier, RawProcessor
-from pyfishsensedev.image.image_processors import RawProcessor
-from pyfishsensedev.image.image_processors.raw_processor_old import RawProcessorOld
+
+# from pyfishsensedev.image.image_processors.raw_processor_old import RawProcessorOld
 from pyfishsensedev.image.image_rectifier import ImageRectifier
 from pyfishsensedev.laser.nn_laser_detector import NNLaserDetector
 from pyfishsensedev.segmentation.fish.fish_segmentation_fishial_pytorch import (
