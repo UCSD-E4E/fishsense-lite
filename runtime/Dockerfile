@@ -7,7 +7,7 @@ RUN mkdir -p ~/.ssh && ssh-keyscan -H github.com >> ~/.ssh/known_hosts
 RUN pip install pipx
 RUN pipx ensurepath
 
-ARG BUMP=0
+ARG BUMP=1
 RUN mkdir -p ~/.ssh && ssh-keyscan -H github.com >> ~/.ssh/known_hosts
 RUN . ${HOME}/.cargo/env && pipx install git+https://github.com/UCSD-E4E/fishsense-lite.git
 
