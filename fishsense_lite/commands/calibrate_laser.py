@@ -13,6 +13,7 @@ from pyaqua3ddev.laser.single_laser.label_studio_laser_detector import (
     LabelStudioLaserDetector,
 )
 from pyfishsensedev.calibration import LaserCalibration, LensCalibration
+from pyfishsensedev.depth_map import LaserDepthMap
 from pyfishsensedev.image.image_rectifier import ImageRectifier
 from pyfishsensedev.plane_detector.checkerboard_detector import CheckerboardDetector
 
@@ -85,6 +86,75 @@ def execute(
         return None
 
     return laser_coord_3d
+
+
+@ray.remote(vram_mb=1536)
+def evaluate(
+    input_file: Path,
+    laser_label_studio_json_path: Path | None,
+    lens_calibration: LensCalibration,
+    laser_calibration: LaserCalibration,
+    rows: int,
+    columns: int,
+    square_size: float,
+    debug_root: Path,
+):
+    debug_path = debug_root / "evaluation" / "laser"
+    debug_path.mkdir(exist_ok=True, parents=True)
+
+    png_name = input_file.name.replace("ORF", "PNG").replace("orf", "png")
+
+    raw_processor = RawProcessor()
+
+    try:
+        image = uint16_2_uint8(raw_processor.process(input_file))
+    except:
+        return None
+
+    image_rectifier = ImageRectifier(lens_calibration)
+    image = image_rectifier.rectify(image)
+
+    if laser_label_studio_json_path is not None:
+        laser_detector = LabelStudioLaserDetector(
+            input_file, laser_label_studio_json_path
+        )
+    else:
+        raise NotImplementedError
+
+    laser_image_coord = laser_detector.find_laser(image)
+    if laser_image_coord is None:
+        return None
+
+    laser_detection_path = debug_path / f"detection_{png_name}"
+    if laser_detection_path.exists():
+        laser_detection_path.unlink()
+
+    laser_detection = cv2.circle(
+        image,
+        np.round(laser_image_coord).astype(int),
+        radius=5,
+        color=(255, 0, 0),
+        thickness=-1,
+    )
+    cv2.imwrite(laser_detection_path.absolute().as_posix(), laser_detection)
+
+    checkerboard_detector = CheckerboardDetector(
+        image, rows, columns, square_size * 10**-3
+    )
+
+    if not checkerboard_detector.is_valid():
+        return None
+
+    true_laser_coord_3d = checkerboard_detector.project_point_onto_plane_camera_space(
+        laser_image_coord,
+        lens_calibration.camera_matrix,
+        lens_calibration.inverted_camera_matrix,
+    )
+    projected_depth_map = LaserDepthMap(
+        laser_image_coord, lens_calibration, laser_calibration
+    )
+
+    return (true_laser_coord_3d[2] - projected_depth_map.depth_map[0]) ** 2
 
 
 class CalibrateLaser(Command):
@@ -257,6 +327,27 @@ class CalibrateLaser(Command):
 
         laser_calibration = LaserCalibration()
         laser_calibration.plane_calibrate(laser_points_3d)
+
+        futures = [
+            evaluate.remote(
+                f,
+                laser_label_studio_json_path,
+                lens_calibration,
+                laser_calibration,
+                self.rows,
+                self.columns,
+                self.square_size,
+                debug_path,
+            )
+            for f in files
+        ]
+
+        square_errors = [
+            p for p in self.tqdm(futures, total=len(files)) if p is not None
+        ]
+        error = np.sqrt(np.array(square_errors).mean())
+
+        print(error)
 
         output_path = Path(self.output_path)
 

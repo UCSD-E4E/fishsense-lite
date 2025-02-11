@@ -68,7 +68,7 @@ def find_head_tail(
     return (head_coord, tail_coord)
 
 
-# @ray.remote(vram_mb=1536)
+@ray.remote(vram_mb=1536)
 def execute(
     input_file: Path,
     laser_label_studio_json_path: Path | None,
@@ -288,6 +288,18 @@ class Process(Command):
     def __call__(self):
         self.init_ray()
 
+        # futures = [
+        #     execute.remote(
+        #         f,
+        #         laser_label_studio_json_path,
+        #         headtail_label_studio_json_path,
+        #         lens_calibration,
+        #         laser_calibration,
+        #         debug_path,
+        #     )
+        #     for f in files
+        # ]
+
         if self.debug_path is None:
             self.debug_path = ".debug"
 
@@ -316,31 +328,33 @@ class Process(Command):
             lens_calibration.load(Path(self.lens_calibration))
             laser_calibration.load(Path(self.laser_calibration))
 
-            # futures = [
-            #     execute.remote(
-            #         f,
-            #         laser_label_studio_json_path,
-            #         headtail_label_studio_json_path,
-            #         lens_calibration,
-            #         laser_calibration,
-            #         debug_path,
-            #     )
-            #     for f in files
-            # ]
+            futures = [
+                execute.remote(
+                    f,
+                    laser_label_studio_json_path,
+                    headtail_label_studio_json_path,
+                    lens_calibration,
+                    laser_calibration,
+                    debug_path,
+                )
+                for f in files
+            ]
 
-            for file, result_status, length in tqdm(
-                (
-                    execute(
-                        f,
-                        laser_label_studio_json_path,
-                        headtail_label_studio_json_path,
-                        lens_calibration,
-                        laser_calibration,
-                        debug_path,
-                    )
-                    for f in files
-                ),
-                total=len(files),
+            # for file, result_status, length in tqdm(
+            #     (
+            #         execute(
+            #             f,
+            #             laser_label_studio_json_path,
+            #             headtail_label_studio_json_path,
+            #             lens_calibration,
+            #             laser_calibration,
+            #             debug_path,
+            #         )
+            #         for f in files
+            #     ),
+            #     total=len(files),
+            # ):
+            for file, result_status, length in self.tqdm(
+                futures, total=len(files)
             ):
-            # for file, result_status, length in self.tqdm(futures, total=len(files)):
                 database.insert_data(file, result_status, length)
