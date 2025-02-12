@@ -4,17 +4,13 @@ SHELL ["/bin/bash", "-c"]
 
 RUN mkdir -p ~/.ssh && ssh-keyscan -H github.com >> ~/.ssh/known_hosts
 
-RUN pip install pipx
-RUN pipx ensurepath
-
 ARG BUMP=1
-RUN mkdir -p ~/.ssh && ssh-keyscan -H github.com >> ~/.ssh/known_hosts
-RUN . ${HOME}/.cargo/env && pipx install git+https://github.com/UCSD-E4E/fishsense-lite.git
+RUN . ${HOME}/.cargo/env && pip install git+https://github.com/UCSD-E4E/fishsense-lite.git
 
 ARG MAX_CPU=1
 ARG MAX_GPU=1
 
-RUN ${HOME}/.local/bin/fsl generate-ray-config --max-cpu ${MAX_CPU} --max-gpu ${MAX_GPU}
+RUN fsl generate-ray-config --max-cpu ${MAX_CPU} --max-gpu ${MAX_GPU}
 
 USER root
 ARG GID=1000
