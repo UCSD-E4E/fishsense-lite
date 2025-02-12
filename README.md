@@ -6,7 +6,7 @@
 
 ## Setup
 
-### Ubuntu 22.04
+### Ubuntu 24.04
 Install the dependencies
 ```
 sudo apt-get install -y build-essential git libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev python3-openssl
@@ -28,7 +28,7 @@ eval "$(pyenv virtualenv-init -)"
 Source your `~/.bashrc`, install Python `3.11`, and poetry
 ```
 source ~/.bashrc
-pyenv install 3.11
+pyenv install 3.12
 ```
 
 Install rustup
