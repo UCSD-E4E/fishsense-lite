@@ -10,7 +10,7 @@ RUN . ${HOME}/.cargo/env && pip install git+https://github.com/UCSD-E4E/fishsens
 ARG MAX_CPU=1
 ARG MAX_GPU=1
 
-RUN fsl generate-ray-config --max-cpu ${MAX_CPU} --max-gpu ${MAX_GPU}
+RUN ${HOME}/.pyenv/shims/fsl generate-ray-config --max-cpu ${MAX_CPU} --max-gpu ${MAX_GPU}
 
 USER root
 ARG GID=1000
