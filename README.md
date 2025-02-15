@@ -8,11 +8,16 @@
 
 ### Install the dependencies
 
+#### Supported Linux Distros
+
 **Ubuntu 24.04:**
 
 ```console
 sudo apt-get install -y build-essential git libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev python3-openssl
 ```
+
+#### Unsupported Linux Distros
+These Linux distros should function, but these steps are not regularly tested. YMMV.
 
 **Fedora 41+:**
 
