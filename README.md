@@ -6,10 +6,28 @@
 
 ## Setup
 
-### Ubuntu 24.04
-Install the dependencies
-```
+### Install the dependencies
+
+**Ubuntu 24.04:**
+
+```console
 sudo apt-get install -y build-essential git libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev python3-openssl
+```
+
+**Fedora 41+:**
+
+```console
+sudo dnf install -y @development-tools git openssl-devel zlib-devel bzip2-devel sqlite-devel wget curl llvm ncurses-devel xz tk-devel libffi-devel xz-devel
+```
+
+**For RHEL 9 / Fedora 40**
+
+```console
+sudo dnf group install "Development Tools"
+```
+
+```console
+sudo dnf install -y git openssl-devel zlib-devel bzip2-devel sqlite-devel wget curl llvm ncurses-devel xz tk-devel libffi-devel xz-devel
 ```
 
 Then, make sure you have `pyenv` installed.
@@ -25,7 +43,7 @@ eval "$(pyenv init -)"
 eval "$(pyenv virtualenv-init -)"
 ```
 
-Source your `~/.bashrc`, install Python `3.11`, and poetry
+Source your `~/.bashrc`, install Python `3.12`, and poetry
 ```
 source ~/.bashrc
 pyenv install 3.12
