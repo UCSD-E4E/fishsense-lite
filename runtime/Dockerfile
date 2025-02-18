@@ -1,4 +1,5 @@
-FROM ghcr.io/ucsd-e4e/fishsense-lite:cuda
+ARG IMAGE="ghcr.io/ucsd-e4e/fishsense:cpu"
+FROM ${IMAGE}
 
 SHELL ["/bin/bash", "-c"]
 

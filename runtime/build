@@ -26,6 +26,49 @@ else
     MAX_GPU=1
 fi
 
+image=ghcr.io/ucsd-e4e/fishsense
+
+nvidia_detected=0
+cuda_supported=0
+cpu_only=1
+
+# Detect if docker is present
+which docker > /dev/null
+if [ $? -ne 0 ]; then
+    echo "Docker is not installed or not in your path.  Please install Docker and try again."
+    exit $?
+fi
+
+# Check if user is in the docker group
+if ! id -nG "$USER" | grep -qw "docker"; then
+    echo $USER does not belong to the docker group.  Please correct this and try again.
+    exit $?
+fi
+
+# Check for the presence of an NVIDIA GPU
+which nvidia-smi > /dev/null
+if [ $? -eq 0 ]; then
+    nvidia_detected=1
+fi
+
+# Check to see if docker supports passing through the GPU
+if docker info | grep -qw nvidia; then
+    cuda_supported=1
+    cpu_only=0
+
+    image=$image:cuda
+fi
+
+# If we detected an NVIDIA GPU, but can't use it in docker, warn the user.
+if [ $nvidia_detected -ne $cuda_supported ]; then
+    echo "WARNING: NVIDIA GPU detected without CUDA docker support.  Install the nvidia-container-runtime to correct this."
+fi
+
+# Prepend the cpu_ to the directory name if we are still CPU only.
+if [ $cpu_only -eq 1 ]; then
+    image=c$image:cpu
+fi
+
 # We use the git hash of the main remote to ensure that we bump only when necessary.
 git remote update
-docker build --build-arg UID=`id -u` --build-arg GID=`id -g` --build-arg BUMP=`git rev-parse HEAD` --build-arg MAX_CPU=$MAX_CPU --build-arg MAX_GPU=$MAX_GPU . --tag `whoami`/fishsense-lite
+docker build --build-arg IMAGE=$image --build-arg UID=`id -u` --build-arg GID=`id -g` --build-arg BUMP=`git rev-parse HEAD` --build-arg MAX_CPU=$MAX_CPU --build-arg MAX_GPU=$MAX_GPU . --tag `whoami`/fishsense-lite
