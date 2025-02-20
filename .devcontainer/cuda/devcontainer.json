@@ -5,10 +5,7 @@
 		"--runtime=nvidia",
 		"-e", "NVIDIA_DRIVER_CAPABILITIES=all"
 	],
-	"postCreateCommand": "poetry config virtualenvs.create false && poetry install --with dev",
-	"mounts": [
-		"source=${localEnv:HOME}/mnt,target=/home/ubuntu/mnt,type=bind"
-	],
+	"postCreateCommand": "poetry config cache-dir ${containerWorkspaceFolder}/poetry_cache && poetry config virtualenvs.create false && poetry install --with dev",
 	"customizations": {
 		"vscode": {
 			"extensions": [
