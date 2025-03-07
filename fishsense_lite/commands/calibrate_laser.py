@@ -74,7 +74,17 @@ def execute(
     )
 
     if not checkerboard_detector.is_valid():
+        print("Failed to find checkerboard.")
         return None
+
+    checkerboard_detection_path = debug_path / f"checkerboard_{png_name}"
+    if checkerboard_detection_path.exists():
+        checkerboard_detection_path.unlink()
+
+    cv2.drawChessboardCorners(
+        image, (rows, columns), checkerboard_detector.points_image_space, True
+    )
+    cv2.imwrite(checkerboard_detection_path.absolute().as_posix(), image)
 
     laser_coord_3d = checkerboard_detector.project_point_onto_plane_camera_space(
         laser_image_coord,
