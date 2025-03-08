@@ -10,7 +10,6 @@ from typing import List, Tuple
 import cv2
 import fishsense_common.ray as ray
 import numpy as np
-import torch
 from fishsense_common.pluggable_cli import Command, argument
 from pyaqua3ddev.image.image_processors import RawProcessor
 from pyfishsensedev.calibration import LaserCalibration, LensCalibration
@@ -43,6 +42,8 @@ def execute_nn_laser(
     prefix: str,
     overwrite: bool,
 ) -> Tuple[np.ndarray, int, int]:
+    import torch
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     output_file = get_output_file(input_file, root, output, "jpg")
     json_file = output_file.with_suffix(".json")
@@ -94,6 +95,8 @@ def execute_fishial(
     prefix: str,
     overwrite: bool,
 ):
+    import torch
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     output_file = get_output_file(input_file, root, output, "jpg")
     mask_file = (

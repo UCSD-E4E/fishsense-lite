@@ -27,18 +27,6 @@ files = [
 ]
 
 [[package]]
-name = "appdirs"
-version = "1.4.4"
-description = "A small Python module for determining appropriate platform-specific dirs, e.g. a \"user data dir\"."
-optional = false
-python-versions = "*"
-groups = ["main"]
-files = [
-    {file = "appdirs-1.4.4-py2.py3-none-any.whl", hash = "sha256:a841dacd6b99318a741b166adb07e19ee71a274450e68237b4650ca1055ab128"},
-    {file = "appdirs-1.4.4.tar.gz", hash = "sha256:7d5d0167b2b1ba821647616af46a749d1c653740dd0d2415100fe26e27afdf41"},
-]
-
-[[package]]
 name = "appnope"
 version = "0.1.4"
 description = "Disable App Nap on macOS >= 10.9"
@@ -606,24 +594,24 @@ name = "fishsense-common"
 version = "0.1.0"
 description = ""
 optional = false
-python-versions = "^3.11"
+python-versions = ">=3.12"
 groups = ["main"]
 files = []
 develop = false
 
 [package.dependencies]
-appdirs = "^1.4.4"
-pyyaml = "^6.0.2"
-ray = "^2.37.0"
-torch = "^2.4.0"
-tqdm = "^4.66.5"
-wakepy = "^0.10.1"
+platformdirs = ">=4.3.6,<5.0.0"
+pyyaml = ">=6.0.2,<7.0.0"
+ray = ">=2.43.0,<3.0.0"
+torch = ">=2.6.0,<3.0.0"
+tqdm = ">=4.67.1,<5.0.0"
+wakepy = ">=0.10.1,<0.11.0"
 
 [package.source]
 type = "git"
 url = "https://github.com/UCSD-E4E/fishsense-common.git"
 reference = "HEAD"
-resolved_reference = "1d0a64cda9fedcafc7e186c8f343fcf17dfaf530"
+resolved_reference = "e561a531666ad9027070107976f22e1cd5fbb02a"
 
 [[package]]
 name = "flatbuffers"
@@ -815,14 +803,14 @@ files = [
 
 [[package]]
 name = "fsspec"
-version = "2025.2.0"
+version = "2025.3.0"
 description = "File-system specification"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "fsspec-2025.2.0-py3-none-any.whl", hash = "sha256:9de2ad9ce1f85e1931858535bc882543171d197001a0a5eb2ddc04f1781ab95b"},
-    {file = "fsspec-2025.2.0.tar.gz", hash = "sha256:1c24b16eaa0a1798afa0337aa0db9b256718ab2a89c425371f5628d22c3b6afd"},
+    {file = "fsspec-2025.3.0-py3-none-any.whl", hash = "sha256:efb87af3efa9103f94ca91a7f8cb7a4df91af9f74fc106c9c7ea0efd7277c1b3"},
+    {file = "fsspec-2025.3.0.tar.gz", hash = "sha256:a935fd1ea872591f2b5148907d103488fc523295e6c64b835cfad8c3eca44972"},
 ]
 
 [package.extras]
@@ -2087,22 +2075,22 @@ sympy = "*"
 
 [[package]]
 name = "onnxruntime-gpu"
-version = "1.20.2"
+version = "1.21.0"
 description = "ONNX Runtime is a runtime accelerator for Machine Learning models"
 optional = false
-python-versions = "*"
+python-versions = ">=3.10"
 groups = ["main"]
 markers = "platform_machine == \"x86_64\""
 files = [
-    {file = "onnxruntime_gpu-1.20.2-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:dfba508f110ec062dedfd3032e6eee8cde325026e9d7c5792884e8b9d4ebb9c3"},
-    {file = "onnxruntime_gpu-1.20.2-cp310-cp310-win_amd64.whl", hash = "sha256:75a7557292b2741e63fb73236ee84faa08075cead52d9a8d302a67036fc64f16"},
-    {file = "onnxruntime_gpu-1.20.2-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:85057c7006457bee14fc2a57417b7e4f396f10d9c1b08b11aae08ac2b825eeda"},
-    {file = "onnxruntime_gpu-1.20.2-cp311-cp311-win_amd64.whl", hash = "sha256:d0eafd873e4336949c89e6c7429a68e7e1d0233d9cb363e9780ca76c3c6f865c"},
-    {file = "onnxruntime_gpu-1.20.2-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:aa66d2e6de13fe6f4d1554b1c219bd2e4778b540ed9d3dc62957c95a8af43d66"},
-    {file = "onnxruntime_gpu-1.20.2-cp312-cp312-win_amd64.whl", hash = "sha256:564a6a1187b208012f57c3bb3723ba65f6bc5cddff6e6b917ac96865768b39f5"},
-    {file = "onnxruntime_gpu-1.20.2-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:6af5b30b9b0e729d3ca1dfff493a39771f143cfc22af1d77d487022033cae284"},
-    {file = "onnxruntime_gpu-1.20.2-cp313-cp313-win_amd64.whl", hash = "sha256:6ffe5108d2dbd96a9a40bf76573219e04b67d0330aa93ca5114f1478185ade19"},
-    {file = "onnxruntime_gpu-1.20.2-cp313-cp313t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:407e5b7a21d656aac6f994d2e329f5577eb3d7f98b63aa1e49e71a702ffa1da1"},
+    {file = "onnxruntime_gpu-1.21.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:bb9428bf56d822db9d423ab88ff0a439aa9192db711b45160650745cb7bc9bbd"},
+    {file = "onnxruntime_gpu-1.21.0-cp310-cp310-win_amd64.whl", hash = "sha256:31ea762c03a972ad0807d1cacda7702ea686731119f8ab9132be8b3a9ef3eae0"},
+    {file = "onnxruntime_gpu-1.21.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:e90a43d9d5449057fcc01298cec03b56b4a3effdc3c24dcaba3ba130527891e4"},
+    {file = "onnxruntime_gpu-1.21.0-cp311-cp311-win_amd64.whl", hash = "sha256:fc9b3a06f219f3ef089ca59acd455c6e78cffff082f23eb1588e78ca8ee22a62"},
+    {file = "onnxruntime_gpu-1.21.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:3008c9bcd89060db5e9a9985eb940e456c41bb36493ac171c794b587ea4585ed"},
+    {file = "onnxruntime_gpu-1.21.0-cp312-cp312-win_amd64.whl", hash = "sha256:cfa269be3f5b321d5923a2d3eca3487efdd30dfce95122fe25fea879009f35ea"},
+    {file = "onnxruntime_gpu-1.21.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:379f473c767e3cbaa1ee8563de29060cbf813ffc79967e932c2ae5780394bbb7"},
+    {file = "onnxruntime_gpu-1.21.0-cp313-cp313-win_amd64.whl", hash = "sha256:e6e5d9dc78b8e16bc631e675af6b094449b7adf4ec41bb2aeaa69b25a6d8f181"},
+    {file = "onnxruntime_gpu-1.21.0-cp313-cp313t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:5fb033a0647534590fc57219b59a12917c47bbdd79c41854a1549f3125306aea"},
 ]
 
 [package.dependencies]
@@ -2112,6 +2100,10 @@ numpy = ">=1.21.6"
 packaging = "*"
 protobuf = "*"
 sympy = "*"
+
+[package.extras]
+cuda = ["nvidia-cuda-nvrtc-cu12 (>=12.0,<13.0)", "nvidia-cuda-runtime-cu12 (>=12.0,<13.0)", "nvidia-cufft-cu12 (>=11.0,<12.0)", "nvidia-curand-cu12 (>=10.0,<11.0)"]
+cudnn = ["nvidia-cudnn-cu12 (>=9.0,<10.0)"]
 
 [[package]]
 name = "opencv-python"

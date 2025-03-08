@@ -5,7 +5,6 @@ from typing import List, Tuple
 import cv2
 import fishsense_common.ray as ray
 import numpy as np
-import torch
 from fishsense_common.pluggable_cli import Command, argument
 from pyaqua3ddev.image.image_processors import RawProcessor
 from pyaqua3ddev.laser.single_laser.label_studio_laser_detector import (
@@ -77,6 +76,8 @@ def execute(
     laser_calibration: LaserCalibration,
     debug_root: Path,
 ) -> Tuple[Path, ResultStatus, float]:
+    import torch
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     debug_path = debug_root / "process"
     debug_path.mkdir(exist_ok=True, parents=True)
@@ -354,7 +355,5 @@ class Process(Command):
             #     ),
             #     total=len(files),
             # ):
-            for file, result_status, length in self.tqdm(
-                futures, total=len(files)
-            ):
+            for file, result_status, length in self.tqdm(futures, total=len(files)):
                 database.insert_data(file, result_status, length)

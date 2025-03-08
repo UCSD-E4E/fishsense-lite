@@ -6,7 +6,6 @@ import cv2
 import fishsense_common.ray as ray
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 from fishsense_common.pluggable_cli import Command, argument
 from pyaqua3ddev.image.image_processors import RawProcessor
 from pyfishsensedev.calibration import LaserCalibration, LensCalibration
@@ -27,6 +26,8 @@ def execute(
     pdf: Pdf,
     debug_root: Path,
 ) -> np.ndarray:
+    import torch
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     debug_path = debug_root / "field-calibration" / "laser"
     debug_path.mkdir(exist_ok=True, parents=True)
