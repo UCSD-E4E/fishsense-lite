@@ -1,18 +1,19 @@
 from glob import glob
 from pathlib import Path
-from typing import List
+from typing import Any, Iterable, List
 
 import cv2
-import fishsense_common.ray as ray
-from fishsense_common.pluggable_cli import Command, argument
+from fishsense_common.scheduling.arguments import argument
+from fishsense_common.scheduling.job_definition import JobDefinition
+from fishsense_common.scheduling.ray_job import RayJob
 from pyaqua3ddev.image.image_processors import RawProcessor
 from pyfishsensedev.calibration import LensCalibration
 from pyfishsensedev.image import ImageRectifier
+from skimage.util import img_as_ubyte
 
-from fishsense_lite.utils import get_output_file, get_root, uint16_2_uint8
+from fishsense_lite.utils import get_output_file, get_root
 
 
-@ray.remote(vram_mb=615)
 def execute(
     input_file: Path,
     lens_calibration: LensCalibration,
@@ -38,16 +39,18 @@ def execute(
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
     if format.lower() == "jpg":
-        img = uint16_2_uint8(img)
+        img = img_as_ubyte(img)
 
     output_file.parent.mkdir(exist_ok=True, parents=True)
     cv2.imwrite(output_file.absolute().as_posix(), img)
 
 
-class Preprocess(Command):
+class Preprocess(RayJob):
+    name = "preprocess"
+
     @property
-    def name(self) -> str:
-        return "preprocess"
+    def job_count(self) -> int:
+        return len({f for g in self.data for f in glob(g, recursive=True)})
 
     @property
     def description(self) -> str:
@@ -64,8 +67,7 @@ class Preprocess(Command):
 
     @property
     @argument(
-        "--lens-calibration",
-        short_name="-l",
+        "lens-calibration",
         required=True,
         help="Lens calibration package for the FishSense Lite.",
     )
@@ -78,8 +80,7 @@ class Preprocess(Command):
 
     @property
     @argument(
-        "--output",
-        short_name="-o",
+        "output",
         required=True,
         help="The path to store the resulting database.",
     )
@@ -92,8 +93,7 @@ class Preprocess(Command):
 
     @property
     @argument(
-        "--format",
-        short_name="-f",
+        "format",
         default="png",
         help="The image format to save the preprocessed ata in.  PNG is saved as 16 bit.  JPG is saved as 8 bit.",
     )
@@ -105,7 +105,7 @@ class Preprocess(Command):
         self.__format = value
 
     @property
-    @argument("--overwrite", flag=True, help="Overwrite the calibration if it exists.")
+    @argument("overwrite", help="Overwrite the calibration if it exists.")
     def overwrite(self) -> bool:
         return self.__overwrite
 
@@ -113,18 +113,16 @@ class Preprocess(Command):
     def overwrite(self, value: bool):
         self.__overwrite = value
 
-    def __init__(self):
-        super().__init__()
-
+    def __init__(self, job_defintion: JobDefinition):
         self.__data: List[str] = None
         self.__lens_calibration: str = None
         self.__output_path: str = None
         self.__format: str = None
         self.__overwrite: bool = None
 
-    def __call__(self):
-        self.init_ray()
+        super().__init__(job_defintion, execute, vram_mb=615)
 
+    def prologue(self) -> Iterable[Iterable[Any]]:
         files = {Path(f).absolute() for g in self.data for f in glob(g, recursive=True)}
 
         # Find the singular path that defines the root of all of our data.
@@ -135,8 +133,8 @@ class Preprocess(Command):
 
         output = Path(self.output_path)
 
-        futures = [
-            execute.remote(
+        return (
+            (
                 f,
                 lens_calibration,
                 root,
@@ -145,7 +143,8 @@ class Preprocess(Command):
                 self.overwrite,
             )
             for f in files
-        ]
+        )
 
+    def epiloge(self, results: Iterable[Any]):
         # Hack to force processing
-        _ = list(self.tqdm(futures, total=len(files)))
+        _ = list(results)

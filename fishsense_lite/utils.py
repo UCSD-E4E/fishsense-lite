@@ -1,19 +1,11 @@
+import hashlib
 from pathlib import Path
 from typing import List
 
-import numpy as np
-
 
 def get_output_file(input_file: Path, root: Path, output: Path, extension: str) -> Path:
-    return Path(
-        input_file.absolute()
-        .as_posix()
-        .replace(root.as_posix(), output.absolute().as_posix())
-        .replace(
-            input_file.suffix,
-            f".{extension}",
-        )
-    )
+    hash = hashlib.md5(input_file.read_bytes()).hexdigest()
+    return output / input_file.relative_to(root).parent / f"{hash}.{extension}"
 
 
 def get_root(files: List[Path]) -> Path | None:
@@ -27,23 +19,3 @@ def get_root(files: List[Path]) -> Path | None:
     root = root.pop()
 
     return root
-
-
-def uint8_2_double(img: np.ndarray) -> np.ndarray:
-    return img.astype(np.float64) / 255
-
-
-def uint16_2_double(img: np.ndarray) -> np.ndarray:
-    return img.astype(np.float64) / 65535
-
-
-def double_2_uint8(img: np.ndarray) -> np.ndarray:
-    return (img * 255).astype(np.uint8)
-
-
-def double_2_uint16(img: np.ndarray) -> np.ndarray:
-    return (img * 65535).astype(np.uint16)
-
-
-def uint16_2_uint8(img: np.ndarray) -> np.ndarray:
-    return double_2_uint8(uint16_2_double(img))

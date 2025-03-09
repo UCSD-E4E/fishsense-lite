@@ -5,80 +5,13 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Help",
+            "name": "List Jobs",
             "type": "debugpy",
             "request": "launch",
             "module": "fishsense_lite",
             "justMyCode": false,
             "args": [
-                "label-studio",
-                "--help"
-            ]
-        },
-        {
-            "name": "Calibrate Lens",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "fishsense_lite",
-            "justMyCode": false,
-            "args": [
-                "calibrate-lens",
-                "~/Data/2025.01.17.FishSense.San Diego/ED-00/FSL-10D/LensCalibration/*.ORF",
-                "--rows",
-                "17",
-                "--columns",
-                "24",
-                "--square-size",
-                "30",
-                "--output",
-                "fsl-10d-lens-raw.pkg",
-                "--overwrite"
-            ]
-        },
-        {
-            "name": "Calibrate Laser",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "fishsense_lite",
-            "justMyCode": false,
-            "args": [
-                "calibrate-laser",
-                "~/Data/2025.01.17.FishSense.San Diego/ED-00/FSL-10D/LaserCalibration/*.ORF",
-                "--lens-calibration",
-                "~/Data/2025.01.17.FishSense.San Diego/ED-00/FSL-10D/LensCalibration/fsl-10d-lens-raw.dat",
-                "--rows",
-                "17",
-                "--columns",
-                "24",
-                "--square-size",
-                "30",
-                "--output",
-                "~/Data/2025.01.17.FishSense.San Diego/ED-00/FSL-10D/LaserCalibration/fsl-10d-laser.pkg",
-                "--label-studio-json",
-                "~/Data/project-25-at-2025-01-21-06-53-49e99adf.json",
-                "--overwrite"
-            ]
-        },
-        {
-            "name": "Field Calibrate Laser",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "fishsense_lite",
-            "justMyCode": false,
-            "args": [
-                "field-calibrate-laser",
-                "~/Data/082923_Pool Calibration/082929_Slate_FSL01/*.ORF",
-                "--lens-calibration",
-                "~/Data/calibration-parameters/FSL-01D/fsl-01d-lens-raw.pkg",
-                "--laser-position",
-                "-4", "-11", "0",
-                "--laser-axis",
-                "0", "0", "1",
-                "--pdf",
-                "~/Data/calibration-parameters/Dive Slate#1.pdf",
-                "--output",
-                "~/Data/082923_Pool Calibration/082929_Slate_FSL01/laser-calibration.pkg",
-                "--overwrite"
+                "list-jobs"
             ]
         },
         {
@@ -88,59 +21,147 @@
             "module": "fishsense_lite",
             "justMyCode": false,
             "args": [
-                "preprocess",
-                "~/Data/082923_Pool Calibration/082929_Slate_FSL01/*.ORF",
-                "--lens-calibration",
-                "~/Data/calibration-parameters/FSL-01D/fsl-01d-lens-raw.pkg",
-                "--disable-histogram-equalization",
-                "--overwrite"
+                "run-jobs",
+                "./job_definition_examples/preprocess.yaml"
             ]
-        },
-        {
-            "name": "Process",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "fishsense_lite",
-            "justMyCode": false,
-            "args": [
-                "process",
-                "~/Data/2025.01.17.FishSense.San Diego/ED-00/FSL-10D/**/*.ORF",
-                "--debug-path",
-                ".debug",
-                "--headtail-label-studio-json",
-                "~/Data/project-29-at-2025-01-22-02-06-826d828c.json",
-                "--laser-calibration",
-                "~/Data/2025.01.17.FishSense.San Diego/ED-00/Fishsense Lite Calibration Parameters/FSL-01D/laser-calibration.pkg",
-                // "~/Data/2025.01.17.FishSense.San Diego/ED-00/FSL-10D/LaserCalibration/fsl-10d-laser.pkg",
-                "--laser-label-studio-json",
-                "~/Data/project-25-at-2025-01-21-06-53-49e99adf.json",
-                "--lens-calibration",
-                "~/Data/2025.01.17.FishSense.San Diego/ED-00/Fishsense Lite Calibration Parameters/FSL-01D/fsl-01d-lens-raw.pkg",
-                // "~/Data/2025.01.17.FishSense.San Diego/ED-00/FSL-10D/LensCalibration/fsl-10d-lens-raw.pkg",
-                "--output",
-                "~/Data/2025.01.17.FishSense.San Diego/ED-00/results.db",
-                "--overwrite"
-            ]
-        },
-        {
-            "name": "Label Studio",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "fishsense_lite",
-            "justMyCode": false,
-            "args": [
-                "label-studio",
-                "~/Data/082923_Pool Calibration/082929_Slate_FSL01/*.ORF",
-                "--lens-calibration",
-                "~/Data/calibration-parameters/FSL-01D/fsl-01d-lens-raw.pkg",
-                "--laser-position",
-                "-4", "-11", "0",
-                "--laser-axis",
-                "0", "0", "1",
-                "--output",
-                "./output",
-                "--overwrite",
-            ]
-        },
+        }
+        // {
+        //     "name": "Help",
+        //     "type": "debugpy",
+        //     "request": "launch",
+        //     "module": "fishsense_lite",
+        //     "justMyCode": false,
+        //     "args": [
+        //         "label-studio",
+        //         "--help"
+        //     ]
+        // },
+        // {
+        //     "name": "Calibrate Lens",
+        //     "type": "debugpy",
+        //     "request": "launch",
+        //     "module": "fishsense_lite",
+        //     "justMyCode": false,
+        //     "args": [
+        //         "calibrate-lens",
+        //         "~/Data/2025.01.17.FishSense.San Diego/ED-00/FSL-10D/LensCalibration/*.ORF",
+        //         "--rows",
+        //         "17",
+        //         "--columns",
+        //         "24",
+        //         "--square-size",
+        //         "30",
+        //         "--output",
+        //         "fsl-10d-lens-raw.pkg",
+        //         "--overwrite"
+        //     ]
+        // },
+        // {
+        //     "name": "Calibrate Laser",
+        //     "type": "debugpy",
+        //     "request": "launch",
+        //     "module": "fishsense_lite",
+        //     "justMyCode": false,
+        //     "args": [
+        //         "calibrate-laser",
+        //         "~/Data/2025.01.17.FishSense.San Diego/ED-00/FSL-10D/LaserCalibration/*.ORF",
+        //         "--lens-calibration",
+        //         "~/Data/2025.01.17.FishSense.San Diego/ED-00/FSL-10D/LensCalibration/fsl-10d-lens-raw.dat",
+        //         "--rows",
+        //         "17",
+        //         "--columns",
+        //         "24",
+        //         "--square-size",
+        //         "30",
+        //         "--output",
+        //         "~/Data/2025.01.17.FishSense.San Diego/ED-00/FSL-10D/LaserCalibration/fsl-10d-laser.pkg",
+        //         "--label-studio-json",
+        //         "~/Data/project-25-at-2025-01-21-06-53-49e99adf.json",
+        //         "--overwrite"
+        //     ]
+        // },
+        // {
+        //     "name": "Field Calibrate Laser",
+        //     "type": "debugpy",
+        //     "request": "launch",
+        //     "module": "fishsense_lite",
+        //     "justMyCode": false,
+        //     "args": [
+        //         "field-calibrate-laser",
+        //         "~/Data/082923_Pool Calibration/082929_Slate_FSL01/*.ORF",
+        //         "--lens-calibration",
+        //         "~/Data/calibration-parameters/FSL-01D/fsl-01d-lens-raw.pkg",
+        //         "--laser-position",
+        //         "-4", "-11", "0",
+        //         "--laser-axis",
+        //         "0", "0", "1",
+        //         "--pdf",
+        //         "~/Data/calibration-parameters/Dive Slate#1.pdf",
+        //         "--output",
+        //         "~/Data/082923_Pool Calibration/082929_Slate_FSL01/laser-calibration.pkg",
+        //         "--overwrite"
+        //     ]
+        // },
+        // {
+        //     "name": "Preprocess",
+        //     "type": "debugpy",
+        //     "request": "launch",
+        //     "module": "fishsense_lite",
+        //     "justMyCode": false,
+        //     "args": [
+        //         "preprocess",
+        //         "~/Data/082923_Pool Calibration/082929_Slate_FSL01/*.ORF",
+        //         "--lens-calibration",
+        //         "~/Data/calibration-parameters/FSL-01D/fsl-01d-lens-raw.pkg",
+        //         "--disable-histogram-equalization",
+        //         "--overwrite"
+        //     ]
+        // },
+        // {
+        //     "name": "Process",
+        //     "type": "debugpy",
+        //     "request": "launch",
+        //     "module": "fishsense_lite",
+        //     "justMyCode": false,
+        //     "args": [
+        //         "process",
+        //         "~/Data/2025.01.17.FishSense.San Diego/ED-00/FSL-10D/**/*.ORF",
+        //         "--debug-path",
+        //         ".debug",
+        //         "--headtail-label-studio-json",
+        //         "~/Data/project-29-at-2025-01-22-02-06-826d828c.json",
+        //         "--laser-calibration",
+        //         "~/Data/2025.01.17.FishSense.San Diego/ED-00/Fishsense Lite Calibration Parameters/FSL-01D/laser-calibration.pkg",
+        //         // "~/Data/2025.01.17.FishSense.San Diego/ED-00/FSL-10D/LaserCalibration/fsl-10d-laser.pkg",
+        //         "--laser-label-studio-json",
+        //         "~/Data/project-25-at-2025-01-21-06-53-49e99adf.json",
+        //         "--lens-calibration",
+        //         "~/Data/2025.01.17.FishSense.San Diego/ED-00/Fishsense Lite Calibration Parameters/FSL-01D/fsl-01d-lens-raw.pkg",
+        //         // "~/Data/2025.01.17.FishSense.San Diego/ED-00/FSL-10D/LensCalibration/fsl-10d-lens-raw.pkg",
+        //         "--output",
+        //         "~/Data/2025.01.17.FishSense.San Diego/ED-00/results.db",
+        //         "--overwrite"
+        //     ]
+        // },
+        // {
+        //     "name": "Label Studio",
+        //     "type": "debugpy",
+        //     "request": "launch",
+        //     "module": "fishsense_lite",
+        //     "justMyCode": false,
+        //     "args": [
+        //         "label-studio",
+        //         "~/Data/082923_Pool Calibration/082929_Slate_FSL01/*.ORF",
+        //         "--lens-calibration",
+        //         "~/Data/calibration-parameters/FSL-01D/fsl-01d-lens-raw.pkg",
+        //         "--laser-position",
+        //         "-4", "-11", "0",
+        //         "--laser-axis",
+        //         "0", "0", "1",
+        //         "--output",
+        //         "./output",
+        //         "--overwrite",
+        //     ]
+        // },
     ]
 }
