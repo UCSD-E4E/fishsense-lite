@@ -16,7 +16,9 @@ RUN ${HOME}/.pyenv/shims/fsl generate-ray-config --max-cpu ${MAX_CPU} --max-gpu 
 USER root
 ARG GID=1000
 ARG UID=1000
-RUN groupmod -g ${GID} ubuntu && usermod -u ${UID} -g ${GID} ubuntu
+ARG CUDA_GROUP_ID=1000
+RUN groupmod -g ${GID} ubuntu && usermod -u ${UID} -g ${GID} ubuntu && groupadd -g ${CUDA_GROUP_ID} cuda
+RUN sudo usermod -aG cuda ubuntu
 USER ubuntu
 
 CMD ["/bin/bash"]
