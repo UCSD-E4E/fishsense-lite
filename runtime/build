@@ -69,6 +69,11 @@ if [ $cpu_only -eq 1 ]; then
     image=c$image:cpu
 fi
 
+CUDA_GROUP_ID=`id -g`
+if getent group cuda; then
+    CUDA_GROUP_ID=`getent group groupname | cut -d: -f3`
+fi
+
 # We use the git hash of the main remote to ensure that we bump only when necessary.
 git remote update
-docker build --build-arg IMAGE=$image --build-arg UID=`id -u` --build-arg GID=`id -g` --build-arg BUMP=`git rev-parse HEAD` --build-arg MAX_CPU=$MAX_CPU --build-arg MAX_GPU=$MAX_GPU . --tag `whoami`/fishsense-lite
+docker build --build-arg IMAGE=$image  --build-arg CUDA_GROUP_ID=$CUDA_GROUP_ID --build-arg UID=`id -u` --build-arg GID=`id -g` --build-arg BUMP=`git rev-parse HEAD` --build-arg MAX_CPU=$MAX_CPU --build-arg MAX_GPU=$MAX_GPU . --tag `whoami`/fishsense-lite
