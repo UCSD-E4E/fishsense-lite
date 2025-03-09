@@ -71,7 +71,7 @@ fi
 
 CUDA_GROUP_ID=`id -g`
 if getent group cuda; then
-    CUDA_GROUP_ID=`getent group groupname | cut -d: -f3`
+    CUDA_GROUP_ID=`getent group cuda | cut -d: -f3`
 fi
 
 # We use the git hash of the main remote to ensure that we bump only when necessary.
