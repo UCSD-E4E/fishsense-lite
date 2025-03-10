@@ -6,5 +6,4 @@ jobs:
         - demo/data/*.ORF
       lens-calibration: "./demo/data/lens-calibration.pkg"
       output: "./demo/data"
-      disable-histogram-equalization: true
       overwrite: true
