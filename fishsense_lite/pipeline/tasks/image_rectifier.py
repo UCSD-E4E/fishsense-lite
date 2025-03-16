@@ -8,7 +8,7 @@ from pyfishsensedev.image import ImageRectifier
 def image_rectifier(
     img: np.ndarray[float], lens_calibration: LensCalibration
 ) -> np.ndarray[float]:
-    if lens_calibration is None:
+    if img is None:
         return None
 
     image_rectifier = ImageRectifier(lens_calibration)
