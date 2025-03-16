@@ -2,16 +2,16 @@ from glob import glob
 from pathlib import Path
 from typing import Any, Iterable, List
 
-import cv2
+from fishsense_common.pipeline.pipeline import Pipeline
 from fishsense_common.scheduling.arguments import argument
 from fishsense_common.scheduling.job_definition import JobDefinition
 from fishsense_common.scheduling.ray_job import RayJob
-from pyaqua3ddev.image.image_processors import RawProcessor
 from pyfishsensedev.calibration import LensCalibration
-from pyfishsensedev.image import ImageRectifier
-from skimage.util import img_as_ubyte
 
-from fishsense_lite.utils import get_output_file, get_root
+from fishsense_lite.pipeline.tasks.image_rectifier import image_rectifier
+from fishsense_lite.pipeline.tasks.process_raw import process_raw
+from fishsense_lite.pipeline.tasks.save_output import save_output
+from fishsense_lite.utils import get_root
 
 
 def execute(
@@ -20,29 +20,16 @@ def execute(
     root: Path,
     output: Path,
     format: str,
-    overwrite: bool,
 ):
-    output_file = get_output_file(input_file, root, output, format)
+    pipeline = Pipeline(process_raw, image_rectifier, save_output)
 
-    if not overwrite and output_file.exists():
-        return
-
-    raw_processor = RawProcessor()
-    image_rectifier = ImageRectifier(lens_calibration)
-
-    try:
-        img = raw_processor.process(input_file)
-    except:
-        return
-    img = image_rectifier.rectify(img)
-
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-
-    if format.lower() == "jpg":
-        img = img_as_ubyte(img)
-
-    output_file.parent.mkdir(exist_ok=True, parents=True)
-    cv2.imwrite(output_file.absolute().as_posix(), img)
+    pipeline(
+        input_file=input_file,
+        lens_calibration=lens_calibration,
+        root=root,
+        output=output,
+        format=format,
+    )
 
 
 class Preprocess(RayJob):
@@ -104,21 +91,11 @@ class Preprocess(RayJob):
     def format(self, value: str):
         self.__format = value
 
-    @property
-    @argument("overwrite", help="Overwrite the calibration if it exists.")
-    def overwrite(self) -> bool:
-        return self.__overwrite
-
-    @overwrite.setter
-    def overwrite(self, value: bool):
-        self.__overwrite = value
-
     def __init__(self, job_defintion: JobDefinition):
         self.__data: List[str] = None
         self.__lens_calibration: str = None
         self.__output_path: str = None
         self.__format: str = None
-        self.__overwrite: bool = None
 
         super().__init__(job_defintion, execute, vram_mb=615)
 
@@ -140,7 +117,6 @@ class Preprocess(RayJob):
                 root,
                 output,
                 self.format,
-                self.overwrite,
             )
             for f in files
         )
