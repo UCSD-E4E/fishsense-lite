@@ -2499,7 +2499,7 @@ torchvision = ">=0.21.0,<0.22.0"
 type = "git"
 url = "https://github.com/UCSD-E4E/pyAqua3dDev.git"
 reference = "HEAD"
-resolved_reference = "dcaf2a1677edd0a2066cddeee8e9c7a488d93046"
+resolved_reference = "e880cf54ba83db3b19cc7b11ce4bd6d3122bc5bf"
 
 [[package]]
 name = "pycparser"
