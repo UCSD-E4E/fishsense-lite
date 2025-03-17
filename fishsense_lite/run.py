@@ -3,6 +3,7 @@
 from fishsense_common.scheduling.cli_scheduler import CliScheduler
 
 from fishsense_lite.jobs.preprocess import Preprocess
+from fishsense_lite.jobs.preprocess_with_laser import PreprocessWithLaser
 
 # from fishsense_lite.commands.calibrate_laser import CalibrateLaser
 # from fishsense_lite.commands.calibrate_lens import CalibrateLens
@@ -20,10 +21,12 @@ def main():
         description="The command line tool for processing data from the FishSense Lite product line.",
     )
 
+    cli.register_job_type(Preprocess)
+    cli.register_job_type(PreprocessWithLaser)
+
     # cli.add(CalibrateLaser())
     # cli.add(CalibrateLens())
     # cli.add(FieldCalibrateLaser())
-    cli.register_job_type(Preprocess)
     # cli.add(Process())
     # cli.add(LabelStudioCommand())
 
