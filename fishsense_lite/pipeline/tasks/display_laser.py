@@ -7,6 +7,9 @@ from fishsense_common.pipeline.decorators import task
 def display_laser(
     img: np.ndarray[float], laser_image_coords: np.ndarray[int]
 ) -> np.ndarray[float]:
+    if img is None or laser_image_coords is None:
+        return None
+
     return cv2.circle(
         img,
         np.round(laser_image_coords).astype(int),
