@@ -16,7 +16,7 @@ def display_laser(
             img_as_ubyte(img),
             np.round(laser_image_coords).astype(int),
             radius=5,
-            color=(255, 0, 0),
+            color=(0, 0, 255),
             thickness=-1,
         )
     )
