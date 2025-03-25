@@ -97,6 +97,10 @@ class DetectSlateForDives(RayJob):
     def psql_connection_string(self) -> str:
         return self.__psql_connection_string
 
+    @psql_connection_string.setter
+    def psql_connection_string(self, value: str):
+        self.__psql_connection_string = value
+
     def __init__(self, job_defintion: JobDefinition):
         self.__dives: List[str] = None
         self.__psql_connection_string: str = None
