@@ -1,25 +1,20 @@
 from glob import glob
 from pathlib import Path
-from typing import Any, Iterable, List
+from typing import Iterable, List
 
-from fishsense_common.pipeline.decorators import task
+import numpy as np
 from fishsense_common.pipeline.pipeline import Pipeline
 from fishsense_common.scheduling.arguments import argument
-from fishsense_common.scheduling.job_definition import JobDefinition
 from fishsense_common.scheduling.ray_job import RayJob
-from pyfishsensedev.calibration import LensCalibration
+from pyfishsensedev.calibration import LaserCalibration, LensCalibration
+from pyfishsensedev.image.pdf import Pdf
 
 from fishsense_lite.pipeline.tasks.detect_laser import detect_laser
-from fishsense_lite.pipeline.tasks.display_laser import display_laser
 from fishsense_lite.pipeline.tasks.get_laser_detector import get_laser_detector
 from fishsense_lite.pipeline.tasks.image_rectifier import image_rectifier
+from fishsense_lite.pipeline.tasks.make_debug_path import make_debug_path
 from fishsense_lite.pipeline.tasks.process_raw import process_raw
-from fishsense_lite.pipeline.tasks.save_output import save_output
-from fishsense_lite.utils import (
-    PSqlConnectionString,
-    get_root,
-    parse_psql_connection_string,
-)
+from fishsense_lite.utils import PSqlConnectionString, parse_psql_connection_string
 
 
 def execute(
@@ -27,33 +22,32 @@ def execute(
     lens_calibration: LensCalibration,
     laser_labels_path: Path,
     connection_string: PSqlConnectionString,
-    root: Path,
-    output: Path,
-    format: str,
-):
-
+    pdf: Pdf,
+    # debug_root: Path,
+) -> np.ndarray[float]:
     pipeline = Pipeline(
+        # make_debug_path,
         process_raw,
         image_rectifier,
-        get_laser_detector,
         detect_laser,
-        task("img")(display_laser),
-        save_output,
+        get_laser_detector,
+        return_name="laser_coord_3d",
     )
 
-    pipeline(
+    return pipeline(
         input_file=input_file,
         lens_calibration=lens_calibration,
         laser_labels_path=laser_labels_path,
         connection_string=connection_string,
-        root=root,
-        output=output,
-        format=format,
+        pdf=pdf,
+        # debug_root=debug_root,
     )
 
+    # png_name = input_file.name.replace("ORF", "PNG").replace("orf", "png")
 
-class PreprocessWithLaser(RayJob):
-    name = "preprocess_with_laser"
+
+class FieldCalibrateLaser(RayJob):
+    name = "field_calibrate_laser"
 
     @property
     def job_count(self) -> int:
@@ -61,7 +55,7 @@ class PreprocessWithLaser(RayJob):
 
     @property
     def description(self) -> str:
-        return "Preprocess data from the FishSense Lite product line and include laser label."
+        return "Perform the field calibration method."
 
     @property
     @argument("data", required=True, help="A glob that represents the data to process.")
@@ -87,32 +81,6 @@ class PreprocessWithLaser(RayJob):
 
     @property
     @argument(
-        "output",
-        required=True,
-        help="The path to store the resulting files.",
-    )
-    def output_path(self) -> str:
-        return self.__output_path
-
-    @output_path.setter
-    def output_path(self, value: str):
-        self.__output_path = value
-
-    @property
-    @argument(
-        "format",
-        default="png",
-        help="The image format to save the preprocessed ata in.  PNG is saved as 16 bit.  JPG is saved as 8 bit.",
-    )
-    def format(self) -> str:
-        return self.__format
-
-    @format.setter
-    def format(self, value: str):
-        self.__format = value
-
-    @property
-    @argument(
         "laser-labels",
         help="The path to the laser labels export from Label Studio.",
     )
@@ -135,21 +103,46 @@ class PreprocessWithLaser(RayJob):
     def psql_connection_string(self, value: str):
         self.__psql_connection_string = value
 
-    def __init__(self, job_defintion: JobDefinition):
+    @property
+    @argument(
+        "pdf",
+        required=True,
+        help="The path to the PDF file.",
+    )
+    def pdf(self) -> str:
+        return self.__pdf
+
+    @pdf.setter
+    def pdf(self, value: str):
+        self.__pdf = value
+
+    @property
+    @argument(
+        "output",
+        required=True,
+        help="The path to store the resulting calibration.",
+    )
+    def output_path(self) -> str:
+        return self.__output_path
+
+    @output_path.setter
+    def output_path(self, value: str):
+        self.__output_path = value
+
+    def __init__(self, job_definition, vram_mb=1536):
         self.__data: List[str] = None
         self.__lens_calibration: str = None
-        self.__output_path: str = None
-        self.__format: str = None
         self.__laser_labels: str = None
         self.__psql_connection_string: str = None
+        self.__pdf: str = None
+        self.__output_path: str = None
 
-        super().__init__(job_defintion, execute, vram_mb=615)
+        super().__init__(job_definition, execute, vram_mb)
 
-    def prologue(self) -> Iterable[Iterable[Any]]:
+    def prologue(self):
         files = {Path(f).absolute() for g in self.data for f in glob(g, recursive=True)}
-
-        # Find the singular path that defines the root of all of our data.
-        root = get_root(files)
+        lens_calibration = LensCalibration()
+        lens_calibration.load(Path(self.lens_calibration))
 
         laser_labels_path = (
             Path(self.laser_labels) if self.laser_labels is not None else None
@@ -159,24 +152,24 @@ class PreprocessWithLaser(RayJob):
             self.psql_connection_string
         )
 
-        lens_calibration = LensCalibration()
-        lens_calibration.load(Path(self.lens_calibration))
-
-        output = Path(self.output_path)
+        pdf = Pdf(Path(self.pdf))
 
         return (
-            (
-                f,
-                lens_calibration,
-                laser_labels_path,
-                psql_connection_string,
-                root,
-                output,
-                self.format,
-            )
+            (f, lens_calibration, laser_labels_path, psql_connection_string, pdf)
             for f in files
         )
 
-    def epiloge(self, results: Iterable[Any]):
-        # Hack to force processing
-        _ = list(results)
+    def epilogue(self, results: Iterable[np.ndarray[float]]):
+        laser_points_3d = [p for p in results if p is not None]
+        laser_points_3d.sort(key=lambda x: x[2])
+        laser_points_3d = np.array(laser_points_3d)
+
+        laser_calibration = LaserCalibration()
+        laser_calibration.plane_calibrate(laser_points_3d)
+
+        output_path = Path(self.output_path)
+
+        if output_path.exists():
+            output_path.unlink()
+
+        laser_calibration.save(output_path)

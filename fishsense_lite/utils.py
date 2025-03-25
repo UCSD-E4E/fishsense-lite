@@ -37,7 +37,11 @@ def parse_psql_connection_string(connection_string: str) -> PSqlConnectionString
     if connection_string is not None:
         psql = urlparse(connection_string)
         dbname = psql.path[1:]
-        username = psql.username
+        username = (
+            os.environ["PSQL_USERNAME"]
+            if "PSQL_USERNAME" in os.environ
+            else psql.username
+        )
         password = (
             os.environ["PSQL_PASSWORD"]
             if "PSQL_PASSWORD" in os.environ
