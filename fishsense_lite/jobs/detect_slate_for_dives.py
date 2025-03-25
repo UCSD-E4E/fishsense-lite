@@ -131,7 +131,7 @@ class DetectSlateForDives(RayJob):
         output = Path(self.output_path) / "slate_names.json"
 
         for dive, slate_names in results:
-            dive_results[dive] = slate_names
+            dive_results[dive.as_posix()] = slate_names
 
             with output.open("w") as f:
                 json.dump(dive_results, f)
