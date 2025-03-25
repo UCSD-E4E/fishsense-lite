@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Dict, Iterable, Set, Tuple
+from typing import Dict, Iterable, List, Set, Tuple
 
 import psycopg
 from fishsense_common.scheduling.arguments import argument
@@ -69,11 +69,11 @@ class DetectSlateForDives(RayJob):
 
     @property
     @argument("dives", required=True, help="List of paths to the dives")
-    def dives(self):
+    def dives(self) -> List[str]:
         return self.__dives
 
     @dives.setter
-    def dives(self, value):
+    def dives(self, value: List[str]):
         self.__dives = value
 
     @property
@@ -98,8 +98,8 @@ class DetectSlateForDives(RayJob):
         return self.__psql_connection_string
 
     def __init__(self, job_defintion: JobDefinition):
-        self.__dives = None
-        self.__psql_connection_string = None
+        self.__dives: List[str] = None
+        self.__psql_connection_string: str = None
 
         super().__init__(job_defintion, execute, vram_mb=615)
 
