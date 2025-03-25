@@ -20,7 +20,7 @@ dependencies = [
     "pyaqua3ddev @ git+https://github.com/UCSD-E4E/pyAqua3dDev.git",
     "pyfishsense @ git+https://github.com/UCSD-E4E/pyFishSense.git",
     "fishsense-common @ git+https://github.com/UCSD-E4E/fishsense-common.git",
-    "pyfishsensedev @ git+https://github.com/UCSD-E4E/pyFishSenseDev.git"
+    "pyfishsensedev @ git+https://github.com/UCSD-E4E/pyFishSenseDev.git",
 ]
 
 [tool.poetry.group.dev.dependencies]

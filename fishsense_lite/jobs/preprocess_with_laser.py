@@ -1,6 +1,8 @@
+import os
 from glob import glob
 from pathlib import Path
 from typing import Any, Iterable, List
+from urllib.parse import urlparse
 
 from fishsense_common.pipeline.decorators import task
 from fishsense_common.pipeline.pipeline import Pipeline
@@ -11,6 +13,7 @@ from pyaqua3ddev.laser.single_laser.label_studio_laser_detector import (
     LabelStudioLaserDetector,
 )
 from pyaqua3ddev.laser.single_laser.laser_detector import LaserDetector
+from pyaqua3ddev.laser.single_laser.psql_laser_detector import PSqlLabelDetector
 from pyfishsensedev.calibration import LensCalibration
 
 from fishsense_lite.pipeline.tasks.detect_laser import detect_laser
@@ -25,6 +28,11 @@ def execute(
     input_file: Path,
     lens_calibration: LensCalibration,
     laser_labels_path: Path,
+    dbname: str,
+    username: str,
+    password: str,
+    host: str,
+    port: int,
     root: Path,
     output: Path,
     format: str,
@@ -32,6 +40,15 @@ def execute(
     laser_detector: LaserDetector = None
     if laser_labels_path is not None:
         laser_detector = LabelStudioLaserDetector(input_file, laser_labels_path)
+    elif (
+        dbname is not None
+        and username is not None
+        and host is not None
+        and port is not None
+    ):
+        laser_detector = PSqlLabelDetector(
+            input_file, dbname, username, password, host, port=port
+        )
     else:
         raise NotImplementedError
 
@@ -124,12 +141,25 @@ class PreprocessWithLaser(RayJob):
     def laser_labels(self, value: str):
         self.__laser_labels = value
 
+    @property
+    @argument(
+        "psql-connection-string",
+        help="The connection string to the Postgres database.",
+    )
+    def psql_connection_string(self) -> str:
+        return self.__psql_connection_string
+
+    @psql_connection_string.setter
+    def psql_connection_string(self, value: str):
+        self.__psql_connection_string = value
+
     def __init__(self, job_defintion: JobDefinition):
         self.__data: List[str] = None
         self.__lens_calibration: str = None
         self.__output_path: str = None
         self.__format: str = None
         self.__laser_labels: str = None
+        self.__psql_connection_string: str = None
 
         super().__init__(job_defintion, execute, vram_mb=615)
 
@@ -146,6 +176,26 @@ class PreprocessWithLaser(RayJob):
             Path(self.laser_labels) if self.laser_labels is not None else None
         )
 
+        dbname: str = None
+        username: str = None
+        password: str = (
+            os.environ["PSQL_PASSWORD"] if "PSQL_PASSWORD" in os.environ else None
+        )
+        host: str = None
+        port: int = None
+
+        psql = (
+            urlparse(self.psql_connection_string)
+            if self.psql_connection_string is not None
+            else None
+        )
+        if psql is not None:
+            dbname = psql.path[1:]
+            username = psql.username
+            password = password if password is not None else psql.password
+            host = psql.hostname
+            port = psql.port
+
         output = Path(self.output_path)
 
         return (
@@ -153,6 +203,11 @@ class PreprocessWithLaser(RayJob):
                 f,
                 lens_calibration,
                 laser_labels_path,
+                dbname,
+                username,
+                password,
+                host,
+                port,
                 root,
                 output,
                 self.format,

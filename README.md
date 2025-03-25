@@ -78,3 +78,13 @@ To run the CLI to process data.  Note that this will not rerun files previously 
 ```
 poetry run python -m fishsense_lite process ~/data/**/*.ORF --lens-calibration ~/data/fsl-01d-lens-raw.pkg --laser-calibration ~/data/laser-calibration.pkg --output ./output/results.db
 ```
+
+## Limiting Resources
+### CPU
+The number of CPU workers can be limited multiple ways.
+
+### GPU
+
+
+### Memory
+`RAY_memory_usage_threshold` environment variable.
