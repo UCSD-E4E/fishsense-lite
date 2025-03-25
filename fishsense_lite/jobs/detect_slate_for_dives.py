@@ -40,7 +40,7 @@ def get_slate_names(connection_string: PSqlConnectionString) -> Dict[str, str]:
 def execute(
     dive: Path, connection_string: PSqlConnectionString
 ) -> Tuple[Path, Set[str]]:
-    possible_slate_names: Set[str] = {}
+    possible_slate_names: Set[str] = set()
     slate_names = {n: Pdf(f) for n, f in get_slate_names(connection_string).items()}
 
     for image_file in dive.glob("*.ORF"):
@@ -115,12 +115,23 @@ class DetectSlateForDives(RayJob):
         psql_connection_string = parse_psql_connection_string(
             self.psql_connection_string
         )
+        output = Path(self.output_path) / "slate_names.json"
+
+        completed_dives = set()
+        if output.exists():
+            with output.open() as f:
+                completed_dives = set(json.load(f).keys())
+
+        dives = dives - completed_dives
 
         return ((dive, psql_connection_string) for dive in dives)
 
     def epiloge(self, results: Iterable[Tuple[Path, Set[str]]]):
-        dive_results = {dive: slate_names for dive, slate_names in results}
-
+        dive_results: Dict[str, Set[str]] = {}
         output = Path(self.output_path) / "slate_names.json"
-        with output.open("w") as f:
-            json.dump(dive_results, f)
+
+        for dive, slate_names in results:
+            dive_results[dive] = slate_names
+
+            with output.open("w") as f:
+                json.dump(dive_results, f)
