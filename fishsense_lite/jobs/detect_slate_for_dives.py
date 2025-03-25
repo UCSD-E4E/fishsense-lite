@@ -6,6 +6,7 @@ import psycopg
 from fishsense_common.scheduling.arguments import argument
 from fishsense_common.scheduling.job_definition import JobDefinition
 from fishsense_common.scheduling.ray_job import RayJob
+from pyfishsensedev.image.pdf import Pdf
 from pyfishsensedev.plane_detector.slate_detector import SlateDetector
 from skimage.util import img_as_ubyte
 
@@ -40,7 +41,7 @@ def execute(
     dive: Path, connection_string: PSqlConnectionString
 ) -> Tuple[Path, Set[str]]:
     possible_slate_names: Set[str] = {}
-    slate_names = get_slate_names(connection_string)
+    slate_names = {n: Pdf(f) for n, f in get_slate_names(connection_string)}
 
     for image_file in dive.glob("*.ORF"):
         img = img_as_ubyte(process_raw(image_file))
