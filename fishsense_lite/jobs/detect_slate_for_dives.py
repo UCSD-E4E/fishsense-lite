@@ -41,7 +41,7 @@ def execute(
     dive: Path, connection_string: PSqlConnectionString
 ) -> Tuple[Path, Set[str]]:
     possible_slate_names: Set[str] = {}
-    slate_names = {n: Pdf(f) for n, f in get_slate_names(connection_string)}
+    slate_names = {n: Pdf(f) for n, f in get_slate_names(connection_string).items()}
 
     for image_file in dive.glob("*.ORF"):
         img = img_as_ubyte(process_raw(image_file))
