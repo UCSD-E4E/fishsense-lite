@@ -169,9 +169,6 @@ class PreprocessWithLaser(RayJob):
         # Find the singular path that defines the root of all of our data.
         root = get_root(files)
 
-        lens_calibration = LensCalibration()
-        lens_calibration.load(Path(self.lens_calibration))
-
         laser_labels_path = (
             Path(self.laser_labels) if self.laser_labels is not None else None
         )
@@ -194,7 +191,10 @@ class PreprocessWithLaser(RayJob):
             username = psql.username
             password = password if password is not None else psql.password
             host = psql.hostname
-            port = psql.port
+            port = 5432 if psql.port is None else psql.port
+
+        lens_calibration = LensCalibration()
+        lens_calibration.load(Path(self.lens_calibration))
 
         output = Path(self.output_path)
 

@@ -24,6 +24,17 @@
                 "run-jobs",
                 "./job_definition_examples/preprocess.yaml"
             ]
+        },
+        {
+            "name": "Preprocess with Laser",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "fishsense_lite",
+            "justMyCode": false,
+            "args": [
+                "run-jobs",
+                "./job_definition_examples/preprocess_with_laser.json"
+            ]
         }
         // {
         //     "name": "Help",
