@@ -120,7 +120,7 @@ class DetectSlateForDives(RayJob):
         completed_dives = set()
         if output.exists():
             with output.open() as f:
-                completed_dives = set(json.load(f).keys())
+                completed_dives = {Path(k) for k in json.load(f).keys()}
 
         dives = dives - completed_dives
 
