@@ -1,8 +1,6 @@
-import os
 from glob import glob
 from pathlib import Path
 from typing import Any, Iterable, List
-from urllib.parse import urlparse
 
 from fishsense_common.pipeline.decorators import task
 from fishsense_common.pipeline.pipeline import Pipeline
@@ -21,18 +19,18 @@ from fishsense_lite.pipeline.tasks.display_laser import display_laser
 from fishsense_lite.pipeline.tasks.image_rectifier import image_rectifier
 from fishsense_lite.pipeline.tasks.process_raw import process_raw
 from fishsense_lite.pipeline.tasks.save_output import save_output
-from fishsense_lite.utils import get_root
+from fishsense_lite.utils import (
+    PSqlConnectionString,
+    get_root,
+    parse_psql_connection_string,
+)
 
 
 def execute(
     input_file: Path,
     lens_calibration: LensCalibration,
     laser_labels_path: Path,
-    dbname: str,
-    username: str,
-    password: str,
-    host: str,
-    port: int,
+    connection_string: PSqlConnectionString,
     root: Path,
     output: Path,
     format: str,
@@ -40,14 +38,14 @@ def execute(
     laser_detector: LaserDetector = None
     if laser_labels_path is not None:
         laser_detector = LabelStudioLaserDetector(input_file, laser_labels_path)
-    elif (
-        dbname is not None
-        and username is not None
-        and host is not None
-        and port is not None
-    ):
+    elif connection_string is not None:
         laser_detector = PSqlLabelDetector(
-            input_file, dbname, username, password, host, port=port
+            input_file,
+            connection_string.dbname,
+            connection_string.username,
+            connection_string.password,
+            connection_string.host,
+            port=connection_string.port,
         )
     else:
         raise NotImplementedError
@@ -173,25 +171,9 @@ class PreprocessWithLaser(RayJob):
             Path(self.laser_labels) if self.laser_labels is not None else None
         )
 
-        dbname: str = None
-        username: str = None
-        password: str = (
-            os.environ["PSQL_PASSWORD"] if "PSQL_PASSWORD" in os.environ else None
+        psql_connection_string = parse_psql_connection_string(
+            self.psql_connection_string
         )
-        host: str = None
-        port: int = None
-
-        psql = (
-            urlparse(self.psql_connection_string)
-            if self.psql_connection_string is not None
-            else None
-        )
-        if psql is not None:
-            dbname = psql.path[1:]
-            username = psql.username
-            password = password if password is not None else psql.password
-            host = psql.hostname
-            port = 5432 if psql.port is None else psql.port
 
         lens_calibration = LensCalibration()
         lens_calibration.load(Path(self.lens_calibration))
@@ -203,11 +185,7 @@ class PreprocessWithLaser(RayJob):
                 f,
                 lens_calibration,
                 laser_labels_path,
-                dbname,
-                username,
-                password,
-                host,
-                port,
+                psql_connection_string,
                 root,
                 output,
                 self.format,

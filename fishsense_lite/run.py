@@ -2,6 +2,7 @@
 
 from fishsense_common.scheduling.cli_scheduler import CliScheduler
 
+from fishsense_lite.jobs.detect_slate_for_dives import DetectSlateForDives
 from fishsense_lite.jobs.preprocess import Preprocess
 from fishsense_lite.jobs.preprocess_with_laser import PreprocessWithLaser
 
@@ -21,6 +22,7 @@ def main():
         description="The command line tool for processing data from the FishSense Lite product line.",
     )
 
+    cli.register_job_type(DetectSlateForDives)
     cli.register_job_type(Preprocess)
     cli.register_job_type(PreprocessWithLaser)
 
