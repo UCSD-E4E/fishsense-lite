@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Dict, Iterable, List, Set, Tuple
+from typing import Dict, Iterable, List, Tuple
 
 import psycopg
 from fishsense_common.scheduling.arguments import argument
@@ -39,20 +39,20 @@ def get_slate_names(connection_string: PSqlConnectionString) -> Dict[str, str]:
 
 def execute(
     dive: Path, connection_string: PSqlConnectionString
-) -> Tuple[Path, Set[str]]:
-    possible_slate_names: Set[str] = set()
+) -> Tuple[Path, Dict[str, int]]:
+    possible_slate_names: Dict[str, int] = dict()
     slate_names = {n: Pdf(f) for n, f in get_slate_names(connection_string).items()}
 
     for image_file in dive.glob("*.ORF"):
         img = img_as_ubyte(process_raw(image_file))
 
         for slate_name, pdf in slate_names.items():
-            if slate_name in possible_slate_names:
-                continue
-
             slate_detector = SlateDetector(img, pdf)
             if slate_detector.is_valid():
-                possible_slate_names.add(slate_name)
+                if slate_name not in possible_slate_names:
+                    possible_slate_names[slate_name] = 0
+
+                possible_slate_names[slate_name] += 1
 
     return dive, possible_slate_names
 
@@ -126,8 +126,8 @@ class DetectSlateForDives(RayJob):
 
         return ((dive, psql_connection_string) for dive in dives)
 
-    def epiloge(self, results: Iterable[Tuple[Path, Set[str]]]):
-        dive_results: Dict[str, Set[str]] = {}
+    def epiloge(self, results: Iterable[Tuple[Path, Dict[str, int]]]):
+        dive_results: Dict[str, Dict[str, int]] = {}
         output = Path(self.output_path) / "slate_names.json"
 
         for dive, slate_names in results:
