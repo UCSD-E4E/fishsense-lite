@@ -33,7 +33,7 @@
             "justMyCode": false,
             "args": [
                 "run-jobs",
-                "./job_definition_examples/preprocess_with_laser.json"
+                "./job_definition_examples/preprocess_with_laser.yaml"
             ]
         }
         // {

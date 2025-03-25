@@ -1,0 +1,9 @@
+jobs:
+  - display_name: Preprocess with Laser
+    job_name: preprocess_with_laser
+    parameters:
+      data:
+        - demo/data/*.ORF
+      lens-calibration: "./demo/data/lens-calibration.pkg"
+      psql-connection-string: "postgress://ccrutchf@fabricant.ucsd.edu/postgres"
+      output: "./demo/data"
