@@ -61,7 +61,7 @@ class DetectSlateForDives(RayJob):
 
     @property
     def job_count(self) -> int:
-        raise NotImplementedError
+        return len(self.dives)
 
     @property
     def description(self):
