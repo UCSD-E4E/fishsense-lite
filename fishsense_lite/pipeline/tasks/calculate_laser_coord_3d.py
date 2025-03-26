@@ -21,7 +21,8 @@ def calculate_laser_coord_3d(
     debug_path: Path,
 ) -> np.ndarray[float]:
     if (
-        img is None
+        input_file is None
+        or img is None
         or pdf is None
         or laser_image_coords is None
         or lens_calibration is None
