@@ -126,7 +126,7 @@ class DetectSlateForDives(RayJob):
 
         return ((dive, psql_connection_string) for dive in dives)
 
-    def epiloge(self, results: Iterable[Tuple[Path, Dict[str, int]]]):
+    def epilogue(self, results: Iterable[Tuple[Path, Dict[str, int]]]):
         dive_results: Dict[str, Dict[str, int]] = {}
         output = Path(self.output_path) / "slate_names.json"
 

@@ -121,6 +121,6 @@ class Preprocess(RayJob):
             for f in files
         )
 
-    def epiloge(self, results: Iterable[Any]):
+    def epilogue(self, results: Iterable[Any]):
         # Hack to force processing
         _ = list(results)
