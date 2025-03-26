@@ -2665,7 +2665,7 @@ transformers = ">=4.48.3,<5.0.0"
 type = "git"
 url = "https://github.com/UCSD-E4E/pyFishSenseDev.git"
 reference = "HEAD"
-resolved_reference = "76782a94ff66fd0e9dd07ad944a3ed064db0cf35"
+resolved_reference = "cebbdbe36656e8cc8a3680cf277f713606fbe6e8"
 
 [[package]]
 name = "pygments"
