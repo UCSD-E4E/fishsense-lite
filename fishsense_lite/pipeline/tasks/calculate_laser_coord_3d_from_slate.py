@@ -46,11 +46,19 @@ def calculate_laser_coord_3d_from_slate(
 
     template_matches, image_matches = slate_detector._get_template_matches()
 
+    rotation, _ = slate_detector._get_body_to_camera_space_transform(
+        lens_calibration.camera_matrix
+    )
+
     if debug_path is not None:
         plt.clf()
         viz2d.plot_images([pdf.image, img])
         viz2d.plot_matches(template_matches, image_matches, color="lime", lw=0.2)
-        viz2d.add_text(0, f"{len(template_matches)} matches", fs=20)
+        viz2d.add_text(
+            0,
+            f"{len(template_matches)} matches; up vector: {rotation @ np.array([0, 1, 0])}",
+            fs=20,
+        )
         plt.savefig((debug_path / f"matches_{png_name}"))
 
     laser_coord_3d = slate_detector.project_point_onto_plane_camera_space(
