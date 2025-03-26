@@ -16,6 +16,9 @@ def detect_laser(
 ) -> np.ndarray:
     laser_image_coords = laser_detector.find_laser(img)
 
+    if laser_detection is None:
+        return None
+
     png_name = input_file.name.replace("ORF", "PNG").replace("orf", "png")
     laser_detection_path = debug_path / f"detection_{png_name}"
     if laser_detection_path.exists():
