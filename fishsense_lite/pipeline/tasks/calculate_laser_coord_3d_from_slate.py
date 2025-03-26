@@ -58,7 +58,7 @@ def calculate_laser_coord_3d_from_slate(
         viz2d.plot_matches(template_matches, image_matches, color="lime", lw=0.2)
         viz2d.add_text(
             0,
-            f"{len(template_matches)} matches; up vector: {rotation @ np.array([0, 1, 0])}",
+            f"{len(template_matches)} matches; up vector: {np.round(rotation @ np.array([0, 1, 0]) * 100.0) / 100.0}",
             fs=20,
         )
         plt.savefig((debug_path / f"matches_{png_name}"))
