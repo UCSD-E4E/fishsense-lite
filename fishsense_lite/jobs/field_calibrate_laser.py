@@ -140,6 +140,15 @@ class FieldCalibrateLaser(RayJob):
     def debug_path(self, value: str):
         self.__debug_path = value
 
+    @property
+    @argument("rotate-pdf", default=False, help="Rotate the PDF 180 degrees.")
+    def rotate_pdf(self) -> bool:
+        return self.__rotate_pdf
+
+    @rotate_pdf.setter
+    def rotate_pdf(self, value: bool):
+        self.__rotate_pdf = value
+
     def __init__(self, job_definition, vram_mb=1536):
         self.__data: List[str] = None
         self.__lens_calibration: str = None
@@ -148,6 +157,7 @@ class FieldCalibrateLaser(RayJob):
         self.__pdf: str = None
         self.__output_path: str = None
         self.__debug_path: str = None
+        self.__rotate_pdf: bool = False
 
         super().__init__(job_definition, execute, vram_mb)
 
@@ -169,7 +179,8 @@ class FieldCalibrateLaser(RayJob):
             self.psql_connection_string
         )
 
-        pdf = Pdf(Path(self.pdf))
+        rotation = 180 if self.rotate_pdf else 0
+        pdf = Pdf(Path(self.pdf), rotation_degree=rotation)
 
         return (
             (
