@@ -19,7 +19,7 @@ def detect_laser(
 
     laser_image_coords = laser_detector.find_laser(img)
 
-    if laser_detection is None:
+    if laser_image_coords is None:
         return None
 
     if debug_path is not None:
