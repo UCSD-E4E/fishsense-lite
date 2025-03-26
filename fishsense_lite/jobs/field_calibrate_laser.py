@@ -9,6 +9,9 @@ from fishsense_common.scheduling.ray_job import RayJob
 from pyfishsensedev.calibration import LaserCalibration, LensCalibration
 from pyfishsensedev.image.pdf import Pdf
 
+from fishsense_lite.pipeline.tasks.calculate_laser_coord_3d import (
+    calculate_laser_coord_3d,
+)
 from fishsense_lite.pipeline.tasks.detect_laser import detect_laser
 from fishsense_lite.pipeline.tasks.get_laser_detector import get_laser_detector
 from fishsense_lite.pipeline.tasks.image_rectifier import image_rectifier
@@ -29,8 +32,9 @@ def execute(
         make_debug_path,
         process_raw,
         image_rectifier,
-        detect_laser,
         get_laser_detector,
+        detect_laser,
+        calculate_laser_coord_3d,
         return_name="laser_coord_3d",
     )
 
