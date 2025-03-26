@@ -23,10 +23,10 @@ def execute(
     laser_labels_path: Path,
     connection_string: PSqlConnectionString,
     pdf: Pdf,
-    # debug_root: Path,
+    debug_root: Path,
 ) -> np.ndarray[float]:
     pipeline = Pipeline(
-        # make_debug_path,
+        make_debug_path,
         process_raw,
         image_rectifier,
         detect_laser,
@@ -40,10 +40,8 @@ def execute(
         laser_labels_path=laser_labels_path,
         connection_string=connection_string,
         pdf=pdf,
-        # debug_root=debug_root,
+        debug_root=debug_root,
     )
-
-    # png_name = input_file.name.replace("ORF", "PNG").replace("orf", "png")
 
 
 class FieldCalibrateLaser(RayJob):
@@ -129,6 +127,15 @@ class FieldCalibrateLaser(RayJob):
     def output_path(self, value: str):
         self.__output_path = value
 
+    @property
+    @argument("debug-path", help="Sets the debug path for storing debug images.")
+    def debug_path(self) -> str:
+        return self.__debug_path
+
+    @debug_path.setter
+    def debug_path(self, value: str):
+        self.__debug_path = value
+
     def __init__(self, job_definition, vram_mb=1536):
         self.__data: List[str] = None
         self.__lens_calibration: str = None
@@ -136,10 +143,16 @@ class FieldCalibrateLaser(RayJob):
         self.__psql_connection_string: str = None
         self.__pdf: str = None
         self.__output_path: str = None
+        self.__debug_path: str = None
 
         super().__init__(job_definition, execute, vram_mb)
 
     def prologue(self):
+        if self.debug_path is None:
+            self.debug_path = ".debug"
+
+        debug_path = Path(self.debug_path)
+
         files = {Path(f).absolute() for g in self.data for f in glob(g, recursive=True)}
         lens_calibration = LensCalibration()
         lens_calibration.load(Path(self.lens_calibration))
@@ -155,7 +168,14 @@ class FieldCalibrateLaser(RayJob):
         pdf = Pdf(Path(self.pdf))
 
         return (
-            (f, lens_calibration, laser_labels_path, psql_connection_string, pdf)
+            (
+                f,
+                lens_calibration,
+                laser_labels_path,
+                psql_connection_string,
+                pdf,
+                debug_path,
+            )
             for f in files
         )
 

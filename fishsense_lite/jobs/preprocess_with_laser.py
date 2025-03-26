@@ -13,6 +13,7 @@ from fishsense_lite.pipeline.tasks.detect_laser import detect_laser
 from fishsense_lite.pipeline.tasks.display_laser import display_laser
 from fishsense_lite.pipeline.tasks.get_laser_detector import get_laser_detector
 from fishsense_lite.pipeline.tasks.image_rectifier import image_rectifier
+from fishsense_lite.pipeline.tasks.make_debug_path import make_debug_path
 from fishsense_lite.pipeline.tasks.process_raw import process_raw
 from fishsense_lite.pipeline.tasks.save_output import save_output
 from fishsense_lite.utils import (
@@ -30,9 +31,11 @@ def execute(
     root: Path,
     output: Path,
     format: str,
+    debug_root: Path,
 ):
 
     pipeline = Pipeline(
+        make_debug_path,
         process_raw,
         image_rectifier,
         get_laser_detector,
@@ -49,6 +52,7 @@ def execute(
         root=root,
         output=output,
         format=format,
+        debug_root=debug_root,
     )
 
 
@@ -135,6 +139,15 @@ class PreprocessWithLaser(RayJob):
     def psql_connection_string(self, value: str):
         self.__psql_connection_string = value
 
+    @property
+    @argument("debug-path", help="Sets the debug path for storing debug images.")
+    def debug_path(self) -> str:
+        return self.__debug_path
+
+    @debug_path.setter
+    def debug_path(self, value: str):
+        self.__debug_path = value
+
     def __init__(self, job_defintion: JobDefinition):
         self.__data: List[str] = None
         self.__lens_calibration: str = None
@@ -142,10 +155,16 @@ class PreprocessWithLaser(RayJob):
         self.__format: str = None
         self.__laser_labels: str = None
         self.__psql_connection_string: str = None
+        self.__debug_path: str = None
 
         super().__init__(job_defintion, execute, vram_mb=615)
 
     def prologue(self) -> Iterable[Iterable[Any]]:
+        if self.debug_path is None:
+            self.debug_path = ".debug"
+
+        debug_path = Path(self.debug_path)
+
         files = {Path(f).absolute() for g in self.data for f in glob(g, recursive=True)}
 
         # Find the singular path that defines the root of all of our data.
@@ -173,6 +192,7 @@ class PreprocessWithLaser(RayJob):
                 root,
                 output,
                 self.format,
+                debug_path,
             )
             for f in files
         )
