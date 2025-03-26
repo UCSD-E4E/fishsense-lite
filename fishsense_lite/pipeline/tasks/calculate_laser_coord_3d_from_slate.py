@@ -12,7 +12,7 @@ from skimage.util import img_as_ubyte
 
 
 @task(output_name="laser_coord_3d")
-def calculate_laser_coord_3d(
+def calculate_laser_coord_3d_from_slate(
     input_file: Path,
     img: np.ndarray[float],
     pdf: Pdf,
