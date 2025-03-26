@@ -32,7 +32,7 @@ def detect_laser(
             img_as_ubyte(img),
             np.round(laser_image_coords).astype(int),
             radius=5,
-            color=(0, 255, 0),
+            color=(0, 255, 255),
             thickness=-1,
         )
         cv2.imwrite(laser_detection_path.absolute().as_posix(), laser_detection)
