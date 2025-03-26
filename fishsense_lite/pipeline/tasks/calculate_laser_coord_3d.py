@@ -29,15 +29,16 @@ def calculate_laser_coord_3d(
     ):
         return None
 
-    png_name = input_file.name.replace("ORF", "PNG").replace("orf", "png")
+    if debug_path is not None:
+        png_name = input_file.name.replace("ORF", "PNG").replace("orf", "png")
 
-    f, axarr = plt.subplots(1, 2)
-    axarr[0].imshow(pdf.image)
-    axarr[1].imshow(img)
-    f.savefig((debug_path / f"prematch_{png_name}"))
-    f.show()
+        f, axarr = plt.subplots(1, 2)
+        axarr[0].imshow(pdf.image)
+        axarr[1].imshow(img)
+        f.savefig((debug_path / f"prematch_{png_name}"))
+        f.show()
 
-    cv2.imwrite((debug_path / f"img_{png_name}").as_posix(), img_as_ubyte(img))
+        cv2.imwrite((debug_path / f"img_{png_name}").as_posix(), img_as_ubyte(img))
 
     slate_detector = SlateDetector(img_as_ubyte(img), pdf)
     if not slate_detector.is_valid():
@@ -45,11 +46,12 @@ def calculate_laser_coord_3d(
 
     template_matches, image_matches = slate_detector._get_template_matches()
 
-    plt.clf()
-    viz2d.plot_images([pdf.image, img])
-    viz2d.plot_matches(template_matches, image_matches, color="lime", lw=0.2)
-    viz2d.add_text(0, f"{len(template_matches)} matches", fs=20)
-    plt.savefig((debug_path / f"matches_{png_name}"))
+    if debug_path is not None:
+        plt.clf()
+        viz2d.plot_images([pdf.image, img])
+        viz2d.plot_matches(template_matches, image_matches, color="lime", lw=0.2)
+        viz2d.add_text(0, f"{len(template_matches)} matches", fs=20)
+        plt.savefig((debug_path / f"matches_{png_name}"))
 
     laser_coord_3d = slate_detector.project_point_onto_plane_camera_space(
         laser_image_coords,
