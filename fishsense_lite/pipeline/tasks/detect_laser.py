@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 import cv2
@@ -23,7 +24,9 @@ def detect_laser(
         return None
 
     if debug_path is not None:
-        png_name = input_file.name.replace("ORF", "PNG").replace("orf", "png")
+        hash = hashlib.md5(input_file.read_bytes()).hexdigest()
+        png_name = f"{hash}.png"
+
         laser_detection_path = debug_path / f"detection_{png_name}"
         if laser_detection_path.exists():
             laser_detection_path.unlink()

@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 import cv2
@@ -30,7 +31,8 @@ def calculate_laser_coord_3d_from_slate(
         return None
 
     if debug_path is not None:
-        png_name = input_file.name.replace("ORF", "PNG").replace("orf", "png")
+        hash = hashlib.md5(input_file.read_bytes()).hexdigest()
+        png_name = f"{hash}.png"
 
         f, axarr = plt.subplots(1, 2)
         axarr[0].imshow(pdf.image)
