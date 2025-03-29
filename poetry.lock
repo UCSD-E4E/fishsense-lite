@@ -713,7 +713,6 @@ develop = false
 
 [package.dependencies]
 cupy-cuda12x = ">=13.4.1,<14.0.0"
-opencv-python = ">=4.11.0.86,<5.0.0.0"
 platformdirs = ">=4.3.6,<5.0.0"
 pyyaml = ">=6.0.2,<7.0.0"
 ray = ">=2.43.0,<3.0.0"
@@ -725,7 +724,7 @@ wakepy = ">=0.10.1,<0.11.0"
 type = "git"
 url = "https://github.com/UCSD-E4E/fishsense-common.git"
 reference = "HEAD"
-resolved_reference = "2c97ab0b2a72d10165bd4257cb3c481c186d6f86"
+resolved_reference = "885c2853cdc8a3cfcf0364470a2bb19a4295fcfd"
 
 [[package]]
 name = "flatbuffers"
