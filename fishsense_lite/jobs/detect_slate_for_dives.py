@@ -6,6 +6,7 @@ import psycopg
 from fishsense_common.scheduling.arguments import argument
 from fishsense_common.scheduling.job_definition import JobDefinition
 from fishsense_common.scheduling.ray_job import RayJob
+from fishsense_common.utils.cuda import set_opencv_opencl_device
 from pyfishsensedev.image.pdf import Pdf
 from pyfishsensedev.plane_detector.slate_detector import SlateDetector
 from skimage.util import img_as_ubyte
@@ -40,6 +41,7 @@ def get_slate_names(connection_string: PSqlConnectionString) -> Dict[str, str]:
 def execute(
     dive: Path, connection_string: PSqlConnectionString
 ) -> Tuple[Path, Dict[str, int]]:
+    set_opencv_opencl_device()
     possible_slate_names: Dict[str, int] = dict()
     slate_names = {n: Pdf(f) for n, f in get_slate_names(connection_string).items()}
 

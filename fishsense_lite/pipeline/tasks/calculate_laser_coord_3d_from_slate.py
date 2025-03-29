@@ -19,6 +19,7 @@ def calculate_laser_coord_3d_from_slate(
     pdf: Pdf,
     laser_image_coords: np.ndarray[int],
     lens_calibration: LensCalibration,
+    device: str,
     debug_path: Path,
 ) -> np.ndarray[float]:
     if (
@@ -42,7 +43,7 @@ def calculate_laser_coord_3d_from_slate(
 
         cv2.imwrite((debug_path / f"img_{png_name}").as_posix(), img_as_ubyte(img))
 
-    slate_detector = SlateDetector(img_as_ubyte(img), pdf)
+    slate_detector = SlateDetector(img_as_ubyte(img), pdf, device)
     if not slate_detector.is_valid():
         return None
 

@@ -7,6 +7,7 @@ from fishsense_common.pipeline.pipeline import Pipeline
 from fishsense_common.scheduling.arguments import argument
 from fishsense_common.scheduling.job_definition import JobDefinition
 from fishsense_common.scheduling.ray_job import RayJob
+from fishsense_common.utils.cuda import set_opencv_opencl_device
 from pyfishsensedev.calibration import LensCalibration
 
 from fishsense_lite.pipeline.tasks.detect_laser import detect_laser
@@ -33,7 +34,7 @@ def execute(
     format: str,
     debug_root: Path,
 ):
-
+    set_opencv_opencl_device()
     pipeline = Pipeline(
         make_debug_path,
         process_raw,

@@ -6,6 +6,7 @@ import numpy as np
 from fishsense_common.pipeline.pipeline import Pipeline
 from fishsense_common.scheduling.arguments import argument
 from fishsense_common.scheduling.ray_job import RayJob
+from fishsense_common.utils.cuda import get_pytorch_device, set_opencv_opencl_device
 from pyfishsensedev.calibration import LaserCalibration, LensCalibration
 from pyfishsensedev.image.pdf import Pdf
 
@@ -28,6 +29,7 @@ def execute(
     pdf: Pdf,
     debug_root: Path,
 ) -> np.ndarray[float]:
+    set_opencv_opencl_device()
     pipeline = Pipeline(
         make_debug_path,
         process_raw,
@@ -44,6 +46,7 @@ def execute(
         laser_labels_path=laser_labels_path,
         connection_string=connection_string,
         pdf=pdf,
+        device=get_pytorch_device(),
         debug_root=debug_root,
     )
 
