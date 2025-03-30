@@ -200,8 +200,8 @@ class FieldCalibrateLaser(RayJob):
     def epilogue(self, results: Iterable[np.ndarray[float]]):
         laser_points_3d = [p for p in results if p is not None]
 
-        if len(laser_points_3d) == 0:
-            print("No valid laser points found.")
+        if len(laser_points_3d) < 4:
+            print(f"Not enough valid points found. Only found {len(laser_points_3d)}.")
             return
 
         laser_points_3d.sort(key=lambda x: x[2])
