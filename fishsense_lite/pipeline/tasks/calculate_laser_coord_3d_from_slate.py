@@ -52,7 +52,7 @@ def calculate_laser_coord_3d_from_slate(
         png_name = f"{hash}.png"
 
         plt.clf()
-        viz2d.plot_images([pdf.image, img[:, :, ::-1]])
+        viz2d.plot_images([slate_detector.pdf.image, img[:, :, ::-1]])
         viz2d.plot_matches(template_matches, image_matches, color="lime", lw=0.2)
         viz2d.add_text(
             0,
