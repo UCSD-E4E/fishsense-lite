@@ -31,18 +31,6 @@ def calculate_laser_coord_3d_from_slate(
     ):
         return None
 
-    if debug_path is not None:
-        hash = hashlib.md5(input_file.read_bytes()).hexdigest()
-        png_name = f"{hash}.png"
-
-        f, axarr = plt.subplots(1, 2)
-        axarr[0].imshow(pdf.image)
-        axarr[1].imshow(img)
-        f.savefig((debug_path / f"prematch_{png_name}"))
-        f.show()
-
-        cv2.imwrite((debug_path / f"img_{png_name}").as_posix(), img_as_ubyte(img))
-
     slate_detector = SlateDetector(img_as_ubyte(img), pdf, device)
     if not slate_detector.is_valid():
         return None
@@ -54,8 +42,11 @@ def calculate_laser_coord_3d_from_slate(
     )
 
     if debug_path is not None:
+        hash = hashlib.md5(input_file.read_bytes()).hexdigest()
+        png_name = f"{hash}.png"
+
         plt.clf()
-        viz2d.plot_images([pdf.image, img])
+        viz2d.plot_images([pdf.image, img[:, :, ::-1]])
         viz2d.plot_matches(template_matches, image_matches, color="lime", lw=0.2)
         viz2d.add_text(
             0,
