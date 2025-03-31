@@ -27,6 +27,7 @@ def execute(
     laser_labels_path: Path,
     connection_string: PSqlConnectionString,
     pdf: Pdf,
+    try_multiple_slate_rotations: bool,
     debug_root: Path,
 ) -> np.ndarray[float]:
     set_opencv_opencl_device()
@@ -47,6 +48,7 @@ def execute(
         connection_string=connection_string,
         pdf=pdf,
         device=get_pytorch_device(),
+        try_multiple_slate_rotations=try_multiple_slate_rotations,
         debug_root=debug_root,
     )
 
@@ -144,7 +146,7 @@ class FieldCalibrateLaser(RayJob):
         self.__debug_path = value
 
     @property
-    @argument("rotate-pdf", default=False, help="Rotate the PDF 180 degrees.")
+    @argument("rotate-pdf", default=None, help="Rotate the PDF 180 degrees.")
     def rotate_pdf(self) -> bool:
         return self.__rotate_pdf
 
@@ -160,7 +162,7 @@ class FieldCalibrateLaser(RayJob):
         self.__pdf: str = None
         self.__output_path: str = None
         self.__debug_path: str = None
-        self.__rotate_pdf: bool = False
+        self.__rotate_pdf: bool = None
 
         super().__init__(job_definition, execute, vram_mb)
 
@@ -182,8 +184,10 @@ class FieldCalibrateLaser(RayJob):
             self.psql_connection_string
         )
 
-        rotation = 180 if self.rotate_pdf else 0
-        pdf = Pdf(Path(self.pdf), rotation_degree=rotation)
+        try_multiple_slate_rotations = self.rotate_pdf is not None
+        pdf = Pdf(Path(self.pdf))
+        if self.rotate_pdf:
+            pdf.rotate(180)
 
         return (
             (
@@ -192,6 +196,7 @@ class FieldCalibrateLaser(RayJob):
                 laser_labels_path,
                 psql_connection_string,
                 pdf,
+                try_multiple_slate_rotations,
                 debug_path,
             )
             for f in files

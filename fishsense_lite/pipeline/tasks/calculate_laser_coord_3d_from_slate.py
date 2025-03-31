@@ -20,6 +20,7 @@ def calculate_laser_coord_3d_from_slate(
     laser_image_coords: np.ndarray[int],
     lens_calibration: LensCalibration,
     device: str,
+    try_multiple_slate_rotations: bool,
     debug_path: Path,
 ) -> np.ndarray[float]:
     if (
@@ -31,7 +32,12 @@ def calculate_laser_coord_3d_from_slate(
     ):
         return None
 
-    slate_detector = SlateDetector(img_as_ubyte(img), pdf, device)
+    slate_detector = SlateDetector(
+        img_as_ubyte(img),
+        pdf,
+        device,
+        try_multiple_slate_rotations=try_multiple_slate_rotations,
+    )
     if not slate_detector.is_valid():
         return None
 
