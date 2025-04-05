@@ -1,7 +1,6 @@
 import hashlib
 from pathlib import Path
 
-import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 from fishsense_common.pipeline.decorators import task
@@ -35,6 +34,7 @@ def calculate_laser_coord_3d_from_slate(
     slate_detector = SlateDetector(
         img_as_ubyte(img),
         pdf,
+        lens_calibration,
         device,
         try_multiple_slate_rotations=try_multiple_slate_rotations,
     )
@@ -43,9 +43,7 @@ def calculate_laser_coord_3d_from_slate(
 
     template_matches, image_matches = slate_detector._get_template_matches()
 
-    rotation, _ = slate_detector._get_body_to_camera_space_transform(
-        lens_calibration.camera_matrix
-    )
+    rotation, _ = slate_detector._get_body_to_camera_space_transform()
 
     if debug_path is not None:
         hash = hashlib.md5(input_file.read_bytes()).hexdigest()
@@ -62,9 +60,7 @@ def calculate_laser_coord_3d_from_slate(
         plt.savefig((debug_path / f"matches_{png_name}"))
 
     laser_coord_3d = slate_detector.project_point_onto_plane_camera_space(
-        laser_image_coords,
-        lens_calibration.camera_matrix,
-        lens_calibration.inverted_camera_matrix,
+        laser_image_coords
     )
 
     if np.any(np.isnan(laser_coord_3d)):
