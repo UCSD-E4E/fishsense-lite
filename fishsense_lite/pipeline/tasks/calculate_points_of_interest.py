@@ -8,7 +8,7 @@ from pyfishsensedev.points_of_interest.points_of_interest_detector import (
 )
 
 
-@task(output_name="left_point, right_point")
+@task(output_name=("left_point", "right_point"))
 def calculate_points_of_interest(
     points_of_interest_detector: PointsOfInterestDetector,
     segmentation_mask: np.ndarray,
