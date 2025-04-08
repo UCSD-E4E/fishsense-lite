@@ -261,6 +261,4 @@ class Process(RayJob):
     def epilogue(self, results: Iterable[Tuple[Path, str, float]]) -> None:
         with Database(Path(self.output_path)) as database:
             for file, result_status, length in results:
-                print(file, result_status, length)
-
                 database.insert_data(file, result_status, length)

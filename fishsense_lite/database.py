@@ -90,14 +90,14 @@ class Database:
         self._connection.commit()
 
     @backoff.on_exception(backoff.expo, OperationalError)
-    def insert_data(self, file: Path, result_status: ResultStatus, length: float):
+    def insert_data(self, file: Path, result_status: str, length: float):
         self._cursor.execute(
             "INSERT INTO data VALUES (?, ?, ?, ?, ?)",
             (
                 datetime.datetime.now(datetime.UTC),
                 file.as_posix(),
                 hashlib.md5(file.read_bytes()).hexdigest(),
-                result_status.name,
+                result_status,
                 length,
             ),
         )
