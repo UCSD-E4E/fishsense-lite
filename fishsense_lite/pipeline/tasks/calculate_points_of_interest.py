@@ -16,6 +16,6 @@ def calculate_points_of_interest(
     left, right = points_of_interest_detector.find_points_of_interest(segmentation_mask)
 
     if left is None or right is None:
-        error("INVALID_POINTS_OF_INTEREST")
+        return error("INVALID_POINTS_OF_INTEREST")
 
     return ok((left, right))
