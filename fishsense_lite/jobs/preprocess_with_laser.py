@@ -45,10 +45,15 @@ def execute(
         save_output,
     )
 
+    use_sql_for_laser_labels = (
+        connection_string is not None and laser_labels_path is None
+    )
+
     pipeline(
         input_file=input_file,
         lens_calibration=lens_calibration,
         laser_labels_path=laser_labels_path,
+        use_sql_for_laser_labels=use_sql_for_laser_labels,
         connection_string=connection_string,
         root=root,
         output=output,

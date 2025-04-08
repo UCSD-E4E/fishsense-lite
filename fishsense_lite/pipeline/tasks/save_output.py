@@ -12,9 +12,6 @@ from fishsense_lite.utils import get_output_file
 def save_output(
     img: np.ndarray[float], input_file: Path, root: Path, output: Path, format: str
 ):
-    if img is None:
-        return None
-
     output_file = get_output_file(input_file, root, output, format)
 
     output_file.parent.mkdir(parents=True, exist_ok=True)

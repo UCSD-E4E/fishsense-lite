@@ -6,6 +6,7 @@ from fishsense_lite.jobs.detect_slate_for_dives import DetectSlateForDives
 from fishsense_lite.jobs.field_calibrate_laser import FieldCalibrateLaser
 from fishsense_lite.jobs.preprocess import Preprocess
 from fishsense_lite.jobs.preprocess_with_laser import PreprocessWithLaser
+from fishsense_lite.jobs.process import Process
 
 # from fishsense_lite.commands.calibrate_laser import CalibrateLaser
 # from fishsense_lite.commands.calibrate_lens import CalibrateLens
@@ -27,6 +28,7 @@ def main():
     cli.register_job_type(FieldCalibrateLaser)
     cli.register_job_type(Preprocess)
     cli.register_job_type(PreprocessWithLaser)
+    cli.register_job_type(Process)
 
     # cli.add(CalibrateLaser())
     # cli.add(CalibrateLens())

@@ -12,11 +12,14 @@ from fishsense_lite.utils import PSqlConnectionString
 
 @task(output_name="laser_detector")
 def get_laser_detector(
-    input_file: Path, laser_labels_path: Path, connection_string: PSqlConnectionString
+    input_file: Path,
+    laser_labels_path: Path,
+    use_sql_for_laser_labels: bool,
+    connection_string: PSqlConnectionString,
 ) -> LaserDetector:
     if laser_labels_path is not None:
         return LabelStudioLaserDetector(input_file, laser_labels_path)
-    elif connection_string is not None:
+    elif connection_string is not None and use_sql_for_laser_labels:
         return PSqlLabelDetector(
             input_file,
             connection_string.dbname,

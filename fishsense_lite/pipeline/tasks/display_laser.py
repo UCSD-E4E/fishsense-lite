@@ -8,9 +8,6 @@ from skimage.util import img_as_float, img_as_ubyte
 def display_laser(
     img: np.ndarray[float], laser_image_coords: np.ndarray[int]
 ) -> np.ndarray[float]:
-    if img is None or laser_image_coords is None:
-        return None
-
     return img_as_float(
         cv2.circle(
             img_as_ubyte(img),

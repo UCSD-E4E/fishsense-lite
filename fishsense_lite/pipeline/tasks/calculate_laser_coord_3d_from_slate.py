@@ -4,6 +4,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from fishsense_common.pipeline.decorators import task
+from fishsense_common.pipeline.status import error, ok
 from pyfishsensedev.calibration import LensCalibration
 from pyfishsensedev.image.pdf import Pdf
 from pyfishsensedev.library.homography import viz2d
@@ -22,15 +23,6 @@ def calculate_laser_coord_3d_from_slate(
     try_multiple_slate_rotations: bool,
     debug_path: Path,
 ) -> np.ndarray[float]:
-    if (
-        input_file is None
-        or img is None
-        or pdf is None
-        or laser_image_coords is None
-        or lens_calibration is None
-    ):
-        return None
-
     slate_detector = SlateDetector(
         img_as_ubyte(img),
         pdf,
@@ -39,7 +31,7 @@ def calculate_laser_coord_3d_from_slate(
         try_multiple_slate_rotations=try_multiple_slate_rotations,
     )
     if not slate_detector.is_valid():
-        return None
+        return error("INVALID_STATE")
 
     template_matches, image_matches = slate_detector._get_template_matches()
 
@@ -64,6 +56,6 @@ def calculate_laser_coord_3d_from_slate(
     )
 
     if np.any(np.isnan(laser_coord_3d)):
-        return None
+        return error("INVALID_LASER_3D_COORDINATES")
 
-    return laser_coord_3d
+    return ok(laser_coord_3d)

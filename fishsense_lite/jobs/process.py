@@ -1,22 +1,29 @@
 from glob import glob
 from pathlib import Path
-from typing import Iterable, List
+from typing import Any, Iterable, List, Tuple
 
-import numpy as np
 from fishsense_common.pipeline.pipeline import Pipeline
 from fishsense_common.scheduling.arguments import argument
+from fishsense_common.scheduling.job_definition import JobDefinition
 from fishsense_common.scheduling.ray_job import RayJob
-from fishsense_common.utils.cuda import get_pytorch_device, set_opencv_opencl_device
+from fishsense_common.utils.cuda import set_opencv_opencl_device
 from pyfishsensedev.calibration import LaserCalibration, LensCalibration
-from pyfishsensedev.image.pdf import Pdf
 
-from fishsense_lite.pipeline.tasks.calculate_laser_coord_3d_from_slate import (
-    calculate_laser_coord_3d_from_slate,
+from fishsense_lite.database import Database
+from fishsense_lite.pipeline.tasks.calculate_length import calculate_length
+from fishsense_lite.pipeline.tasks.calculate_points_of_interest import (
+    calculate_points_of_interest,
+)
+from fishsense_lite.pipeline.tasks.calculate_segmentation_mask import (
+    calculate_segmentation_mask,
 )
 from fishsense_lite.pipeline.tasks.detect_laser import detect_laser
 from fishsense_lite.pipeline.tasks.get_laser_detector import get_laser_detector
+from fishsense_lite.pipeline.tasks.get_points_of_interest_detector import (
+    get_points_of_interest_detector,
+)
+from fishsense_lite.pipeline.tasks.get_segmentation_model import get_segmentation_model
 from fishsense_lite.pipeline.tasks.image_rectifier import image_rectifier
-from fishsense_lite.pipeline.tasks.make_debug_path import make_debug_path
 from fishsense_lite.pipeline.tasks.process_raw import process_raw
 from fishsense_lite.utils import PSqlConnectionString, parse_psql_connection_string
 
@@ -24,44 +31,48 @@ from fishsense_lite.utils import PSqlConnectionString, parse_psql_connection_str
 def execute(
     input_file: Path,
     lens_calibration: LensCalibration,
+    laser_calibration: LaserCalibration,
     laser_labels_path: Path,
+    head_tail_labels_path: Path,
     connection_string: PSqlConnectionString,
-    pdf: Pdf,
-    try_multiple_slate_rotations: bool,
+    use_sql_for_laser_labels: bool,
+    use_sql_for_head_tail_labels: bool,
     debug_root: Path,
-) -> np.ndarray[float]:
+) -> Tuple[Path, str, float]:
     set_opencv_opencl_device()
     pipeline = Pipeline(
-        make_debug_path,
         process_raw,
         image_rectifier,
         get_laser_detector,
         detect_laser,
-        calculate_laser_coord_3d_from_slate,
-        return_name="laser_coord_3d",
+        get_segmentation_model,
+        calculate_segmentation_mask,
+        get_points_of_interest_detector,
+        calculate_points_of_interest,
+        calculate_length,
     )
 
-    use_sql_for_laser_labels = (
-        connection_string is not None and laser_labels_path is None
-    )
-
-    _, result = pipeline(
+    statuses, result = pipeline(
         input_file=input_file,
         lens_calibration=lens_calibration,
         laser_labels_path=laser_labels_path,
+        laser_calibration=laser_calibration,
+        laser_labels_path=laser_labels_path,
+        head_tail_labels_path=head_tail_labels_path,
         use_sql_for_laser_labels=use_sql_for_laser_labels,
+        use_sql_for_head_tail_labels=use_sql_for_head_tail_labels,
         connection_string=connection_string,
-        pdf=pdf,
-        device=get_pytorch_device(),
-        try_multiple_slate_rotations=try_multiple_slate_rotations,
         debug_root=debug_root,
     )
 
-    return result
+    if any(s for s in statuses):
+        return input_file, "SUCCESS", result
+    else:
+        return input_file, [k for k, v in statuses.items() if not v][0], result
 
 
-class FieldCalibrateLaser(RayJob):
-    name = "field_calibrate_laser"
+class Process(RayJob):
+    name = "process"
 
     @property
     def job_count(self) -> int:
@@ -69,7 +80,7 @@ class FieldCalibrateLaser(RayJob):
 
     @property
     def description(self) -> str:
-        return "Perform the field calibration method."
+        return "Process data from the FishSense Lite product line."
 
     @property
     @argument("data", required=True, help="A glob that represents the data to process.")
@@ -95,6 +106,19 @@ class FieldCalibrateLaser(RayJob):
 
     @property
     @argument(
+        "laser-calibration",
+        required=True,
+        help="Laser calibration package for the FishSense Lite.",
+    )
+    def laser_calibration(self) -> str:
+        return self.__laser_calibration
+
+    @laser_calibration.setter
+    def laser_calibration(self, value: str):
+        self.__laser_calibration = value
+
+    @property
+    @argument(
         "laser-labels",
         help="The path to the laser labels export from Label Studio.",
     )
@@ -104,6 +128,18 @@ class FieldCalibrateLaser(RayJob):
     @laser_labels.setter
     def laser_labels(self, value: str):
         self.__laser_labels = value
+
+    @property
+    @argument(
+        "head-tail-labels",
+        help="The path to the head tail labels export from Label Studio.",
+    )
+    def head_tail_labels(self) -> str:
+        return self.__head_tail_labels
+
+    @head_tail_labels.setter
+    def head_tail_labels(self, value: str):
+        self.__head_tail_labels = value
 
     @property
     @argument(
@@ -119,16 +155,29 @@ class FieldCalibrateLaser(RayJob):
 
     @property
     @argument(
-        "pdf",
-        required=True,
-        help="The path to the PDF file.",
+        "use-sql-for-laser-labels",
+        default=False,
+        help="Use SQL for laser labels. This takes precedence over the laser labels path.",
     )
-    def pdf(self) -> str:
-        return self.__pdf
+    def use_sql_for_laser_labels(self) -> bool:
+        return self.__use_sql_for_laser_labels
 
-    @pdf.setter
-    def pdf(self, value: str):
-        self.__pdf = value
+    @use_sql_for_laser_labels.setter
+    def use_sql_for_laser_labels(self, value: bool):
+        self.__use_sql_for_laser_labels = value
+
+    @property
+    @argument(
+        "use-sql-for-head-tail-labels",
+        default=False,
+        help="Use SQL for head tail labels. This takes precedence over the head tail labels path.",
+    )
+    def use_sql_for_head_tail_labels(self) -> bool:
+        return self.__use_sql_for_head_tail_labels
+
+    @use_sql_for_head_tail_labels.setter
+    def use_sql_for_head_tail_labels(self, value: bool):
+        self.__use_sql_for_head_tail_labels = value
 
     @property
     @argument(
@@ -152,79 +201,58 @@ class FieldCalibrateLaser(RayJob):
     def debug_path(self, value: str):
         self.__debug_path = value
 
-    @property
-    @argument("rotate-pdf", default=None, help="Rotate the PDF 180 degrees.")
-    def rotate_pdf(self) -> bool:
-        return self.__rotate_pdf
-
-    @rotate_pdf.setter
-    def rotate_pdf(self, value: bool):
-        self.__rotate_pdf = value
-
-    def __init__(self, job_definition, vram_mb=1536):
+    def __init__(self, job_defintion: JobDefinition):
         self.__data: List[str] = None
         self.__lens_calibration: str = None
         self.__laser_labels: str = None
+        self.__head_tail_labels: str = None
         self.__psql_connection_string: str = None
-        self.__pdf: str = None
+        self.__use_sql_for_laser_labels: bool = False
+        self.__use_sql_for_head_tail_labels: bool = False
         self.__output_path: str = None
         self.__debug_path: str = None
-        self.__rotate_pdf: bool = None
 
-        super().__init__(job_definition, execute, vram_mb)
+        super().__init__(job_defintion, execute, vram_mb=1536)
 
-    def prologue(self):
+    def prologue(self) -> Iterable[Iterable[Any]]:
         if self.debug_path is None:
             self.debug_path = ".debug"
 
         debug_path = Path(self.debug_path)
 
         files = {Path(f).absolute() for g in self.data for f in glob(g, recursive=True)}
+
         lens_calibration = LensCalibration()
         lens_calibration.load(Path(self.lens_calibration))
 
-        laser_labels_path = (
-            Path(self.laser_labels) if self.laser_labels is not None else None
+        laser_calibration = LaserCalibration()
+        laser_calibration.load(Path(self.laser_calibration))
+
+        laser_labels_path = Path(self.laser_labels) if self.laser_labels else None
+        head_tail_labels_path = (
+            Path(self.head_tail_labels) if self.head_tail_labels else None
         )
 
         psql_connection_string = parse_psql_connection_string(
             self.psql_connection_string
         )
 
-        try_multiple_slate_rotations = self.rotate_pdf is not None
-        pdf = Pdf(Path(self.pdf))
-        if self.rotate_pdf:
-            pdf.rotate(180)
-
         return (
             (
                 f,
                 lens_calibration,
+                laser_calibration,
                 laser_labels_path,
+                head_tail_labels_path,
                 psql_connection_string,
-                pdf,
-                try_multiple_slate_rotations,
+                self.use_sql_for_laser_labels,
+                self.use_sql_for_head_tail_labels,
                 debug_path,
             )
             for f in files
         )
 
-    def epilogue(self, results: Iterable[np.ndarray[float]]):
-        laser_points_3d = [p for p in results if p is not None]
-
-        if len(laser_points_3d) < 4:
-            print(f"Not enough valid points found. Only found {len(laser_points_3d)}.")
-            return
-
-        laser_points_3d.sort(key=lambda x: x[2])
-        laser_points_3d = np.array(laser_points_3d)
-
-        laser_calibration = LaserCalibration()
-        laser_calibration.plane_calibrate(laser_points_3d)
-
-        output_path = Path(self.output_path)
-
-        if output_path.exists():
-            output_path.unlink()
-
-        laser_calibration.save(output_path)
+    def epilogue(self, results: Iterable[Tuple[Path, str, float]]) -> None:
+        with Database(Path(self.output_path)) as database:
+            for file, result_status, length in results:
+                database.insert_data(file, result_status, length)

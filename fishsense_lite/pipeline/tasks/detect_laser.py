@@ -4,6 +4,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 from fishsense_common.pipeline.decorators import task
+from fishsense_common.pipeline.status import error, ok
 from pyfishsensedev.laser.laser_detector import LaserDetector
 from skimage.util import img_as_ubyte
 
@@ -15,13 +16,10 @@ def detect_laser(
     laser_detector: LaserDetector,
     debug_path: Path,
 ) -> np.ndarray:
-    if img is None or laser_detector is None:
-        return None
-
     laser_image_coords = laser_detector.find_laser(img)
 
     if laser_image_coords is None:
-        return None
+        return error("INVALID_LASER_IMAGE_COORDINATES")
 
     if debug_path is not None:
         hash = hashlib.md5(input_file.read_bytes()).hexdigest()
@@ -40,4 +38,4 @@ def detect_laser(
         )
         cv2.imwrite(laser_detection_path.absolute().as_posix(), laser_detection)
 
-    return laser_image_coords
+    return ok(laser_image_coords)
