@@ -224,7 +224,7 @@ class Process(RayJob):
         lens_calibration_path = Path(self.lens_calibration)
         laser_calibration_path = Path(self.laser_calibration)
 
-        if not lens_calibration_path.exists() or not lens_calibration_path.is_file():
+        if not lens_calibration_path.exists() or not laser_calibration_path.exists():
             return ()
 
         lens_calibration = LensCalibration()
