@@ -55,7 +55,6 @@ def execute(
     statuses, result = pipeline(
         input_file=input_file,
         lens_calibration=lens_calibration,
-        laser_labels_path=laser_labels_path,
         laser_calibration=laser_calibration,
         laser_labels_path=laser_labels_path,
         head_tail_labels_path=head_tail_labels_path,
