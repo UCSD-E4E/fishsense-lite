@@ -52,9 +52,10 @@ def execute(
         get_points_of_interest_detector,
         calculate_points_of_interest,
         calculate_length,
+        return_name="length",
     )
 
-    statuses, result = pipeline(
+    status, result = pipeline(
         input_file=input_file,
         lens_calibration=lens_calibration,
         laser_calibration=laser_calibration,
@@ -66,10 +67,7 @@ def execute(
         debug_root=debug_root,
     )
 
-    if any(s for s in statuses):
-        return input_file, "SUCCESS", result
-    else:
-        return input_file, [k for k, v in statuses.items() if not v][0], result
+    return input_file, status, result
 
 
 class Process(RayJob):
@@ -227,6 +225,7 @@ class Process(RayJob):
         laser_calibration_path = Path(self.laser_calibration)
 
         if not lens_calibration_path.exists() or not laser_calibration_path.exists():
+            print("Lens calibration or laser calibration path does not exist.")
             return ()
 
         lens_calibration = LensCalibration()
@@ -261,7 +260,7 @@ class Process(RayJob):
 
     def epilogue(self, results: Iterable[Tuple[Path, str, float]]) -> None:
         with Database(Path(self.output_path)) as database:
-            for idx, (file, result_status, length) in enumerate(results):
-                print(idx, file, result_status, length)
+            for file, result_status, length in results:
+                print(file, result_status, length)
 
                 database.insert_data(file, result_status, length)
