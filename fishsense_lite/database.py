@@ -1,6 +1,7 @@
 """Module for accessing the sqlite database used to store the results."""
 
 import datetime
+import hashlib
 import importlib
 from os import makedirs
 from pathlib import Path
@@ -8,7 +9,6 @@ from sqlite3 import Connection, Cursor, OperationalError, connect
 from typing import Dict, Set
 
 import backoff
-import git
 
 from fishsense_lite.result_status import ResultStatus
 
@@ -54,20 +54,17 @@ class Database:
     def _create_data_table(self):
         self._cursor.execute(
             """CREATE TABLE IF NOT EXISTS data
-               (time text, file text, result text, length float)
+               (time text, file text, checksum text, result text, length float)
             """
         )
         self._connection.commit()
 
     @backoff.on_exception(backoff.expo, OperationalError)
     def _insert_start_metadata(self):
-        # repo = git.Repo(".")
-        # sha = repo.head.object.hexsha
 
         self.insert_metadata(
             {
                 "start_time": datetime.datetime.now(datetime.UTC),
-                # "git_commit": sha,
                 "version": importlib.metadata.version("fishsense_lite"),
             }
         )
@@ -95,10 +92,11 @@ class Database:
     @backoff.on_exception(backoff.expo, OperationalError)
     def insert_data(self, file: Path, result_status: ResultStatus, length: float):
         self._cursor.execute(
-            "INSERT INTO data VALUES (?, ?, ?, ?)",
+            "INSERT INTO data VALUES (?, ?, ?, ?, ?)",
             (
                 datetime.datetime.now(datetime.UTC),
                 file.as_posix(),
+                hashlib.md5(file.read_bytes()).hexdigest(),
                 result_status.name,
                 length,
             ),
