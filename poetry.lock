@@ -16,17 +16,6 @@ files = [
 frozenlist = ">=1.1.0"
 
 [[package]]
-name = "antlr4-python3-runtime"
-version = "4.9.3"
-description = "ANTLR 4.9.3 runtime for Python 3.7"
-optional = false
-python-versions = "*"
-groups = ["main"]
-files = [
-    {file = "antlr4-python3-runtime-4.9.3.tar.gz", hash = "sha256:f224469b4168294902bb1efa80a8bf7855f24c99aef99cbefc1bcd3cce77881b"},
-]
-
-[[package]]
 name = "appnope"
 version = "0.1.4"
 description = "Disable App Nap on macOS >= 10.9"
@@ -1040,23 +1029,6 @@ files = [
 pyreadline3 = {version = "*", markers = "sys_platform == \"win32\" and python_version >= \"3.8\""}
 
 [[package]]
-name = "hydra-core"
-version = "1.3.2"
-description = "A framework for elegantly configuring complex applications"
-optional = false
-python-versions = "*"
-groups = ["main"]
-files = [
-    {file = "hydra-core-1.3.2.tar.gz", hash = "sha256:8a878ed67216997c3e9d88a8e72e7b4767e81af37afb4ea3334b269a4390a824"},
-    {file = "hydra_core-1.3.2-py3-none-any.whl", hash = "sha256:fa0238a9e31df3373b35b0bfb672c34cc92718d21f81311d8996a16de1141d8b"},
-]
-
-[package.dependencies]
-antlr4-python3-runtime = "==4.9.*"
-omegaconf = ">=2.2,<2.4"
-packaging = "*"
-
-[[package]]
 name = "idna"
 version = "3.10"
 description = "Internationalized Domain Names in Applications (IDNA)"
@@ -1104,25 +1076,6 @@ pyav = ["av"]
 rawpy = ["numpy (>2)", "rawpy"]
 test = ["fsspec[github]", "pytest", "pytest-cov"]
 tifffile = ["tifffile"]
-
-[[package]]
-name = "iopath"
-version = "0.1.10"
-description = "A library for providing I/O abstraction."
-optional = false
-python-versions = ">=3.6"
-groups = ["main"]
-files = [
-    {file = "iopath-0.1.10.tar.gz", hash = "sha256:3311c16a4d9137223e20f141655759933e1eda24f8bff166af834af3c645ef01"},
-]
-
-[package.dependencies]
-portalocker = "*"
-tqdm = "*"
-typing_extensions = "*"
-
-[package.extras]
-aws = ["boto3"]
 
 [[package]]
 name = "ipykernel"
@@ -2132,22 +2085,6 @@ files = [
 ]
 
 [[package]]
-name = "omegaconf"
-version = "2.3.0"
-description = "A flexible configuration library"
-optional = false
-python-versions = ">=3.6"
-groups = ["main"]
-files = [
-    {file = "omegaconf-2.3.0-py3-none-any.whl", hash = "sha256:7b4df175cdb08ba400f45cae3bdcae7ba8365db4d165fc65fd04b050ab63b46b"},
-    {file = "omegaconf-2.3.0.tar.gz", hash = "sha256:d5d4b6d29955cc50ad50c46dc269bcd92c6e00f5f90d23ab5fee7bfca4ba4cc7"},
-]
-
-[package.dependencies]
-antlr4-python3-runtime = "==4.9.*"
-PyYAML = ">=5.1.0"
-
-[[package]]
 name = "onnxruntime"
 version = "1.21.0"
 description = "ONNX Runtime is a runtime accelerator for Machine Learning models"
@@ -2482,26 +2419,6 @@ test = ["appdirs (==1.4.4)", "covdefaults (>=2.3)", "pytest (>=8.3.4)", "pytest-
 type = ["mypy (>=1.14.1)"]
 
 [[package]]
-name = "portalocker"
-version = "3.1.1"
-description = "Wraps the portalocker recipe for easy usage"
-optional = false
-python-versions = ">=3.9"
-groups = ["main"]
-files = [
-    {file = "portalocker-3.1.1-py3-none-any.whl", hash = "sha256:80e984e24de292ff258a5bea0e4f3f778fff84c0ae1275dbaebc4658de4aacb3"},
-    {file = "portalocker-3.1.1.tar.gz", hash = "sha256:ec20f6dda2ad9ce89fa399a5f31f4f1495f515958f0cb7ca6543cef7bb5a749e"},
-]
-
-[package.dependencies]
-pywin32 = {version = ">=226", markers = "platform_system == \"Windows\""}
-
-[package.extras]
-docs = ["sphinx (>=1.7.1)"]
-redis = ["redis"]
-tests = ["pytest (>=5.4.1)", "pytest-cov (>=2.8.1)", "pytest-mypy (>=0.8.0)", "pytest-rerunfailures (>=15.0)", "pytest-timeout (>=2.1.0)", "redis", "sphinx (>=6.0.0)", "types-redis"]
-
-[[package]]
 name = "prompt-toolkit"
 version = "3.0.50"
 description = "Library for building powerful interactive command lines in Python"
@@ -2767,7 +2684,6 @@ platformdirs = ">=4.3.6,<5.0.0"
 pyaqua3ddev = {git = "https://github.com/UCSD-E4E/pyAqua3dDev.git"}
 pymupdf = ">=1.25.3,<2.0.0"
 pywavelets = ">=1.8.0,<2.0.0"
-sam-2 = {git = "https://github.com/facebookresearch/sam2.git"}
 scikit-image = ">=0.25.1,<0.26.0"
 scikit-learn = ">=1.6.1,<2.0.0"
 shapely = ">=2.0.7,<3.0.0"
@@ -2779,7 +2695,7 @@ transformers = ">=4.48.3,<5.0.0"
 type = "git"
 url = "https://github.com/UCSD-E4E/pyFishSenseDev.git"
 reference = "HEAD"
-resolved_reference = "fd957b6fe7cb45ab8c16030d156a665007024885"
+resolved_reference = "ae120c76dc0662406fccd87fb95ad22451a91a5b"
 
 [[package]]
 name = "pygments"
@@ -2957,7 +2873,8 @@ version = "310"
 description = "Python for Window Extensions"
 optional = false
 python-versions = "*"
-groups = ["main", "dev"]
+groups = ["dev"]
+markers = "sys_platform == \"win32\" and platform_python_implementation != \"PyPy\""
 files = [
     {file = "pywin32-310-cp310-cp310-win32.whl", hash = "sha256:6dd97011efc8bf51d6793a82292419eba2c71cf8e7250cfac03bba284454abc1"},
     {file = "pywin32-310-cp310-cp310-win_amd64.whl", hash = "sha256:c3e78706e4229b915a0821941a84e7ef420bf2b77e08c9dae3c76fd03fd2ae3d"},
@@ -2976,7 +2893,6 @@ files = [
     {file = "pywin32-310-cp39-cp39-win32.whl", hash = "sha256:851c8d927af0d879221e616ae1f66145253537bbdd321a77e8ef701b443a9a1a"},
     {file = "pywin32-310-cp39-cp39-win_amd64.whl", hash = "sha256:96867217335559ac619f00ad70e513c0fcf84b8a3af9fc2bba3b59b97da70475"},
 ]
-markers = {main = "platform_system == \"Windows\"", dev = "sys_platform == \"win32\" and platform_python_implementation != \"PyPy\""}
 
 [[package]]
 name = "pyyaml"
@@ -3549,36 +3465,6 @@ quality = ["black (==22.3)", "click (==8.0.4)", "flake8 (>=3.8.3)", "isort (>=5.
 tensorflow = ["safetensors[numpy]", "tensorflow (>=2.11.0)"]
 testing = ["h5py (>=3.7.0)", "huggingface-hub (>=0.12.1)", "hypothesis (>=6.70.2)", "pytest (>=7.2.0)", "pytest-benchmark (>=4.0.0)", "safetensors[numpy]", "setuptools-rust (>=1.5.2)"]
 torch = ["safetensors[numpy]", "torch (>=1.10)"]
-
-[[package]]
-name = "SAM-2"
-version = "1.0"
-description = "SAM 2: Segment Anything in Images and Videos"
-optional = false
-python-versions = ">=3.10.0"
-groups = ["main"]
-files = []
-develop = false
-
-[package.dependencies]
-hydra-core = ">=1.3.2"
-iopath = ">=0.1.10"
-numpy = ">=1.24.4"
-pillow = ">=9.4.0"
-torch = ">=2.5.1"
-torchvision = ">=0.20.1"
-tqdm = ">=4.66.1"
-
-[package.extras]
-dev = ["black (==24.2.0)", "fvcore (>=0.1.5.post20221221)", "opencv-python (>=4.7.0)", "pandas (>=2.2.2)", "pycocotools (>=2.0.8)", "scikit-image (>=0.24.0)", "submitit (>=1.5.1)", "tensorboard (>=2.17.0)", "tensordict (>=0.6.0)", "ufmt (==2.0.0b2)", "usort (==1.0.2)"]
-interactive-demo = ["Flask (>=3.0.3)", "Flask-Cors (>=5.0.0)", "av (>=13.0.0)", "dataclasses-json (>=0.6.7)", "eva-decord (>=0.6.1)", "gunicorn (>=23.0.0)", "imagesize (>=1.4.1)", "pycocotools (>=2.0.8)", "strawberry-graphql (>=0.243.0)"]
-notebooks = ["eva-decord (>=0.6.1)", "jupyter (>=1.0.0)", "matplotlib (>=3.9.1)", "opencv-python (>=4.7.0)"]
-
-[package.source]
-type = "git"
-url = "https://github.com/facebookresearch/sam2.git"
-reference = "HEAD"
-resolved_reference = "2b90b9f5ceec907a1c18123530e92e794ad901a4"
 
 [[package]]
 name = "scikit-image"
