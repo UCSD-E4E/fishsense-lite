@@ -221,11 +221,17 @@ class Process(RayJob):
 
         files = {Path(f).absolute() for g in self.data for f in glob(g, recursive=True)}
 
+        lens_calibration_path = Path(self.lens_calibration)
+        laser_calibration_path = Path(self.laser_calibration)
+
+        if not lens_calibration_path.exists() or not lens_calibration_path.is_file():
+            return ()
+
         lens_calibration = LensCalibration()
-        lens_calibration.load(Path(self.lens_calibration))
+        lens_calibration.load(lens_calibration_path)
 
         laser_calibration = LaserCalibration()
-        laser_calibration.load(Path(self.laser_calibration))
+        laser_calibration.load(laser_calibration_path)
 
         laser_labels_path = Path(self.laser_labels) if self.laser_labels else None
         head_tail_labels_path = (
