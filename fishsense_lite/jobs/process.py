@@ -24,6 +24,7 @@ from fishsense_lite.pipeline.tasks.get_points_of_interest_detector import (
 )
 from fishsense_lite.pipeline.tasks.get_segmentation_model import get_segmentation_model
 from fishsense_lite.pipeline.tasks.image_rectifier import image_rectifier
+from fishsense_lite.pipeline.tasks.make_debug_path import make_debug_path
 from fishsense_lite.pipeline.tasks.process_raw import process_raw
 from fishsense_lite.utils import PSqlConnectionString, parse_psql_connection_string
 
@@ -41,6 +42,7 @@ def execute(
 ) -> Tuple[Path, str, float]:
     set_opencv_opencl_device()
     pipeline = Pipeline(
+        make_debug_path,
         process_raw,
         image_rectifier,
         get_laser_detector,
