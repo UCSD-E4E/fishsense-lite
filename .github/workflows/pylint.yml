@@ -16,9 +16,11 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
+        cargo install https://github.com/UCSD-E4E/pyFishSense.git
+        apt update
         python -m pip install --upgrade pip poetry
         poetry config virtualenvs.create false
-        poetry install
+        poetry install --with dev
     - name: Analysing the code with pylint
       run: |
         pylint $(git ls-files '*.py')
