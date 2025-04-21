@@ -10,10 +10,10 @@ from typing import Dict, Set
 
 import backoff
 
-from fishsense_lite.result_status import ResultStatus
-
 
 class Database:
+    """A class to manage the SQLite database used to store results."""
+
     def __init__(self, path: Path) -> None:
         self._path = path
         self._connection: Connection = None
@@ -83,6 +83,12 @@ class Database:
 
     @backoff.on_exception(backoff.expo, OperationalError)
     def insert_metadata(self, metadata: Dict[str, str]):
+        """Insert metadata into the database.
+
+        Args:
+            metadata (Dict[str, str]): A dictionary of metadata to insert into the database.
+        """
+
         self._cursor.executemany(
             "INSERT INTO metadata VALUES (?, ?)",
             list(metadata.items()),
@@ -91,6 +97,14 @@ class Database:
 
     @backoff.on_exception(backoff.expo, OperationalError)
     def insert_data(self, file: Path, result_status: str, length: float):
+        """Insert data into the database.
+
+        Args:
+            file (Path): The file to insert into the database.
+            result_status (str): The result status of the file.
+            length (float): The length of the fish.
+        """
+
         self._cursor.execute(
             "INSERT INTO data VALUES (?, ?, ?, ?, ?)",
             (

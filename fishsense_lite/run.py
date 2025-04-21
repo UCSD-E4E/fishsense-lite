@@ -21,7 +21,8 @@ def main():
     """Main entry point for the CLI."""
     cli = CliScheduler(
         name="fsl",
-        description="The command line tool for processing data from the FishSense Lite product line.",
+        description="The command line tool for processing data from the FishSense Lite"
+        + " product line.",
     )
 
     cli.register_job_type(DetectSlateForDives)

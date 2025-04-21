@@ -1,3 +1,5 @@
+"""Define utility functions for the fishsense_lite package."""
+
 import hashlib
 import os
 from dataclasses import dataclass
@@ -8,6 +10,10 @@ from urllib.parse import urlparse
 
 @dataclass
 class PSqlConnectionString:
+    """
+    A dataclass to hold PostgreSQL connection string information.
+    """
+
     dbname: str
     username: str
     password: str
@@ -16,11 +22,33 @@ class PSqlConnectionString:
 
 
 def get_output_file(input_file: Path, root: Path, output: Path, extension: str) -> Path:
-    hash = hashlib.md5(input_file.read_bytes()).hexdigest()
-    return output / input_file.relative_to(root).parent / f"{hash}.{extension}"
+    """
+    Get the output file path based on the input file, root directory, output directory,
+
+    Args:
+        input_file (Path): The input file.
+        root (Path): The root directory.
+        output (Path): The output directory.
+        extension (str): The file extension for the output file.
+
+    Returns:
+        Path: The output file path.
+    """
+
+    hash_str = hashlib.md5(input_file.read_bytes()).hexdigest()
+    return output / input_file.relative_to(root).parent / f"{hash_str}.{extension}"
 
 
 def get_root(files: List[Path]) -> Path | None:
+    """
+    Get the root directory of a list of files.
+
+    Args:
+        files (List[Path]): A list of Path objects representing the files.
+
+    Returns:
+        Path | None: The root directory of the files, or None if the list is empty.
+    """
     if not files:
         return None
 
@@ -34,6 +62,22 @@ def get_root(files: List[Path]) -> Path | None:
 
 
 def parse_psql_connection_string(connection_string: str) -> PSqlConnectionString:
+    """
+    Parse a PostgreSQL connection string and return a PSqlConnectionString object.
+    The connection string should be in the format:
+    postgresql://username:password@host:port/dbname
+    If the connection string is None, return None.
+    If the connection string is not in the correct format, raise a ValueError.
+    The username and password can be overridden by the environment variables
+    PSQL_USERNAME and PSQL_PASSWORD, respectively.
+
+    Args:
+        connection_string (str): The PostgreSQL connection string to parse.
+
+    Returns:
+        PSqlConnectionString: A PSqlConnectionString object containing the parsed
+        connection string information.
+    """
     if connection_string is not None:
         psql = urlparse(connection_string)
         dbname = psql.path[1:]
