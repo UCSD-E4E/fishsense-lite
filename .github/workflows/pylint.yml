@@ -16,7 +16,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
-        cargo install https://github.com/UCSD-E4E/pyFishSense.git
+        cargo install --git https://github.com/UCSD-E4E/fishsense.rs.git
         apt update
         python -m pip install --upgrade pip poetry
         poetry config virtualenvs.create false
