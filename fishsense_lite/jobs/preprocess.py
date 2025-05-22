@@ -8,6 +8,7 @@ from fishsense_common.scheduling.job_definition import JobDefinition
 from fishsense_common.scheduling.ray_job import RayJob
 from fishsense_common.utils.cuda import set_opencv_opencl_device
 from pyfishsensedev.calibration import LensCalibration
+from upath import UPath
 
 from fishsense_lite.pipeline.tasks.image_rectifier import image_rectifier
 from fishsense_lite.pipeline.tasks.process_raw import process_raw
@@ -93,24 +94,35 @@ class Preprocess(RayJob):
     def format(self, value: str):
         self.__format = value
 
-    def __init__(self, job_defintion: JobDefinition):
+    def __init__(
+        self,
+        job_defintion: JobDefinition,
+        input_filesystem: Any,
+        output_filesystem: Any,
+    ):
         self.__data: List[str] = None
         self.__lens_calibration: str = None
         self.__output_path: str = None
         self.__format: str = None
 
-        super().__init__(job_defintion, execute, vram_mb=615)
+        super().__init__(
+            job_defintion, input_filesystem, output_filesystem, execute, vram_mb=615
+        )
 
     def prologue(self) -> Iterable[Iterable[Any]]:
-        files = {Path(f).absolute() for g in self.data for f in glob(g, recursive=True)}
+        files = {
+            UPath(f).absolute()
+            for g in self.data
+            for f in self.input_filesystem.glob(g, recursive=True)
+        }
 
         # Find the singular path that defines the root of all of our data.
         root = get_root(files)
 
         lens_calibration = LensCalibration()
-        lens_calibration.load(Path(self.lens_calibration))
+        lens_calibration.load(UPath(self.lens_calibration))
 
-        output = Path(self.output_path)
+        output = UPath(self.output_path, **self.output_filesystem.storage_options)
 
         return (
             (

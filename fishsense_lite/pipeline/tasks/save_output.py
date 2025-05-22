@@ -22,4 +22,9 @@ def save_output(
         img = img_as_ubyte(img)
 
     output_file.parent.mkdir(exist_ok=True, parents=True)
-    cv2.imwrite(output_file.absolute().as_posix(), img)
+    is_success, buffer = cv2.imencode(f".{format.lower()}", img)
+    if not is_success:
+        raise ValueError(f"Failed to encode image to {format} format.")
+
+    with open(output_file, "wb") as f:
+        f.write(buffer)

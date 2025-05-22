@@ -22,6 +22,8 @@ dependencies = [
     "fishsense-common @ git+https://github.com/UCSD-E4E/fishsense-common.git",
     "pyfishsensedev @ git+https://github.com/UCSD-E4E/pyFishSenseDev.git",
     "psycopg[binary] (>=3.2.6,<4.0.0)",
+    "fsspec (>=2025.5.0,<2026.0.0)",
+    "universal-pathlib (>=0.2.6,<0.3.0)",
 ]
 
 [tool.poetry.group.dev.dependencies]
