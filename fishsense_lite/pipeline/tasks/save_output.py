@@ -26,5 +26,5 @@ def save_output(
     if not is_success:
         raise ValueError(f"Failed to encode image to {format} format.")
 
-    with open(output_file, "wb") as f:
+    with output_file.open("wb") as f:
         f.write(buffer)

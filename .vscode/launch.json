@@ -22,7 +22,7 @@
             "justMyCode": false,
             "args": [
                 "run-jobs",
-                "./job_definition_examples/preprocess.yaml"
+                "./job_definition_examples/DO_NOT_CHECKIN_preprocess.yaml"
             ]
         },
         {

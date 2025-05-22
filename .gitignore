@@ -316,3 +316,5 @@ experiments/output/*
 .debug/
 
 poetry_cache
+
+DO_NOT_CHECKIN*

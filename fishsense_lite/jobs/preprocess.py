@@ -40,7 +40,7 @@ class Preprocess(RayJob):
 
     @property
     def job_count(self) -> int:
-        return len({f for g in self.data for f in glob(g, recursive=True)})
+        return self.__job_count
 
     @property
     def description(self) -> str:
@@ -104,6 +104,7 @@ class Preprocess(RayJob):
         self.__lens_calibration: str = None
         self.__output_path: str = None
         self.__format: str = None
+        self.__job_count: int = 0
 
         super().__init__(
             job_defintion, input_filesystem, output_filesystem, execute, vram_mb=615
@@ -111,16 +112,19 @@ class Preprocess(RayJob):
 
     def prologue(self) -> Iterable[Iterable[Any]]:
         files = {
-            UPath(f).absolute()
+            f
             for g in self.data
-            for f in self.input_filesystem.glob(g, recursive=True)
+            for f in UPath(g, **self.input_filesystem.storage_options).glob("**/*.ORF")
         }
+        self.__job_count = len(files)
 
         # Find the singular path that defines the root of all of our data.
         root = get_root(files)
 
         lens_calibration = LensCalibration()
-        lens_calibration.load(UPath(self.lens_calibration))
+        lens_calibration.load(
+            UPath(self.lens_calibration, **self.input_filesystem.storage_options)
+        )
 
         output = UPath(self.output_path, **self.output_filesystem.storage_options)
 
