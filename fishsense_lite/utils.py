@@ -35,8 +35,11 @@ def get_output_file(input_file: Path, root: Path, output: Path, extension: str) 
         Path: The output file path.
     """
 
+    parent_str = str(input_file.relative_to(root).parent)
+    parent_str = parent_str[parent_str.index("://") + 3 :] if "://" in parent_str else parent_str
+
     hash_str = hashlib.md5(input_file.read_bytes()).hexdigest()
-    return output / input_file.relative_to(root).parent / f"{hash_str}.{extension}"
+    return output / parent_str / f"{hash_str}.{extension}"
 
 
 def get_root(files: List[Path]) -> Path | None:

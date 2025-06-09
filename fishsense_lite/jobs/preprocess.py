@@ -1,4 +1,3 @@
-from glob import glob
 from pathlib import Path
 from typing import Any, Iterable, List
 
@@ -112,9 +111,12 @@ class Preprocess(RayJob):
 
     def prologue(self) -> Iterable[Iterable[Any]]:
         files = {
-            f
+            UPath(
+                self.input_filesystem.unstrip_protocol(f),
+                **self.input_filesystem.storage_options,
+            )
             for g in self.data
-            for f in UPath(g, **self.input_filesystem.storage_options).glob("**/*.ORF")
+            for f in self.input_filesystem.glob(g)
         }
         self.__job_count = len(files)
 
