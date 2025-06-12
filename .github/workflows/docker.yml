@@ -16,7 +16,7 @@ jobs:
         docker:
           - {image_tag: cpu, platforms: 'linux/amd64,linux/arm64', runs-on: ubuntu-24.04}
           - {image_tag: ray-aarch64-cpu, platforms: linux/arm64, runs-on: ubuntu-24.04-arm}
-          - {image_tag: nvidia/cuda, platforms: linux/amd64, runs-on: ubuntu-24.04}
+          - {image_tag: cuda, platforms: linux/amd64, runs-on: ubuntu-24.04}
 
     runs-on: ${{ matrix.docker.runs-on }}
 
