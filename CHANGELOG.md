@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.1.2 (2025-06-12)
+
+### Bug Fixes
+
+- Use the correct cuda docker tag
+  ([`fc94244`](https://github.com/UCSD-E4E/fishsense-lite/commit/fc9424458d11a9e7e69c0f03e8055396180f444e))
+
+
 ## v1.1.1 (2025-06-12)
 
 ### Bug Fixes
