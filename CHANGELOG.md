@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.1.1 (2025-06-12)
+
+### Bug Fixes
+
+- Setup qemu to support building docker containers for arm
+  ([`189568a`](https://github.com/UCSD-E4E/fishsense-lite/commit/189568a9df49e65d9a42d403ea779a045517e10a))
+
+
 ## v1.1.0 (2025-06-12)
 
 ### Features
