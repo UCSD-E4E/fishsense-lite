@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.1.0 (2025-06-12)
+
+### Features
+
+- Create docker container for package.
+  ([`4460703`](https://github.com/UCSD-E4E/fishsense-lite/commit/44607030d0eb2849b673923b80089cf3a4f093f3))
+
+
 ## v1.0.0 (2025-06-10)
 
 ### Bug Fixes
