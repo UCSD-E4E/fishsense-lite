@@ -15,8 +15,8 @@ jobs:
     strategy:
       matrix:
         docker:
-          - {image_tag: cpu, platforms: 'linux/amd64,linux/arm64', runs-on: ubuntu-24.04}
-          - {image_tag: ray-aarch64-cpu, platforms: linux/arm64, runs-on: ubuntu-24.04-arm}
+          # - {image_tag: cpu, platforms: 'linux/amd64,linux/arm64', runs-on: ubuntu-24.04}
+          # - {image_tag: ray-aarch64-cpu, platforms: linux/arm64, runs-on: ubuntu-24.04-arm}
           - {image_tag: cuda, platforms: linux/amd64, runs-on: ubuntu-24.04}
 
     runs-on: ${{ matrix.docker.runs-on }}
@@ -55,6 +55,10 @@ jobs:
         uses: docker/metadata-action@v5.7.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+      - name: Debug info
+        run: |
+          echo ${{ matrix.docker.image_tag }}
+          echo ${{ steps.meta.outputs.tags }}
       - name: Build and push Docker image
         id: push
         uses: docker/build-push-action@v6.15.0
