@@ -67,7 +67,7 @@ jobs:
           push: true
           build-args: |
             IMAGE=ghcr.io/ucsd-e4e/fishsense:${{ matrix.docker.image_tag }}
-            VERSION=${{ steps.meta.outputs.tags }}
+            VERSION=v1.1.2
           tags: ${{ steps.meta.outputs.tags }}-${{ matrix.docker.image_tag }}
           platforms: ${{ matrix.docker.platforms }}
           labels: ${{ steps.meta.outputs.labels }}
