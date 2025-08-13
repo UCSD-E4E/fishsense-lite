@@ -17,12 +17,12 @@ dependencies = [
     "xlrd (>=2.0.1,<3.0.0)",
     "pyaqua3ddev @ git+https://github.com/UCSD-E4E/pyAqua3dDev.git",
     "pyfishsense @ git+https://github.com/UCSD-E4E/pyFishSense.git",
-    "fishsense-common @ git+https://github.com/UCSD-E4E/fishsense-common.git",
     "pyfishsensedev @ git+https://github.com/UCSD-E4E/pyFishSenseDev.git",
     "psycopg[binary] (>=3.2.6,<4.0.0)",
     "fsspec (>=2025.5.0,<2026.0.0)",
     "universal-pathlib (>=0.2.6,<0.3.0)",
     "smbprotocol (>=1.15.0,<2.0.0)",
+    "fishsense-common @ https://github.com/UCSD-E4E/fishsense-common/archive/refs/tags/v1.0.1.tar.gz",
 ]
 
 [tool.poetry.group.dev.dependencies]
