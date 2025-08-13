@@ -13,8 +13,6 @@ dependencies = [
     "ray[default] (>=2.46.0,<3.0.0)",
     "backoff (>=2.2.1,<3.0.0)",
     "seaborn (>=0.13.2,<0.14.0)",
-    "torch (>=2.6.0,<3.0.0)",
-    "torchvision (>=0.21.0,<0.22.0)",
     "gitpython (>=3.1.44,<4.0.0)",
     "xlrd (>=2.0.1,<3.0.0)",
     "pyaqua3ddev @ git+https://github.com/UCSD-E4E/pyAqua3dDev.git",
