@@ -4,6 +4,7 @@ import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
+from pathlib import Path
 
 from temporalio.client import (
     Client,
@@ -12,6 +13,7 @@ from temporalio.client import (
     ScheduleIntervalSpec,
     ScheduleSpec,
     ScheduleState,
+    TLSConfig,
 )
 from temporalio.worker import Worker
 
@@ -132,7 +134,28 @@ async def main():
     database = Database(PG_CONNECTION_STRING)
     await database.init_database()
 
-    client = await Client.connect(f"{settings.temporal.host}:{settings.temporal.port}")
+    tls_config: TLSConfig | None = None
+    if settings.temporal.tls:
+        with Path(settings.temporal.client_cert).open("rb") as f:
+            client_cert = f.read()
+        with Path(settings.temporal.client_private_key).open("rb") as f:
+            client_private_key = f.read()
+
+        server_root_ca_cert: bytes | None = None
+        if "server_root_ca_cert" in settings.temporal:
+            with Path(settings.temporal.server_root_ca_cert).open("rb") as f:
+                server_root_ca_cert = f.read()
+
+        tls_config = TLSConfig(
+            client_cert=client_cert,
+            client_private_key=client_private_key,
+            server_root_ca_cert=server_root_ca_cert,
+            domain=settings.temporal.domain if "domain" in settings.temporal else None,
+        )
+
+    client = await Client.connect(
+        f"{settings.temporal.host}:{settings.temporal.port}", tls=tls_config
+    )
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         worker = Worker(

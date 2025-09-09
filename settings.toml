@@ -1,5 +1,5 @@
 [temporal]
-host = "localhost"
+host = "workflows.fishsense.e4e.ucsd.edu"
 port = "7233"
 
 [label_studio]

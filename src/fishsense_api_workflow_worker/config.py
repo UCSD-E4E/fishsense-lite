@@ -40,9 +40,26 @@ def get_config_path() -> Path:
     return config_path
 
 
+def path_validator(path: str) -> bool:
+    """Validator to check if a given path exists.
+
+    Args:
+        path (str): Path to validate
+
+    Returns:
+        bool: True if path exists, False otherwise
+    """
+    return Path(path).exists()
+
+
 validators = [
     Validator("temporal.host", required=True, cast=str, condition=validators.hostname),
     Validator("temporal.port", required=True, cast=str, default=7233),
+    Validator("temporal.tls", required=True, cast=bool, default=False),
+    Validator("temporal.client_cert", cast=str, condition=path_validator),
+    Validator("temporal.client_private_key", cast=str, condition=path_validator),
+    Validator("temporal.domain", cast=str),
+    Validator("temporal.server_root_ca_cert", cast=str, condition=path_validator),
     Validator("label_studio.host", required=True, condition=validators.hostname),
     Validator("label_studio.api_key", required=True, cast=str),
     Validator("label_studio.laser_project_ids", required=True, cast=list),
