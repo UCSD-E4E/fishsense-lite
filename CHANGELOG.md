@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.12.0 (2025-09-09)
+
+### Features
+
+- Mtls on worker
+  ([`948f3e4`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/948f3e4aefd57dd8909ca66174e1f3555edd65ae))
+
+
 ## v1.11.1 (2025-09-06)
 
 ### Bug Fixes
