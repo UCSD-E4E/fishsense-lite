@@ -1,3 +1,6 @@
+[general]
+max_workers=8
+
 [temporal]
 host = "workflows.fishsense.e4e.ucsd.edu"
 port = "7233"

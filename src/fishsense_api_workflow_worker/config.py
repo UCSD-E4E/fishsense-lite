@@ -53,6 +53,13 @@ def path_validator(path: str) -> bool:
 
 
 validators = [
+    Validator(
+        "general.max_workers",
+        required=True,
+        cast=int,
+        default=4,
+        condition=lambda x: x > 0,
+    ),
     Validator("temporal.host", required=True, cast=str, condition=validators.hostname),
     Validator("temporal.port", required=True, cast=int, default=7233),
     Validator("temporal.tls", required=True, cast=bool, default=False),

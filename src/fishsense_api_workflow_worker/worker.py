@@ -214,7 +214,7 @@ async def main():
         f"{settings.temporal.host}:{settings.temporal.port}", tls=tls_config
     )
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=settings.general.max_workers) as executor:
         worker = Worker(
             client,
             task_queue=TASK_QUEUE_NAME,
@@ -241,7 +241,5 @@ async def main():
 
 
 def run():
-    """Run the worker."""
-    asyncio.run(main())
     """Run the worker."""
     asyncio.run(main())

@@ -308,7 +308,7 @@ class Database:
             result = await session.exec(query)
 
         return result.all()
-    
+
     async def select_images_by_dive_id(
         self, dive_id: int, session: AsyncSession | None = None
     ) -> Iterable[Image]:
