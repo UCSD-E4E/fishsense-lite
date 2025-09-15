@@ -117,12 +117,16 @@ async def schedule_read_label_studio_head_tail_label_workflows(client: Client):
         )
 
 
-async def schedule_workflows(client: Client):
+async def schedule_workflows(_: Client):
     """Schedule workflows for the worker."""
 
-    async with asyncio.TaskGroup() as tg:
-        tg.create_task(schedule_read_label_studio_laser_label_workflows(client))
-        tg.create_task(schedule_read_label_studio_head_tail_label_workflows(client))
+
+# async def schedule_workflows(client: Client):
+#     """Schedule workflows for the worker."""
+
+#     async with asyncio.TaskGroup() as tg:
+#         tg.create_task(schedule_read_label_studio_laser_label_workflows(client))
+#         tg.create_task(schedule_read_label_studio_head_tail_label_workflows(client))
 
 
 async def main():
