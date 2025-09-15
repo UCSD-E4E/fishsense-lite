@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.13.0 (2025-09-15)
+
+### Features
+
+- Remove the scheduled workflows
+  ([`ef05013`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/ef050138122d6605bd8369bb1b9a676a581cc8ca))
+
+
 ## v1.12.0 (2025-09-09)
 
 ### Features
