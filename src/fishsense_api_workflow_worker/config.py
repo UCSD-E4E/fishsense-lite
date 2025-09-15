@@ -54,7 +54,7 @@ def path_validator(path: str) -> bool:
 
 validators = [
     Validator("temporal.host", required=True, cast=str, condition=validators.hostname),
-    Validator("temporal.port", required=True, cast=str, default=7233),
+    Validator("temporal.port", required=True, cast=int, default=7233),
     Validator("temporal.tls", required=True, cast=bool, default=False),
     Validator("temporal.client_cert", cast=str, condition=path_validator),
     Validator("temporal.client_private_key", cast=str, condition=path_validator),

@@ -3,7 +3,7 @@
 from enum import Enum
 
 
-class Priority(Enum):
+class Priority(str, Enum):
     """Enumeration for priority levels."""
 
     LOW = "LOW"

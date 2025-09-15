@@ -17,6 +17,10 @@ from temporalio.client import (
 )
 from temporalio.worker import Worker
 
+from fishsense_api_workflow_worker.activities.schedule_dive_frame_grouping import (
+    schedule_dive_frame_grouping,
+)
+from fishsense_api_workflow_worker.activities.select_dives import select_dives
 from fishsense_api_workflow_worker.activities.sync_label_studio_head_tail_labels import (
     sync_label_studio_head_tail_labels,
 )
@@ -32,6 +36,7 @@ from fishsense_api_workflow_worker.config import (
     settings,
 )
 from fishsense_api_workflow_worker.database import Database
+from fishsense_api_workflow_worker.workflows.ingest_dives import IngestDivesWorkflow
 from fishsense_api_workflow_worker.workflows.read_label_studio_head_tail_labels import (
     ReadLabelStudioHeadTailLabelsWorkflow,
 )
@@ -117,8 +122,56 @@ async def schedule_read_label_studio_head_tail_label_workflows(client: Client):
         )
 
 
-async def schedule_workflows(_: Client):
+async def schedule_ingest_dives_workflow(client: Client):
+    schedule_id = f"ingest-dives-schedule"
+
+    if await schedule_exists(client, schedule_id):
+        logging.info("Schedule %s already exists, skipping...", schedule_id)
+        return
+
+    await client.create_schedule(
+        schedule_id,
+        Schedule(
+            action=ScheduleActionStartWorkflow(
+                IngestDivesWorkflow.run,
+                args=(
+                    PG_CONNECTION_STRING,
+                    settings.temporal.host,
+                    settings.temporal.port,
+                    settings.temporal.tls,
+                    (
+                        settings.temporal.client_cert
+                        if "client_cert" in settings.temporal
+                        else None
+                    ),
+                    (
+                        settings.temporal.client_private_key
+                        if "client_private_key" in settings.temporal
+                        else None
+                    ),
+                    (
+                        settings.temporal.server_root_ca_cert
+                        if "server_root_ca_cert" in settings.temporal
+                        else None
+                    ),
+                    settings.temporal.domain if "domain" in settings.temporal else None,
+                ),
+                id=f"ingest-dives-workflow",
+                task_queue=TASK_QUEUE_NAME,
+            ),
+            spec=ScheduleSpec(
+                intervals=[ScheduleIntervalSpec(every=timedelta(hours=1))]
+            ),
+            state=ScheduleState(),
+        ),
+    )
+
+
+async def schedule_workflows(client: Client):
     """Schedule workflows for the worker."""
+
+    async with asyncio.TaskGroup() as tg:
+        tg.create_task(schedule_ingest_dives_workflow(client))
 
 
 # async def schedule_workflows(client: Client):
@@ -166,11 +219,14 @@ async def main():
             client,
             task_queue=TASK_QUEUE_NAME,
             workflows=[
+                IngestDivesWorkflow,
                 ReadLabelStudioLaserLabelsWorkflow,
                 ReadLabelStudioHeadTailLabelsWorkflow,
             ],
             activity_executor=executor,
             activities=[
+                select_dives,
+                schedule_dive_frame_grouping,
                 sync_label_studio_laser_labels,
                 sync_label_studio_head_tail_labels,
                 sync_users_into_postgres,
@@ -185,5 +241,7 @@ async def main():
 
 
 def run():
+    """Run the worker."""
+    asyncio.run(main())
     """Run the worker."""
     asyncio.run(main())

@@ -186,6 +186,20 @@ class Database:
 
         return result.all()
 
+    async def select_dives_to_process(
+        self, session: AsyncSession | None = None
+    ) -> Iterable[Dive]:
+        """Select dives that need processing."""
+        query = select(Dive).order_by(Dive.dive_datetime)
+
+        if session is None:
+            async with AsyncSession(self.engine) as session:
+                result = await session.exec(query)
+        else:
+            result = await session.exec(query)
+
+        return result.all()
+
     async def select_dive_slate_by_name(
         self, name: str, session: AsyncSession | None = None
     ) -> DiveSlate | None:
@@ -286,6 +300,20 @@ class Database:
                 Image.is_canonical,
             )
         )
+
+        if session is None:
+            async with AsyncSession(self.engine) as session:
+                result = await session.exec(query)
+        else:
+            result = await session.exec(query)
+
+        return result.all()
+    
+    async def select_images_by_dive_id(
+        self, dive_id: int, session: AsyncSession | None = None
+    ) -> Iterable[Image]:
+        """Select images by their dive ID."""
+        query = select(Image).where(Image.dive_id == dive_id).order_by(Image.path)
 
         if session is None:
             async with AsyncSession(self.engine) as session:
