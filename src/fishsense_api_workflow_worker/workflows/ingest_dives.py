@@ -31,8 +31,8 @@ class IngestDivesWorkflow:
             schedule_to_close_timeout=timedelta(minutes=10),
         )
         if dive is not None and images is not None:
-            await workflow.execute_activity(
-                "schedule_dive_frame_grouping",
+            clusters = await workflow.execute_activity(
+                "cluster_dive_frames",
                 args=(
                     dive,
                     images,
@@ -43,6 +43,16 @@ class IngestDivesWorkflow:
                     temporal_client_private_key,
                     temporal_server_root_ca_cert,
                     temporal_domain,
+                ),
+                schedule_to_close_timeout=timedelta(minutes=10),
+            )
+
+            await workflow.execute_activity(
+                "store_dive_clusters",
+                args=(
+                    dive,
+                    clusters,
+                    database_url,
                 ),
                 schedule_to_close_timeout=timedelta(minutes=10),
             )

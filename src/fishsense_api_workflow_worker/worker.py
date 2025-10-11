@@ -17,10 +17,9 @@ from temporalio.client import (
 )
 from temporalio.worker import Worker
 
-from fishsense_api_workflow_worker.activities.schedule_dive_frame_grouping import (
-    schedule_dive_frame_grouping,
-)
+from fishsense_api_workflow_worker.activities.cluster_dive_frames import cluster_dive_frames
 from fishsense_api_workflow_worker.activities.select_dives import select_dives
+from fishsense_api_workflow_worker.activities.store_dive_clusters import store_dive_clusters
 from fishsense_api_workflow_worker.activities.sync_label_studio_head_tail_labels import (
     sync_label_studio_head_tail_labels,
 )
@@ -140,7 +139,7 @@ async def schedule_ingest_dives_workflow(client: Client):
                     settings.temporal.port,
                     settings.temporal.tls,
                     (
-                        settings.temporal.client_cert
+                        settings.temporal.client_certschedule_dive_frame_grouping
                         if "client_cert" in settings.temporal
                         else None
                     ),
@@ -154,7 +153,11 @@ async def schedule_ingest_dives_workflow(client: Client):
                         if "server_root_ca_cert" in settings.temporal
                         else None
                     ),
-                    settings.temporal.domain if "domain" in settings.temporal else None,
+                    (
+                        settings.temporal.domain
+                        if "domain" in settings.temporschedule_dive_frame_groupingal
+                        else None
+                    ),
                 ),
                 id=f"ingest-dives-workflow",
                 task_queue=TASK_QUEUE_NAME,
@@ -226,7 +229,9 @@ async def main():
             activity_executor=executor,
             activities=[
                 select_dives,
-                schedule_dive_frame_grouping,
+                cluster_dive_frames,
+                store_dive_clusters,
+
                 sync_label_studio_laser_labels,
                 sync_label_studio_head_tail_labels,
                 sync_users_into_postgres,

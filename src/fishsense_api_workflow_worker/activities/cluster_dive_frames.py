@@ -1,16 +1,7 @@
-from pathlib import Path
 from typing import Iterable
 
 from temporalio import activity
-from temporalio.client import (
-    Client,
-    Schedule,
-    ScheduleActionStartWorkflow,
-    ScheduleIntervalSpec,
-    ScheduleSpec,
-    ScheduleState,
-    TLSConfig,
-)
+from temporalio.client import Client, TLSConfig
 
 from fishsense_api_workflow_worker.models.dive import Dive
 from fishsense_api_workflow_worker.models.image import Image
@@ -19,7 +10,7 @@ DATA_WORKER_TASK_QUEUE_NAME = "fishsense_data_processing_queue"
 
 
 @activity.defn
-async def schedule_dive_frame_grouping(
+async def cluster_dive_frames(
     dive: Dive,
     images: Iterable[Image],
     temporal_host: str,
@@ -30,7 +21,7 @@ async def schedule_dive_frame_grouping(
     temporal_server_root_ca_cert: str | None = None,
     temporal_domain: str | None = None,
 ) -> Iterable[Iterable[Image]]:
-    """Schedule the dive frame grouping activity."""
+    """Schedule the dive frame clustering activity."""
     log = activity.logger
 
     log.info("Scheduling workflow for dive: %s.", dive.name)
@@ -60,9 +51,9 @@ async def schedule_dive_frame_grouping(
     client = await Client.connect(f"{temporal_host}:{temporal_port}", tls=tls_config)
 
     clusters: Iterable[Iterable[Image]] = await client.execute_workflow(
-        "DiveFrameGroupingWorkflow",
+        "DiveFrameClusteringWorkflow",
         args=(dive, images),
-        id=f"dive-frame-grouping-{dive.id}",
+        id=f"dive-frame-clustering-{dive.id}",
         task_queue=DATA_WORKER_TASK_QUEUE_NAME,
         retry_policy=None,
     )

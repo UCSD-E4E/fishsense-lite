@@ -10,6 +10,10 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from fishsense_api_workflow_worker.models.camera import Camera
 from fishsense_api_workflow_worker.models.dive import Dive
+from fishsense_api_workflow_worker.models.dive_frame_cluster import (
+    DiveFrameCluster,
+    DiveFrameClusterImageMapping,
+)
 from fishsense_api_workflow_worker.models.dive_slate import DiveSlate
 from fishsense_api_workflow_worker.models.head_tail_label import HeadTailLabel
 from fishsense_api_workflow_worker.models.image import Image
@@ -425,5 +429,7 @@ class Database:
                 result = await session.exec(query)
         else:
             result = await session.exec(query)
+
+        return result.one_or_none()
 
         return result.one_or_none()
