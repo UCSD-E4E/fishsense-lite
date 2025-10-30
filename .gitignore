@@ -1,5 +1,9 @@
-# Created by https://www.toptal.com/developers/gitignore/api/linux,windows,macos,visualstudiocode,python
-# Edit at https://www.toptal.com/developers/gitignore?templates=linux,windows,macos,visualstudiocode,python
+# Created by https://www.toptal.com/developers/gitignore/api/linux,windows,macos,visualstudiocode,python,direnv
+# Edit at https://www.toptal.com/developers/gitignore?templates=linux,windows,macos,visualstudiocode,python,direnv
+
+### direnv ###
+.direnv
+#.envrc
 
 ### Linux ###
 *~
@@ -266,7 +270,7 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
-# End of https://www.toptal.com/developers/gitignore/api/linux,windows,macos,visualstudiocode,python
+# End of https://www.toptal.com/developers/gitignore/api/linux,windows,macos,visualstudiocode,python,direnv
 
 # Ignore dynaconf secret files
 .secrets.*
