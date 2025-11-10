@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.2.0 (2025-11-10)
+
+### Features
+
+- Add label_studio_project_id
+  ([`77c9969`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/77c99696512d303a41adda4006877d6e78e700b1))
+
+
 ## v1.1.1 (2025-10-30)
 
 ### Bug Fixes
