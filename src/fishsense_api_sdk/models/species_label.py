@@ -12,6 +12,7 @@ class SpeciesLabel(BaseModel):
 
     id: int | None
     label_studio_task_id: int | None
+    label_studio_project_id: int | None
     image_url: str | None
     updated_at: datetime | None
     completed: bool | None
