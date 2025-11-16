@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.2.1 (2025-11-16)
+
+### Bug Fixes
+
+- Handle cases where there is nothing returned from the api
+  ([`31df34a`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/31df34a194b972edb0a9155a22a7eb50d6466d91))
+
+
 ## v1.2.0 (2025-11-10)
 
 ### Features
