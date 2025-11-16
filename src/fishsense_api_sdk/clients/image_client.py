@@ -16,7 +16,7 @@ class ImageClient(ClientBase):
 
     async def get(
         self, dive_id: int | None = None, image_id: int | None = None
-    ) -> Image | List[Image]:
+    ) -> Image | List[Image] | None:
         """Get images from dive .
 
         Raises:
@@ -29,16 +29,26 @@ class ImageClient(ClientBase):
             if dive_id is not None:
                 response = await client.get(f"/api/v1/dives/{dive_id}/images/")
                 response.raise_for_status()
-                return [Image.model_validate(image) for image in response.json()]
+
+                json = response.json()
+                if json is None:
+                    return None
+
+                return [Image.model_validate(image) for image in json]
 
             if image_id is not None:
                 response = await client.get(f"/api/v1/images/{image_id}")
                 response.raise_for_status()
-                return Image.model_validate(response.json())
+
+                json = response.json()
+                if json is None:
+                    return None
+
+                return Image.model_validate(json)
 
             raise NotImplementedError("Getting all images is not supported.")
 
-    async def get_clusters(self, dive_id: int) -> List[DiveFrameCluster]:
+    async def get_clusters(self, dive_id: int) -> List[DiveFrameCluster] | None:
         """Get clusters of images in the dive_id.
 
         Args:
@@ -50,9 +60,12 @@ class ImageClient(ClientBase):
         async with self._create_client() as client:
             response = await client.get(f"/api/v1/dives/{dive_id}/images/clusters/")
             response.raise_for_status()
-            return [
-                DiveFrameCluster.model_validate(cluster) for cluster in response.json()
-            ]
+
+            json = response.json()
+            if json is None:
+                return None
+
+            return [DiveFrameCluster.model_validate(cluster) for cluster in json]
 
     async def post_cluster(self, dive_id: int, image_ids: List[int]) -> int:
         """Insert images in the dive cluster .

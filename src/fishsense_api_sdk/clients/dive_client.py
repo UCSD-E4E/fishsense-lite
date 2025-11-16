@@ -13,7 +13,7 @@ class DiveClient(ClientBase):
     def __init__(self, base_url: str, timeout: int):
         super().__init__(base_url, timeout)
 
-    async def get(self, dive_id: int | None = None) -> Dive | List[Dive]:
+    async def get(self, dive_id: int | None = None) -> Dive | List[Dive] | None:
         """Get a dive.
 
         Returns:
@@ -23,8 +23,18 @@ class DiveClient(ClientBase):
             if dive_id is not None:
                 response = await client.get(f"/api/v1/dives/{dive_id}")
                 response.raise_for_status()
-                return Dive.model_validate(response.json())
+
+                json = response.json()
+                if json is None:
+                    return None
+
+                return Dive.model_validate(json)
 
             response = await client.get("/api/v1/dives/")
             response.raise_for_status()
-            return [Dive.model_validate(dive) for dive in response.json()]
+
+            json = response.json()
+            if json is None:
+                return None
+
+            return [Dive.model_validate(dive) for dive in json]

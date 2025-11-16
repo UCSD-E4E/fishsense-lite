@@ -11,33 +11,43 @@ class LabelClient(ClientBase):
     def __init__(self, base_url: str, timeout: int):
         super().__init__(base_url, timeout)
 
-    async def get_laser_label(self, image_id: int) -> LaserLabel:
+    async def get_laser_label(self, image_id: int) -> LaserLabel | None:
         """Get a LaserLabel by its ID .
 
         Args:
             image_id (int): The ID of the image to retrieve the laser label for.
 
         Returns:
-            LaserLabel: The laser label for the specified image.
+            LaserLabel | None: The laser label for the specified image.
         """
         async with self._create_client() as client:
             response = await client.get(f"/api/v1/labels/laser/{image_id}")
             response.raise_for_status()
-            return LaserLabel.model_validate(response.json())
 
-    async def get_species_label(self, image_id: int) -> SpeciesLabel:
+            json = response.json()
+            if json is None:
+                return None
+
+            return LaserLabel.model_validate(json)
+
+    async def get_species_label(self, image_id: int) -> SpeciesLabel | None:
         """Get a species label .
 
         Args:
             image_id (int): The ID of the image to retrieve the species label for.
 
         Returns:
-            SpeciesLabel: The species label for the specified image.
+            SpeciesLabel | None: The species label for the specified image.
         """
         async with self._create_client() as client:
             response = await client.get(f"/api/v1/labels/species/{image_id}")
             response.raise_for_status()
-            return SpeciesLabel.model_validate(response.json())
+
+            json = response.json()
+            if json is None:
+                return None
+
+            return SpeciesLabel.model_validate(json)
 
     async def post_species_label(
         self, image_id: int, species_label: SpeciesLabel
