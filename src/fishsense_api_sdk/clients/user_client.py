@@ -1,5 +1,7 @@
 """ "Client for user-related endpoints of the Fishsense API."""
 
+from typing import List
+
 from fishsense_api_sdk.clients.client_base import ClientBase
 from fishsense_api_sdk.models.user import User
 
@@ -10,7 +12,9 @@ class UserClient(ClientBase):
     def __init__(self, base_url: str, timeout: int):
         super().__init__(base_url, timeout)
 
-    async def get(self, user_id: int) -> User | None:
+    async def get(
+        self, user_id: int | None = None, email: str | None = None
+    ) -> List[User] | User | None:
         """Get a user by its ID .
 
         Args:
@@ -20,14 +24,34 @@ class UserClient(ClientBase):
             User | None: The user retrieved from the API.
         """
         async with self._create_client() as client:
-            response = await client.get(f"/api/v1/users/{user_id}")
+            if user_id is not None:
+                response = await client.get(f"/api/v1/users/{user_id}")
+                response.raise_for_status()
+
+                json = response.json()
+                if json is None:
+                    return None
+
+                return User.model_validate(json)
+
+            if email is not None:
+                response = await client.get(f"/api/v1/users/email/{email}")
+                response.raise_for_status()
+
+                json = response.json()
+                if json is None:
+                    return None
+
+                return User.model_validate(json)
+
+            response = await client.get("/api/v1/users/")
             response.raise_for_status()
 
             json = response.json()
             if json is None:
                 return None
 
-            return User.model_validate(json)
+            return [User.model_validate(user) for user in json]
 
     async def put(self, user: User) -> int | None:
         """Create a new user .
