@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.4.0 (2025-11-17)
+
+### Features
+
+- Add user client
+  ([`45c9265`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/45c926530427fd98f966a2b4c690ac3f974e65d2))
+
+
 ## v1.3.0 (2025-11-17)
 
 ### Features
