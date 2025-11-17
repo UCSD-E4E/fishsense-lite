@@ -39,7 +39,7 @@ class UserClient(ClientBase):
             int | None: The ID of the created user.
         """
         async with self._create_client() as client:
-            response = await client.post(
+            response = await client.put(
                 "/api/v1/users/{user_id}",
                 json=user.model_dump(),
             )

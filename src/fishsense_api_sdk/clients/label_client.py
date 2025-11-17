@@ -82,7 +82,7 @@ class LabelClient(ClientBase):
             int: The ID of the created species label.
         """
         async with self._create_client() as client:
-            response = await client.post(
+            response = await client.put(
                 f"/api/v1/labels/species/{image_id}",
                 json=species_label.model_dump(),
             )
