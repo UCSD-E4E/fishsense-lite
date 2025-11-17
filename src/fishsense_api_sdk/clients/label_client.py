@@ -70,15 +70,14 @@ class LabelClient(ClientBase):
 
             return [SpeciesLabel.model_validate(label) for label in json]
 
-    async def post_species_label(
+    async def put_species_label(
         self, image_id: int, species_label: SpeciesLabel
     ) -> int:
-        """Post a species label to an image .
+        """Put a species label to an image .
 
         Args:
-            image_id (int): The ID of the image to post the species label to.
-            species_label (SpeciesLabel): The species label to post.
-
+            image_id (int): The ID of the image to put the species label to.
+            species_label (SpeciesLabel): The species label to put.
         Returns:
             int: The ID of the created species label.
         """
