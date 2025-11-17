@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.4.1 (2025-11-17)
+
+### Bug Fixes
+
+- 405 error
+  ([`5d2fac1`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/5d2fac1585e70dee6824e177e24a04ac85050bc3))
+
+
 ## v1.4.0 (2025-11-17)
 
 ### Features
