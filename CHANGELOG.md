@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v1.3.0 (2025-11-17)
+
+### Features
+
+- Introduce the ability to get species labels by dive
+  ([`ffc4267`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/ffc4267f39bb8a822695f96c14b6c61deb33370d))
+
+- Update model for dive frame cluster to include datasource and updated at
+  ([`3bfac48`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/3bfac4884a71bebfa832d7d256ae470894f956fe))
+
+
 ## v1.2.1 (2025-11-16)
 
 ### Bug Fixes
