@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.5.2 (2025-11-17)
+
+### Bug Fixes
+
+- Url path for putting the user to
+  ([`0ec7a3b`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/0ec7a3b8ccfe4ccc0dde86941947be9005c17dfd))
+
+
 ## v1.5.1 (2025-11-17)
 
 ### Bug Fixes
