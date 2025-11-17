@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.5.0 (2025-11-17)
+
+### Features
+
+- Allow getting users by email
+  ([`bc4c3df`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/bc4c3dfaa61268351c4ad9ec72fda98e72dc5fc5))
+
+
 ## v1.4.1 (2025-11-17)
 
 ### Bug Fixes
