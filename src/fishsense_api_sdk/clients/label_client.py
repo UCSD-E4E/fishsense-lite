@@ -1,5 +1,7 @@
 """Client for interacting with label-related endpoints of the Fishsense API."""
 
+from typing import List
+
 from fishsense_api_sdk.clients.client_base import ClientBase
 from fishsense_api_sdk.models.laser_label import LaserLabel
 from fishsense_api_sdk.models.species_label import SpeciesLabel
@@ -48,6 +50,25 @@ class LabelClient(ClientBase):
                 return None
 
             return SpeciesLabel.model_validate(json)
+
+    async def get_species_labels(self, dive_id: int) -> List[SpeciesLabel] | None:
+        """Get species labels for all images in a dive .
+
+        Args:
+            dive_id (int): The ID of the dive to retrieve species labels for.
+
+        Returns:
+            List[SpeciesLabel] | None: The list of species labels for the specified dive.
+        """
+        async with self._create_client() as client:
+            response = await client.get(f"/api/v1/dives/{dive_id}/labels/species")
+            response.raise_for_status()
+
+            json = response.json()
+            if json is None:
+                return None
+
+            return [SpeciesLabel.model_validate(label) for label in json]
 
     async def post_species_label(
         self, image_id: int, species_label: SpeciesLabel
