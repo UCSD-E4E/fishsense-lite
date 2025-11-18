@@ -16,6 +16,17 @@ class SpeciesLabel(BaseModel):
     image_url: str | None
     updated_at: datetime | None
     completed: bool | None
+    part_of_previous_group: bool | None
+    not_part_of_current_group: bool | None
+    top_three_photos_of_group: bool | None
+    slate_upside_down: bool | None
+    laser_x: float | None
+    laser_y: float | None
+    laser_label: str | None
+    content_of_image: str | None
+    fish_measurable_category: str | None
+    fish_angle_category: str | None
+    fish_curved_category: str | None
     label_studio_json: Dict[str, Any] | None
 
     image_id: int | None
