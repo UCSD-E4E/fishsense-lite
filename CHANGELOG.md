@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.6.0 (2025-11-18)
+
+### Features
+
+- Introduce post method for user
+  ([`f11d4b6`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/f11d4b6d2efae8a2b5cf99dca423dbe0e232dc5d))
+
+
 ## v1.5.2 (2025-11-17)
 
 ### Bug Fixes
