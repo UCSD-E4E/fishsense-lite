@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.8.1 (2025-11-18)
+
+### Bug Fixes
+
+- Better match label studio
+  ([`402d4b8`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/402d4b8d74c58119c0cf14f280e348ceac0671b8))
+
+
 ## v1.8.0 (2025-11-18)
 
 ### Features
