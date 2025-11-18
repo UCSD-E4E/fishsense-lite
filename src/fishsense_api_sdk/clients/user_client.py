@@ -53,19 +53,38 @@ class UserClient(ClientBase):
 
             return [User.model_validate(user) for user in json]
 
-    async def put(self, user: User) -> int | None:
+    async def post(self, user: User) -> int:
         """Create a new user .
 
         Args:
             user (User): The user object to create.
 
         Returns:
-            int | None: The ID of the created user.
+            int: The ID of the created user.
         """
         async with self._create_client() as client:
+            response = await client.post(
+                "/api/v1/users/",
+                json=user.model_dump(exclude_unset=True),
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def put(self, user: User) -> int:
+        """Create a new user .
+
+        Args:
+            user (User): The user object to create.
+
+        Returns:
+            int: The ID of the created user.
+        """
+        user_id = user.id
+
+        async with self._create_client() as client:
             response = await client.put(
-                f"/api/v1/users/{user.id}",
-                json=user.model_dump(),
+                f"/api/v1/users/{user_id}",
+                json=user.model_dump(exclude_unset=True),
             )
             response.raise_for_status()
             return response.json()
