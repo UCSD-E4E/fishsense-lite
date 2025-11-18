@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.6.2 (2025-11-18)
+
+### Bug Fixes
+
+- Use dump mode json instead of producing a json string
+  ([`675e386`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/675e3867628c5c5b36456ad497c0a5c5b46ac804))
+
+
 ## v1.6.1 (2025-11-18)
 
 ### Bug Fixes
