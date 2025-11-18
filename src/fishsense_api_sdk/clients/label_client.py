@@ -84,7 +84,7 @@ class LabelClient(ClientBase):
         async with self._create_client() as client:
             response = await client.put(
                 f"/api/v1/labels/species/{image_id}",
-                json=species_label.model_dump(),
+                json=species_label.model_dump(exclude_unset=True, mode="json"),
             )
             response.raise_for_status()
             return response.json()
