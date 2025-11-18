@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.7.0 (2025-11-18)
+
+### Features
+
+- Support getting user from label studio id
+  ([`86d6fd2`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/86d6fd22d9b592bee583db820d776d7ab76a7b10))
+
+
 ## v1.6.2 (2025-11-18)
 
 ### Bug Fixes
