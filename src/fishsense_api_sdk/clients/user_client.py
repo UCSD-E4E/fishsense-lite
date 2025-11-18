@@ -65,7 +65,7 @@ class UserClient(ClientBase):
         async with self._create_client() as client:
             response = await client.post(
                 "/api/v1/users/",
-                json=user.model_dump_json(exclude_unset=True),
+                json=user.model_dump(exclude_unset=True, mode="json"),
             )
             response.raise_for_status()
             return response.json()
@@ -84,7 +84,7 @@ class UserClient(ClientBase):
         async with self._create_client() as client:
             response = await client.put(
                 f"/api/v1/users/{user_id}",
-                json=user.model_dump_json(exclude_unset=True),
+                json=user.model_dump(exclude_unset=True, mode="json"),
             )
             response.raise_for_status()
             return response.json()
