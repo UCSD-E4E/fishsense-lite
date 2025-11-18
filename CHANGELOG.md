@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.7.1 (2025-11-18)
+
+### Bug Fixes
+
+- Use mode json for species label
+  ([`572bdcf`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/572bdcf75817c0e155eb20e2dcca1b16535df72a))
+
+
 ## v1.7.0 (2025-11-18)
 
 ### Features
