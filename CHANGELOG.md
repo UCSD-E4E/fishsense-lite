@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.8.0 (2025-11-18)
+
+### Features
+
+- Add additional species label properties
+  ([`29264e2`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/29264e29cba469753520a4cf75cf9d78661a96ca))
+
+
 ## v1.7.1 (2025-11-18)
 
 ### Bug Fixes
