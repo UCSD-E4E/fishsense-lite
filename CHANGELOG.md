@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.6.1 (2025-11-18)
+
+### Bug Fixes
+
+- Use model_dump_json so that datetime is handled
+  ([`c90d223`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/c90d22383fbadc7cf00ad6eaba03e406ddbdb1a7))
+
+
 ## v1.6.0 (2025-11-18)
 
 ### Features
