@@ -46,6 +46,22 @@ class LabelClient(ClientBase):
 
         return [LaserLabel.model_validate(label) for label in json]
 
+    async def put_laser_label(self, image_id: int, laser_label: LaserLabel) -> int:
+        """Put a laser label to an image .
+
+        Args:
+            image_id (int): The ID of the image to put the laser label to.
+            laser_label (LaserLabel): The laser label to put.
+        Returns:
+            int: The ID of the created laser label.
+        """
+        response = await self._put(
+            f"/api/v1/labels/laser/{image_id}",
+            json=laser_label.model_dump(exclude_unset=True, mode="json"),
+        )
+        response.raise_for_status()
+        return response.json()
+
     async def get_species_label(self, image_id: int) -> SpeciesLabel | None:
         """Get a species label .
 
