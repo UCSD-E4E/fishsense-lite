@@ -32,6 +32,25 @@ class LabelClient(ClientBase):
 
             return LaserLabel.model_validate(json)
 
+    async def get_laser_labels(self, dive_id: int) -> List[LaserLabel] | None:
+        """Get laser labels for all images in a dive .
+
+        Args:
+            dive_id (int): The ID of the dive to retrieve laser labels for.
+
+        Returns:
+            List[LaserLabel] | None: The list of laser labels for the specified dive.
+        """
+        async with self._create_client() as client:
+            response = await client.get(f"/api/v1/dives/{dive_id}/labels/laser")
+            response.raise_for_status()
+
+            json = response.json()
+            if json is None:
+                return None
+
+            return [LaserLabel.model_validate(label) for label in json]
+
     async def get_species_label(self, image_id: int) -> SpeciesLabel | None:
         """Get a species label .
 

@@ -7,15 +7,16 @@ from pydantic import BaseModel
 
 
 class LaserLabel(BaseModel):
-    # pylint: disable=duplicate-code
     """Model representing a laser label."""
 
     id: int | None
     label_studio_task_id: int | None
+    label_studio_project_id: int | None
     x: float | None
     y: float | None
     label: str | None
     updated_at: datetime | None
+    superseded: bool | None
     completed: bool | None
     label_studio_json: Dict[str, Any] | None
 
