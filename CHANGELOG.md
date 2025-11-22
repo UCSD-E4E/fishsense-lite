@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.10.0 (2025-11-22)
+
+### Features
+
+- Implement autoretry for get_laser_labels
+  ([`f7bac23`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/f7bac231f753aaf8450fb28440018552178fae87))
+
+
 ## v1.9.0 (2025-11-22)
 
 ### Features
