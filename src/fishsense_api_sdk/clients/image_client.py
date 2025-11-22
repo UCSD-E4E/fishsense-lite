@@ -1,6 +1,5 @@
 """Client for interacting with image-related endpoints of the Fishsense API."""
 
-import asyncio
 from typing import List
 
 from fishsense_api_sdk.clients.client_base import ClientBase
@@ -23,28 +22,27 @@ class ImageClient(ClientBase):
         Returns:
             Image | List[Image]: The image(s) retrieved from the API.
         """
-        async with self._create_client() as client:
-            if dive_id is not None:
-                response = await client.get(f"/api/v1/dives/{dive_id}/images/")
-                response.raise_for_status()
+        if dive_id is not None:
+            response = await self._get(f"/api/v1/dives/{dive_id}/images/")
+            response.raise_for_status()
 
-                json = response.json()
-                if json is None:
-                    return None
+            json = response.json()
+            if json is None:
+                return None
 
-                return [Image.model_validate(image) for image in json]
+            return [Image.model_validate(image) for image in json]
 
-            if image_id is not None:
-                response = await client.get(f"/api/v1/images/{image_id}")
-                response.raise_for_status()
+        if image_id is not None:
+            response = await self._get(f"/api/v1/images/{image_id}")
+            response.raise_for_status()
 
-                json = response.json()
-                if json is None:
-                    return None
+            json = response.json()
+            if json is None:
+                return None
 
-                return Image.model_validate(json)
+            return Image.model_validate(json)
 
-            raise NotImplementedError("Getting all images is not supported.")
+        raise NotImplementedError("Getting all images is not supported.")
 
     async def get_clusters(self, dive_id: int) -> List[DiveFrameCluster] | None:
         """Get clusters of images in the dive_id.
@@ -55,15 +53,14 @@ class ImageClient(ClientBase):
         Returns:
             List[DiveFrameCluster]: The list of image clusters for the specified dive.
         """
-        async with self._create_client() as client:
-            response = await client.get(f"/api/v1/dives/{dive_id}/images/clusters/")
-            response.raise_for_status()
+        response = await self._get(f"/api/v1/dives/{dive_id}/images/clusters/")
+        response.raise_for_status()
 
-            json = response.json()
-            if json is None:
-                return None
+        json = response.json()
+        if json is None:
+            return None
 
-            return [DiveFrameCluster.model_validate(cluster) for cluster in json]
+        return [DiveFrameCluster.model_validate(cluster) for cluster in json]
 
     async def post_cluster(self, dive_id: int, image_ids: List[int]) -> int:
         """Insert images in the dive cluster .
@@ -75,10 +72,9 @@ class ImageClient(ClientBase):
         Returns:
             int: The ID of the created dive frame cluster.
         """
-        async with self._create_client() as client:
-            response = await client.post(
-                f"/api/v1/dives/{dive_id}/images/clusters/",
-                json=image_ids,
-            )
-            response.raise_for_status()
-            return response.json()
+        response = await self._post(
+            f"/api/v1/dives/{dive_id}/images/clusters/",
+            json=image_ids,
+        )
+        response.raise_for_status()
+        return response.json()

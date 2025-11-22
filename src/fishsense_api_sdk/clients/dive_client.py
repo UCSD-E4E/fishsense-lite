@@ -1,10 +1,6 @@
 """Client for interacting with dive-related endpoints of the Fishsense API."""
 
-import asyncio
 from typing import List
-
-import httpx
-from retry import retry
 
 from fishsense_api_sdk.clients.client_base import ClientBase
 from fishsense_api_sdk.models.dive import Dive
@@ -14,7 +10,6 @@ class DiveClient(ClientBase):
     # pylint: disable=too-few-public-methods
     """Client for interacting with dive-related endpoints of the Fishsense API."""
 
-    @retry(exceptions=httpx.HTTPStatusError, tries=3, delay=2, backoff=2)
     async def get(self, dive_id: int | None = None) -> Dive | List[Dive] | None:
         """Get a dive.
 

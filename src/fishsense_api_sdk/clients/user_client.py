@@ -20,35 +20,34 @@ class UserClient(ClientBase):
         Returns:
             User | None: The user retrieved from the API.
         """
-        async with self._create_client() as client:
-            if user_id is not None:
-                response = await client.get(f"/api/v1/users/{user_id}")
-                response.raise_for_status()
-
-                json = response.json()
-                if json is None:
-                    return None
-
-                return User.model_validate(json)
-
-            if email is not None:
-                response = await client.get(f"/api/v1/users/email/{email}")
-                response.raise_for_status()
-
-                json = response.json()
-                if json is None:
-                    return None
-
-                return User.model_validate(json)
-
-            response = await client.get("/api/v1/users/")
+        if user_id is not None:
+            response = await self._get(f"/api/v1/users/{user_id}")
             response.raise_for_status()
 
             json = response.json()
             if json is None:
                 return None
 
-            return [User.model_validate(user) for user in json]
+            return User.model_validate(json)
+
+        if email is not None:
+            response = await self._get(f"/api/v1/users/email/{email}")
+            response.raise_for_status()
+
+            json = response.json()
+            if json is None:
+                return None
+
+            return User.model_validate(json)
+
+        response = await self._get("/api/v1/users/")
+        response.raise_for_status()
+
+        json = response.json()
+        if json is None:
+            return None
+
+        return [User.model_validate(user) for user in json]
 
     async def post(self, user: User) -> int:
         """Create a new user .
@@ -59,13 +58,12 @@ class UserClient(ClientBase):
         Returns:
             int: The ID of the created user.
         """
-        async with self._create_client() as client:
-            response = await client.post(
-                "/api/v1/users/",
-                json=user.model_dump(exclude_unset=True, mode="json"),
-            )
-            response.raise_for_status()
-            return response.json()
+        response = await self._post(
+            "/api/v1/users/",
+            json=user.model_dump(exclude_unset=True, mode="json"),
+        )
+        response.raise_for_status()
+        return response.json()
 
     async def put(self, user: User) -> int:
         """Create a new user .
@@ -78,10 +76,9 @@ class UserClient(ClientBase):
         """
         user_id = user.id
 
-        async with self._create_client() as client:
-            response = await client.put(
-                f"/api/v1/users/{user_id}",
-                json=user.model_dump(exclude_unset=True, mode="json"),
-            )
-            response.raise_for_status()
-            return response.json()
+        response = await self._put(
+            f"/api/v1/users/{user_id}",
+            json=user.model_dump(exclude_unset=True, mode="json"),
+        )
+        response.raise_for_status()
+        return response.json()

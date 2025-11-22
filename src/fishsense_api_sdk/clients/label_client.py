@@ -2,9 +2,6 @@
 
 from typing import List
 
-import httpx
-from retry import retry
-
 from fishsense_api_sdk.clients.client_base import ClientBase
 from fishsense_api_sdk.models.laser_label import LaserLabel
 from fishsense_api_sdk.models.species_label import SpeciesLabel
@@ -13,7 +10,6 @@ from fishsense_api_sdk.models.species_label import SpeciesLabel
 class LabelClient(ClientBase):
     """Client for interacting with label-related endpoints of the Fishsense API."""
 
-    @retry(exceptions=httpx.HTTPStatusError, tries=3, delay=2, backoff=2)
     async def get_laser_label(self, image_id: int) -> LaserLabel | None:
         """Get a LaserLabel by its ID .
 
@@ -32,7 +28,6 @@ class LabelClient(ClientBase):
 
         return LaserLabel.model_validate(json)
 
-    @retry(exceptions=httpx.HTTPStatusError, tries=3, delay=2, backoff=2)
     async def get_laser_labels(self, dive_id: int) -> List[LaserLabel] | None:
         """Get laser labels for all images in a dive .
 
@@ -98,7 +93,7 @@ class LabelClient(ClientBase):
         Returns:
             int: The ID of the created species label.
         """
-        response = await self._client.put(
+        response = await self._put(
             f"/api/v1/labels/species/{image_id}",
             json=species_label.model_dump(exclude_unset=True, mode="json"),
         )
