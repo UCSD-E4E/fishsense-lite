@@ -16,6 +16,7 @@ class LabelClient(ClientBase):
     def __init__(self, base_url: str, timeout: int):
         super().__init__(base_url, timeout)
 
+    @retry(exceptions=httpx.HTTPStatusError, tries=3, delay=2, backoff=2)
     async def get_laser_label(self, image_id: int) -> LaserLabel | None:
         """Get a LaserLabel by its ID .
 
@@ -36,7 +37,6 @@ class LabelClient(ClientBase):
             return LaserLabel.model_validate(json)
 
     @retry(exceptions=httpx.HTTPStatusError, tries=3, delay=2, backoff=2)
-    @retry(exceptions=httpx.ConnectError, tries=3, delay=2, backoff=2)
     async def get_laser_labels(self, dive_id: int) -> List[LaserLabel] | None:
         """Get laser labels for all images in a dive .
 

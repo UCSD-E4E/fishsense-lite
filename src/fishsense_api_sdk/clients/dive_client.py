@@ -2,6 +2,9 @@
 
 from typing import List
 
+import httpx
+from retry import retry
+
 from fishsense_api_sdk.clients.client_base import ClientBase
 from fishsense_api_sdk.models.dive import Dive
 
@@ -13,6 +16,7 @@ class DiveClient(ClientBase):
     def __init__(self, base_url: str, timeout: int):
         super().__init__(base_url, timeout)
 
+    @retry(exceptions=httpx.HTTPStatusError, tries=3, delay=2, backoff=2)
     async def get(self, dive_id: int | None = None) -> Dive | List[Dive] | None:
         """Get a dive.
 
