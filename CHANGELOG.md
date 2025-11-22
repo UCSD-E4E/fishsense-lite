@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.12.0 (2025-11-22)
+
+### Features
+
+- Add put laser label
+  ([`9184d86`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/9184d867316a77dadc0a5ccfe326615b2e077ad4))
+
+
 ## v1.11.0 (2025-11-22)
 
 ### Bug Fixes
