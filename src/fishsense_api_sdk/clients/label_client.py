@@ -13,9 +13,6 @@ from fishsense_api_sdk.models.species_label import SpeciesLabel
 class LabelClient(ClientBase):
     """Client for interacting with label-related endpoints of the Fishsense API."""
 
-    def __init__(self, base_url: str, timeout: int):
-        super().__init__(base_url, timeout)
-
     @retry(exceptions=httpx.HTTPStatusError, tries=3, delay=2, backoff=2)
     async def get_laser_label(self, image_id: int) -> LaserLabel | None:
         """Get a LaserLabel by its ID .
@@ -26,7 +23,7 @@ class LabelClient(ClientBase):
         Returns:
             LaserLabel | None: The laser label for the specified image.
         """
-        response = await self._client.get(f"/api/v1/labels/laser/{image_id}")
+        response = await self._get(f"/api/v1/labels/laser/{image_id}")
         response.raise_for_status()
 
         json = response.json()
@@ -45,7 +42,7 @@ class LabelClient(ClientBase):
         Returns:
             List[LaserLabel] | None: The list of laser labels for the specified dive.
         """
-        response = await self._client.get(f"/api/v1/dives/{dive_id}/labels/laser")
+        response = await self._get(f"/api/v1/dives/{dive_id}/labels/laser")
         response.raise_for_status()
 
         json = response.json()
@@ -63,7 +60,7 @@ class LabelClient(ClientBase):
         Returns:
             SpeciesLabel | None: The species label for the specified image.
         """
-        response = await self._client.get(f"/api/v1/labels/species/{image_id}")
+        response = await self._get(f"/api/v1/labels/species/{image_id}")
         response.raise_for_status()
 
         json = response.json()
@@ -81,7 +78,7 @@ class LabelClient(ClientBase):
         Returns:
             List[SpeciesLabel] | None: The list of species labels for the specified dive.
         """
-        response = await self._client.get(f"/api/v1/dives/{dive_id}/labels/species")
+        response = await self._get(f"/api/v1/dives/{dive_id}/labels/species")
         response.raise_for_status()
 
         json = response.json()

@@ -9,9 +9,6 @@ from fishsense_api_sdk.models.user import User
 class UserClient(ClientBase):
     """Client for interacting with user-related endpoints of the Fishsense API."""
 
-    def __init__(self, base_url: str, timeout: int):
-        super().__init__(base_url, timeout)
-
     async def get(
         self, user_id: int | None = None, email: str | None = None
     ) -> List[User] | User | None:

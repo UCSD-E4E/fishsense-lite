@@ -1,5 +1,6 @@
 """Client for interacting with dive-related endpoints of the Fishsense API."""
 
+import asyncio
 from typing import List
 
 import httpx
@@ -13,9 +14,6 @@ class DiveClient(ClientBase):
     # pylint: disable=too-few-public-methods
     """Client for interacting with dive-related endpoints of the Fishsense API."""
 
-    def __init__(self, base_url: str, timeout: int):
-        super().__init__(base_url, timeout)
-
     @retry(exceptions=httpx.HTTPStatusError, tries=3, delay=2, backoff=2)
     async def get(self, dive_id: int | None = None) -> Dive | List[Dive] | None:
         """Get a dive.
@@ -24,7 +22,7 @@ class DiveClient(ClientBase):
             Dive | List[Dive]: The dive(s) retrieved from the API.
         """
         if dive_id is not None:
-            response = await self._client.get(f"/api/v1/dives/{dive_id}")
+            response = await self._get(f"/api/v1/dives/{dive_id}")
             response.raise_for_status()
 
             json = response.json()
@@ -33,7 +31,7 @@ class DiveClient(ClientBase):
 
             return Dive.model_validate(json)
 
-        response = await self._client.get("/api/v1/dives/")
+        response = await self._get("/api/v1/dives/")
         response.raise_for_status()
 
         json = response.json()

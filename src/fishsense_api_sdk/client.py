@@ -1,5 +1,7 @@
 """ "Main client for interacting with the Fishsense API."""
 
+import asyncio
+
 from fishsense_api_sdk.clients.camera_client import CameraClient
 from fishsense_api_sdk.clients.dive_client import DiveClient
 from fishsense_api_sdk.clients.image_client import ImageClient
@@ -55,14 +57,18 @@ class Client:
         """
         return self.__users
 
-    def __init__(self, base_url: str, timeout: int = 10):
+    def __init__(
+        self, base_url: str, timeout: int = 10, max_concurrent_requests: int = 10
+    ):
         self.base_url = base_url
 
-        self.__cameras = CameraClient(base_url, timeout)
-        self.__dives = DiveClient(base_url, timeout)
-        self.__images = ImageClient(base_url, timeout)
-        self.__labels = LabelClient(base_url, timeout)
-        self.__users = UserClient(base_url, timeout)
+        self.__semaphore = asyncio.Semaphore(max_concurrent_requests)
+
+        self.__cameras = CameraClient(base_url, timeout, self.__semaphore)
+        self.__dives = DiveClient(base_url, timeout, self.__semaphore)
+        self.__images = ImageClient(base_url, timeout, self.__semaphore)
+        self.__labels = LabelClient(base_url, timeout, self.__semaphore)
+        self.__users = UserClient(base_url, timeout, self.__semaphore)
 
     async def __aenter__(self):
         await self.cameras.__aenter__()

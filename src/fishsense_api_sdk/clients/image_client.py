@@ -1,5 +1,6 @@
 """Client for interacting with image-related endpoints of the Fishsense API."""
 
+import asyncio
 from typing import List
 
 from fishsense_api_sdk.clients.client_base import ClientBase
@@ -10,9 +11,6 @@ from fishsense_api_sdk.models.image import Image
 class ImageClient(ClientBase):
     # pylint: disable=too-few-public-methods
     """Client for interacting with image-related endpoints of the Fishsense API."""
-
-    def __init__(self, base_url: str, timeout: int):
-        super().__init__(base_url, timeout)
 
     async def get(
         self, dive_id: int | None = None, image_id: int | None = None

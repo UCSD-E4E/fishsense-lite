@@ -1,5 +1,6 @@
 """Client for interacting with camera-related endpoints of the Fishsense API."""
 
+import asyncio
 from typing import List
 
 from fishsense_api_sdk.clients.client_base import ClientBase
@@ -12,9 +13,6 @@ from fishsense_api_sdk.models.camera_intrinsics import (
 
 class CameraClient(ClientBase):
     """Client for interacting with camera-related endpoints of the Fishsense API."""
-
-    def __init__(self, base_url: str, timeout: int):
-        super().__init__(base_url, timeout)
 
     async def get(self, camera_id: int | None = None) -> List[Camera] | Camera | None:
         """Get a list of camera objects .
