@@ -2,6 +2,31 @@
 
 <!-- version list -->
 
+## v1.11.0 (2025-11-22)
+
+### Bug Fixes
+
+- Client object itself should be an async context manager
+  ([`1c9cd4c`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/1c9cd4ca22188c546af7a6a4cba37b5a0f1b4168))
+
+- Label_client now properly supports using context manager
+  ([`cbcf299`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/cbcf299843ddd160a3ef401ec0afdad237629b00))
+
+- Make get dive work correctly
+  ([`e64d89f`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/e64d89fe46655c5903dd6f3d4e9c0bb9c8754abe))
+
+- Make sure all the clients are functional again
+  ([`ab2f60c`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/ab2f60c8e784b203ee12321a04e27fd548fab8a5))
+
+### Features
+
+- Introduce a max number of concurrent connections
+  ([`ddad7dd`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/ddad7dddf11bb73c66bba597071ac705444de6a3))
+
+- Use async with for client
+  ([`f763d30`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/f763d30fc654123fe1b9274b3302c921e255f23c))
+
+
 ## v1.10.0 (2025-11-22)
 
 ### Features
