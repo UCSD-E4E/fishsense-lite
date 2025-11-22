@@ -11,9 +11,12 @@ class ClientBase(ABC):
 
     @property
     def _client(self) -> httpx.AsyncClient:
+        if self.__client is None:
+            self.__client = self.__create_client()
+
         return self.__client
 
-    def __init__(self, base_url: str, timeout):
+    def __init__(self, base_url: str, timeout: int):
         self.base_url = base_url
         self.timeout = timeout
 
@@ -23,7 +26,6 @@ class ClientBase(ABC):
         return httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout)
 
     async def __aenter__(self) -> "ClientBase":
-        self.__client = self.__create_client()
         return self
 
     async def __aexit__(self, exc_type, exc_value, traceback) -> None:

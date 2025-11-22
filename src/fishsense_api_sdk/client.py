@@ -63,3 +63,18 @@ class Client:
         self.__images = ImageClient(base_url, timeout)
         self.__labels = LabelClient(base_url, timeout)
         self.__users = UserClient(base_url, timeout)
+
+    async def __aenter__(self):
+        await self.cameras.__aenter__()
+        await self.dives.__aenter__()
+        await self.images.__aenter__()
+        await self.labels.__aenter__()
+        await self.users.__aenter__()
+        return self
+
+    async def __aexit__(self, exc_type, exc_value, traceback) -> None:
+        await self.cameras.__aexit__(exc_type, exc_value, traceback)
+        await self.dives.__aexit__(exc_type, exc_value, traceback)
+        await self.images.__aexit__(exc_type, exc_value, traceback)
+        await self.labels.__aexit__(exc_type, exc_value, traceback)
+        await self.users.__aexit__(exc_type, exc_value, traceback)
