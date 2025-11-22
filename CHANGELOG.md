@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.9.0 (2025-11-22)
+
+### Features
+
+- Introduce laser_labels api
+  ([`2eb4bf3`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/2eb4bf3c698c472f819302be1a44bb5dc44f203b))
+
+
 ## v1.8.1 (2025-11-18)
 
 ### Bug Fixes
