@@ -23,22 +23,21 @@ class DiveClient(ClientBase):
         Returns:
             Dive | List[Dive]: The dive(s) retrieved from the API.
         """
-        async with self._create_client() as client:
-            if dive_id is not None:
-                response = await client.get(f"/api/v1/dives/{dive_id}")
-                response.raise_for_status()
-
-                json = response.json()
-                if json is None:
-                    return None
-
-                return Dive.model_validate(json)
-
-            response = await client.get("/api/v1/dives/")
+        if dive_id is not None:
+            response = await self._client.get(f"/api/v1/dives/{dive_id}")
             response.raise_for_status()
 
             json = response.json()
             if json is None:
                 return None
 
-            return [Dive.model_validate(dive) for dive in json]
+            return Dive.model_validate(json)
+
+        response = await self._client.get("/api/v1/dives/")
+        response.raise_for_status()
+
+        json = response.json()
+        if json is None:
+            return None
+
+        return [Dive.model_validate(dive) for dive in json]
