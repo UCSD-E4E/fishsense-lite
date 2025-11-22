@@ -26,15 +26,14 @@ class LabelClient(ClientBase):
         Returns:
             LaserLabel | None: The laser label for the specified image.
         """
-        async with self._create_client() as client:
-            response = await client.get(f"/api/v1/labels/laser/{image_id}")
-            response.raise_for_status()
+        response = await self._client.get(f"/api/v1/labels/laser/{image_id}")
+        response.raise_for_status()
 
-            json = response.json()
-            if json is None:
-                return None
+        json = response.json()
+        if json is None:
+            return None
 
-            return LaserLabel.model_validate(json)
+        return LaserLabel.model_validate(json)
 
     @retry(exceptions=httpx.HTTPStatusError, tries=3, delay=2, backoff=2)
     async def get_laser_labels(self, dive_id: int) -> List[LaserLabel] | None:
@@ -46,15 +45,14 @@ class LabelClient(ClientBase):
         Returns:
             List[LaserLabel] | None: The list of laser labels for the specified dive.
         """
-        async with self._create_client() as client:
-            response = await client.get(f"/api/v1/dives/{dive_id}/labels/laser")
-            response.raise_for_status()
+        response = await self._client.get(f"/api/v1/dives/{dive_id}/labels/laser")
+        response.raise_for_status()
 
-            json = response.json()
-            if json is None:
-                return None
+        json = response.json()
+        if json is None:
+            return None
 
-            return [LaserLabel.model_validate(label) for label in json]
+        return [LaserLabel.model_validate(label) for label in json]
 
     async def get_species_label(self, image_id: int) -> SpeciesLabel | None:
         """Get a species label .
@@ -65,15 +63,14 @@ class LabelClient(ClientBase):
         Returns:
             SpeciesLabel | None: The species label for the specified image.
         """
-        async with self._create_client() as client:
-            response = await client.get(f"/api/v1/labels/species/{image_id}")
-            response.raise_for_status()
+        response = await self._client.get(f"/api/v1/labels/species/{image_id}")
+        response.raise_for_status()
 
-            json = response.json()
-            if json is None:
-                return None
+        json = response.json()
+        if json is None:
+            return None
 
-            return SpeciesLabel.model_validate(json)
+        return SpeciesLabel.model_validate(json)
 
     async def get_species_labels(self, dive_id: int) -> List[SpeciesLabel] | None:
         """Get species labels for all images in a dive .
@@ -84,15 +81,14 @@ class LabelClient(ClientBase):
         Returns:
             List[SpeciesLabel] | None: The list of species labels for the specified dive.
         """
-        async with self._create_client() as client:
-            response = await client.get(f"/api/v1/dives/{dive_id}/labels/species")
-            response.raise_for_status()
+        response = await self._client.get(f"/api/v1/dives/{dive_id}/labels/species")
+        response.raise_for_status()
 
-            json = response.json()
-            if json is None:
-                return None
+        json = response.json()
+        if json is None:
+            return None
 
-            return [SpeciesLabel.model_validate(label) for label in json]
+        return [SpeciesLabel.model_validate(label) for label in json]
 
     async def put_species_label(
         self, image_id: int, species_label: SpeciesLabel
@@ -105,10 +101,9 @@ class LabelClient(ClientBase):
         Returns:
             int: The ID of the created species label.
         """
-        async with self._create_client() as client:
-            response = await client.put(
-                f"/api/v1/labels/species/{image_id}",
-                json=species_label.model_dump(exclude_unset=True, mode="json"),
-            )
-            response.raise_for_status()
-            return response.json()
+        response = await self._client.put(
+            f"/api/v1/labels/species/{image_id}",
+            json=species_label.model_dump(exclude_unset=True, mode="json"),
+        )
+        response.raise_for_status()
+        return response.json()
