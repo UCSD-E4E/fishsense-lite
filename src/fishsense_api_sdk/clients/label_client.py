@@ -29,6 +29,24 @@ class LabelClient(ClientBase):
 
         return HeadTailLabel.model_validate(json)
 
+    async def put_headtail_label(
+        self, image_id: int, headtail_label: HeadTailLabel
+    ) -> int:
+        """Put a head-tail label to an image .
+
+        Args:
+            image_id (int): The ID of the image to put the head-tail label to.
+            headtail_label (HeadTailLabel): The head-tail label to put.
+        Returns:
+            int: The ID of the created head-tail label.
+        """
+        response = await self._put(
+            f"/api/v1/labels/headtail/{image_id}",
+            json=headtail_label.model_dump(exclude_unset=True, mode="json"),
+        )
+        response.raise_for_status()
+        return response.json()
+
     async def get_laser_label(self, image_id: int) -> LaserLabel | None:
         """Get a LaserLabel by its ID .
 
