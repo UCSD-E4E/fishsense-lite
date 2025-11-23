@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v1.19.1 (2025-11-23)
+
+### Bug Fixes
+
+- Points json should be a list of tuple
+  ([`470468a`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/470468adcd68fdfd3ff89223350cba312d588850))
+
+- Support datetime to json
+  ([`786aebf`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/786aebf949299141ed01f24483b866e789021b7b))
+
+
 ## v1.19.0 (2025-11-23)
 
 ### Features
