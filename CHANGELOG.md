@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v1.16.0 (2025-11-23)
+
+### Features
+
+- Allow selecting headtail labels with dive id
+  ([`235e410`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/235e41049e0f59fa11764a44741007100328ba31))
+
+- Support getting canonical dives
+  ([`083ff27`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/083ff2773d69108f098e9a3711b37f1e39916180))
+
+
 ## v1.15.0 (2025-11-23)
 
 ### Features
