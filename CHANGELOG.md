@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.15.0 (2025-11-23)
+
+### Features
+
+- Support querying images by checksum
+  ([`c265991`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/c265991f323b22d6897b944d928ffecb0d509922))
+
+
 ## v1.14.0 (2025-11-23)
 
 ### Features
