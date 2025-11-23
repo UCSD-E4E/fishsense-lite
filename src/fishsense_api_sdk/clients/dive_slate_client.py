@@ -36,7 +36,8 @@ class DiveSlateClient(ClientBase):
             int: The ID of the created dive slate.
         """
         response = await self._put(
-            f"/api/v1/dive-slates/{dive_slate.id}", json=dive_slate.model_dump()
+            f"/api/v1/dive-slates/{dive_slate.id}",
+            json=dive_slate.model_dump(exclude_unset=True, mode="json"),
         )
         response.raise_for_status()
 
