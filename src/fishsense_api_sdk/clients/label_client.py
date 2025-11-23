@@ -3,12 +3,31 @@
 from typing import List
 
 from fishsense_api_sdk.clients.client_base import ClientBase
+from fishsense_api_sdk.models.headtail_label import HeadTailLabel
 from fishsense_api_sdk.models.laser_label import LaserLabel
 from fishsense_api_sdk.models.species_label import SpeciesLabel
 
 
 class LabelClient(ClientBase):
     """Client for interacting with label-related endpoints of the Fishsense API."""
+
+    async def get_headtail_label(self, image_id: int) -> HeadTailLabel | None:
+        """Get a HeadTailLabel by its ID .
+
+        Args:
+            image_id (int): The ID of the image to retrieve the head-tail label for.
+
+        Returns:
+            HeadTailLabel | None: The head-tail label for the specified image.
+        """
+        response = await self._get(f"/api/v1/labels/headtail/{image_id}")
+        response.raise_for_status()
+
+        json = response.json()
+        if json is None:
+            return None
+
+        return HeadTailLabel.model_validate(json)
 
     async def get_laser_label(self, image_id: int) -> LaserLabel | None:
         """Get a LaserLabel by its ID .
