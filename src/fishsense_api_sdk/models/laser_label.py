@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 
 class LaserLabel(BaseModel):
+    # pylint: disable=R0801
     """Model representing a laser label."""
 
     id: int | None

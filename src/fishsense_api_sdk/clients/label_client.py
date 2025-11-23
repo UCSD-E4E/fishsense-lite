@@ -29,6 +29,24 @@ class LabelClient(ClientBase):
 
         return HeadTailLabel.model_validate(json)
 
+    async def get_headtail_labels(self, dive_id: int) -> List[HeadTailLabel] | None:
+        """Get head-tail labels for all images in a dive .
+
+        Args:
+            dive_id (int): The ID of the dive to retrieve head-tail labels for.
+
+        Returns:
+            List[HeadTailLabel] | None: The list of head-tail labels for the specified dive.
+        """
+        response = await self._get(f"/api/v1/dives/{dive_id}/labels/headtail")
+        response.raise_for_status()
+
+        json = response.json()
+        if json is None:
+            return None
+
+        return [HeadTailLabel.model_validate(label) for label in json]
+
     async def put_headtail_label(
         self, image_id: int, headtail_label: HeadTailLabel
     ) -> int:
