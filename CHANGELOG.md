@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.19.0 (2025-11-23)
+
+### Features
+
+- Introduce put method for dive slate client
+  ([`cce75b8`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/cce75b84c907e01b8dfee99304a4658bd281dd93))
+
+
 ## v1.18.0 (2025-11-23)
 
 ### Features
