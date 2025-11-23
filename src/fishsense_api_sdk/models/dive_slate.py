@@ -1,6 +1,7 @@
 """SQLModel model for DiveSlate table."""
 
 from datetime import datetime
+from typing import Any, Dict
 
 from pydantic import BaseModel
 
@@ -13,3 +14,4 @@ class DiveSlate(BaseModel):
     dpi: int | None
     path: str
     created_at: datetime | None
+    points_json: Dict[str, Any] | None
