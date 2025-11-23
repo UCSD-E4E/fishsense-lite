@@ -12,7 +12,10 @@ class ImageClient(ClientBase):
     """Client for interacting with image-related endpoints of the Fishsense API."""
 
     async def get(
-        self, dive_id: int | None = None, image_id: int | None = None
+        self,
+        dive_id: int | None = None,
+        image_id: int | None = None,
+        checksum: str | None = None,
     ) -> Image | List[Image] | None:
         """Get images from dive .
 
@@ -34,6 +37,16 @@ class ImageClient(ClientBase):
 
         if image_id is not None:
             response = await self._get(f"/api/v1/images/{image_id}")
+            response.raise_for_status()
+
+            json = response.json()
+            if json is None:
+                return None
+
+            return Image.model_validate(json)
+
+        if checksum is not None:
+            response = await self._get(f"/api/v1/images/checksum/{checksum}")
             response.raise_for_status()
 
             json = response.json()
