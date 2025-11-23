@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.17.0 (2025-11-23)
+
+### Features
+
+- Introduce methods to get dive slates from api
+  ([`4f253fb`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/4f253fb7f5a592defbe4712bba8e960cfb8907d8))
+
+
 ## v1.16.0 (2025-11-23)
 
 ### Features
