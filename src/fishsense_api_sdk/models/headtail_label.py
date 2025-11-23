@@ -17,6 +17,7 @@ class HeadTailLabel(BaseModel):
     tail_x: float | None
     tail_y: float | None
     updated_at: datetime | None
+    superseded: bool | None
     completed: bool | None
     label_studio_json: Dict[str, Any] | None
 

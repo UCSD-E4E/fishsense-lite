@@ -34,3 +34,18 @@ class DiveClient(ClientBase):
             return None
 
         return [Dive.model_validate(dive) for dive in json]
+
+    async def get_canonical(self) -> List[Dive] | None:
+        """Get canonical dives.
+
+        Returns:
+            List[Dive] | None: The canonical dives retrieved from the API.
+        """
+        response = await self._get("/api/v1/canonical/dives/")
+        response.raise_for_status()
+
+        json = response.json()
+        if json is None:
+            return None
+
+        return [Dive.model_validate(dive) for dive in json]
