@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.13.0 (2025-11-23)
+
+### Features
+
+- Introduce headtail label
+  ([`48b0849`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/48b0849a4aa53c430641978f69992376f74ce078))
+
+
 ## v1.12.0 (2025-11-22)
 
 ### Features
