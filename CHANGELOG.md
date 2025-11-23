@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.18.0 (2025-11-23)
+
+### Features
+
+- Add dpi property to dive slate
+  ([`13941f3`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/13941f3b5ad196e309f713a285c7d6a3d10e1faa))
+
+
 ## v1.17.0 (2025-11-23)
 
 ### Features
