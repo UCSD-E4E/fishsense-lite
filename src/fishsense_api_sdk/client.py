@@ -4,12 +4,14 @@ import asyncio
 
 from fishsense_api_sdk.clients.camera_client import CameraClient
 from fishsense_api_sdk.clients.dive_client import DiveClient
+from fishsense_api_sdk.clients.dive_slate_client import DiveSlateClient
 from fishsense_api_sdk.clients.image_client import ImageClient
 from fishsense_api_sdk.clients.label_client import LabelClient
 from fishsense_api_sdk.clients.user_client import UserClient
 
 
 class Client:
+    # pylint: disable=too-many-instance-attributes
     """Main client for interacting with the Fishsense API."""
 
     @property
@@ -29,6 +31,15 @@ class Client:
             DiveClient: The dive client instance.
         """
         return self.__dives
+
+    @property
+    def dive_slates(self) -> DiveSlateClient:
+        """Get a list of dive slate instances .
+
+        Returns:
+            DiveSlateClient: The dive slate client instance.
+        """
+        return self.__dive_slates
 
     @property
     def images(self) -> ImageClient:
@@ -66,6 +77,7 @@ class Client:
 
         self.__cameras = CameraClient(base_url, timeout, self.__semaphore)
         self.__dives = DiveClient(base_url, timeout, self.__semaphore)
+        self.__dive_slates = DiveSlateClient(base_url, timeout, self.__semaphore)
         self.__images = ImageClient(base_url, timeout, self.__semaphore)
         self.__labels = LabelClient(base_url, timeout, self.__semaphore)
         self.__users = UserClient(base_url, timeout, self.__semaphore)
@@ -73,6 +85,7 @@ class Client:
     async def __aenter__(self):
         await self.cameras.__aenter__()
         await self.dives.__aenter__()
+        await self.dive_slates.__aenter__()
         await self.images.__aenter__()
         await self.labels.__aenter__()
         await self.users.__aenter__()
@@ -81,6 +94,7 @@ class Client:
     async def __aexit__(self, exc_type, exc_value, traceback) -> None:
         await self.cameras.__aexit__(exc_type, exc_value, traceback)
         await self.dives.__aexit__(exc_type, exc_value, traceback)
+        await self.dive_slates.__aexit__(exc_type, exc_value, traceback)
         await self.images.__aexit__(exc_type, exc_value, traceback)
         await self.labels.__aexit__(exc_type, exc_value, traceback)
         await self.users.__aexit__(exc_type, exc_value, traceback)
