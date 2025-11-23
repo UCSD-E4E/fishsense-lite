@@ -10,5 +10,6 @@ class DiveSlate(BaseModel):
 
     id: int
     name: str
+    dpi: int | None
     path: str
     created_at: datetime | None
