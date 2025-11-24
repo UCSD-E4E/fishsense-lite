@@ -3,7 +3,7 @@
 from typing import List
 
 from fishsense_api_sdk.clients.client_base import ClientBase
-from fishsense_api_sdk.models.dive_slate_labels import DiveSlateLabels
+from fishsense_api_sdk.models.dive_slate_label import DiveSlateLabel
 from fishsense_api_sdk.models.headtail_label import HeadTailLabel
 from fishsense_api_sdk.models.laser_label import LaserLabel
 from fishsense_api_sdk.models.species_label import SpeciesLabel
@@ -12,14 +12,14 @@ from fishsense_api_sdk.models.species_label import SpeciesLabel
 class LabelClient(ClientBase):
     """Client for interacting with label-related endpoints of the Fishsense API."""
 
-    async def get_dive_slate_label(self, image_id: int) -> DiveSlateLabels | None:
-        """Get a DiveSlateLabels by its ID .
+    async def get_dive_slate_label(self, image_id: int) -> DiveSlateLabel | None:
+        """Get a DiveSlateLabel by its ID .
 
         Args:
             image_id (int): The ID of the image to retrieve the dive slate labels for.
 
         Returns:
-            DiveSlateLabels | None: The dive slate labels for the specified image.
+            DiveSlateLabel | None: The dive slate labels for the specified image.
         """
         response = await self._get(f"/api/v1/labels/dive-slate/{image_id}")
         response.raise_for_status()
@@ -28,10 +28,10 @@ class LabelClient(ClientBase):
         if json is None:
             return None
 
-        return DiveSlateLabels.model_validate(json)
+        return DiveSlateLabel.model_validate(json)
 
     async def put_dive_slate_label(
-        self, image_id: int, dive_slate_labels: DiveSlateLabels
+        self, image_id: int, dive_slate_label: DiveSlateLabel
     ) -> int:
         """Put a dive slate labels to an image .
 
@@ -43,7 +43,7 @@ class LabelClient(ClientBase):
         """
         response = await self._put(
             f"/api/v1/labels/dive-slate/{image_id}",
-            json=dive_slate_labels.model_dump(exclude_unset=True, mode="json"),
+            json=dive_slate_label.model_dump(exclude_unset=True, mode="json"),
         )
         response.raise_for_status()
         return response.json()

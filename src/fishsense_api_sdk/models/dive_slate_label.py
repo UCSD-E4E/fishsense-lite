@@ -6,7 +6,7 @@ from typing import Any, Dict
 from pydantic import BaseModel
 
 
-class DiveSlateLabels(BaseModel):
+class DiveSlateLabel(BaseModel):
     """Model representing slate labels."""
 
     id: int | None
