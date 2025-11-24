@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.21.0 (2025-11-24)
+
+### Features
+
+- Add additional properties to dive slate labels
+  ([`2775249`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/2775249e89fe87c7579466736cb13416273ea452))
+
+
 ## v1.20.0 (2025-11-24)
 
 ### Bug Fixes
