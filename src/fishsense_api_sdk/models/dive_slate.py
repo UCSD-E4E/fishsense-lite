@@ -14,4 +14,4 @@ class DiveSlate(BaseModel):
     dpi: int | None
     path: str
     created_at: datetime | None
-    points_json: List[Tuple[float, float]] | None
+    reference_points: List[Tuple[float, float]] | None
