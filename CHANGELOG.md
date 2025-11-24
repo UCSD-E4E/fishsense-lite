@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.19.2 (2025-11-24)
+
+### Bug Fixes
+
+- Rename dive slate points to make the name easier to understand
+  ([`a7cc595`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/a7cc5956accafd41a68174a930a5397e0c54827a))
+
+
 ## v1.19.1 (2025-11-23)
 
 ### Bug Fixes
