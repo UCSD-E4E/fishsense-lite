@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.22.0 (2025-11-24)
+
+### Features
+
+- Add get dive slate labels
+  ([`5f0c313`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/5f0c313f1035fe401894138c9b531ac09ad756ac))
+
+
 ## v1.21.0 (2025-11-24)
 
 ### Features
