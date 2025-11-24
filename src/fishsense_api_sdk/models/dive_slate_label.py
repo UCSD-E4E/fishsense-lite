@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 
 class DiveSlateLabel(BaseModel):
+    # pylint: disable=R0801
     """Model representing slate labels."""
 
     id: int | None

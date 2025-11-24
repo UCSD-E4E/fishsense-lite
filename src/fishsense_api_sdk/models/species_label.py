@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 
 class SpeciesLabel(BaseModel):
+    # pylint: disable=R0801
     """Model representing a species label."""
 
     id: int | None

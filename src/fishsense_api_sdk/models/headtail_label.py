@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 
 class HeadTailLabel(BaseModel):
+    # pylint: disable=R0801
     """Model representing a head-tail label."""
 
     id: int | None
