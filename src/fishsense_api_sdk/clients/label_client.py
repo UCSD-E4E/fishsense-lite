@@ -30,6 +30,24 @@ class LabelClient(ClientBase):
 
         return DiveSlateLabel.model_validate(json)
 
+    async def get_dive_slate_labels(self, dive_id: int) -> List[DiveSlateLabel] | None:
+        """Get dive slate labels for all images in a dive .
+
+        Args:
+            dive_id (int): The ID of the dive to retrieve dive slate labels for.
+
+        Returns:
+            List[DiveSlateLabel] | None: The list of dive slate labels for the specified dive.
+        """
+        response = await self._get(f"/api/v1/dives/{dive_id}/labels/dive-slate")
+        response.raise_for_status()
+
+        json = response.json()
+        if json is None:
+            return None
+
+        return [DiveSlateLabel.model_validate(label) for label in json]
+
     async def put_dive_slate_label(
         self, image_id: int, dive_slate_label: DiveSlateLabel
     ) -> int:
