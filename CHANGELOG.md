@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## v1.20.0 (2025-11-24)
+
+### Bug Fixes
+
+- Naming issues
+  ([`70ce8ae`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/70ce8ae5d4afac1fa14405345ee1b792f88f6518))
+
+- Pylint issues
+  ([`31e3cad`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/31e3cade3ac8850b84448ec17695997a15f9b58c))
+
+### Features
+
+- Introduce dive slate labels
+  ([`513b3b4`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/513b3b4cf1986828d98a1d18950a6d550ab2279c))
+
+
 ## v1.19.2 (2025-11-24)
 
 ### Bug Fixes
