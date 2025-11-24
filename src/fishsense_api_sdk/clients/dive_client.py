@@ -4,6 +4,7 @@ from typing import List
 
 from fishsense_api_sdk.clients.client_base import ClientBase
 from fishsense_api_sdk.models.dive import Dive
+from fishsense_api_sdk.models.laser_calibration import LaserCalibration
 
 
 class DiveClient(ClientBase):
@@ -49,3 +50,21 @@ class DiveClient(ClientBase):
             return None
 
         return [Dive.model_validate(dive) for dive in json]
+
+    async def get_laser_calibration(self, dive_id: int) -> LaserCalibration | None:
+        """Get the laser calibration for a dive.
+
+        Args:
+            dive_id (int): The ID of the dive to retrieve the laser calibration for.
+
+        Returns:
+            LaserCalibration | None: The laser calibration retrieved from the API.
+        """
+        response = await self._get(f"/api/v1/dives/{dive_id}/laser-calibration")
+        response.raise_for_status()
+
+        json = response.json()
+        if json is None:
+            return None
+
+        return LaserCalibration.model_validate(json)

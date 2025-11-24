@@ -19,3 +19,4 @@ class Dive(BaseModel):
 
     camera_id: int | None
     dive_slate_id: int | None
+    laser_calibration_id: int | None
