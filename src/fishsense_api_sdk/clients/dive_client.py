@@ -85,7 +85,9 @@ class DiveClient(ClientBase):
         """
         response = await self._put(
             f"/api/v1/dives/{dive_id}/laser-extrinsics/",
-            json=laser_extrinsics._to_internal().model_dump(),  # pylint: disable=protected-access
+            json=laser_extrinsics._to_internal().model_dump(  # pylint: disable=protected-access
+                exclude_unset=True, mode="json"
+            ),
         )
         response.raise_for_status()
 
