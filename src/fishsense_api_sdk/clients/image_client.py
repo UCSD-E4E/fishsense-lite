@@ -75,7 +75,9 @@ class ImageClient(ClientBase):
 
         return [DiveFrameCluster.model_validate(cluster) for cluster in json]
 
-    async def post_cluster(self, dive_id: int, image_ids: List[int]) -> int:
+    async def post_cluster(
+        self, dive_id: int, dive_frame_cluster: DiveFrameCluster
+    ) -> int:
         """Insert images in the dive cluster .
 
         Args:
@@ -85,9 +87,11 @@ class ImageClient(ClientBase):
         Returns:
             int: The ID of the created dive frame cluster.
         """
+        dive_frame_cluster.dive_id = dive_id
+
         response = await self._post(
             f"/api/v1/dives/{dive_id}/images/clusters/",
-            json=image_ids,
+            json=dive_frame_cluster.model_dump(exclude_unset=True, mode="json"),
         )
         response.raise_for_status()
         return response.json()
