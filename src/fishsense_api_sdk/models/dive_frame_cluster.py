@@ -15,3 +15,5 @@ class DiveFrameCluster(BaseModel):
     image_ids: List[int]
     data_source: DataSource
     updated_at: datetime | None
+
+    dive_id: int | None
