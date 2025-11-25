@@ -58,7 +58,7 @@ class CameraClient(ClientBase):
             _CameraIntrinsics.model_validate(json)
         )
 
-    async def post_intrinsics(
+    async def put_intrinsics(
         self, camera_id: int, camera_intrinsics: CameraIntrinsics
     ) -> int:
         """Post the intrinsic intrinsics to a camera .
@@ -70,7 +70,7 @@ class CameraClient(ClientBase):
         Returns:
             int: The ID of the camera with updated intrinsics.
         """
-        response = await self._post(
+        response = await self._put(
             f"/api/v1/cameras/{camera_id}/intrinsics/",
             json=camera_intrinsics._to_internal().model_dump(),  # pylint: disable=protected-access
         )
