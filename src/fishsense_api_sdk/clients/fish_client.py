@@ -45,6 +45,23 @@ class FishClient(ClientBase):
         response.raise_for_status()
         return response.json()
 
+    async def post_measurement(self, fish_id: int, length_m: float) -> int:
+        """Create a new measurement entry for a fish in the Fishsense API.
+
+        Args:
+            fish_id (int): The ID of the fish to associate the measurement with.
+            length_m (float): The length measurement in meters.
+
+        Returns:
+            int: The ID of the created measurement.
+        """
+        response = await self._post(
+            f"/api/v1/fish/{fish_id}/measurements",
+            json={"length_m": length_m},
+        )
+        response.raise_for_status()
+        return response.json()
+
     async def get_species_by_scientific_name(
         self, scientific_name: str
     ) -> Species | None:
