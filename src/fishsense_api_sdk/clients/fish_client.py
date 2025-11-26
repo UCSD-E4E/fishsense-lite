@@ -1,5 +1,6 @@
 from fishsense_api_sdk.clients.client_base import ClientBase
 from fishsense_api_sdk.models.fish import Fish
+from fishsense_api_sdk.models.measurement import Measurement
 from fishsense_api_sdk.models.species import Species
 
 
@@ -45,7 +46,7 @@ class FishClient(ClientBase):
         response.raise_for_status()
         return response.json()
 
-    async def post_measurement(self, fish_id: int, length_m: float) -> int:
+    async def post_measurement(self, fish_id: int, measurement: Measurement) -> int:
         """Create a new measurement entry for a fish in the Fishsense API.
 
         Args:
@@ -57,7 +58,7 @@ class FishClient(ClientBase):
         """
         response = await self._post(
             f"/api/v1/fish/{fish_id}/measurements",
-            json={"length_m": length_m},
+            json=measurement.model_dump(),
         )
         response.raise_for_status()
         return response.json()
