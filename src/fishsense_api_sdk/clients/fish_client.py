@@ -23,7 +23,7 @@ class FishClient(ClientBase):
 
         return Species.model_validate(json)
 
-    async def post(self, species: Species) -> int:
+    async def post_species(self, species: Species) -> int:
         """Create a new species entry in the Fishsense API.
 
         Args:
