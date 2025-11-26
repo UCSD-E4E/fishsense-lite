@@ -1,8 +1,50 @@
 from fishsense_api_sdk.clients.client_base import ClientBase
+from fishsense_api_sdk.models.fish import Fish
 from fishsense_api_sdk.models.species import Species
 
 
 class FishClient(ClientBase):
+    async def get(self, fish_id: int | None = None) -> list[Fish] | Fish | None:
+        """Get a list of fish objects .
+
+        Returns:
+            List[Fish] | Fish | None: The fish object(s) retrieved from the API.
+        """
+        if fish_id is not None:
+            response = await self._get(f"/api/v1/fish/{fish_id}")
+            response.raise_for_status()
+
+            json = response.json()
+            if json is None:
+                return None
+
+            return Fish.model_validate(json)
+
+        response = await self._get("/api/v1/fish/")
+        response.raise_for_status()
+
+        json = response.json()
+        if json is None:
+            return None
+
+        return [Fish.model_validate(fish) for fish in json]
+
+    async def post(self, fish: Fish) -> int:
+        """Create a new fish entry in the Fishsense API.
+
+        Args:
+            fish (Fish): The fish data to create.
+
+        Returns:
+            int: The ID of the created fish.
+        """
+        response = await self._post(
+            "/api/v1/fish",
+            json=fish.model_dump(),
+        )
+        response.raise_for_status()
+        return response.json()
+
     async def get_species_by_scientific_name(
         self, scientific_name: str
     ) -> Species | None:

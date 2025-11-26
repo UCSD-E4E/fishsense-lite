@@ -17,3 +17,4 @@ class DiveFrameCluster(BaseModel):
     updated_at: datetime | None
 
     dive_id: int | None
+    fish_id: int | None
