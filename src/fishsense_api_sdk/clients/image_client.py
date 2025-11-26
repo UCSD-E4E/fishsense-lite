@@ -95,3 +95,28 @@ class ImageClient(ClientBase):
         )
         response.raise_for_status()
         return response.json()
+
+    async def put_cluster(
+        self,
+        dive_id: int,
+        dive_frame_cluster_id: int,
+        dive_frame_cluster: DiveFrameCluster,
+    ) -> int:
+        """Update images in the dive cluster .
+
+        Args:
+            dive_id (int): The ID of the dive to update images in.
+            dive_frame_cluster_id (int): The ID of the dive frame cluster to update.
+            image_ids (List[int]): The IDs of the images to update.
+
+        Returns:
+            int: The ID of the updated dive frame cluster.
+        """
+        dive_frame_cluster.dive_id = dive_id
+
+        response = await self._put(
+            f"/api/v1/dives/{dive_id}/images/clusters/{dive_frame_cluster_id}",
+            json=dive_frame_cluster.model_dump(exclude_unset=True, mode="json"),
+        )
+        response.raise_for_status()
+        return response.json()
