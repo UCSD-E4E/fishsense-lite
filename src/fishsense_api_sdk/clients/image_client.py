@@ -57,7 +57,9 @@ class ImageClient(ClientBase):
 
         raise NotImplementedError("Getting all images is not supported.")
 
-    async def get_clusters(self, dive_id: int) -> List[DiveFrameCluster] | None:
+    async def get_clusters(
+        self, dive_id: int, data_source: str
+    ) -> List[DiveFrameCluster] | None:
         """Get clusters of images in the dive_id.
 
         Args:
@@ -66,7 +68,9 @@ class ImageClient(ClientBase):
         Returns:
             List[DiveFrameCluster]: The list of image clusters for the specified dive.
         """
-        response = await self._get(f"/api/v1/dives/{dive_id}/images/clusters/")
+        response = await self._get(
+            f"/api/v1/dives/{dive_id}/images/clusters/{data_source}"
+        )
         response.raise_for_status()
 
         json = response.json()
