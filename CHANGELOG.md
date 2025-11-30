@@ -2,6 +2,61 @@
 
 <!-- version list -->
 
+## v1.23.0 (2025-11-30)
+
+### Bug Fixes
+
+- Add missing dive id to dive clusters
+  ([`fec89de`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/fec89de16fa310aa421846afa8cb65c433df7620))
+
+- Dive frame cluster id should be allowed to be none
+  ([`eccaff7`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/eccaff7e056ac0f571273884241089b98f6d8298))
+
+- Pylint errors
+  ([`5ff505d`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/5ff505db28701b8ca921ff87e31dfca861138223))
+
+- Remove laser calibration
+  ([`4625276`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/46252769ea183e3e51f33b2e5af73a1b243a5d47))
+
+- Rename to post species
+  ([`922f908`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/922f9082ed981f13e93fc484075dfd786cc36b09))
+
+- Serialize date correctly
+  ([`a8ba825`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/a8ba825133c9b6680ab3f132a244e4485363d1fb))
+
+- Support getting kinds of clusters
+  ([`de26d27`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/de26d2779d917cc6ecfc7b112f07f79b76dec32f))
+
+- Use the proper model for measurement
+  ([`b00fef4`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/b00fef4610db170513a537c33b13145da482556c))
+
+### Features
+
+- Add fish client
+  ([`caefdb6`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/caefdb6fbd70df9a7abca4a62d2a84f3c98122ba))
+
+- Add get laser calibration
+  ([`fb95172`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/fb95172346a8a634dd72c5e6f71ec021138647cd))
+
+- Add get species by scientific name
+  ([`61b66cd`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/61b66cd882277fe9a3d47e76cfe5c98a97fb7008))
+
+- Add post measurement
+  ([`63716bb`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/63716bb7e91fe531f4c4c2dffdb98c0897be1c29))
+
+- Introduce methods for getting and putting laser extrinsics
+  ([`a07d74f`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/a07d74f9697cdd0f31d238fbcff0c9b7c340ca80))
+
+- Support adding fish
+  ([`998f74c`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/998f74c318ab0489011892079325766d0d29b2ac))
+
+- Support more rich dive frame clusters
+  ([`2b1770f`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/2b1770fdccb212625523c11e107ee02b18f12b24))
+
+- Support updating cluster
+  ([`2c7fa91`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/2c7fa91b804a26cb31edff7d9f6fb3eb9086c2e9))
+
+
 ## v1.22.0 (2025-11-24)
 
 ### Features
