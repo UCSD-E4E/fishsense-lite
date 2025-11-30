@@ -1,3 +1,5 @@
+"""LaserExtrinsics model for FishSense API SDK."""
+
 from datetime import datetime
 from typing import List, Self
 
@@ -16,6 +18,10 @@ class _LaserExtrinsics(BaseModel):
 
 
 class LaserExtrinsics:
+    """LaserExtrinsics model representing laser extrinsics information."""
+
+    # pylint: disable=too-few-public-methods
+
     def __init__(
         self,
         laser_position: np.ndarray[float] | None,
@@ -24,7 +30,7 @@ class LaserExtrinsics:
         camera_id: int | None,
         id: int | None = None,  # pylint: disable=redefined-builtin
         created_at: datetime | None = None,
-    ):
+    ):  # pylint: disable=too-many-arguments, too-many-positional-arguments
         self.id = id
         self.laser_position = (
             laser_position.squeeze() if laser_position is not None else None

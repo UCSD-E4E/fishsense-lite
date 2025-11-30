@@ -1,3 +1,5 @@
+""" "Client for fish-related endpoints in the FishSense API SDK."""
+
 from fishsense_api_sdk.clients.client_base import ClientBase
 from fishsense_api_sdk.models.fish import Fish
 from fishsense_api_sdk.models.measurement import Measurement
@@ -5,6 +7,8 @@ from fishsense_api_sdk.models.species import Species
 
 
 class FishClient(ClientBase):
+    """Client for interacting with fish-related endpoints in the FishSense API."""
+
     async def get(self, fish_id: int | None = None) -> list[Fish] | Fish | None:
         """Get a list of fish objects .
 
