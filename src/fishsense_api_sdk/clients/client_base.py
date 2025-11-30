@@ -1,6 +1,7 @@
 """Base client for interacting with the Fishsense API."""
 
 import asyncio
+import base64
 from abc import ABC
 
 import httpx
@@ -24,11 +25,23 @@ class ClientBase(ABC):
 
         return self.__client_internal
 
-    def __init__(self, base_url: str, timeout: int, semaphore: asyncio.Semaphore):
+    def __init__(
+        self,
+        base_url: str,
+        username: str | None,
+        password: str | None,
+        timeout: int,
+        semaphore: asyncio.Semaphore,
+    ):
         self.base_url = base_url
         self.timeout = timeout
         self.semaphore = semaphore
 
+        self.__token = (
+            base64.b64encode(f"{username}:{password}".encode("utf-8"))
+            if username and password
+            else None
+        )
         self.__client_internal: httpx.AsyncClient | None = None
         self.__inside_context = False
 
@@ -47,14 +60,37 @@ class ClientBase(ABC):
     @retry(exceptions=httpx.HTTPStatusError, tries=3, delay=2, backoff=2)
     async def _get(self, endpoint: str) -> httpx.Response:
         async with self.semaphore:
-            return await self.__client.get(endpoint)
+            return await self.__client.get(
+                endpoint,
+                headers=(
+                    {"Authorization": f"Basic {self.__token.decode('utf-8')}"}
+                    if self.__token
+                    else {}
+                ),
+            )
 
     @retry(exceptions=httpx.HTTPStatusError, tries=3, delay=2, backoff=2)
     async def _post(self, endpoint: str, json: dict) -> httpx.Response:
         async with self.semaphore:
-            return await self.__client.post(endpoint, json=json)
+            return await self.__client.post(
+                endpoint,
+                json=json,
+                headers=(
+                    {"Authorization": f"Basic {self.__token.decode('utf-8')}"}
+                    if self.__token
+                    else {}
+                ),
+            )
 
     @retry(exceptions=httpx.HTTPStatusError, tries=3, delay=2, backoff=2)
     async def _put(self, endpoint: str, json: dict) -> httpx.Response:
         async with self.semaphore:
-            return await self.__client.put(endpoint, json=json)
+            return await self.__client.put(
+                endpoint,
+                json=json,
+                headers=(
+                    {"Authorization": f"Basic {self.__token.decode('utf-8')}"}
+                    if self.__token
+                    else {}
+                ),
+            )

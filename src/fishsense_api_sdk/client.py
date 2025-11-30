@@ -79,19 +79,38 @@ class Client:
         return self.__users
 
     def __init__(
-        self, base_url: str, timeout: int = 10, max_concurrent_requests: int = 10
+        self,
+        base_url: str,
+        username: str,
+        password: str,
+        timeout: int = 10,
+        max_concurrent_requests: int = 10,
     ):
         self.base_url = base_url
 
         self.__semaphore = asyncio.Semaphore(max_concurrent_requests)
 
-        self.__cameras = CameraClient(base_url, timeout, self.__semaphore)
-        self.__dives = DiveClient(base_url, timeout, self.__semaphore)
-        self.__dive_slates = DiveSlateClient(base_url, timeout, self.__semaphore)
-        self.__fish = FishClient(base_url, timeout, self.__semaphore)
-        self.__images = ImageClient(base_url, timeout, self.__semaphore)
-        self.__labels = LabelClient(base_url, timeout, self.__semaphore)
-        self.__users = UserClient(base_url, timeout, self.__semaphore)
+        self.__cameras = CameraClient(
+            base_url, username, password, timeout, self.__semaphore
+        )
+        self.__dives = DiveClient(
+            base_url, username, password, timeout, self.__semaphore
+        )
+        self.__dive_slates = DiveSlateClient(
+            base_url, username, password, timeout, self.__semaphore
+        )
+        self.__fish = FishClient(
+            base_url, username, password, timeout, self.__semaphore
+        )
+        self.__images = ImageClient(
+            base_url, username, password, timeout, self.__semaphore
+        )
+        self.__labels = LabelClient(
+            base_url, username, password, timeout, self.__semaphore
+        )
+        self.__users = UserClient(
+            base_url, username, password, timeout, self.__semaphore
+        )
 
     async def __aenter__(self):
         await self.cameras.__aenter__()
