@@ -85,7 +85,7 @@ class Client:
         password: str,
         timeout: int = 10,
         max_concurrent_requests: int = 10,
-    ):
+    ):  # pylint: disable=too-many-arguments, too-many-positional-arguments
         self.base_url = base_url
 
         self.__semaphore = asyncio.Semaphore(max_concurrent_requests)

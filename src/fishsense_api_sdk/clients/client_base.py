@@ -32,7 +32,7 @@ class ClientBase(ABC):
         password: str | None,
         timeout: int,
         semaphore: asyncio.Semaphore,
-    ):
+    ):  # pylint: disable=too-many-arguments, too-many-positional-arguments
         self.base_url = base_url
         self.timeout = timeout
         self.semaphore = semaphore
