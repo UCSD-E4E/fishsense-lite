@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.24.0 (2025-11-30)
+
+### Chores
+
+- Fix pylint errors
+  ([`bd09079`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/bd09079134f7d86fa0e4c83ff9d7fde15f387043))
+
+### Features
+
+- Support username and password
+  ([`d6ed90d`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/d6ed90d6edce93ca47ba0b1917fd68cf7a281c87))
+
+
 ## v1.23.0 (2025-11-30)
 
 ### Bug Fixes
