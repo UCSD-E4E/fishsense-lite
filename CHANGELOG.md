@@ -2,6 +2,45 @@
 
 <!-- version list -->
 
+## v1.14.0 (2025-12-02)
+
+### Bug Fixes
+
+- Finish adding flake support
+  ([`1a1af77`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/1a1af77fc927f38ce6f20e24f13fc5c7c03c1ce4))
+
+- Remove flakes. readonly file system issue with notebooks
+  ([`af568da`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/af568dafc40ef617ca0c58e4e323f74d4ab4130d))
+
+### Chores
+
+- Introduce codeowners
+  ([`9e389b3`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/9e389b3046ff114060f26eaf35ec00e2375694a9))
+
+### Features
+
+- Call data worker workflow
+  ([`cf00025`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/cf0002597fab864b652ece8cd315186d99b78211))
+
+- Ingest dive workflow
+  ([`8f4e5b0`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/8f4e5b0a7b7a88c6f397843c86c2e3c4fd6ecbd8))
+
+- Introduce flakes
+  ([`6b470c5`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/6b470c55da2b4191d5ba55cf758cd4c2da472cdd))
+
+- Start cleanup in preparation for updating superset automatically
+  ([`3d07042`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/3d07042c074eb1f018c260ee1c6979fa7daa56ef))
+
+- Support clustering dive frames
+  ([`3c12d55`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/3c12d55d246e65f4f1edce287110c1826fc07ace))
+
+- Sync laser labels updated
+  ([`1032591`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/1032591f8427ab89c7761e5400d33614b8df3ecf))
+
+- Sync users during sync laser labels
+  ([`53b1ab5`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/53b1ab502aa0bc19a0ce5e443619353c1f01e5d8))
+
+
 ## v1.13.0 (2025-09-15)
 
 ### Features
