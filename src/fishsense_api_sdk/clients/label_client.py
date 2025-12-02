@@ -120,23 +120,41 @@ class LabelClient(ClientBase):
         response.raise_for_status()
         return response.json()
 
-    async def get_laser_label(self, image_id: int) -> LaserLabel | None:
+    async def get_laser_label(
+        self, image_id: int | None = None, label_studio_id: int | None = None
+    ) -> LaserLabel | None:
         """Get a LaserLabel by its ID .
 
         Args:
-            image_id (int): The ID of the image to retrieve the laser label for.
+            image_id (int | None): The ID of the image to retrieve the laser label for.
+            label_studio_id (int | None): The ID of the label studio entry to retrieve the laser label for.
 
         Returns:
             LaserLabel | None: The laser label for the specified image.
         """
-        response = await self._get(f"/api/v1/labels/laser/{image_id}")
-        response.raise_for_status()
+        if image_id is not None:
+            response = await self._get(f"/api/v1/labels/laser/{image_id}")
+            response.raise_for_status()
 
-        json = response.json()
-        if json is None:
-            return None
+            json = response.json()
+            if json is None:
+                return None
 
-        return LaserLabel.model_validate(json)
+            return LaserLabel.model_validate(json)
+
+        if label_studio_id is not None:
+            response = await self._get(
+                f"/api/v1/labels/laser/label-studio/{label_studio_id}"
+            )
+            response.raise_for_status()
+
+            json = response.json()
+            if json is None:
+                return None
+
+            return LaserLabel.model_validate(json)
+
+        raise NotImplementedError("Fetching without a parameter is not supported")
 
     async def get_laser_labels(self, dive_id: int) -> List[LaserLabel] | None:
         """Get laser labels for all images in a dive .
