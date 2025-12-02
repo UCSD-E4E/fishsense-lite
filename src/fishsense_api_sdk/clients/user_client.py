@@ -10,7 +10,10 @@ class UserClient(ClientBase):
     """Client for interacting with user-related endpoints of the Fishsense API."""
 
     async def get(
-        self, user_id: int | None = None, email: str | None = None
+        self,
+        user_id: int | None = None,
+        email: str | None = None,
+        label_studio_id: int | None = None,
     ) -> List[User] | User | None:
         """Get a user by its ID .
 
@@ -32,6 +35,16 @@ class UserClient(ClientBase):
 
         if email is not None:
             response = await self._get(f"/api/v1/users/email/{email}")
+            response.raise_for_status()
+
+            json = response.json()
+            if json is None:
+                return None
+
+            return User.model_validate(json)
+
+        if label_studio_id is not None:
+            response = await self._get(f"/api/v1/users/label-studio/{label_studio_id}")
             response.raise_for_status()
 
             json = response.json()
