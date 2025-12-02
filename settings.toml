@@ -18,5 +18,5 @@ head_tail_project_ids = [44, 45]
 [postgres]
 host = "fabricant-prod.ucsd.edu"
 port = 5432
-username = "postgres"
+username = "j.wang.334"
 database = "fishsense"

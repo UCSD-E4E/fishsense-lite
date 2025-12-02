@@ -277,3 +277,7 @@ $RECYCLE.BIN/
 .secrets/
 pg_volumes/data/
 scripts/project-10-at-2025-04-14-20-37-8974c4dc.json
+
+# Ignore placeholder file
+test_api.py
+sql_utils.py
