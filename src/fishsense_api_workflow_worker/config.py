@@ -67,14 +67,14 @@ validators = [
     Validator("temporal.client_private_key", cast=str, condition=path_validator),
     Validator("temporal.domain", cast=str),
     Validator("temporal.server_root_ca_cert", cast=str, condition=path_validator),
-    Validator("label_studio.host", required=True, condition=validators.hostname),
+    Validator("label_studio.url", required=True, condition=validators.url),
     Validator("label_studio.api_key", required=True, cast=str),
-    Validator("label_studio.laser_project_ids", required=True, cast=list),
-    Validator("label_studio.head_tail_project_ids", required=True, cast=list),
-    Validator("postgres.host", required=True, cast=str, condition=validators.hostname),
-    Validator("postgres.port", required=True, cast=int, default=5432),
-    Validator("postgres.username", required=True, cast=str),
-    Validator("postgres.password", required=True, cast=str),
+    Validator("e4e_nas.url", required=True, cast=str, condition=validators.url),
+    Validator("e4e_nas.username", required=True, cast=str),
+    Validator("e4e_nas.password", required=True, cast=str),
+    Validator("fishsense_api.url", required=True, cast=str, condition=validators.url),
+    Validator("fishsense_api.username", cast=str),
+    Validator("fishsense_api.password", cast=str),
 ]
 
 settings = Dynaconf(
@@ -86,11 +86,6 @@ settings = Dynaconf(
     ],
     merge_enabled=True,
     validators=validators,
-)
-
-PG_CONNECTION_STRING = (
-    f"postgresql+asyncpg://{settings.postgres.username}:{settings.postgres.password}"
-    + f"@{settings.postgres.host}:{settings.postgres.port}/{settings.postgres.database}"
 )
 
 
