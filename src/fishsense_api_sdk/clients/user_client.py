@@ -9,13 +9,7 @@ from fishsense_api_sdk.models.user import User
 class UserClient(ClientBase):
     """Client for interacting with user-related endpoints of the Fishsense API."""
 
-    async def get(
-        self,
-        user_id: int | None = None,
-        email: str | None = None,
-        label_studio_id: int | None = None,
-    ) -> List[User] | User | None:
-        # pylint: disable=too-many-return-statements
+    async def get_by_id(self, user_id: int) -> User | None:
         """Get a user by its ID .
 
         Args:
@@ -24,36 +18,57 @@ class UserClient(ClientBase):
         Returns:
             User | None: The user retrieved from the API.
         """
-        if user_id is not None:
-            response = await self._get(f"/api/v1/users/{user_id}")
-            response.raise_for_status()
+        response = await self._get(f"/api/v1/users/{user_id}")
+        response.raise_for_status()
 
-            json = response.json()
-            if json is None:
-                return None
+        json = response.json()
+        if json is None:
+            return None
 
-            return User.model_validate(json)
+        return User.model_validate(json)
 
-        if email is not None:
-            response = await self._get(f"/api/v1/users/email/{email}")
-            response.raise_for_status()
+    async def get_by_email(self, email: str) -> User | None:
+        """Get a user by its email .
 
-            json = response.json()
-            if json is None:
-                return None
+        Args:
+            email (str): The email of the user to retrieve.
 
-            return User.model_validate(json)
+        Returns:
+            User | None: The user retrieved from the API.
+        """
+        response = await self._get(f"/api/v1/users/email/{email}")
+        response.raise_for_status()
 
-        if label_studio_id is not None:
-            response = await self._get(f"/api/v1/users/label-studio/{label_studio_id}")
-            response.raise_for_status()
+        json = response.json()
+        if json is None:
+            return None
 
-            json = response.json()
-            if json is None:
-                return None
+        return User.model_validate(json)
 
-            return User.model_validate(json)
+    async def get_by_label_studio_id(self, label_studio_id: int) -> User | None:
+        """Get a user by its Label Studio ID .
 
+        Args:
+            label_studio_id (int): The Label Studio ID of the user to retrieve.
+
+        Returns:
+            User | None: The user retrieved from the API.
+        """
+        response = await self._get(f"/api/v1/users/label-studio/{label_studio_id}")
+        response.raise_for_status()
+
+        json = response.json()
+        if json is None:
+            return None
+
+        return User.model_validate(json)
+
+    async def list_all(self) -> List[User] | None:
+        """Get all users .
+
+        Returns:
+            List[User] | None: The list of users retrieved from the API.
+        """
         response = await self._get("/api/v1/users/")
         response.raise_for_status()
 
