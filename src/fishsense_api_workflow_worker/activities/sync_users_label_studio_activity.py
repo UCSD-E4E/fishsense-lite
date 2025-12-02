@@ -43,14 +43,15 @@ async def sync_users_label_studio_activity():
         settings.fishsense_api.username,
         settings.fishsense_api.password,
     ) as fs:
-        fishsense_users = await asyncio.gather(
-            *(fs.users.get(email=user.email) for user in label_studio_users)
-        )
-        fishsense_users = [user for user in fishsense_users if user is not None]
-
         async with asyncio.TaskGroup() as tg:
             for label_studio_user in label_studio_users:
-                fs_user = await fs.users.get(email=label_studio_user.email)
+                if activity.is_cancelled():
+                    activity.logger.info(
+                        "Activity cancelled, stopping user sync from Label Studio"
+                    )
+                    return
+
+                fs_user = await fs.users.get_by_email(label_studio_user.email)
                 if fs_user is None:
                     tg.create_task(
                         fs.users.post(__from_label_studio(label_studio_user))

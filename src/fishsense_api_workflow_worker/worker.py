@@ -17,6 +17,12 @@ from temporalio.client import (
 )
 from temporalio.worker import Worker
 
+from fishsense_api_workflow_worker.activities.get_laser_label_studio_project_ids_activity import (
+    get_laser_label_studio_project_ids_activity,
+)
+from fishsense_api_workflow_worker.activities.sync_laser_labels_for_label_studio_project_activity import (  # pylint: disable=line-too-long
+    sync_laser_labels_for_label_studio_project_activity,
+)
 from fishsense_api_workflow_worker.activities.sync_users_label_studio_activity import (
     sync_users_label_studio_activity,
 )
@@ -108,7 +114,11 @@ async def main():
                 SyncLabelStudioLaserLabelsWorkflow,
             ],
             activity_executor=executor,
-            activities=[sync_users_label_studio_activity],
+            activities=[
+                get_laser_label_studio_project_ids_activity,
+                sync_laser_labels_for_label_studio_project_activity,
+                sync_users_label_studio_activity,
+            ],
         )
 
         worker_task = worker.run()
