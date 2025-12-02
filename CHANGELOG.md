@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.27.0 (2025-12-02)
+
+### Features
+
+- Split get method in user client
+  ([`782b8ee`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/782b8eeaa64ad228b1b74ea9729f5376e87ee33e))
+
+
 ## v1.26.0 (2025-12-02)
 
 ### Bug Fixes
