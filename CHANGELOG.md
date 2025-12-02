@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.26.0 (2025-12-02)
+
+### Bug Fixes
+
+- Pylint errors.
+  ([`6f96267`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/6f96267544bcb6fba15e5ef85f0784529e9bd7c4))
+
+### Features
+
+- Add method to user via label studio id
+  ([`75e9f14`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/75e9f14d2113243e26e039f4805ae0118a0e1393))
+
+
 ## v1.25.0 (2025-12-02)
 
 ### Bug Fixes
