@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.25.0 (2025-12-02)
+
+### Bug Fixes
+
+- Fix pylint errors
+  ([`5266ac3`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/5266ac36db582083968cfd2c2149da39eb8f9619))
+
+### Features
+
+- Introduce method for getting laser label by label studio id
+  ([`c4a6470`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/c4a6470dc11aa792478b12519d5a8c218e1375ce))
+
+
 ## v1.24.0 (2025-11-30)
 
 ### Chores
