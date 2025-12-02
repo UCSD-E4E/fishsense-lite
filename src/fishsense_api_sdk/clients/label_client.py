@@ -127,7 +127,7 @@ class LabelClient(ClientBase):
 
         Args:
             image_id (int | None): The ID of the image to retrieve the laser label for.
-            label_studio_id (int | None): The ID of the label studio entry to retrieve the laser label for.
+            label_studio_id (int | None): ID of the label studio entry to find the laser label for.
 
         Returns:
             LaserLabel | None: The laser label for the specified image.
