@@ -15,6 +15,7 @@ class UserClient(ClientBase):
         email: str | None = None,
         label_studio_id: int | None = None,
     ) -> List[User] | User | None:
+        # pylint: disable=too-many-return-statements
         """Get a user by its ID .
 
         Args:
