@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.14.1 (2025-12-03)
+
+### Bug Fixes
+
+- Pass pylint
+  ([`5248e2e`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/5248e2e3fe02b915e9554872d70cc6fef389f8b5))
+
+### Chores
+
+- Code cleanliness
+  ([`ef1ecb2`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/ef1ecb230dac7ee217bdc9d7cb0566094f8651a4))
+
+
 ## v1.14.0 (2025-12-02)
 
 ### Bug Fixes
