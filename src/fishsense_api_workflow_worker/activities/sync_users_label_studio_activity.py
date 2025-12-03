@@ -2,14 +2,13 @@
 
 import asyncio
 
-from fishsense_api_sdk.client import Client
 from fishsense_api_sdk.models.user import User
 from label_studio_sdk import LseUserApi
 from label_studio_sdk.client import LabelStudio
 from temporalio import activity
 
-from fishsense_api_workflow_worker.config import settings
 from fishsense_api_workflow_worker.activities.utils import get_client
+from fishsense_api_workflow_worker.config import settings
 
 
 def __from_label_studio(user: LseUserApi) -> User:
