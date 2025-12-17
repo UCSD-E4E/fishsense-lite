@@ -17,6 +17,9 @@ from temporalio.client import (
 )
 from temporalio.worker import Worker
 
+from fishsense_api_workflow_worker.activities.get_label_studio_projects_activity import (
+    get_label_studio_projects_activity,
+)
 from fishsense_api_workflow_worker.activities.get_laser_label_studio_project_ids_activity import (
     get_laser_label_studio_project_ids_activity,
 )
@@ -26,9 +29,15 @@ from fishsense_api_workflow_worker.activities.sync_laser_labels_for_label_studio
 from fishsense_api_workflow_worker.activities.sync_users_label_studio_activity import (
     sync_users_label_studio_activity,
 )
+from fishsense_api_workflow_worker.activities.write_dashboard_config_activity import (
+    write_dashboard_config_activity,
+)
 from fishsense_api_workflow_worker.config import configure_logging, settings
 from fishsense_api_workflow_worker.workflows.sync_label_studio_laser_labels_workflow import (
     SyncLabelStudioLaserLabelsWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.update_dashboard_config_workflow import (
+    UpdateDashboardConfigWorkflow,
 )
 
 TASK_QUEUE_NAME = "fishsense_api_queue"
@@ -70,11 +79,37 @@ async def schedule_sync_label_studio_laser_labels_workflow(client: Client):
     )
 
 
+async def schedule_update_dashboard_config_workflow(client: Client):
+    """Schedule the UpdateDashboardConfigWorkflow to run periodically."""
+    schedule_id = "update-dashboard-config-workflow-schedule"
+
+    if await schedule_exists(client, schedule_id):
+        logging.info("Schedule %s already exists, skipping...", schedule_id)
+        return
+
+    await client.create_schedule(
+        schedule_id,
+        Schedule(
+            action=ScheduleActionStartWorkflow(
+                UpdateDashboardConfigWorkflow.run,
+                args=(),
+                id="update-dashboard-config-workflow",
+                task_queue=TASK_QUEUE_NAME,
+            ),
+            spec=ScheduleSpec(
+                intervals=[ScheduleIntervalSpec(every=timedelta(hours=1))]
+            ),
+            state=ScheduleState(),
+        ),
+    )
+
+
 async def schedule_workflows(client: Client):
     """Schedule workflows for the worker."""
 
     async with asyncio.TaskGroup() as tg:
         tg.create_task(schedule_sync_label_studio_laser_labels_workflow(client))
+        tg.create_task(schedule_update_dashboard_config_workflow(client))
 
 
 async def main():
@@ -115,9 +150,11 @@ async def main():
             ],
             activity_executor=executor,
             activities=[
+                get_label_studio_projects_activity,
                 get_laser_label_studio_project_ids_activity,
                 sync_laser_labels_for_label_studio_project_activity,
                 sync_users_label_studio_activity,
+                write_dashboard_config_activity,
             ],
         )
 

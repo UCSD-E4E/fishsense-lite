@@ -1,23 +1,18 @@
 """Activity to get unique Label Studio project IDs with laser labels."""
 
-import asyncio
 from typing import List
 
 from temporalio import activity
 
-from fishsense_api_workflow_worker.activities.utils import get_client
+from fishsense_api_workflow_worker.activities.label_utils import get_laser_labels
+from fishsense_api_workflow_worker.activities.utils import get_fs_client
 
 
 @activity.defn
 async def get_laser_label_studio_project_ids_activity() -> List[int]:
     """Activity to get unique Label Studio project IDs with laser labels."""
-    async with get_client() as fs:
-        dives = await fs.dives.get_canonical()
-
-        laser_labels = await asyncio.gather(
-            *(fs.labels.get_laser_labels(dive.id) for dive in dives)
-        )
-        laser_labels = [label for sublist in laser_labels for label in sublist]
+    async with get_fs_client() as fs:
+        laser_labels = await get_laser_labels(fs)
 
     label_studio_project_ids = list(
         {

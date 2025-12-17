@@ -9,6 +9,7 @@ dependencies = [
     "fishsense-api-sdk",
     "label-studio-sdk>=2.0.1",
     "platformdirs>=4.3.8",
+    "pyaml>=25.7.0",
     "temporalio>=1.15.0",
     "validators>=0.35.0",
 ]

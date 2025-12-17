@@ -4,10 +4,9 @@ import asyncio
 
 from fishsense_api_sdk.models.user import User
 from label_studio_sdk import LseUserApi
-from label_studio_sdk.client import LabelStudio
 from temporalio import activity
 
-from fishsense_api_workflow_worker.activities.utils import get_client
+from fishsense_api_workflow_worker.activities.utils import get_fs_client, get_ls_client
 from fishsense_api_workflow_worker.config import settings
 
 
@@ -28,17 +27,14 @@ def __from_label_studio(user: LseUserApi) -> User:
 @activity.defn
 async def sync_users_label_studio_activity():
     """Activity to sync users from Label Studio to Fishsense API."""
-    ls = LabelStudio(
-        base_url=settings.label_studio.url, api_key=settings.label_studio.api_key
-    )
-
+    ls = get_ls_client()
     label_studio_users = await asyncio.to_thread(ls.users.list)
 
     activity.logger.info(
         f"Fetched {len(label_studio_users)} users from Label Studio at {settings.label_studio.url}"
     )
 
-    async with get_client() as fs:
+    async with get_fs_client() as fs:
         async with asyncio.TaskGroup() as tg:
             for label_studio_user in label_studio_users:
                 if activity.is_cancelled():

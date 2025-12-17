@@ -5,12 +5,10 @@ import json
 from typing import Any
 
 from fishsense_api_sdk.client import Client
-from label_studio_sdk.client import LabelStudio
 from label_studio_sdk.core import ApiError
 from temporalio import activity
 
-from fishsense_api_workflow_worker.activities.utils import get_client
-from fishsense_api_workflow_worker.config import settings
+from fishsense_api_workflow_worker.activities.utils import get_fs_client, get_ls_client
 
 LASER_LABEL_KEY_NAMES = ["kp-1", "laser"]
 
@@ -63,9 +61,7 @@ async def __update_laser_label(fs: Client, task: Any):
 async def sync_laser_labels_for_label_studio_project_activity(project_id: int):
     """Activity to sync laser labels for a Label Studio project."""
 
-    ls = LabelStudio(
-        base_url=settings.label_studio.url, api_key=settings.label_studio.api_key
-    )
+    ls = get_ls_client()
 
     # Handle case where project does not exist
     try:
@@ -76,7 +72,7 @@ async def sync_laser_labels_for_label_studio_project_activity(project_id: int):
 
     tasks = await asyncio.to_thread(ls.tasks.list, project=project_id)
 
-    async with get_client() as fs:
+    async with get_fs_client() as fs:
         async with asyncio.TaskGroup() as tg:
             for task in tasks:
                 if activity.is_cancelled():
