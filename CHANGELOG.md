@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.15.3 (2025-12-17)
+
+### Bug Fixes
+
+- Correct the order of the dashboard
+  ([`33ce302`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/33ce3028160669f3e1c2b411b643151d0cc67186))
+
+
 ## v1.15.2 (2025-12-17)
 
 ### Bug Fixes
