@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.15.1 (2025-12-17)
+
+### Bug Fixes
+
+- Add missing workflow to schedule
+  ([`be5f280`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/be5f2809b71a7903011aa2adbb056ef022796e1d))
+
+
 ## v1.15.0 (2025-12-17)
 
 ### Features
