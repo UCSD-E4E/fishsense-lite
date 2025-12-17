@@ -6,5 +6,5 @@ from pydantic import BaseModel
 class LabelStudioProject(BaseModel):
     """Model for Label Studio Project."""
 
-    id: str
+    id: int
     name: str

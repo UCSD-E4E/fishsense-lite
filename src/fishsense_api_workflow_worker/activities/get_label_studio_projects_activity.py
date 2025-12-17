@@ -31,7 +31,7 @@ async def __get_label_studio_project(
     project = await asyncio.to_thread(ls.projects.get, label_studio_project_id)
     return LabelStudioProject(
         id=project.id,
-        name=project.description,
+        name=project.title,
     )
 
 
