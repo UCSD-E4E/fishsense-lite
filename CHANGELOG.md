@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.15.0 (2025-12-17)
+
+### Features
+
+- Introduce workflow to create the config file for dashboard
+  ([`df929e0`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/df929e08d6d1a3f7d44b9478c79de306e1ce71e2))
+
+
 ## v1.14.1 (2025-12-03)
 
 ### Bug Fixes
