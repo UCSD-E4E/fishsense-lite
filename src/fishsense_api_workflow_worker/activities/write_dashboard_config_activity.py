@@ -34,30 +34,7 @@ def write_dashboard_config_activity(
 
     dashboard_config: Dict[str, Any] = {
         "title": "E4E FishSense",
-        "services": {
-            "Results": [
-                __generate_link(
-                    "Lengths",
-                    "Lengths dashboard from Apache Superset",
-                    f"{analytics_base_url}reef-smile-lengths",
-                    "simple-icons:apachesuperset",
-                ),
-                __generate_link(
-                    "Metrics",
-                    "Metrics dashboard from Apache Superset",
-                    f"{analytics_base_url}reef-smile-metrics",
-                    "simple-icons:apachesuperset",
-                ),
-            ],
-            "Administration": [
-                __generate_link(
-                    "Workflows",
-                    "Temporal Workflows",
-                    "https://workflows.fishsense.e4e.ucsd.edu/",
-                    "simple-icons:temporal",
-                )
-            ],
-        },
+        "services": {},
     }
 
     if laser_labeling_projects:
@@ -115,6 +92,30 @@ def write_dashboard_config_activity(
             )
 
         dashboard_config["services"]["Slate Labeling"] = labeling_links
+
+    dashboard_config["services"]["Results"] = [
+        __generate_link(
+            "Lengths",
+            "Lengths dashboard from Apache Superset",
+            f"{analytics_base_url}reef-smile-lengths",
+            "simple-icons:apachesuperset",
+        ),
+        __generate_link(
+            "Metrics",
+            "Metrics dashboard from Apache Superset",
+            f"{analytics_base_url}reef-smile-metrics",
+            "simple-icons:apachesuperset",
+        ),
+    ]
+
+    dashboard_config["services"]["Administration"] = [
+        __generate_link(
+            "Workflows",
+            "Temporal Workflows",
+            "https://workflows.fishsense.e4e.ucsd.edu/",
+            "simple-icons:temporal",
+        )
+    ]
 
     target_config_path.parent.mkdir(parents=True, exist_ok=True)
     with open(target_config_path, "w", encoding="utf-8") as f:
