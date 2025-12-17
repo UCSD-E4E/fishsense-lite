@@ -147,6 +147,7 @@ async def main():
             task_queue=TASK_QUEUE_NAME,
             workflows=[
                 SyncLabelStudioLaserLabelsWorkflow,
+                UpdateDashboardConfigWorkflow,
             ],
             activity_executor=executor,
             activities=[
