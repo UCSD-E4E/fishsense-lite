@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.15.2 (2025-12-17)
+
+### Bug Fixes
+
+- Serialization error for label studio project
+  ([`0be3107`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/0be31071f3254c1d6f7f319c85d7519cc50758a7))
+
+
 ## v1.15.1 (2025-12-17)
 
 ### Bug Fixes
