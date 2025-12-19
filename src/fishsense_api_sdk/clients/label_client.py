@@ -67,7 +67,7 @@ class LabelClient(ClientBase):
         return response.json()
 
     async def get_headtail_label(
-        self, image_id: int, label_studio_id: int | None = None
+        self, image_id: int | None = None, label_studio_id: int | None = None
     ) -> HeadTailLabel | None:
         """Get a HeadTailLabel by its ID .
 
