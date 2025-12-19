@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.27.1 (2025-12-19)
+
+### Bug Fixes
+
+- Headtail label method arguments
+  ([`d621cbb`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/d621cbba19fd655e81b5e9042019ba1640b917e2))
+
+
 ## v1.27.0 (2025-12-02)
 
 ### Features
