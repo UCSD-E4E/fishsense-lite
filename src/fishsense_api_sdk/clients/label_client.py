@@ -66,7 +66,9 @@ class LabelClient(ClientBase):
         response.raise_for_status()
         return response.json()
 
-    async def get_headtail_label(self, image_id: int) -> HeadTailLabel | None:
+    async def get_headtail_label(
+        self, image_id: int, label_studio_id: int | None = None
+    ) -> HeadTailLabel | None:
         """Get a HeadTailLabel by its ID .
 
         Args:
@@ -75,14 +77,29 @@ class LabelClient(ClientBase):
         Returns:
             HeadTailLabel | None: The head-tail label for the specified image.
         """
-        response = await self._get(f"/api/v1/labels/headtail/{image_id}")
-        response.raise_for_status()
+        if image_id is not None:
+            response = await self._get(f"/api/v1/labels/headtail/{image_id}")
+            response.raise_for_status()
 
-        json = response.json()
-        if json is None:
-            return None
+            json = response.json()
+            if json is None:
+                return None
 
-        return HeadTailLabel.model_validate(json)
+            return HeadTailLabel.model_validate(json)
+
+        if label_studio_id is not None:
+            response = await self._get(
+                f"/api/v1/labels/headtail/label-studio/{label_studio_id}"
+            )
+            response.raise_for_status()
+
+            json = response.json()
+            if json is None:
+                return None
+
+            return HeadTailLabel.model_validate(json)
+
+        raise NotImplementedError("Fetching without a parameter is not supported")
 
     async def get_headtail_labels(self, dive_id: int) -> List[HeadTailLabel] | None:
         """Get head-tail labels for all images in a dive .
