@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.16.0 (2025-12-19)
+
+### Features
+
+- Introduce headtail label sync task
+  ([`a40ef46`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/a40ef462fe93c5bba646be253d05d306e7095baa))
+
+
 ## v1.15.3 (2025-12-17)
 
 ### Bug Fixes
