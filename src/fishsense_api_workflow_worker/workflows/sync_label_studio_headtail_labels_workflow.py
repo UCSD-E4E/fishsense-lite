@@ -1,4 +1,4 @@
-"""Workflow to sync laser labels from Label Studio."""
+"""Workflow to sync laser head tail from Label Studio."""
 
 import asyncio
 from datetime import timedelta
@@ -7,13 +7,13 @@ from temporalio import workflow
 
 
 @workflow.defn
-class SyncLabelStudioLaserLabelsWorkflow:
+class SyncLabelStudioHeadTailLabelsWorkflow:
     # pylint: disable=too-few-public-methods
-    """Workflow to sync laser labels from Label Studio."""
+    """Workflow to sync laser head tail from Label Studio."""
 
     @workflow.run
     async def run(self):
-        """Run the workflow to sync laser labels from Label Studio."""
+        """Run the workflow to sync laser head tail from Label Studio."""
         # pylint: disable=duplicate-code
         await workflow.execute_activity(
             "sync_users_label_studio_activity",
@@ -22,7 +22,7 @@ class SyncLabelStudioLaserLabelsWorkflow:
         )
 
         label_studio_project_ids = await workflow.execute_activity(
-            "get_laser_label_studio_project_ids_activity",
+            "get_headtail_label_studio_project_ids_activity",
             args=(),
             schedule_to_close_timeout=timedelta(minutes=10),
         )
@@ -31,7 +31,7 @@ class SyncLabelStudioLaserLabelsWorkflow:
             for project_id in label_studio_project_ids:
                 tg.create_task(
                     workflow.execute_activity(
-                        "sync_laser_labels_for_label_studio_project_activity",
+                        "sync_headtail_labels_for_label_studio_project_activity",
                         args=(project_id,),
                         schedule_to_close_timeout=timedelta(minutes=30),
                     )
