@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.17.0 (2025-12-23)
+
+### Features
+
+- Decorator for task group error reporting
+  ([`1e6e900`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/1e6e900dac9c3dd25e6b03a81b2568a5de18250a))
+
+
 ## v1.16.1 (2025-12-23)
 
 ### Bug Fixes
