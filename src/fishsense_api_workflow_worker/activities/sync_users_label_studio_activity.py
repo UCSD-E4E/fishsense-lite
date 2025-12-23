@@ -27,8 +27,8 @@ def __from_label_studio(user: LseUserApi) -> User:
     )
 
 
-@activity.defn
 @activity_task_group_error_reporting
+@activity.defn
 async def sync_users_label_studio_activity():
     """Activity to sync users from Label Studio to Fishsense API."""
     ls = get_ls_client()

@@ -67,8 +67,8 @@ async def __update_headtail_label(fs: Client, task: Any):
         await fs.labels.put_headtail_label(headtail_label.image_id, headtail_label)
 
 
-@activity.defn
 @activity_task_group_error_reporting
+@activity.defn
 async def sync_headtail_labels_for_label_studio_project_activity(project_id: int):
     """Sync headtail labels for a Label Studio project."""
     # pylint: disable=duplicate-code

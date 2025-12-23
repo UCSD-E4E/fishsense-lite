@@ -60,8 +60,8 @@ async def __update_laser_label(fs: Client, task: Any):
     await fs.labels.put_laser_label(laser_label.image_id, laser_label)
 
 
-@activity.defn
 @activity_task_group_error_reporting
+@activity.defn
 async def sync_laser_labels_for_label_studio_project_activity(project_id: int):
     """Activity to sync laser labels for a Label Studio project."""
     # pylint: disable=duplicate-code
