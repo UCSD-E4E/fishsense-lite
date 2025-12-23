@@ -8,6 +8,9 @@ from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.utils import get_fs_client, get_ls_client
 from fishsense_api_workflow_worker.config import settings
+from fishsense_api_workflow_worker.decorators.activity_task_group_error_reporting_decorator import (
+    activity_task_group_error_reporting,
+)
 
 
 def __from_label_studio(user: LseUserApi) -> User:
@@ -25,6 +28,7 @@ def __from_label_studio(user: LseUserApi) -> User:
 
 
 @activity.defn
+@activity_task_group_error_reporting
 async def sync_users_label_studio_activity():
     """Activity to sync users from Label Studio to Fishsense API."""
     ls = get_ls_client()
