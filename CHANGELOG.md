@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v1.17.1 (2025-12-23)
+
+### Bug Fixes
+
+- Allow workflows to timeout
+  ([`aac4068`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/aac4068b103bf98aa2fef634c33c0480c135b749))
+
+- Use the correct timeout defintion for scheduling workflows
+  ([`28a42bb`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/28a42bb8c0a994eb62e8bbb76246d164e9278f35))
+
+
 ## v1.17.0 (2025-12-23)
 
 ### Features
