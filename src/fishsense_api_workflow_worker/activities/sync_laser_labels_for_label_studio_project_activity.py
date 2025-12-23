@@ -14,47 +14,52 @@ LASER_LABEL_KEY_NAMES = ["kp-1", "laser"]
 
 
 async def __update_laser_label(fs: Client, task: Any):
-    laser_label = await fs.labels.get_laser_label(label_studio_id=task.id)
+    try:
+        laser_label = await fs.labels.get_laser_label(label_studio_id=task.id)
 
-    # Skip if no laser label exists for this task
-    if laser_label is None:
-        return
+        # Skip if no laser label exists for this task
+        if laser_label is None:
+            return
 
-    if task.annotators:
-        user = await fs.users.get_by_label_studio_id(task.annotators[-1])
-        laser_label.user_id = user.id
+        if task.annotators:
+            user = await fs.users.get_by_label_studio_id(task.annotators[-1])
+            laser_label.user_id = user.id
 
-    laser_label.label_studio_json = json.loads(task.json())
-    laser_label.updated_at = task.updated_at
-    laser_label.completed = task.is_labeled
+        laser_label.label_studio_json = json.loads(task.json())
+        laser_label.updated_at = task.updated_at
+        laser_label.completed = task.is_labeled
 
-    if len(task.annotations) > 0:
-        for laser_label_key in LASER_LABEL_KEY_NAMES:
-            laser_label_section = [
-                r
-                for r in task.annotations[0]["result"]
-                if r["from_name"] == laser_label_key
-            ]
-            laser_label_section = (
-                laser_label_section[0] if len(laser_label_section) > 0 else None
-            )
+        if len(task.annotations) > 0:
+            for laser_label_key in LASER_LABEL_KEY_NAMES:
+                laser_label_section = [
+                    r
+                    for r in task.annotations[0]["result"]
+                    if r["from_name"] == laser_label_key
+                ]
+                laser_label_section = (
+                    laser_label_section[0] if len(laser_label_section) > 0 else None
+                )
+
+                if laser_label_section is not None:
+                    break
 
             if laser_label_section is not None:
-                break
+                original_width = laser_label_section["original_width"]
+                original_height = laser_label_section["original_height"]
 
-        if laser_label_section is not None:
-            original_width = laser_label_section["original_width"]
-            original_height = laser_label_section["original_height"]
+                laser_x = laser_label_section["value"]["x"] * original_width / 100
+                laser_y = laser_label_section["value"]["y"] * original_height / 100
+                laser_label_str = laser_label_section["value"]["keypointlabels"][0]
 
-            laser_x = laser_label_section["value"]["x"] * original_width / 100
-            laser_y = laser_label_section["value"]["y"] * original_height / 100
-            laser_label_str = laser_label_section["value"]["keypointlabels"][0]
+                laser_label.x = laser_x
+                laser_label.y = laser_y
+                laser_label.label = laser_label_str
 
-            laser_label.x = laser_x
-            laser_label.y = laser_y
-            laser_label.label = laser_label_str
+        await fs.labels.put_laser_label(laser_label.image_id, laser_label)
+    except Exception as e:
+        activity.logger.error(f"Error updating laser label for task {task.id}: {e}")
 
-    await fs.labels.put_laser_label(laser_label.image_id, laser_label)
+        raise e
 
 
 @activity.defn

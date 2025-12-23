@@ -12,56 +12,61 @@ from fishsense_api_workflow_worker.activities.utils import get_fs_client, get_ls
 
 
 async def __update_headtail_label(fs: Client, task: Any):
-    headtail_label = await fs.labels.get_headtail_label(label_studio_id=task.id)
+    try:
+        headtail_label = await fs.labels.get_headtail_label(label_studio_id=task.id)
 
-    # Skip if no headtail label exists for this task
-    if headtail_label is None:
-        return
+        # Skip if no headtail label exists for this task
+        if headtail_label is None:
+            return
 
-    if task.annotators:
-        user = await fs.users.get_by_label_studio_id(task.annotators[-1])
-        headtail_label.user_id = user.id
+        if task.annotators:
+            user = await fs.users.get_by_label_studio_id(task.annotators[-1])
+            headtail_label.user_id = user.id
 
-    headtail_label.label_studio_json = json.loads(task.json())
-    headtail_label.completed = task.is_labeled
-    headtail_label.updated_at = task.updated_at
+        headtail_label.label_studio_json = json.loads(task.json())
+        headtail_label.completed = task.is_labeled
+        headtail_label.updated_at = task.updated_at
 
-    if len(task.annotations) > 0:
-        headtail_label_sections = [
-            r for r in task.annotations[0]["result"] if r["from_name"] == "kp-1"
-        ]
-        head_label_section = next(
-            (
-                section
-                for section in headtail_label_sections
-                if section["value"]["keypointlabels"][0] == "Snout"
-            ),
-            None,
-        )
-        tail_label_section = next(
-            (
-                section
-                for section in headtail_label_sections
-                if section["value"]["keypointlabels"][0] == "Fork"
-            ),
-            None,
-        )
+        if len(task.annotations) > 0:
+            headtail_label_sections = [
+                r for r in task.annotations[0]["result"] if r["from_name"] == "kp-1"
+            ]
+            head_label_section = next(
+                (
+                    section
+                    for section in headtail_label_sections
+                    if section["value"]["keypointlabels"][0] == "Snout"
+                ),
+                None,
+            )
+            tail_label_section = next(
+                (
+                    section
+                    for section in headtail_label_sections
+                    if section["value"]["keypointlabels"][0] == "Fork"
+                ),
+                None,
+            )
 
-        if head_label_section is not None and tail_label_section is not None:
-            original_width = head_label_section["original_width"]
-            original_height = head_label_section["original_height"]
+            if head_label_section is not None and tail_label_section is not None:
+                original_width = head_label_section["original_width"]
+                original_height = head_label_section["original_height"]
 
-            head_x = head_label_section["value"]["x"] * original_width / 100
-            head_y = head_label_section["value"]["y"] * original_height / 100
-            tail_x = tail_label_section["value"]["x"] * original_width / 100
-            tail_y = tail_label_section["value"]["y"] * original_height / 100
+                head_x = head_label_section["value"]["x"] * original_width / 100
+                head_y = head_label_section["value"]["y"] * original_height / 100
+                tail_x = tail_label_section["value"]["x"] * original_width / 100
+                tail_y = tail_label_section["value"]["y"] * original_height / 100
 
-            headtail_label.head_x = head_x
-            headtail_label.head_y = head_y
-            headtail_label.tail_x = tail_x
-            headtail_label.tail_y = tail_y
+                headtail_label.head_x = head_x
+                headtail_label.head_y = head_y
+                headtail_label.tail_x = tail_x
+                headtail_label.tail_y = tail_y
 
-        await fs.labels.put_headtail_label(headtail_label.image_id, headtail_label)
+            await fs.labels.put_headtail_label(headtail_label.image_id, headtail_label)
+    except Exception as e:
+        activity.logger.error(f"Error updating headtail label for task {task.id}: {e}")
+
+        raise e
 
 
 @activity.defn
