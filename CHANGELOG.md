@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.16.1 (2025-12-23)
+
+### Bug Fixes
+
+- Better logging for exceptions which occur in sync headtail and laser labels
+  ([`3e75892`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/3e758925e6ee1765ca7e864e42f635845e987a7c))
+
+
 ## v1.16.0 (2025-12-19)
 
 ### Features
