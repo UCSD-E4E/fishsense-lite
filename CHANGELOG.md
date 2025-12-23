@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.17.2 (2025-12-23)
+
+### Bug Fixes
+
+- Order of decorators for activity
+  ([`8880ca3`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/8880ca3dfe65a153206f9471b7f2d9e4d266abc6))
+
+
 ## v1.17.1 (2025-12-23)
 
 ### Bug Fixes
