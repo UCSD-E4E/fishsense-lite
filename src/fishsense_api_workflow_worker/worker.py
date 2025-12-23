@@ -80,6 +80,7 @@ async def schedule_workflow(
                 args=(),
                 id=f"{workflow_cls.__name__}-workflow",
                 task_queue=TASK_QUEUE_NAME,
+                timeout=timedelta(minutes=30),
             ),
             spec=ScheduleSpec(intervals=[ScheduleIntervalSpec(every=interval)]),
             state=ScheduleState(),
