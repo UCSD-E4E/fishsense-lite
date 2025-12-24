@@ -8,8 +8,8 @@ from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.utils import get_fs_client, get_ls_client
 from fishsense_api_workflow_worker.config import settings
-from fishsense_api_workflow_worker.decorators.activity_task_group_error_reporting_decorator import (
-    activity_task_group_error_reporting,
+from fishsense_api_workflow_worker.exception_group_error_logging import (
+    ExceptionGroupErrorLogging,
 )
 
 
@@ -27,7 +27,6 @@ def __from_label_studio(user: LseUserApi) -> User:
     )
 
 
-@activity_task_group_error_reporting
 @activity.defn
 async def sync_users_label_studio_activity():
     """Activity to sync users from Label Studio to Fishsense API."""
@@ -39,21 +38,22 @@ async def sync_users_label_studio_activity():
     )
 
     async with get_fs_client() as fs:
-        async with asyncio.TaskGroup() as tg:
-            for label_studio_user in label_studio_users:
-                if activity.is_cancelled():
-                    activity.logger.info(
-                        "Activity cancelled, stopping user sync from Label Studio"
-                    )
-                    return
+        with ExceptionGroupErrorLogging(activity.logger):
+            async with asyncio.TaskGroup() as tg:
+                for label_studio_user in label_studio_users:
+                    if activity.is_cancelled():
+                        activity.logger.info(
+                            "Activity cancelled, stopping user sync from Label Studio"
+                        )
+                        return
 
-                fs_user = await fs.users.get_by_email(label_studio_user.email)
-                if fs_user is None:
-                    tg.create_task(
-                        fs.users.post(__from_label_studio(label_studio_user))
-                    )
-                else:
-                    new_fs_user = __from_label_studio(label_studio_user)
-                    new_fs_user.id = fs_user.id
+                    fs_user = await fs.users.get_by_email(label_studio_user.email)
+                    if fs_user is None:
+                        tg.create_task(
+                            fs.users.post(__from_label_studio(label_studio_user))
+                        )
+                    else:
+                        new_fs_user = __from_label_studio(label_studio_user)
+                        new_fs_user.id = fs_user.id
 
-                    tg.create_task(fs.users.put(new_fs_user))
+                        tg.create_task(fs.users.put(new_fs_user))

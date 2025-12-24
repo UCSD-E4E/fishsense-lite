@@ -9,8 +9,8 @@ from label_studio_sdk.core import ApiError
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.utils import get_fs_client, get_ls_client
-from fishsense_api_workflow_worker.decorators.activity_task_group_error_reporting_decorator import (
-    activity_task_group_error_reporting,
+from fishsense_api_workflow_worker.exception_group_error_logging import (
+    ExceptionGroupErrorLogging,
 )
 
 LASER_LABEL_KEY_NAMES = ["kp-1", "laser"]
@@ -60,7 +60,6 @@ async def __update_laser_label(fs: Client, task: Any):
     await fs.labels.put_laser_label(laser_label.image_id, laser_label)
 
 
-@activity_task_group_error_reporting
 @activity.defn
 async def sync_laser_labels_for_label_studio_project_activity(project_id: int):
     """Activity to sync laser labels for a Label Studio project."""
@@ -78,12 +77,13 @@ async def sync_laser_labels_for_label_studio_project_activity(project_id: int):
     tasks = await asyncio.to_thread(ls.tasks.list, project=project_id)
 
     async with get_fs_client() as fs:
-        async with asyncio.TaskGroup() as tg:
-            for task in tasks:
-                if activity.is_cancelled():
-                    activity.logger.info(
-                        "Activity cancelled, stopping sync for project %d", project_id
-                    )
-                    return
+        with ExceptionGroupErrorLogging(activity.logger):
+            async with asyncio.TaskGroup() as tg:
+                for task in tasks:
+                    if activity.is_cancelled():
+                        activity.logger.info(
+                            "Activity cancelled, stopping sync for project %d", project_id
+                        )
+                        return
 
-                tg.create_task(__update_laser_label(fs, task))
+                    tg.create_task(__update_laser_label(fs, task))
