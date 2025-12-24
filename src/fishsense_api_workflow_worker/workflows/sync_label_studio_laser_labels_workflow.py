@@ -5,6 +5,10 @@ from datetime import timedelta
 
 from temporalio import workflow
 
+from fishsense_api_workflow_worker.exception_group_error_logging import (
+    ExceptionGroupErrorLogging,
+)
+
 
 @workflow.defn
 class SyncLabelStudioLaserLabelsWorkflow:
@@ -27,12 +31,13 @@ class SyncLabelStudioLaserLabelsWorkflow:
             schedule_to_close_timeout=timedelta(minutes=10),
         )
 
-        async with asyncio.TaskGroup() as tg:
-            for project_id in label_studio_project_ids:
-                tg.create_task(
-                    workflow.execute_activity(
-                        "sync_laser_labels_for_label_studio_project_activity",
-                        args=(project_id,),
-                        schedule_to_close_timeout=timedelta(minutes=30),
+        with ExceptionGroupErrorLogging(workflow.logger):
+            async with asyncio.TaskGroup() as tg:
+                for project_id in label_studio_project_ids:
+                    tg.create_task(
+                        workflow.execute_activity(
+                            "sync_laser_labels_for_label_studio_project_activity",
+                            args=(project_id,),
+                            schedule_to_close_timeout=timedelta(minutes=30),
+                        )
                     )
-                )
