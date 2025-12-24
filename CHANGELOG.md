@@ -2,6 +2,20 @@
 
 <!-- version list -->
 
+## v1.17.3 (2025-12-24)
+
+### Bug Fixes
+
+- Context manager correct configuration
+  ([`54efbe9`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/54efbe95a67bcc86f314768bc56721fd926866bd))
+
+- Handle exceptions in workflows as well
+  ([`b856abb`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/b856abb17121a2cd261595fcd7961af07e116e1c))
+
+- Try again to do error reporting for task group
+  ([`4c809ca`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/4c809ca24424abb5e145946dbcf9601c1f4f5f0c))
+
+
 ## v1.17.2 (2025-12-23)
 
 ### Bug Fixes
