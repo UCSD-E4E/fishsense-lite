@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.17.5 (2026-01-05)
+
+### Bug Fixes
+
+- Update sdk to include logging
+  ([`fb6f341`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/fb6f34136721cbea8ea964aecae90d5c823f64cc))
+
+
 ## v1.17.4 (2026-01-05)
 
 ### Bug Fixes
