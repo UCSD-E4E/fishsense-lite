@@ -3,10 +3,10 @@
 from datetime import datetime
 from typing import List, Tuple
 
-from pydantic import BaseModel
+from fishsense_api_sdk.models.model_base import ModelBase
 
 
-class DiveSlate(BaseModel):
+class DiveSlate(ModelBase):
     """Model representing a dive slate."""
 
     id: int
