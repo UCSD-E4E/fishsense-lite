@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.17.4 (2026-01-05)
+
+### Bug Fixes
+
+- Update fishsense-api-sdk to reduce warnings
+  ([`de21a88`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/de21a88afa9982fe858fae5fa94f3f3cb90d5c65))
+
+
 ## v1.17.3 (2025-12-24)
 
 ### Bug Fixes
