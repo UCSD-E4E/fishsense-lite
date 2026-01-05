@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.27.3 (2026-01-05)
+
+### Bug Fixes
+
+- Add missed base class to diveslate model
+  ([`40c20ff`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/40c20ff6c74104049550565f0083fb639ef3cc39))
+
+
 ## v1.27.2 (2026-01-05)
 
 ### Bug Fixes
