@@ -23,6 +23,7 @@ class DiveClient(ClientBase):
 
             json = response.json()
             if json is None:
+                self.logger.debug("No dive found with ID %s", dive_id)
                 return None
 
             return Dive.model_validate(json)
@@ -32,6 +33,7 @@ class DiveClient(ClientBase):
 
         json = response.json()
         if json is None:
+            self.logger.debug("No dives found.")
             return None
 
         return [Dive.model_validate(dive) for dive in json]
@@ -47,6 +49,7 @@ class DiveClient(ClientBase):
 
         json = response.json()
         if json is None:
+            self.logger.debug("No canonical dives found.")
             return None
 
         return [Dive.model_validate(dive) for dive in json]
@@ -65,6 +68,7 @@ class DiveClient(ClientBase):
 
         json = response.json()
         if json is None:
+            self.logger.debug("No laser extrinsics found for dive ID %s", dive_id)
             return None
 
         return LaserExtrinsics._from_internal(  # pylint: disable=protected-access
@@ -91,5 +95,4 @@ class DiveClient(ClientBase):
         )
         response.raise_for_status()
 
-        response.raise_for_status()
         return response.json()

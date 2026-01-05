@@ -21,6 +21,7 @@ class FishClient(ClientBase):
 
             json = response.json()
             if json is None:
+                self.logger.debug("No fish found with ID %s", fish_id)
                 return None
 
             return Fish.model_validate(json)
@@ -30,6 +31,7 @@ class FishClient(ClientBase):
 
         json = response.json()
         if json is None:
+            self.logger.debug("No fish found.")
             return None
 
         return [Fish.model_validate(fish) for fish in json]
@@ -83,6 +85,9 @@ class FishClient(ClientBase):
 
         json = response.json()
         if json is None:
+            self.logger.debug(
+                "No species found with scientific name %s", scientific_name
+            )
             return None
 
         return Species.model_validate(json)

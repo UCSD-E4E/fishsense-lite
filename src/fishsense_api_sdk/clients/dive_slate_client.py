@@ -21,6 +21,7 @@ class DiveSlateClient(ClientBase):
 
         json = response.json()
         if json is None:
+            self.logger.debug("No dive slates found.")
             return None
 
         return [DiveSlate.model_validate(dive_slate) for dive_slate in json]

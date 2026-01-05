@@ -25,6 +25,7 @@ class CameraClient(ClientBase):
 
             json = response.json()
             if json is None:
+                self.logger.debug("No camera found with ID %s", camera_id)
                 return None
 
             return Camera.model_validate(json)
@@ -34,6 +35,7 @@ class CameraClient(ClientBase):
 
         json = response.json()
         if json is None:
+            self.logger.debug("No cameras found.")
             return None
 
         return [Camera.model_validate(camera) for camera in json]
@@ -52,6 +54,7 @@ class CameraClient(ClientBase):
 
         json = response.json()
         if json is None:
+            self.logger.debug("No intrinsics found for camera ID %s", camera_id)
             return None
 
         return CameraIntrinsics._from_internal(  # pylint: disable=protected-access

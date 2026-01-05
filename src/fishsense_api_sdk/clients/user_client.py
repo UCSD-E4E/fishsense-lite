@@ -23,6 +23,7 @@ class UserClient(ClientBase):
 
         json = response.json()
         if json is None:
+            self.logger.debug("No user found with ID %s", user_id)
             return None
 
         return User.model_validate(json)
@@ -41,6 +42,7 @@ class UserClient(ClientBase):
 
         json = response.json()
         if json is None:
+            self.logger.debug("No user found with email %s", email)
             return None
 
         return User.model_validate(json)
@@ -59,6 +61,9 @@ class UserClient(ClientBase):
 
         json = response.json()
         if json is None:
+            self.logger.debug(
+                "No user found with Label Studio ID %s", label_studio_id
+            )
             return None
 
         return User.model_validate(json)
@@ -74,6 +79,7 @@ class UserClient(ClientBase):
 
         json = response.json()
         if json is None:
+            self.logger.debug("No users found.")
             return None
 
         return [User.model_validate(user) for user in json]

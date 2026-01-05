@@ -26,6 +26,7 @@ class LabelClient(ClientBase):
 
         json = response.json()
         if json is None:
+            self.logger.debug("No dive slate label found for image ID %s", image_id)
             return None
 
         return DiveSlateLabel.model_validate(json)
@@ -44,6 +45,7 @@ class LabelClient(ClientBase):
 
         json = response.json()
         if json is None:
+            self.logger.debug("No dive slate labels found for dive ID %s", dive_id)
             return None
 
         return [DiveSlateLabel.model_validate(label) for label in json]
@@ -83,6 +85,7 @@ class LabelClient(ClientBase):
 
             json = response.json()
             if json is None:
+                self.logger.debug("No head-tail label found for image ID %s", image_id)
                 return None
 
             return HeadTailLabel.model_validate(json)
@@ -95,6 +98,9 @@ class LabelClient(ClientBase):
 
             json = response.json()
             if json is None:
+                self.logger.debug(
+                    "No head-tail label found for label studio ID %s", label_studio_id
+                )
                 return None
 
             return HeadTailLabel.model_validate(json)
@@ -115,6 +121,7 @@ class LabelClient(ClientBase):
 
         json = response.json()
         if json is None:
+            self.logger.debug("No head-tail labels found for dive ID %s", dive_id)
             return None
 
         return [HeadTailLabel.model_validate(label) for label in json]
@@ -155,6 +162,7 @@ class LabelClient(ClientBase):
 
             json = response.json()
             if json is None:
+                self.logger.debug("No laser label found for image ID %s", image_id)
                 return None
 
             return LaserLabel.model_validate(json)
@@ -167,6 +175,9 @@ class LabelClient(ClientBase):
 
             json = response.json()
             if json is None:
+                self.logger.debug(
+                    "No laser label found for label studio ID %s", label_studio_id
+                )
                 return None
 
             return LaserLabel.model_validate(json)
@@ -187,6 +198,7 @@ class LabelClient(ClientBase):
 
         json = response.json()
         if json is None:
+            self.logger.debug("No laser labels found for dive ID %s", dive_id)
             return None
 
         return [LaserLabel.model_validate(label) for label in json]
@@ -221,6 +233,7 @@ class LabelClient(ClientBase):
 
         json = response.json()
         if json is None:
+            self.logger.debug("No species label found for image ID %s", image_id)
             return None
 
         return SpeciesLabel.model_validate(json)
@@ -239,6 +252,7 @@ class LabelClient(ClientBase):
 
         json = response.json()
         if json is None:
+            self.logger.debug("No species labels found for dive ID %s", dive_id)
             return None
 
         return [SpeciesLabel.model_validate(label) for label in json]

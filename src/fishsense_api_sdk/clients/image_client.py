@@ -31,6 +31,7 @@ class ImageClient(ClientBase):
 
             json = response.json()
             if json is None:
+                self.logger.debug("No images found for dive ID %s", dive_id)
                 return None
 
             return [Image.model_validate(image) for image in json]
@@ -41,6 +42,7 @@ class ImageClient(ClientBase):
 
             json = response.json()
             if json is None:
+                self.logger.debug("No image found with ID %s", image_id)
                 return None
 
             return Image.model_validate(json)
@@ -51,6 +53,7 @@ class ImageClient(ClientBase):
 
             json = response.json()
             if json is None:
+                self.logger.debug("No image found with checksum %s", checksum)
                 return None
 
             return Image.model_validate(json)
@@ -75,6 +78,11 @@ class ImageClient(ClientBase):
 
         json = response.json()
         if json is None:
+            self.logger.debug(
+                "No image clusters found for dive ID %s and data source %s",
+                dive_id,
+                data_source,
+            )
             return None
 
         return [DiveFrameCluster.model_validate(cluster) for cluster in json]

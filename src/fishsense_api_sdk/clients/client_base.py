@@ -3,6 +3,7 @@
 import asyncio
 import base64
 from abc import ABC
+from logging import Logger, getLogger
 
 import httpx
 from retry import retry
@@ -25,6 +26,11 @@ class ClientBase(ABC):
 
         return self.__client_internal
 
+    @property
+    def logger(self) -> Logger:
+        """Logger for the client."""
+        return self.__logger
+
     def __init__(
         self,
         base_url: str,
@@ -44,22 +50,27 @@ class ClientBase(ABC):
         )
         self.__client_internal: httpx.AsyncClient | None = None
         self.__inside_context = False
+        self.__logger = getLogger(__name__)
 
     def __create_client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout)
 
     async def __aenter__(self) -> "ClientBase":
+        self.logger.debug("Entering async context manager for ClientBase")
         self.__inside_context = True
         return self
 
     async def __aexit__(self, exc_type, exc_value, traceback) -> None:
         if self.__client_internal is not None:
+            self.logger.debug("Exiting async context manager for ClientBase")
+            self.__inside_context = False
             await self.__client_internal.aclose()
             self.__client_internal = None
 
     @retry(exceptions=httpx.HTTPStatusError, tries=3, delay=2, backoff=2)
     async def _get(self, endpoint: str) -> httpx.Response:
         async with self.semaphore:
+            self.logger.debug("GET request to %s", endpoint)
             return await self.__client.get(
                 endpoint,
                 headers=(
@@ -72,6 +83,7 @@ class ClientBase(ABC):
     @retry(exceptions=httpx.HTTPStatusError, tries=3, delay=2, backoff=2)
     async def _post(self, endpoint: str, json: dict) -> httpx.Response:
         async with self.semaphore:
+            self.logger.debug("POST request to %s with payload: %s", endpoint, json)
             return await self.__client.post(
                 endpoint,
                 json=json,
@@ -85,6 +97,7 @@ class ClientBase(ABC):
     @retry(exceptions=httpx.HTTPStatusError, tries=3, delay=2, backoff=2)
     async def _put(self, endpoint: str, json: dict) -> httpx.Response:
         async with self.semaphore:
+            self.logger.debug("PUT request to %s with payload: %s", endpoint, json)
             return await self.__client.put(
                 endpoint,
                 json=json,
