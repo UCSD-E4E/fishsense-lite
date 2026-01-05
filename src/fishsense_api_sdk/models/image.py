@@ -2,10 +2,10 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from fishsense_api_sdk.models.model_base import ModelBase
 
 
-class Image(BaseModel):
+class Image(ModelBase):
     """Model representing an image."""
 
     id: int | None

@@ -2,10 +2,10 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from fishsense_api_sdk.models.model_base import ModelBase
 
 
-class User(BaseModel):
+class User(ModelBase):
     """Model representing a user."""
 
     id: int | None

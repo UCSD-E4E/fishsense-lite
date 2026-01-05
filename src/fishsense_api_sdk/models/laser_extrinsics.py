@@ -4,10 +4,11 @@ from datetime import datetime
 from typing import List, Self
 
 import numpy as np
-from pydantic import BaseModel
+
+from fishsense_api_sdk.models.model_base import ModelBase
 
 
-class _LaserExtrinsics(BaseModel):
+class _LaserExtrinsics(ModelBase):
     id: int | None
     laser_position: List[float]
     laser_axis: List[float]

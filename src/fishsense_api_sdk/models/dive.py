@@ -2,12 +2,11 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
-
+from fishsense_api_sdk.models.model_base import ModelBase
 from fishsense_api_sdk.models.priority import Priority
 
 
-class Dive(BaseModel):
+class Dive(ModelBase):
     """Model representing a dive."""
 
     id: int | None
