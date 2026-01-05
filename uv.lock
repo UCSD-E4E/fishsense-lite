@@ -342,8 +342,8 @@ wheels = [
 
 [[package]]
 name = "fishsense-api-sdk"
-version = "1.27.3"
-source = { git = "https://github.com/UCSD-E4E/fishsense-api-sdk.git#2d85c6ed62d86bb031b89ed38ddbbd4216322017" }
+version = "1.28.0"
+source = { git = "https://github.com/UCSD-E4E/fishsense-api-sdk.git#427f97ce21be79a022cfb12363880e26014b9d60" }
 dependencies = [
     { name = "httpx" },
     { name = "numpy" },
@@ -353,7 +353,7 @@ dependencies = [
 
 [[package]]
 name = "fishsense-api-workflow-worker"
-version = "1.17.2"
+version = "1.17.3"
 source = { editable = "." }
 dependencies = [
     { name = "dynaconf" },
