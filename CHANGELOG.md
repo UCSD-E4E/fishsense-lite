@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.28.0 (2026-01-05)
+
+### Features
+
+- Add additional logging to sdk
+  ([`3812e7a`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/3812e7a7774924635fba243dcc958b6a9003d0af))
+
+
 ## v1.27.3 (2026-01-05)
 
 ### Bug Fixes
