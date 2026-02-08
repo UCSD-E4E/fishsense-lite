@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.28.2 (2026-02-08)
+
+### Bug Fixes
+
+- Let's try using a configurable json object
+  ([`8bd3272`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/8bd3272fddf0c7fde64f41bc83927554d3b1fc5d))
+
+
 ## v1.28.1 (2026-02-08)
 
 ### Bug Fixes
