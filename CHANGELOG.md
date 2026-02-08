@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.18.1 (2026-02-08)
+
+### Bug Fixes
+
+- Properly log aysncio task group issues
+  ([`7cc7c03`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/7cc7c03c927da4ea3c9fbb8d7dfd9aa3e8a1a59f))
+
+
 ## v1.18.0 (2026-02-08)
 
 ### Features
