@@ -40,6 +40,9 @@ from fishsense_api_workflow_worker.activities.write_dashboard_config_activity im
     write_dashboard_config_activity,
 )
 from fishsense_api_workflow_worker.config import configure_logging, settings
+from fishsense_api_workflow_worker.exception_group_error_logging import (
+    ExceptionGroupErrorLogging,
+)
 from fishsense_api_workflow_worker.workflows.sync_label_studio_headtail_labels_workflow import (
     SyncLabelStudioHeadTailLabelsWorkflow,
 )
@@ -92,30 +95,31 @@ async def schedule_workflows(client: Client):
     """Schedule workflows for the worker."""
 
     async with asyncio.TaskGroup() as tg:
-        tg.create_task(
-            schedule_workflow(
-                client,
-                "sync-label-studio-laser-labels-workflow-schedule",
-                SyncLabelStudioLaserLabelsWorkflow,
-                timedelta(hours=1),
+        with ExceptionGroupErrorLogging(logging.getLogger()):
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "sync-label-studio-laser-labels-workflow-schedule",
+                    SyncLabelStudioLaserLabelsWorkflow,
+                    timedelta(hours=1),
+                )
             )
-        )
-        tg.create_task(
-            schedule_workflow(
-                client,
-                "sync-label-studio-headtail-labels-workflow-schedule",
-                SyncLabelStudioHeadTailLabelsWorkflow,
-                timedelta(hours=1),
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "sync-label-studio-headtail-labels-workflow-schedule",
+                    SyncLabelStudioHeadTailLabelsWorkflow,
+                    timedelta(hours=1),
+                )
             )
-        )
-        tg.create_task(
-            schedule_workflow(
-                client,
-                "update-dashboard-config-workflow-schedule",
-                UpdateDashboardConfigWorkflow,
-                timedelta(hours=1),
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "update-dashboard-config-workflow-schedule",
+                    UpdateDashboardConfigWorkflow,
+                    timedelta(hours=1),
+                )
             )
-        )
 
 
 async def main():

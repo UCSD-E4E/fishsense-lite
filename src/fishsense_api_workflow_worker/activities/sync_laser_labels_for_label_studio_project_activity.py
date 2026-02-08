@@ -77,12 +77,13 @@ async def sync_laser_labels_for_label_studio_project_activity(project_id: int):
     tasks = await asyncio.to_thread(ls.tasks.list, project=project_id)
 
     async with get_fs_client() as fs:
-        with ExceptionGroupErrorLogging(activity.logger):
-            async with asyncio.TaskGroup() as tg:
+        async with asyncio.TaskGroup() as tg:
+            with ExceptionGroupErrorLogging(activity.logger):
                 for task in tasks:
                     if activity.is_cancelled():
                         activity.logger.info(
-                            "Activity cancelled, stopping sync for project %d", project_id
+                            "Activity cancelled, stopping sync for project %d",
+                            project_id,
                         )
                         return
 

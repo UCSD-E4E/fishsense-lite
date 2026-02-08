@@ -38,8 +38,8 @@ async def sync_users_label_studio_activity():
     )
 
     async with get_fs_client() as fs:
-        with ExceptionGroupErrorLogging(activity.logger):
-            async with asyncio.TaskGroup() as tg:
+        async with asyncio.TaskGroup() as tg:
+            with ExceptionGroupErrorLogging(activity.logger):
                 for label_studio_user in label_studio_users:
                     if activity.is_cancelled():
                         activity.logger.info(

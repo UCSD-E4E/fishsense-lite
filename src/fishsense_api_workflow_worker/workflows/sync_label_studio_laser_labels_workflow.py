@@ -31,8 +31,8 @@ class SyncLabelStudioLaserLabelsWorkflow:
             schedule_to_close_timeout=timedelta(minutes=10),
         )
 
-        with ExceptionGroupErrorLogging(workflow.logger):
-            async with asyncio.TaskGroup() as tg:
+        async with asyncio.TaskGroup() as tg:
+            with ExceptionGroupErrorLogging(workflow.logger):
                 for project_id in label_studio_project_ids:
                     tg.create_task(
                         workflow.execute_activity(
