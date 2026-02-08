@@ -15,7 +15,7 @@ class ExceptionGroupErrorLogging:
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        if exc_type is not None and isinstance(exc, ExceptionGroup):
+        if exc_type is not None and isinstance(exc, BaseExceptionGroup):
             # Log the overall ExceptionGroup error
             self.activity_logger.error(
                 f"ExceptionGroup with {len(exc.exceptions)} sub-exception(s) occurred in TaskGroup"
