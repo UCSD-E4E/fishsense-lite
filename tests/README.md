@@ -110,6 +110,9 @@ When adding new tests, follow these guidelines:
 ### Example Test
 
 ```python
+import asyncio
+from unittest.mock import AsyncMock, Mock, patch
+
 async def test_get_fish_by_id(self):
     """Test getting a fish by ID."""
     # Arrange
@@ -127,7 +130,7 @@ async def test_get_fish_by_id(self):
     mock_response.json.return_value = {"id": 1, "species_id": 100}
     
     # Act
-    with patch.object(client, "_get", return_value=mock_response):
+    with patch.object(client, "_get", new_callable=AsyncMock, return_value=mock_response):
         async with client:
             fish = await client.get(fish_id=1)
     
