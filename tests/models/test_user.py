@@ -2,8 +2,6 @@
 
 from datetime import datetime, timezone
 
-import pytest
-
 from fishsense_api_sdk.models.user import User
 
 

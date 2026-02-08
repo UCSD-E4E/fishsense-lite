@@ -1,7 +1,5 @@
 """Tests for Measurement model."""
 
-import pytest
-
 from fishsense_api_sdk.models.measurement import Measurement
 
 

@@ -1,7 +1,5 @@
 """Tests for Fish model."""
 
-import pytest
-
 from fishsense_api_sdk.models.fish import Fish
 
 

@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from fishsense_api_sdk.models.model_base import ModelBase
 
 
-class TestModel(ModelBase):
+class TestModel(ModelBase):  # pylint: disable=too-few-public-methods
     """Test model to validate ModelBase functionality."""
 
     id: int

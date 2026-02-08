@@ -1,18 +1,17 @@
 """Tests for ClientBase class."""
+# pylint: disable=protected-access
 
 import asyncio
+import base64
 from unittest.mock import AsyncMock, Mock, patch
 
-import httpx
 import pytest
 
 from fishsense_api_sdk.clients.client_base import ClientBase
 
 
-class TestClientImpl(ClientBase):
+class TestClientImpl(ClientBase):  # pylint: disable=too-few-public-methods
     """Test implementation of ClientBase for testing."""
-
-    pass
 
 
 class TestClientBase:
@@ -102,8 +101,6 @@ class TestClientBase:
                 auth_header = call_kwargs["headers"]["Authorization"]
                 assert auth_header.startswith("Basic ")
                 # Verify the encoded credentials
-                import base64
-
                 encoded_creds = auth_header.replace("Basic ", "")
                 decoded_creds = base64.b64decode(encoded_creds).decode("utf-8")
                 assert decoded_creds == "testuser:testpass"

@@ -3,8 +3,6 @@
 import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
-import pytest
-
 from fishsense_api_sdk.clients.fish_client import FishClient
 from fishsense_api_sdk.models.fish import Fish
 from fishsense_api_sdk.models.measurement import Measurement

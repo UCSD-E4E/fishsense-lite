@@ -1,7 +1,5 @@
 """Tests for Species model."""
 
-import pytest
-
 from fishsense_api_sdk.models.species import Species
 
 

@@ -86,6 +86,14 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = "--cov=fishsense_api_sdk --cov-report=term-missing --cov-report=html"
 
+[tool.pylint.messages_control]
+disable = [
+    "duplicate-code",  # Allow duplicate code in tests
+]
+
+[tool.pylint.design]
+min-public-methods = 0  # Allow test helper classes with no public methods
+
 [build-system]
 requires = ["uv_build>=0.8.12,<0.9.0"]
 build-backend = "uv_build"

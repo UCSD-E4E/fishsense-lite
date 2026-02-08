@@ -1,9 +1,5 @@
 """Tests for main Client class."""
 
-import asyncio
-
-import pytest
-
 from fishsense_api_sdk.client import Client
 from fishsense_api_sdk.clients.camera_client import CameraClient
 from fishsense_api_sdk.clients.dive_client import DiveClient
