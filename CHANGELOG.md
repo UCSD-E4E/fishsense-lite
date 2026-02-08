@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.18.3 (2026-02-08)
+
+### Bug Fixes
+
+- Json validation errors for json blobs from label studio
+  ([`4a699c1`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/4a699c1a866962b5cae48c56cb3a8281c3788312))
+
+
 ## v1.18.2 (2026-02-08)
 
 ### Bug Fixes
