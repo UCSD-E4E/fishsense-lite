@@ -20,7 +20,7 @@ class DiveSlateLabel(ModelBase):
     skipped_points: List[int] | None
     updated_at: datetime | None
     completed: bool | None
-    label_studio_json: Dict[str, Any] | None
+    label_studio_json: Dict[str, Any] | str | None
 
     image_id: int | None
     user_id: int | None

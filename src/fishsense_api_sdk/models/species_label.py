@@ -26,7 +26,7 @@ class SpeciesLabel(ModelBase):
     fish_measurable_category: str | None
     fish_angle_category: str | None
     fish_curved_category: str | None
-    label_studio_json: Dict[str, Any] | None
+    label_studio_json: Dict[str, Any] | str | None
 
     image_id: int | None
     user_id: int | None
