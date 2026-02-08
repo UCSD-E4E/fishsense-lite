@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.19.1 (2026-02-08)
+
+### Bug Fixes
+
+- Update api sdk to resolve bugs
+  ([`4e69c58`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/4e69c585322ec4888e9bbf6980284a25a350132c))
+
+
 ## v1.19.0 (2026-02-08)
 
 ### Features
