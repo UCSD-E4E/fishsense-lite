@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.28.5 (2026-02-08)
+
+### Bug Fixes
+
+- Make model base more robust
+  ([`addcb5e`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/addcb5ec5b482ed278edcae04e9dc8a2dfc45dd9))
+
+
 ## v1.28.4 (2026-02-08)
 
 ### Bug Fixes
