@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.19.0 (2026-02-08)
+
+### Features
+
+- Add Copilot instructions for repository
+  ([`ef2b334`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/ef2b334c4fff597aa4d930b77c1255d0ce6db89d))
+
+
 ## v1.18.7 (2026-02-08)
 
 ### Bug Fixes
