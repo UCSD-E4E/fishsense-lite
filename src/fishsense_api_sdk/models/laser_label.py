@@ -1,10 +1,8 @@
 """Module defining laser label model for Fishsense API SDK."""
 
 from datetime import datetime
-from typing import Any
 
-from pydantic import Json
-
+from fishsense_api_sdk.models.label_studio_json import LabelStudioJson
 from fishsense_api_sdk.models.model_base import ModelBase
 
 
@@ -21,7 +19,7 @@ class LaserLabel(ModelBase):
     updated_at: datetime | None
     superseded: bool | None
     completed: bool | None
-    label_studio_json: Json[Any] | None
+    label_studio_json: LabelStudioJson | None
 
     image_id: int | None
     user_id: int | None
