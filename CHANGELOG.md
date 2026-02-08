@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.28.4 (2026-02-08)
+
+### Bug Fixes
+
+- Model_base should look for date objects rather than names
+  ([`4263b02`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/4263b02d7d78d41f3eea7a94a3ef6c7ac4d516cc))
+
+
 ## v1.28.3 (2026-02-08)
 
 ### Bug Fixes
