@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.18.6 (2026-02-08)
+
+### Bug Fixes
+
+- Update to latest fisthsense api workflow worker
+  ([`7b5c739`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/7b5c7392ed1b6eaa3b9440b4c0f4e9bb4e6ef1c7))
+
+
 ## v1.18.5 (2026-02-08)
 
 ### Bug Fixes
