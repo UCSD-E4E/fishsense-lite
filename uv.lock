@@ -360,7 +360,7 @@ dependencies = [
 
 [[package]]
 name = "fishsense-api-workflow-worker"
-version = "1.18.3"
+version = "1.18.5"
 source = { editable = "." }
 dependencies = [
     { name = "dynaconf" },
