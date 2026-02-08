@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.18.2 (2026-02-08)
+
+### Bug Fixes
+
+- Update fishsense-api-sdk to pull in bug fixes for warnings
+  ([`6aa591a`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/6aa591a2c17f485c3b20115fa21579d6a870eb97))
+
+
 ## v1.18.1 (2026-02-08)
 
 ### Bug Fixes
