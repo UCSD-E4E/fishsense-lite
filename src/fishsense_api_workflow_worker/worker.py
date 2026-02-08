@@ -94,8 +94,8 @@ async def schedule_workflow(
 async def schedule_workflows(client: Client):
     """Schedule workflows for the worker."""
 
-    async with asyncio.TaskGroup() as tg:
-        with ExceptionGroupErrorLogging(logging.getLogger()):
+    async with ExceptionGroupErrorLogging(logging.getLogger()):
+        async with asyncio.TaskGroup() as tg:
             tg.create_task(
                 schedule_workflow(
                     client,
