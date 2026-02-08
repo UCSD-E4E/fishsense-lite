@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.18.4 (2026-02-08)
+
+### Bug Fixes
+
+- Try dumping the json instead
+  ([`60fe6ee`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/60fe6ee8304a081c2d0a98c8c95701e00188f78a))
+
+
 ## v1.18.3 (2026-02-08)
 
 ### Bug Fixes
