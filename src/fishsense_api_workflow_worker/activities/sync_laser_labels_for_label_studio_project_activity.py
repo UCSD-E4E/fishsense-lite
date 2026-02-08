@@ -27,7 +27,7 @@ async def __update_laser_label(fs: Client, task: Any):
         user = await fs.users.get_by_label_studio_id(task.annotators[-1])
         laser_label.user_id = user.id
 
-    laser_label.label_studio_json = json.dumps(task.json())
+    laser_label.label_studio_json = json.loads(task.json())
     laser_label.updated_at = task.updated_at
     laser_label.completed = task.is_labeled
 
