@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.18.0 (2026-02-08)
+
+### Features
+
+- Introduce logging to get_label_studio_projects_activity
+  ([`16dae50`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/16dae5008e9302c3755f06c436fa90da123ace4c))
+
+
 ## v1.17.5 (2026-01-05)
 
 ### Bug Fixes
