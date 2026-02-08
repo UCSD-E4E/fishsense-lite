@@ -4,6 +4,7 @@ on:
   workflow_run:
     workflows:
       - Pylint
+      - Tests
     branches:
       - main
     types: 

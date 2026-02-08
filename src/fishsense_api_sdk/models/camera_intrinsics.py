@@ -22,8 +22,8 @@ class CameraIntrinsics:
 
     def __init__(
         self,
-        camera_matrix: np.ndarray[float] | None,
-        distortion_coefficients: np.ndarray[float] | None,
+        camera_matrix: "np.ndarray[float] | None",
+        distortion_coefficients: "np.ndarray[float] | None",
         camera_id: int | None,
         id: int | None = None,  # pylint: disable=redefined-builtin
     ):

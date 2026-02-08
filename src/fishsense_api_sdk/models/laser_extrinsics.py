@@ -25,8 +25,8 @@ class LaserExtrinsics:
 
     def __init__(
         self,
-        laser_position: np.ndarray[float] | None,
-        laser_axis: np.ndarray[float] | None,
+        laser_position: "np.ndarray[float] | None",
+        laser_axis: "np.ndarray[float] | None",
         dive_id: int | None,
         camera_id: int | None,
         id: int | None = None,  # pylint: disable=redefined-builtin
