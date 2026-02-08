@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.28.3 (2026-02-08)
+
+### Bug Fixes
+
+- Allow str for label studio json
+  ([`4527c32`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/4527c320455e1495f60cd25311029a22fb17478e))
+
+
 ## v1.28.2 (2026-02-08)
 
 ### Bug Fixes
