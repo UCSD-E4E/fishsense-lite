@@ -1,7 +1,6 @@
 """Activity to sync headtail labels for a Label Studio project."""
 
 import asyncio
-import json
 from typing import Any
 
 from fishsense_api_sdk.client import Client
@@ -25,7 +24,7 @@ async def __update_headtail_label(fs: Client, task: Any):
         user = await fs.users.get_by_label_studio_id(task.annotators[-1])
         headtail_label.user_id = user.id
 
-    headtail_label.label_studio_json = json.loads(task.json())
+    headtail_label.label_studio_json = task.json()
     headtail_label.completed = task.is_labeled
     headtail_label.updated_at = task.updated_at
 
