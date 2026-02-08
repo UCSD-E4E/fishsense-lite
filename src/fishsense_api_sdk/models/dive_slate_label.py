@@ -1,7 +1,9 @@
 """Model for Slate Labels."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Tuple
+from typing import Any, List, Tuple
+
+from pydantic import Json
 
 from fishsense_api_sdk.models.model_base import ModelBase
 
@@ -20,7 +22,7 @@ class DiveSlateLabel(ModelBase):
     skipped_points: List[int] | None
     updated_at: datetime | None
     completed: bool | None
-    label_studio_json: Dict[str, Any] | None
+    label_studio_json: Json[Any] | None
 
     image_id: int | None
     user_id: int | None
