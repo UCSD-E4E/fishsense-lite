@@ -46,6 +46,9 @@ async def get_label_studio_projects_activity() -> Tuple[
     ls = get_ls_client()
 
     async with get_fs_client() as fs:
+        activity.logger.info(
+            "Getting Label Studio projects for laser, species, head-tail, and slate labels"
+        )
         laser_labels = await get_laser_labels(fs)
         species_labels = await get_species_labels(fs)
         head_tail_labels = await get_headtail_labels(fs)
@@ -56,6 +59,9 @@ async def get_label_studio_projects_activity() -> Tuple[
             for label in laser_labels
             if not label.completed
         }
+        activity.logger.info(
+            f"Laser label project IDs: {laser_label_project_project_id}"
+        )
 
         laser_label_studio_projects = await asyncio.gather(
             *(
@@ -69,6 +75,9 @@ async def get_label_studio_projects_activity() -> Tuple[
             for label in species_labels
             if not label.completed
         }
+        activity.logger.info(
+            f"Species label project IDs: {species_label_project_project_id}"
+        )
 
         species_label_studio_projects = await asyncio.gather(
             *(
@@ -82,6 +91,9 @@ async def get_label_studio_projects_activity() -> Tuple[
             for label in head_tail_labels
             if not label.completed
         }
+        activity.logger.info(
+            f"Head-tail label project IDs: {head_tail_labels_project_project_id}"
+        )
 
         head_tail_label_studio_projects = await asyncio.gather(
             *(
@@ -95,6 +107,9 @@ async def get_label_studio_projects_activity() -> Tuple[
             for label in slate_labels
             if not label.completed
         }
+        activity.logger.info(
+            f"Slate label project IDs: {slate_labels_project_project_id}"
+        )
 
         slate_label_studio_projects = await asyncio.gather(
             *(
