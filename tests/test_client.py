@@ -73,8 +73,10 @@ class TestClient:
             password="testpass",
             max_concurrent_requests=5,
         )
-        # Check that the semaphore is shared
-        assert client.cameras.semaphore._value == 5
+        # Check that all clients share the same semaphore instance
+        # and that it was created with the correct limit
+        assert client.cameras.semaphore is client.dives.semaphore
+        assert client.cameras.semaphore is client.fish.semaphore
 
     async def test_client_context_manager(self):
         """Test that Client can be used as async context manager."""

@@ -99,7 +99,14 @@ class TestClientBase:
                 mock_client_instance.get.assert_called_once()
                 call_kwargs = mock_client_instance.get.call_args[1]
                 assert "Authorization" in call_kwargs["headers"]
-                assert call_kwargs["headers"]["Authorization"].startswith("Basic ")
+                auth_header = call_kwargs["headers"]["Authorization"]
+                assert auth_header.startswith("Basic ")
+                # Verify the encoded credentials
+                import base64
+
+                encoded_creds = auth_header.replace("Basic ", "")
+                decoded_creds = base64.b64decode(encoded_creds).decode("utf-8")
+                assert decoded_creds == "testuser:testpass"
 
     async def test_get_request_without_authentication(self):
         """Test GET request without authentication headers."""
@@ -191,6 +198,12 @@ class TestClientBase:
 
         with pytest.raises(RuntimeError, match="Client must be used within"):
             await client._get("/test")
+
+        with pytest.raises(RuntimeError, match="Client must be used within"):
+            await client._post("/test", json={"data": "value"})
+
+        with pytest.raises(RuntimeError, match="Client must be used within"):
+            await client._put("/test", json={"data": "value"})
 
     async def test_semaphore_is_used(self):
         """Test that semaphore is acquired during requests."""

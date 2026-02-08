@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 
 import pytest
-from pydantic import BaseModel
+from pydantic import ValidationError
 
 from fishsense_api_sdk.models.model_base import ModelBase
 
@@ -63,5 +63,5 @@ class TestModelBase:
 
     def test_model_validation(self):
         """Test that model validation works correctly."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             TestModel(id="invalid", name="Test")
