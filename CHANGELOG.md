@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.28.1 (2026-02-08)
+
+### Bug Fixes
+
+- Use pydantic json object
+  ([`4053748`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/405374862f137918cb0d72fa758d4592e22c3d39))
+
+
 ## v1.28.0 (2026-01-05)
 
 ### Features
