@@ -1,9 +1,7 @@
 """Module defining species label model for Fishsense API SDK."""
 
 from datetime import datetime
-from typing import Any
-
-from pydantic import Json
+from typing import Any, Dict
 
 from fishsense_api_sdk.models.model_base import ModelBase
 
@@ -28,7 +26,7 @@ class SpeciesLabel(ModelBase):
     fish_measurable_category: str | None
     fish_angle_category: str | None
     fish_curved_category: str | None
-    label_studio_json: Json[Any] | None
+    label_studio_json: Dict[str, Any] | None
 
     image_id: int | None
     user_id: int | None

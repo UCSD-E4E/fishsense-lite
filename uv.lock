@@ -110,7 +110,7 @@ wheels = [
 
 [[package]]
 name = "fishsense-api-sdk"
-version = "1.28.0"
+version = "1.27.2"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
