@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.29.0 (2026-02-24)
+
+### Features
+
+- Handle 404 users
+  ([`33c030a`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/33c030aae78e624c092a32d60e542ea35da26488))
+
+
 ## v1.28.5 (2026-02-08)
 
 ### Bug Fixes
