@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## v1.20.0 (2026-02-24)
+
+### Chores
+
+- Additional cleanup
+  ([`0379eb9`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/0379eb903d945127c5623290e226b3289ab267ca))
+
+- Cleanup repo
+  ([`2351f45`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/2351f45431bc966c86de3fe690e9510780d482dd))
+
+### Features
+
+- Handle a user which doesn't exist
+  ([`b29f801`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/b29f8011cf015ea622c0e6ea95f91331ea1fa4d1))
+
+
 ## v1.19.1 (2026-02-08)
 
 ### Bug Fixes
