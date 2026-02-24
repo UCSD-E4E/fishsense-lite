@@ -3,6 +3,7 @@
 import asyncio
 
 from fishsense_api_sdk.models.user import User
+from httpx import HTTPStatusError
 from label_studio_sdk import LseUserApi
 from temporalio import activity
 
@@ -47,7 +48,14 @@ async def sync_users_label_studio_activity():
                         )
                         return
 
-                    fs_user = await fs.users.get_by_email(label_studio_user.email)
+                    try:
+                        fs_user = await fs.users.get_by_email(label_studio_user.email)
+                    except HTTPStatusError as e:
+                        if e.response.status_code == 404:
+                            fs_user = None
+                        else:
+                            raise
+
                     if fs_user is None:
                         tg.create_task(
                             fs.users.post(__from_label_studio(label_studio_user))
