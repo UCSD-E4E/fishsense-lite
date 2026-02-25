@@ -17,8 +17,8 @@ async def __get_laser_labels(
     except HTTPStatusError as e:
         if e.response.status_code == 404:
             return []
-        else:
-            raise
+
+        raise
 
 
 async def get_laser_labels(fishsense_client: Client) -> List[LaserLabel]:
@@ -42,8 +42,8 @@ async def __get_species_labels(
     except HTTPStatusError as e:
         if e.response.status_code == 404:
             return []
-        else:
-            raise
+
+        raise
 
 
 async def get_species_labels(fishsense_client: Client) -> List[LaserLabel]:
@@ -67,8 +67,8 @@ async def __get_headtail_labels(
     except HTTPStatusError as e:
         if e.response.status_code == 404:
             return []
-        else:
-            raise
+
+        raise
 
 
 async def get_headtail_labels(fishsense_client: Client) -> List[LaserLabel]:
@@ -92,8 +92,8 @@ async def __get_dive_slate_labels(
     except HTTPStatusError as e:
         if e.response.status_code == 404:
             return []
-        else:
-            raise
+
+        raise
 
 
 async def get_dive_slate_labels(fishsense_client: Client) -> List[LaserLabel]:
