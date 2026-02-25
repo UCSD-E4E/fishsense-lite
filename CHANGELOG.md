@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## v1.20.1 (2026-02-25)
+
+### Bug Fixes
+
+- Handle 404 for dives that don't yet have labels
+  ([`54e563d`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/54e563d445b1f32efdb1b6ff60f81a41127759d8))
+
+- Pylint errors
+  ([`5de9482`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/5de94820e816295349d7f2cd1476e37dccd646fe))
+
+### Chores
+
+- **deps**: Bump pillow from 12.1.0 to 12.1.1
+  ([`8443ca8`](https://github.com/UCSD-E4E/fishsense-api-workflow-worker/commit/8443ca831462faad5db9ce4e3fa36f52f1d18bf6))
+
+
 ## v1.20.0 (2026-02-24)
 
 ### Chores
