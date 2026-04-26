@@ -19,6 +19,7 @@ members = [
     "fishsense-api-workflow-worker",
     "fishsense-data-processing-workflow-worker",
     "fishsense-lite",
+    "fishsense-shared",
 ]
 
 [[package]]
@@ -567,6 +568,7 @@ dependencies = [
     { name = "asyncpg" },
     { name = "dynaconf" },
     { name = "fastapi" },
+    { name = "fishsense-shared" },
     { name = "label-studio-sdk" },
     { name = "psycopg", extra = ["binary"] },
     { name = "sqlmodel" },
@@ -586,6 +588,7 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "dynaconf", specifier = ">=3.2.11" },
     { name = "fastapi", specifier = ">=0.119.0" },
+    { name = "fishsense-shared", editable = "libs/fishsense-shared" },
     { name = "label-studio-sdk", specifier = ">=2.0.11" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2.10" },
     { name = "sqlmodel", specifier = ">=0.0.27" },
@@ -618,6 +621,7 @@ source = { editable = "services/fishsense-api-workflow-worker" }
 dependencies = [
     { name = "dynaconf" },
     { name = "fishsense-api-sdk" },
+    { name = "fishsense-shared" },
     { name = "label-studio-sdk" },
     { name = "platformdirs" },
     { name = "pyaml" },
@@ -637,6 +641,7 @@ dev = [
 requires-dist = [
     { name = "dynaconf", specifier = ">=3.2.11" },
     { name = "fishsense-api-sdk", git = "https://github.com/UCSD-E4E/fishsense-api-sdk.git" },
+    { name = "fishsense-shared", editable = "libs/fishsense-shared" },
     { name = "label-studio-sdk", specifier = ">=2.0.1" },
     { name = "platformdirs", specifier = ">=4.3.8" },
     { name = "pyaml", specifier = ">=25.7.0" },
@@ -673,6 +678,7 @@ dependencies = [
     { name = "dynaconf" },
     { name = "fishsense-api-sdk" },
     { name = "fishsense-core" },
+    { name = "fishsense-shared" },
     { name = "label-studio-sdk" },
     { name = "numpy" },
     { name = "opencv-contrib-python" },
@@ -713,6 +719,7 @@ requires-dist = [
     { name = "dynaconf", specifier = ">=3.2.11" },
     { name = "fishsense-api-sdk", git = "https://github.com/UCSD-E4E/fishsense-api-sdk.git" },
     { name = "fishsense-core", git = "https://github.com/UCSD-E4E/fishsense-core.git?subdirectory=python%2Ffishsense_core" },
+    { name = "fishsense-shared", editable = "libs/fishsense-shared" },
     { name = "label-studio-sdk", specifier = ">=2.0.7" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "opencv-contrib-python", specifier = ">=4.12.0.88" },
@@ -752,6 +759,25 @@ hack = [
 name = "fishsense-lite"
 version = "0.0.0"
 source = { virtual = "." }
+
+[[package]]
+name = "fishsense-shared"
+version = "0.1.0"
+source = { editable = "libs/fishsense-shared" }
+dependencies = [
+    { name = "dynaconf" },
+    { name = "platformdirs" },
+    { name = "temporalio" },
+    { name = "validators" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "dynaconf", specifier = ">=3.2.11" },
+    { name = "platformdirs", specifier = ">=4.3.8" },
+    { name = "temporalio", specifier = ">=1.15.0" },
+    { name = "validators", specifier = ">=0.35.0" },
+]
 
 [[package]]
 name = "fonttools"
