@@ -1,0 +1,46 @@
+# Python build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# uv / pip
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Notebook artifacts
+.ipynb_checkpoints/
+
+# Local secrets (never commit)
+.secrets/
+.secrets.toml
+*.env
+!example.env
+
+# Local dev compose overrides (committed when intentional, ignored when scratch)
+deploy/compose.local.yml
