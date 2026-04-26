@@ -1,17 +1,9 @@
 import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 
-from temporalio.client import (
-    Client,
-    Schedule,
-    ScheduleActionStartWorkflow,
-    ScheduleIntervalSpec,
-    ScheduleSpec,
-    ScheduleState,
-    TLSConfig,
-)
+from fishsense_shared import build_tls_config
+from temporalio.client import Client
 from temporalio.worker import Worker
 
 from fishsense_data_processing_workflow_worker.activities.cluster_dive_frames import (
@@ -35,24 +27,7 @@ async def main():
     configure_logging()
     log = logging.getLogger()
 
-    tls_config: TLSConfig | None = None
-    if settings.temporal.tls:
-        with Path(settings.temporal.client_cert).open("rb") as f:
-            client_cert = f.read()
-        with Path(settings.temporal.client_private_key).open("rb") as f:
-            client_private_key = f.read()
-
-        server_root_ca_cert: bytes | None = None
-        if "server_root_ca_cert" in settings.temporal:
-            with Path(settings.temporal.server_root_ca_cert).open("rb") as f:
-                server_root_ca_cert = f.read()
-
-        tls_config = TLSConfig(
-            client_cert=client_cert,
-            client_private_key=client_private_key,
-            server_root_ca_cert=server_root_ca_cert,
-            domain=settings.temporal.domain if "domain" in settings.temporal else None,
-        )
+    tls_config = build_tls_config(settings.temporal)
 
     client = await Client.connect(
         f"{settings.temporal.host}:{settings.temporal.port}", tls=tls_config

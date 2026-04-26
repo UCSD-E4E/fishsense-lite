@@ -5,9 +5,7 @@ from datetime import timedelta
 
 from temporalio import workflow
 
-from fishsense_api_workflow_worker.exception_group_error_logging import (
-    ExceptionGroupErrorLogging,
-)
+from fishsense_shared import ExceptionGroupErrorLogging
 
 
 @workflow.defn

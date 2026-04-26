@@ -9,9 +9,7 @@ from label_studio_sdk.core import ApiError
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.utils import get_fs_client, get_ls_client
-from fishsense_api_workflow_worker.exception_group_error_logging import (
-    ExceptionGroupErrorLogging,
-)
+from fishsense_shared import ExceptionGroupErrorLogging
 
 LASER_LABEL_KEY_NAMES = ["kp-1", "laser"]
 

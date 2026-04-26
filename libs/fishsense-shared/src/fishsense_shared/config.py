@@ -1,0 +1,35 @@
+"""Path conventions shared by every FishSense service.
+
+When ``E4EFS_DOCKER=true`` (set on every shipped image), config and logs are
+read from / written to ``/e4efs/{config,logs}`` instead of the platform user
+dirs. The ``app_name`` argument distinguishes log destinations between
+services co-installed on a host (e.g. via platformdirs).
+"""
+
+import os
+from pathlib import Path
+
+import platformdirs
+
+IS_DOCKER = bool(os.environ.get("E4EFS_DOCKER", False))
+
+
+def get_config_path() -> Path:
+    """Config root: ``/e4efs/config`` in Docker, else cwd."""
+    if IS_DOCKER:
+        return Path("/e4efs/config")
+    return Path(".")
+
+
+def get_log_path(app_name: str) -> Path:
+    """Log root: ``/e4efs/logs`` in Docker, else platformdirs user log path."""
+    if IS_DOCKER:
+        return Path("/e4efs/logs")
+    log_path = platformdirs.PlatformDirs(app_name).user_log_path
+    log_path.mkdir(parents=True, exist_ok=True)
+    return log_path
+
+
+def path_validator(path: str) -> bool:
+    """Dynaconf validator: True when ``path`` exists on disk."""
+    return Path(path).exists()

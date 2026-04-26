@@ -1,0 +1,15 @@
+[project]
+name = "fishsense-shared"
+version = "0.1.0"
+description = "Shared Dynaconf, logging, and Temporal helpers for FishSense Lite services."
+requires-python = ">=3.13"
+dependencies = [
+    "dynaconf>=3.2.11",
+    "platformdirs>=4.3.8",
+    "temporalio>=1.15.0",
+    "validators>=0.35.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.8.12,<0.9.0"]
+build-backend = "uv_build"

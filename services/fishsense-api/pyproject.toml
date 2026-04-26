@@ -8,12 +8,16 @@ dependencies = [
     "asyncpg>=0.30.0",
     "dynaconf>=3.2.11",
     "fastapi>=0.119.0",
+    "fishsense-shared",
     "label-studio-sdk>=2.0.11",
     "psycopg[binary]>=3.2.10",
     "sqlmodel>=0.0.27",
     "uvicorn>=0.37.0",
     "validators>=0.35.0",
 ]
+
+[tool.uv.sources]
+fishsense-shared = { workspace = true }
 
 [dependency-groups]
 dev = [
