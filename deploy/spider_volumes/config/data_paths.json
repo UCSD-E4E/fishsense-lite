@@ -1,0 +1,16 @@
+{
+    "data_paths": [
+        {
+            "unc_path": "//e4e-nas.ucsd.edu/fishsense_data/REEF/data",
+            "mount": "/mnt/fishsense_data_reef/REEF/data"
+        },
+        {
+            "unc_path": "//e4e-nas.ucsd.edu/fishsense/Fishsense Lite Calibration Parameters",
+            "mount": "/mnt/fishsense_lens_cal"
+        },
+        {
+            "unc_path": "//e4e-nas.ucsd.edu/fishsense_process_work",
+            "mount": "/mnt/fishsense_process_work"
+        }
+    ]
+}

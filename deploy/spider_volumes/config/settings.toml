@@ -1,0 +1,18 @@
+[scraper]
+data_paths = "data_paths.json"
+
+[summary]
+interval = "2m"
+
+[label_studio]
+host = 'labeler.e4e.ucsd.edu'
+interval = "1h"
+
+[web_api]
+key_store = '/e4efs/data/keys.db'
+root_url = 'http://localhost:80'
+
+[data_model]
+preprocess_jpg_store = '//e4e-nas.ucsd.edu/fishsense_process_work/preprocess_jpeg'
+preprocess_laser_jpg_store = '//e4e-nas.ucsd.edu/fishsense_process_work/preprocess_laser_jpeg'
+debug_data_store = '//e4e-nas.ucsd.edu/fishsense_process_work/debug_data'

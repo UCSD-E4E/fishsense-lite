@@ -1,0 +1,4 @@
+ALTER TABLE laser_labels
+    ADD COLUMN complete BOOL NOT NULL DEFAULT FALSE;
+ALTER TABLE headtail_labels
+    ADD COLUMN complete BOOL NOT NULL DEFAULT FALSE;

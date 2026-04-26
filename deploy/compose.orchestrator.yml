@@ -1,0 +1,35 @@
+services:
+  static_file_server:
+    image: nginx:1.29-alpine
+    depends_on:
+      - fishsense-api
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.fishsense_static_file_server.rule=Host(`orchestrator.fishsense.e4e.ucsd.edu`) && PathPrefix(`/api/v1/data`)"
+      - "traefik.http.routers.fishsense_static_file_server.entrypoints=websecure"
+      - "traefik.http.routers.fishsense_static_file_server.tls.certresolver=letsencrypt"
+    volumes:
+      - ./static_file_server/nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./static_file_server_volumes/data:/data
+    networks:
+      - traefik_proxy
+    deploy:
+      replicas: 2
+    restart: on-failure:15
+
+  fishsense-api:
+    image: ghcr.io/ucsd-e4e/fishsense-api:v1.18.1
+    volumes:
+      - ./fishsense_api_volumes/config:/e4efs/config:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.fishsense_api_server.rule=Host(`orchestrator.fishsense.e4e.ucsd.edu`)"
+      - "traefik.http.routers.fishsense_api_server.entrypoints=websecure"
+      - "traefik.http.routers.fishsense_api_server.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.fishsense_api_server.middlewares=authentik@docker"
+      - "traefik.http.services.fishsense_api_server.loadbalancer.server.port=8000"
+    networks:
+      - traefik_proxy
+    deploy:
+      replicas: 4
+    restart: on-failure:15

@@ -1,0 +1,69 @@
+include:
+  - compose.orchestrator.yml
+  - compose.superset.yml
+  - compose.temporal.yml
+
+
+
+services:
+  qcomm-static-file-server:
+    image: nginx:1.29-alpine
+    depends_on:
+      - fishsense-api
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.fishsense_qualcomm_static_file_server.rule=Host(`qcomm.docs.fabricant.ucsd.edu`)"
+      - "traefik.http.routers.fishsense_qualcomm_static_file_server.entrypoints=websecure"
+      - "traefik.http.routers.fishsense_qualcomm_static_file_server.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.fishsense_qualcomm_static_file_server.middlewares=authentik@docker"
+    volumes:
+      - ./qcomm_static_file_server/nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./qcomm_static_file_server_volumes/www_root:/www_root:ro
+    networks:
+      - traefik_proxy
+    restart: on-failure:15
+
+  mafl:
+    container_name: mafl # change as needed
+    image: hywax/mafl
+    restart: on-failure:15
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mafl.rule=Host(`fishsense.e4e.ucsd.edu`)"
+      - "traefik.http.routers.mafl.entrypoints=websecure"
+      - "traefik.http.routers.mafl.tls.certresolver=letsencrypt"
+    networks:
+      - traefik_proxy
+      - default
+    volumes:
+      - ./mafl_volumes/data:/app/data
+
+  postgres:
+    image: postgres:16.11
+    restart: on-failure:15
+    shm_size: 128 mb
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
+    volumes:
+      - ./pg_volumes/data/:/var/lib/postgresql/data/:rw
+      - ./pg_volumes/config/:/etc/postgresql/:ro
+      # - ./.secrets/certs/:/certs/:ro
+      - ./pg_volumes/scripts/:/docker-entrypoint-initdb.d/:ro
+      - /etc/passwd:/etc/passwd:ro
+    secrets:
+      - postgres_admin_password
+    command: --config_file=/etc/postgresql/postgres.conf
+    ports:
+      - 5432:5432
+    user: "${USER_ID}:${GROUP_ID}"
+
+secrets:
+  postgres_admin_password: 
+    file: .secrets/postgres_admin_password.txt
+
+networks:
+  orchestrator:
+  prometheus_network:
+    external: true
+  traefik_proxy:
+    external: true

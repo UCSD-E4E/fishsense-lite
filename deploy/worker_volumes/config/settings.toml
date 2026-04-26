@@ -1,0 +1,22 @@
+[general]
+max_workers=8
+
+[temporal]
+host = "fishsense-temporal"
+port = "7233"
+tls = true
+client_cert = "/certs/client/fishsense-api-workflow-worker.pem"
+client_private_key = "/certs/client/fishsense-api-workflow-worker.key"
+domain = "workflows.fishsense.e4e.ucsd.edu"
+server_root_ca_cert = "/certs/ca/root-ca.pem"
+
+[label_studio]
+host = "labeler.e4e.ucsd.edu"
+laser_project_ids = [43, 42]
+head_tail_project_ids = [44, 45]
+
+[postgres]
+host = "postgres"
+port = "5432"
+username = "postgres"
+database = "fishsense"
