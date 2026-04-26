@@ -1,0 +1,12 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "fishsense_api_workflow_worker",
+            "justMyCode": true
+        }
+    ]
+}

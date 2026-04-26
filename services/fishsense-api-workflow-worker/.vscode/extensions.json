@@ -1,0 +1,13 @@
+{
+    "recommendations": [
+        "ms-python.vscode-pylance",
+        "ms-python.python",
+        "njpwerner.autodocstring",
+        "ms-python.isort",
+        "eamodio.gitlens",
+        "ms-python.black-formatter",
+        "ms-vscode-remote.remote-containers",
+        "ms-azuretools.vscode-containers",
+        "ms-ossdata.vscode-pgsql"
+    ]
+}
