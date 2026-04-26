@@ -1,0 +1,16 @@
+[project]
+name = "fishsense-lite"
+version = "0.0.0"
+description = "FishSense Lite system monorepo (workspace root — see services/ for the actual deliverables)."
+requires-python = ">=3.13"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = [
+    "services/fishsense-api",
+    "services/fishsense-api-workflow-worker",
+    "services/fishsense-data-processing-workflow-worker",
+    "libs/*",
+]
