@@ -1,0 +1,33 @@
+name: Semantic Release
+
+on:
+  workflow_run:
+    workflows:
+      - Pylint
+    branches:
+      - main
+    types: 
+      - completed
+
+jobs:
+  release:
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release
+      cancel-in-progress: true
+    permissions:
+      id-token: write
+      contents: write
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.RELEASER }}
+
+    - name: Python Semantic Release
+      uses: python-semantic-release/python-semantic-release@master
+      with:
+        # This might need to be changed to the E4E Releaser PAT
+        github_token: ${{ secrets.RELEASER }}

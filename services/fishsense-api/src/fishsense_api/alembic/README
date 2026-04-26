@@ -1,0 +1,11 @@
+Generic single-database configuration with an async dbapi.
+
+To create a new migration
+```bash
+uv run alembic revision --autogenerate -m "message"
+```
+
+To Upgrade
+```bash
+uv run alembic upgrade head
+```
