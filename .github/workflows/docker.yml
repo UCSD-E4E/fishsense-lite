@@ -1,0 +1,68 @@
+name: Docker Build and Push
+
+# Triggers when release-please publishes a tag of the form
+# `services/<service>-v*.*.*` (its `include-component-in-tag: true` mode).
+
+on:
+  push:
+    tags:
+      - "services/fishsense-api-v*.*.*"
+      - "services/fishsense-api-workflow-worker-v*.*.*"
+      - "services/fishsense-data-processing-workflow-worker-v*.*.*"
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Parse service from tag
+        id: parse
+        run: |
+          # Tag format: refs/tags/services/<service>-v<version>
+          tag="${GITHUB_REF#refs/tags/services/}"
+          service="${tag%-v*}"
+          version="v${tag##*-v}"
+          echo "service=$service" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Verify service has a Dockerfile
+        run: test -f "services/${{ steps.parse.outputs.service }}/Dockerfile"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ steps.parse.outputs.service }}
+          tags: |
+            type=raw,value=${{ steps.parse.outputs.version }}
+            type=raw,value=latest
+
+      - id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: services/${{ steps.parse.outputs.service }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ steps.parse.outputs.service }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true

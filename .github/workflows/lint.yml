@@ -1,0 +1,41 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pylint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install uv
+        run: pip install uv
+      - name: Sync workspace (all packages, dev groups)
+        run: uv sync --all-packages --all-groups
+      - name: Determine changed Python files
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --name-only --diff-filter=ACMR \
+              "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}" \
+              | grep -E '\.py$' > changed.txt || true
+          else
+            git diff --name-only --diff-filter=ACMR \
+              "${{ github.event.before }}" "${{ github.sha }}" \
+              | grep -E '\.py$' > changed.txt || true
+          fi
+          echo "n=$(wc -l < changed.txt)" >> "$GITHUB_OUTPUT"
+      - name: Pylint changed files
+        if: steps.changes.outputs.n != '0'
+        run: |
+          xargs -a changed.txt uv run pylint
+      - name: Skip (no Python changes)
+        if: steps.changes.outputs.n == '0'
+        run: echo "No Python files changed; skipping pylint."

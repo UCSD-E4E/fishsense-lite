@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "python",
+  "include-component-in-tag": true,
+  "separate-pull-requests": false,
+  "packages": {
+    "services/fishsense-api": {
+      "package-name": "fishsense-api",
+      "version-file": "src/fishsense_api/__version__.py"
+    },
+    "services/fishsense-api-workflow-worker": {
+      "package-name": "fishsense-api-workflow-worker",
+      "version-file": "src/fishsense_api_workflow_worker/__init__.py"
+    },
+    "services/fishsense-data-processing-workflow-worker": {
+      "package-name": "fishsense-data-processing-workflow-worker",
+      "version-file": "src/fishsense_data_processing_workflow_worker/__init__.py"
+    },
+    "libs/fishsense-shared": {
+      "package-name": "fishsense-shared"
+    }
+  }
+}
