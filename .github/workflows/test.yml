@@ -26,6 +26,11 @@ jobs:
           python-version: "3.13"
       - name: Install uv
         run: pip install uv
+      # fishsense-core (Rust+PyO3) is built from a git source via uv; its
+      # transitive build dep clang-sys needs llvm-config + libclang.so to
+      # bindgen the C headers. The default ubuntu-latest runner has neither.
+      - name: Install build deps for fishsense-core (libclang)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends llvm-dev libclang-dev
       - name: Sync workspace (all packages, all groups)
         run: uv sync --all-packages --all-groups
       - name: Run pytest with coverage
