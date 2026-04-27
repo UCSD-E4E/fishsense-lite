@@ -11,10 +11,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package:
-          - libs/fishsense-api-sdk
-          - services/fishsense-api
-          - services/fishsense-data-processing-workflow-worker
+        include:
+          - package: libs/fishsense-api-sdk
+            cov: fishsense_api_sdk
+          - package: services/fishsense-api
+            cov: fishsense_api
+          - package: services/fishsense-data-processing-workflow-worker
+            cov: fishsense_data_processing_workflow_worker
     name: pytest (${{ matrix.package }})
     steps:
       - uses: actions/checkout@v4
@@ -25,5 +28,17 @@ jobs:
         run: pip install uv
       - name: Sync workspace (all packages, all groups)
         run: uv sync --all-packages --all-groups
-      - name: Run pytest
-        run: uv run --directory ${{ matrix.package }} pytest -v
+      - name: Run pytest with coverage
+        run: |
+          uv run --directory ${{ matrix.package }} pytest -v \
+            --cov=${{ matrix.cov }} \
+            --cov-report=term-missing \
+            --cov-report=xml
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ${{ matrix.package }}/coverage.xml
+          flags: ${{ matrix.cov }}
+          name: ${{ matrix.cov }}
+          fail_ci_if_error: false
