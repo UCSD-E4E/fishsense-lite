@@ -26,14 +26,6 @@ jobs:
           python-version: "3.13"
       - name: Install uv
         run: pip install uv
-      # fishsense-core (Rust+PyO3) is built from a git source via uv. Its
-      # build chain needs:
-      #  - llvm-dev + libclang-dev: clang-sys bindgens C headers
-      #  - libopencv-dev:           the `opencv` Rust crate links the C++ lib
-      #  - libopenblas-dev:         ndarray-linalg's openblas backend
-      # ubuntu-latest has none of them by default.
-      - name: Install build deps for fishsense-core
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends llvm-dev libclang-dev libopencv-dev libopenblas-dev
       - name: Sync workspace (all packages, all groups)
         run: uv sync --all-packages --all-groups
       - name: Run pytest with coverage
