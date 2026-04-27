@@ -24,7 +24,13 @@ dev = [
     "alembic>=1.16.5",
     "black>=25.9.0",
     "pylint>=4.0.2",
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
 
 [tool.semantic_release]
 version_variables = ["src/fishsense_api/__version__.py:__version__"]

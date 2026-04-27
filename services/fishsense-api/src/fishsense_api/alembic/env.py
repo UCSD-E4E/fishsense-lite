@@ -9,7 +9,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from sqlmodel import SQLModel
 
-from fishsense_api.config import PG_CONNECTION_STRING
+from fishsense_api.config import pg_connection_string
 from fishsense_api.database import Database
 
 # this is the Alembic Config object, which provides
@@ -46,7 +46,7 @@ def run_migrations_offline() -> None:
 
     """
     context.configure(
-        url=PG_CONNECTION_STRING,
+        url=pg_connection_string(),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -73,7 +73,7 @@ async def run_async_migrations() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
-        url=PG_CONNECTION_STRING,
+        url=pg_connection_string(),
     )
 
     async with connectable.connect() as connection:

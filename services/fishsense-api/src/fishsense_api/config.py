@@ -23,7 +23,9 @@ settings = Dynaconf(
     validators=_VALIDATORS,
 )
 
-PG_CONNECTION_STRING = (
-    f"postgresql+asyncpg://{settings.postgres.username}:{settings.postgres.password}"
-    f"@{settings.postgres.host}:{settings.postgres.port}/{settings.postgres.database}"
-)
+def pg_connection_string() -> str:
+    """Build the PostgreSQL connection string from current settings."""
+    return (
+        f"postgresql+asyncpg://{settings.postgres.username}:{settings.postgres.password}"
+        f"@{settings.postgres.host}:{settings.postgres.port}/{settings.postgres.database}"
+    )

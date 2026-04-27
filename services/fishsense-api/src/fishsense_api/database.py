@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from fishsense_api.config import PG_CONNECTION_STRING
+from fishsense_api.config import pg_connection_string
 from fishsense_api.models.camera import Camera
 from fishsense_api.models.camera_intrinsics import CameraIntrinsics
 from fishsense_api.models.dive import Dive
@@ -56,10 +56,21 @@ class Database:
         await self.engine.dispose()
 
 
-DATABASE = Database(PG_CONNECTION_STRING)
-__ASYNC_SESSION_LOCAL = sessionmaker(
-    DATABASE.engine, class_=AsyncSession, expire_on_commit=False
-)
+_session_factory: sessionmaker | None = None
+
+
+def setup_database() -> Database:
+    """Construct the Database and session factory from settings.
+
+    Call once at application startup (e.g., FastAPI lifespan) before any
+    request handler invokes ``get_async_session``.
+    """
+    global _session_factory
+    database = Database(pg_connection_string())
+    _session_factory = sessionmaker(
+        database.engine, class_=AsyncSession, expire_on_commit=False
+    )
+    return database
 
 
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
@@ -68,7 +79,11 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     Yields:
         AsyncSession: An asynchronous database session.
     """
-    async with __ASYNC_SESSION_LOCAL() as session:
+    if _session_factory is None:
+        raise RuntimeError(
+            "Database not initialized; call setup_database() first"
+        )
+    async with _session_factory() as session:
         try:
             yield session
             await session.commit()

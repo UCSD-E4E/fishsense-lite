@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from fishsense_api.__version__ import __version__
-from fishsense_api.database import DATABASE
+from fishsense_api.database import setup_database
 
 
 @asynccontextmanager
@@ -15,7 +15,7 @@ async def lifespan(_: FastAPI):
     Args:
         app (FastAPI): FastAPI application instance.
     """
-    database = DATABASE
+    database = setup_database()
 
     # Startup events (e.g., create tables)
     async with database.engine.begin() as conn:
