@@ -1,4 +1,0 @@
-[postgres]
-host = "fabricant-prod.ucsd.edu"
-port = 5432
-database = "fishsense"
