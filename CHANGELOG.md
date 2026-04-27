@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.29.1 (2026-04-27)
+
+### Bug Fixes
+
+- Handle 404 for models missing from database
+  ([`1e6bc66`](https://github.com/UCSD-E4E/fishsense-api-sdk/commit/1e6bc6611377b4743f8479b94fa5279d3436feca))
+
+
 ## v1.29.0 (2026-02-24)
 
 ### Features
