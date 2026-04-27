@@ -202,6 +202,39 @@ class TestClientBase:
         with pytest.raises(RuntimeError, match="Client must be used within"):
             await client._put("/test", json={"data": "value"})
 
+    async def test_get_returns_4xx_5xx_responses_without_retry(self):
+        """`_get` is decorated with @retry(exceptions=HTTPStatusError, ...) but
+        never calls `raise_for_status` itself, so the decorator can never fire
+        — the response is returned as-is.
+
+        This test documents the current behavior. If the retry decorator is
+        ever fixed (e.g., by raising on 5xx inside `_get`, or switching to
+        TransportError), update this test to assert the new contract.
+        """
+        semaphore = asyncio.Semaphore(10)
+        client = TestClientImpl(
+            base_url="http://test.com",
+            username="testuser",
+            password="testpass",
+            timeout=10,
+            semaphore=semaphore,
+        )
+
+        mock_response = Mock()
+        mock_response.status_code = 503
+
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client_instance = AsyncMock()
+            mock_client_instance.get = AsyncMock(return_value=mock_response)
+            mock_client_class.return_value = mock_client_instance
+
+            async with client:
+                response = await client._get("/test")
+                assert response is mock_response
+                assert response.status_code == 503
+                # Critical: called exactly once, no retry attempts.
+                assert mock_client_instance.get.call_count == 1
+
     async def test_semaphore_is_used(self):
         """Test that semaphore is acquired during requests."""
         semaphore = asyncio.Semaphore(1)

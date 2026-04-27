@@ -19,6 +19,9 @@ class DiveClient(ClientBase):
         """
         if dive_id is not None:
             response = await self._get(f"/api/v1/dives/{dive_id}")
+            if response.status_code == 404:
+                self.logger.debug("No dive found with ID %s", dive_id)
+                return None
             response.raise_for_status()
 
             json = response.json()
@@ -64,6 +67,9 @@ class DiveClient(ClientBase):
             LaserExtrinsics | None: The laser extrinsics of the specified dive.
         """
         response = await self._get(f"/api/v1/dives/{dive_id}/laser-extrinsics/")
+        if response.status_code == 404:
+            self.logger.debug("No laser extrinsics found for dive ID %s", dive_id)
+            return None
         response.raise_for_status()
 
         json = response.json()

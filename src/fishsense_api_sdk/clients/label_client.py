@@ -22,6 +22,9 @@ class LabelClient(ClientBase):
             DiveSlateLabel | None: The dive slate labels for the specified image.
         """
         response = await self._get(f"/api/v1/labels/dive-slate/{image_id}")
+        if response.status_code == 404:
+            self.logger.debug("No dive slate label found for image ID %s", image_id)
+            return None
         response.raise_for_status()
 
         json = response.json()
@@ -81,6 +84,9 @@ class LabelClient(ClientBase):
         """
         if image_id is not None:
             response = await self._get(f"/api/v1/labels/headtail/{image_id}")
+            if response.status_code == 404:
+                self.logger.debug("No head-tail label found for image ID %s", image_id)
+                return None
             response.raise_for_status()
 
             json = response.json()
@@ -94,6 +100,11 @@ class LabelClient(ClientBase):
             response = await self._get(
                 f"/api/v1/labels/headtail/label-studio/{label_studio_id}"
             )
+            if response.status_code == 404:
+                self.logger.debug(
+                    "No head-tail label found for label studio ID %s", label_studio_id
+                )
+                return None
             response.raise_for_status()
 
             json = response.json()
@@ -158,6 +169,9 @@ class LabelClient(ClientBase):
         """
         if image_id is not None:
             response = await self._get(f"/api/v1/labels/laser/{image_id}")
+            if response.status_code == 404:
+                self.logger.debug("No laser label found for image ID %s", image_id)
+                return None
             response.raise_for_status()
 
             json = response.json()
@@ -171,6 +185,11 @@ class LabelClient(ClientBase):
             response = await self._get(
                 f"/api/v1/labels/laser/label-studio/{label_studio_id}"
             )
+            if response.status_code == 404:
+                self.logger.debug(
+                    "No laser label found for label studio ID %s", label_studio_id
+                )
+                return None
             response.raise_for_status()
 
             json = response.json()
@@ -229,6 +248,9 @@ class LabelClient(ClientBase):
             SpeciesLabel | None: The species label for the specified image.
         """
         response = await self._get(f"/api/v1/labels/species/{image_id}")
+        if response.status_code == 404:
+            self.logger.debug("No species label found for image ID %s", image_id)
+            return None
         response.raise_for_status()
 
         json = response.json()

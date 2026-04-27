@@ -21,6 +21,9 @@ class CameraClient(ClientBase):
         """
         if camera_id is not None:
             response = await self._get(f"/api/v1/cameras/{camera_id}")
+            if response.status_code == 404:
+                self.logger.debug("No camera found with ID %s", camera_id)
+                return None
             response.raise_for_status()
 
             json = response.json()
@@ -50,6 +53,9 @@ class CameraClient(ClientBase):
             CameraIntrinsics: The intrinsic parameters of the specified camera.
         """
         response = await self._get(f"/api/v1/cameras/{camera_id}/intrinsics/")
+        if response.status_code == 404:
+            self.logger.debug("No intrinsics found for camera ID %s", camera_id)
+            return None
         response.raise_for_status()
 
         json = response.json()

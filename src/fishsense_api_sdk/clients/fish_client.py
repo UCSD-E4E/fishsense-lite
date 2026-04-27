@@ -17,6 +17,9 @@ class FishClient(ClientBase):
         """
         if fish_id is not None:
             response = await self._get(f"/api/v1/fish/{fish_id}")
+            if response.status_code == 404:
+                self.logger.debug("No fish found with ID %s", fish_id)
+                return None
             response.raise_for_status()
 
             json = response.json()
@@ -81,6 +84,11 @@ class FishClient(ClientBase):
             Species | None: The species object if found, otherwise None.
         """
         response = await self._get(f"/api/v1/fish/species/{scientific_name}")
+        if response.status_code == 404:
+            self.logger.debug(
+                "No species found with scientific name %s", scientific_name
+            )
+            return None
         response.raise_for_status()
 
         json = response.json()

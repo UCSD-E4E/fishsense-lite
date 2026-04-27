@@ -67,6 +67,32 @@ class TestUserClient:
                 user = await client.get_by_id(999)
                 assert user is None
 
+    async def test_get_by_id_returns_none_on_404(self):
+        """A 404 from GET /users/{id} returns None instead of raising."""
+        semaphore = asyncio.Semaphore(10)
+        client = UserClient(
+            base_url="http://test.com",
+            username="testuser",
+            password="testpass",
+            timeout=10,
+            semaphore=semaphore,
+        )
+
+        mock_response = Mock()
+        mock_response.status_code = 404
+        mock_response.raise_for_status = Mock(
+            side_effect=AssertionError(
+                "raise_for_status must not be called for the 404 case"
+            )
+        )
+
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            async with client:
+                user = await client.get_by_id(999)
+                assert user is None
+
     async def test_get_by_email(self):
         """Test getting a user by email."""
         semaphore = asyncio.Semaphore(10)
@@ -123,6 +149,32 @@ class TestUserClient:
                 user = await client.get_by_email("notfound@example.com")
                 assert user is None
 
+    async def test_get_by_email_returns_none_on_404(self):
+        """A 404 from GET /users/email/{email} returns None instead of raising."""
+        semaphore = asyncio.Semaphore(10)
+        client = UserClient(
+            base_url="http://test.com",
+            username="testuser",
+            password="testpass",
+            timeout=10,
+            semaphore=semaphore,
+        )
+
+        mock_response = Mock()
+        mock_response.status_code = 404
+        mock_response.raise_for_status = Mock(
+            side_effect=AssertionError(
+                "raise_for_status must not be called for the 404 case"
+            )
+        )
+
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            async with client:
+                user = await client.get_by_email("missing@example.com")
+                assert user is None
+
     async def test_get_by_label_studio_id(self):
         """Test getting a user by Label Studio ID."""
         semaphore = asyncio.Semaphore(10)
@@ -155,6 +207,32 @@ class TestUserClient:
                 assert isinstance(user, User)
                 assert user.label_studio_id == 100
                 mock_get.assert_called_once_with("/api/v1/users/label-studio/100")
+
+    async def test_get_by_label_studio_id_returns_none_on_404(self):
+        """A 404 from GET /users/label-studio/{id} returns None instead of raising."""
+        semaphore = asyncio.Semaphore(10)
+        client = UserClient(
+            base_url="http://test.com",
+            username="testuser",
+            password="testpass",
+            timeout=10,
+            semaphore=semaphore,
+        )
+
+        mock_response = Mock()
+        mock_response.status_code = 404
+        mock_response.raise_for_status = Mock(
+            side_effect=AssertionError(
+                "raise_for_status must not be called for the 404 case"
+            )
+        )
+
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            async with client:
+                user = await client.get_by_label_studio_id(999)
+                assert user is None
 
     async def test_list_all(self):
         """Test listing all users."""

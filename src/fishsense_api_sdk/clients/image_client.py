@@ -38,6 +38,9 @@ class ImageClient(ClientBase):
 
         if image_id is not None:
             response = await self._get(f"/api/v1/images/{image_id}")
+            if response.status_code == 404:
+                self.logger.debug("No image found with ID %s", image_id)
+                return None
             response.raise_for_status()
 
             json = response.json()
@@ -49,6 +52,9 @@ class ImageClient(ClientBase):
 
         if checksum is not None:
             response = await self._get(f"/api/v1/images/checksum/{checksum}")
+            if response.status_code == 404:
+                self.logger.debug("No image found with checksum %s", checksum)
+                return None
             response.raise_for_status()
 
             json = response.json()

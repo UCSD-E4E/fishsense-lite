@@ -19,6 +19,9 @@ class UserClient(ClientBase):
             User | None: The user retrieved from the API.
         """
         response = await self._get(f"/api/v1/users/{user_id}")
+        if response.status_code == 404:
+            self.logger.debug("No user found with ID %s", user_id)
+            return None
         response.raise_for_status()
 
         json = response.json()
@@ -38,6 +41,9 @@ class UserClient(ClientBase):
             User | None: The user retrieved from the API.
         """
         response = await self._get(f"/api/v1/users/email/{email}")
+        if response.status_code == 404:
+            self.logger.debug("No user found with email %s", email)
+            return None
         response.raise_for_status()
 
         json = response.json()
@@ -57,6 +63,11 @@ class UserClient(ClientBase):
             User | None: The user retrieved from the API.
         """
         response = await self._get(f"/api/v1/users/label-studio/{label_studio_id}")
+        if response.status_code == 404:
+            self.logger.debug(
+                "No user found with Label Studio ID %s", label_studio_id
+            )
+            return None
         response.raise_for_status()
 
         json = response.json()

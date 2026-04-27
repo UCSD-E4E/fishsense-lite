@@ -61,6 +61,32 @@ class TestFishClient:
                 fish = await client.get(fish_id=999)
                 assert fish is None
 
+    async def test_get_single_fish_returns_none_on_404(self):
+        """A 404 from GET /fish/{id} returns None instead of raising."""
+        semaphore = asyncio.Semaphore(10)
+        client = FishClient(
+            base_url="http://test.com",
+            username="testuser",
+            password="testpass",
+            timeout=10,
+            semaphore=semaphore,
+        )
+
+        mock_response = Mock()
+        mock_response.status_code = 404
+        mock_response.raise_for_status = Mock(
+            side_effect=AssertionError(
+                "raise_for_status must not be called for the 404 case"
+            )
+        )
+
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            async with client:
+                fish = await client.get(fish_id=999)
+                assert fish is None
+
     async def test_get_all_fish(self):
         """Test getting all fish."""
         semaphore = asyncio.Semaphore(10)
@@ -225,6 +251,32 @@ class TestFishClient:
                 species = await client.get_species_by_scientific_name(
                     "Unknown species"
                 )
+                assert species is None
+
+    async def test_get_species_by_scientific_name_returns_none_on_404(self):
+        """A 404 from GET /fish/species/{name} returns None instead of raising."""
+        semaphore = asyncio.Semaphore(10)
+        client = FishClient(
+            base_url="http://test.com",
+            username="testuser",
+            password="testpass",
+            timeout=10,
+            semaphore=semaphore,
+        )
+
+        mock_response = Mock()
+        mock_response.status_code = 404
+        mock_response.raise_for_status = Mock(
+            side_effect=AssertionError(
+                "raise_for_status must not be called for the 404 case"
+            )
+        )
+
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            async with client:
+                species = await client.get_species_by_scientific_name("Unknown")
                 assert species is None
 
     async def test_post_species(self):
