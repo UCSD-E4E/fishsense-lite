@@ -44,3 +44,7 @@ Thumbs.db
 
 # Local dev compose overrides (committed when intentional, ignored when scratch)
 deploy/compose.local.yml
+
+# Stage13 refactor validation + dry-run outputs (contain prod data samples)
+services/fishsense-data-processing-workflow-worker/scripts/validate_stage13_refactor_*.json
+services/fishsense-data-processing-workflow-worker/scripts/dry_run_stage13_*.json
