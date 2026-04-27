@@ -1,0 +1,29 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - libs/fishsense-api-sdk
+          - services/fishsense-api
+          - services/fishsense-data-processing-workflow-worker
+    name: pytest (${{ matrix.package }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install uv
+        run: pip install uv
+      - name: Sync workspace (all packages, all groups)
+        run: uv sync --all-packages --all-groups
+      - name: Run pytest
+        run: uv run --directory ${{ matrix.package }} pytest -v

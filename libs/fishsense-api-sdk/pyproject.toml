@@ -15,8 +15,6 @@ dependencies = [
 dev = [
     "black>=25.12.0",
     "pylint>=4.0.2",
-]
-test = [
     "pytest>=8.3.4",
     "pytest-asyncio>=0.25.2",
     "pytest-mock>=3.15.0",
@@ -84,7 +82,6 @@ upload_to_vcs_release = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-addopts = "--cov=fishsense_api_sdk --cov-report=term-missing --cov-report=html"
 
 [build-system]
 requires = ["uv_build>=0.8.12,<0.9.0"]
