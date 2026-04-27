@@ -18,6 +18,10 @@
     },
     "libs/fishsense-shared": {
       "package-name": "fishsense-shared"
+    },
+    "libs/fishsense-api-sdk": {
+      "package-name": "fishsense-api-sdk",
+      "version-file": "src/fishsense_api_sdk/__init__.py"
     }
   }
 }
