@@ -16,11 +16,13 @@ resolution-markers = [
 [manifest]
 members = [
     "fishsense-api",
+    "fishsense-api-sdk",
     "fishsense-api-workflow-worker",
     "fishsense-data-processing-workflow-worker",
     "fishsense-lite",
     "fishsense-shared",
 ]
+overrides = [{ name = "fishsense-api-sdk", editable = "libs/fishsense-api-sdk" }]
 
 [[package]]
 name = "alembic"
@@ -609,13 +611,33 @@ dev = [
 
 [[package]]
 name = "fishsense-api-sdk"
-version = "1.29.0"
-source = { git = "https://github.com/UCSD-E4E/fishsense-api-sdk.git#1e6bc6611377b4743f8479b94fa5279d3436feca" }
+version = "1.29.1"
+source = { editable = "libs/fishsense-api-sdk" }
 dependencies = [
     { name = "httpx" },
     { name = "numpy" },
     { name = "pydantic" },
     { name = "retry" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "numpy", specifier = ">=2" },
+    { name = "pydantic", specifier = ">=2.12.2" },
+    { name = "retry", specifier = ">=0.9.2" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "black", specifier = ">=25.12.0" },
+    { name = "pylint", specifier = ">=4.0.2" },
+]
+test = [
+    { name = "pytest", specifier = ">=8.3.4" },
+    { name = "pytest-asyncio", specifier = ">=0.25.2" },
+    { name = "pytest-cov", specifier = ">=6.0.0" },
+    { name = "pytest-mock", specifier = ">=3.15.0" },
 ]
 
 [[package]]
@@ -644,7 +666,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "dynaconf", specifier = ">=3.2.11" },
-    { name = "fishsense-api-sdk", git = "https://github.com/UCSD-E4E/fishsense-api-sdk.git" },
+    { name = "fishsense-api-sdk", editable = "libs/fishsense-api-sdk" },
     { name = "fishsense-shared", editable = "libs/fishsense-shared" },
     { name = "label-studio-sdk", specifier = ">=2.0.1" },
     { name = "platformdirs", specifier = ">=4.3.8" },
@@ -722,7 +744,7 @@ hack = [
 [package.metadata]
 requires-dist = [
     { name = "dynaconf", specifier = ">=3.2.11" },
-    { name = "fishsense-api-sdk", git = "https://github.com/UCSD-E4E/fishsense-api-sdk.git" },
+    { name = "fishsense-api-sdk", editable = "libs/fishsense-api-sdk" },
     { name = "fishsense-core", git = "https://github.com/UCSD-E4E/fishsense-core.git?subdirectory=python%2Ffishsense_core&tag=fishsense-core-v1.6.0" },
     { name = "fishsense-shared", editable = "libs/fishsense-shared" },
     { name = "label-studio-sdk", specifier = ">=2.0.7" },

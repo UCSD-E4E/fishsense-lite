@@ -6,6 +6,12 @@ requires-python = ">=3.13"
 
 [tool.uv]
 package = false
+# Force fishsense-api-sdk to resolve to the workspace member even when external
+# transitive deps (fishsense-core) declare their own git source for it. Without
+# this, uv refuses to resolve the conflict between path:// and git+https://.
+override-dependencies = [
+    "fishsense-api-sdk",
+]
 
 [tool.uv.workspace]
 members = [
@@ -14,3 +20,7 @@ members = [
     "services/fishsense-data-processing-workflow-worker",
     "libs/*",
 ]
+
+[tool.uv.sources]
+fishsense-api-sdk = { workspace = true }
+fishsense-shared = { workspace = true }

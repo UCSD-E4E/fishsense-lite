@@ -88,7 +88,7 @@ dist_glob_patterns = ["dist/*"]
 upload_to_vcs_release = true
 
 [tool.uv.sources]
-fishsense-api-sdk = { git = "https://github.com/UCSD-E4E/fishsense-api-sdk.git" }
+fishsense-api-sdk = { workspace = true }
 fishsense-core = { git = "https://github.com/UCSD-E4E/fishsense-core.git", tag = "fishsense-core-v1.6.0", subdirectory = "python/fishsense_core" }
 fishsense-shared = { workspace = true }
 
