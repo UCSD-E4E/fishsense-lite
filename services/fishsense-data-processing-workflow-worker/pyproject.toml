@@ -11,6 +11,7 @@ dependencies = [
     "fishsense-api-sdk",
     "fishsense-core",
     "fishsense-shared",
+    "httpx>=0.28.1",
     "label-studio-sdk>=2.0.7",
     "numpy>=2.2.6",
     "opencv-contrib-python>=4.12.0.88",
@@ -92,8 +93,8 @@ upload_to_vcs_release = true
 [tool.uv.sources]
 fishsense-api-sdk = { workspace = true }
 fishsense-core = [
-    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.0/fishsense_core-1.7.0-cp313-cp313-manylinux_2_34_x86_64.whl", marker = "python_version == '3.13'" },
-    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.0/fishsense_core-1.7.0-cp314-cp314-manylinux_2_34_x86_64.whl", marker = "python_version == '3.14'" },
+    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.1/fishsense_core-1.7.1-cp313-cp313-manylinux_2_34_x86_64.whl", marker = "python_version == '3.13'" },
+    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.1/fishsense_core-1.7.1-cp314-cp314-manylinux_2_34_x86_64.whl", marker = "python_version == '3.14'" },
 ]
 fishsense-shared = { workspace = true }
 
@@ -108,6 +109,7 @@ dev = [
     "matplotlib>=3.10.6",
     "pylint>=3.3.8",
     "pytest>=8.3.0",
+    "pytest-asyncio>=0.25.2",
 ]
 hack = [
     "asyncpg>=0.30.0",
@@ -121,3 +123,10 @@ hack = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Integration tests need the devcontainer stack (postgres, temporal, nginx).
+# CI runs the default selection only; from inside the devcontainer run
+# `pytest -m integration` to exercise them against the live services.
+markers = [
+    "integration: requires the local devcontainer stack",
+]
+addopts = "-m 'not integration'"

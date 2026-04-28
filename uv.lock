@@ -648,6 +648,7 @@ dependencies = [
 dev = [
     { name = "alembic" },
     { name = "black" },
+    { name = "fishsense-api-sdk" },
     { name = "pylint" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -670,6 +671,7 @@ requires-dist = [
 dev = [
     { name = "alembic", specifier = ">=1.16.5" },
     { name = "black", specifier = ">=25.9.0" },
+    { name = "fishsense-api-sdk", editable = "libs/fishsense-api-sdk" },
     { name = "pylint", specifier = ">=4.0.2" },
     { name = "pytest", specifier = ">=8.3.0" },
     { name = "pytest-asyncio", specifier = ">=0.24.0" },
@@ -749,8 +751,8 @@ dev = [
 
 [[package]]
 name = "fishsense-core"
-version = "1.7.0"
-source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.0/fishsense_core-1.7.0-cp313-cp313-manylinux_2_34_x86_64.whl" }
+version = "1.7.1"
+source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.1/fishsense_core-1.7.1-cp313-cp313-manylinux_2_34_x86_64.whl" }
 resolution-markers = [
     "python_full_version < '3.14' and sys_platform == 'win32'",
     "python_full_version < '3.14' and sys_platform == 'emscripten'",
@@ -765,7 +767,7 @@ dependencies = [
     { name = "scikit-image", marker = "python_full_version < '3.14'" },
 ]
 wheels = [
-    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.0/fishsense_core-1.7.0-cp313-cp313-manylinux_2_34_x86_64.whl", hash = "sha256:8bbc5b0fdcd01b0896c83619421561e4178ed23ec84cc1dd76cc6e12856d1c32" },
+    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.1/fishsense_core-1.7.1-cp313-cp313-manylinux_2_34_x86_64.whl", hash = "sha256:2190de10ce30f3a0a64368f882bb0dcfe2ddd7b5eded2664ded711eef260a027" },
 ]
 
 [package.metadata]
@@ -780,8 +782,8 @@ requires-dist = [
 
 [[package]]
 name = "fishsense-core"
-version = "1.7.0"
-source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.0/fishsense_core-1.7.0-cp314-cp314-manylinux_2_34_x86_64.whl" }
+version = "1.7.1"
+source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.1/fishsense_core-1.7.1-cp314-cp314-manylinux_2_34_x86_64.whl" }
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
     "python_full_version >= '3.14' and sys_platform == 'emscripten'",
@@ -796,7 +798,7 @@ dependencies = [
     { name = "scikit-image", marker = "python_full_version >= '3.14'" },
 ]
 wheels = [
-    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.0/fishsense_core-1.7.0-cp314-cp314-manylinux_2_34_x86_64.whl", hash = "sha256:d2b068f45649242213152a02c24031d0bed3c78fece6e7dca2fa169474bbfcad" },
+    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.1/fishsense_core-1.7.1-cp314-cp314-manylinux_2_34_x86_64.whl", hash = "sha256:b90ba64721f8bb574d0914a164a6342bafddf05bbf43b6343a6600dea2be800e" },
 ]
 
 [package.metadata]
@@ -816,9 +818,10 @@ source = { editable = "services/fishsense-data-processing-workflow-worker" }
 dependencies = [
     { name = "dynaconf" },
     { name = "fishsense-api-sdk" },
-    { name = "fishsense-core", version = "1.7.0", source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.0/fishsense_core-1.7.0-cp313-cp313-manylinux_2_34_x86_64.whl" }, marker = "python_full_version < '3.14'" },
-    { name = "fishsense-core", version = "1.7.0", source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.0/fishsense_core-1.7.0-cp314-cp314-manylinux_2_34_x86_64.whl" }, marker = "python_full_version >= '3.14'" },
+    { name = "fishsense-core", version = "1.7.1", source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.1/fishsense_core-1.7.1-cp313-cp313-manylinux_2_34_x86_64.whl" }, marker = "python_full_version < '3.14'" },
+    { name = "fishsense-core", version = "1.7.1", source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.1/fishsense_core-1.7.1-cp314-cp314-manylinux_2_34_x86_64.whl" }, marker = "python_full_version >= '3.14'" },
     { name = "fishsense-shared" },
+    { name = "httpx" },
     { name = "label-studio-sdk" },
     { name = "numpy" },
     { name = "opencv-contrib-python" },
@@ -844,6 +847,7 @@ dev = [
     { name = "matplotlib" },
     { name = "pylint" },
     { name = "pytest" },
+    { name = "pytest-asyncio" },
 ]
 hack = [
     { name = "asyncpg" },
@@ -860,9 +864,10 @@ requires-dist = [
     { name = "dynaconf", specifier = ">=3.2.11" },
     { name = "fishsense-api-sdk", editable = "libs/fishsense-api-sdk" },
     { name = "fishsense-core", marker = "python_full_version < '3.13' or python_full_version >= '3.15'" },
-    { name = "fishsense-core", marker = "python_full_version == '3.13.*'", url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.0/fishsense_core-1.7.0-cp313-cp313-manylinux_2_34_x86_64.whl" },
-    { name = "fishsense-core", marker = "python_full_version == '3.14.*'", url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.0/fishsense_core-1.7.0-cp314-cp314-manylinux_2_34_x86_64.whl" },
+    { name = "fishsense-core", marker = "python_full_version == '3.13.*'", url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.1/fishsense_core-1.7.1-cp313-cp313-manylinux_2_34_x86_64.whl" },
+    { name = "fishsense-core", marker = "python_full_version == '3.14.*'", url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.1/fishsense_core-1.7.1-cp314-cp314-manylinux_2_34_x86_64.whl" },
     { name = "fishsense-shared", editable = "libs/fishsense-shared" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "label-studio-sdk", specifier = ">=2.0.7" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "opencv-contrib-python", specifier = ">=4.12.0.88" },
@@ -888,6 +893,7 @@ dev = [
     { name = "matplotlib", specifier = ">=3.10.6" },
     { name = "pylint", specifier = ">=3.3.8" },
     { name = "pytest", specifier = ">=8.3.0" },
+    { name = "pytest-asyncio", specifier = ">=0.25.2" },
 ]
 hack = [
     { name = "asyncpg", specifier = ">=0.30.0" },
