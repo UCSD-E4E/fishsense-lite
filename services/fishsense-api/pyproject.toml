@@ -18,6 +18,7 @@ dependencies = [
 
 [tool.uv.sources]
 fishsense-shared = { workspace = true }
+fishsense-api-sdk = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -26,11 +27,17 @@ dev = [
     "pylint>=4.0.2",
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
+    # Dev-only: drift test imports the SDK side to compare against API SQLModel.
+    "fishsense-api-sdk",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: requires the local devcontainer stack",
+]
+addopts = "-m 'not integration'"
 
 [tool.semantic_release]
 version_variables = ["src/fishsense_api/__version__.py:__version__"]

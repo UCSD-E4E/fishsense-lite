@@ -82,6 +82,10 @@ upload_to_vcs_release = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: requires the local devcontainer stack",
+]
+addopts = "-m 'not integration'"
 
 [build-system]
 requires = ["uv_build>=0.8.12,<0.9.0"]
