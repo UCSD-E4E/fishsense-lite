@@ -63,6 +63,28 @@ PDF-composite) and a distinct DTO; one shared signature would have to
 be `Callable[[ndarray], ndarray]` plus union-typed extra args, which
 is messier than four small, self-contained activities.
 
+## New workflows are gated by `feature_flags.new_preprocess_workflows`
+
+The four ports above (stages 0.1, 2, 5.1, 9) are registered with the
+production worker only when
+`E4EFS_FEATURE_FLAGS__NEW_PREPROCESS_WORKFLOWS=true`. Default is OFF —
+deploying the binary without that env set means only the legacy
+`DiveFrameClusteringWorkflow` runs. Calls to `start_workflow` for the
+new types still succeed server-side but the workflow tasks sit in the
+queue forever (no worker claims them), so the gate is effectively a
+soft block, not a hard error.
+
+Lift the flag once the api-worker driver for a given stage exists *and*
+the relevant math has been re-verified on real frames (especially the
+stage 14 sign concern — see project memory). The flag is a single
+all-or-nothing switch by design; if you need finer control, split into
+per-stage flags rather than gating inside workflow code (workflow code
+must stay deterministic).
+
+Integration tests pass workflows directly to a one-off `Worker(...)`
+and don't depend on the registration gate, so the flag has no effect
+on tests.
+
 ## File-exchange URL contract
 
 ```
