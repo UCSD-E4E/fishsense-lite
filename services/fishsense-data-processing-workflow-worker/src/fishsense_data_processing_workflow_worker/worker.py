@@ -12,6 +12,9 @@ from fishsense_data_processing_workflow_worker.activities.cluster_dive_frames im
 from fishsense_data_processing_workflow_worker.activities.preprocess_dive_image import (
     preprocess_dive_image,
 )
+from fishsense_data_processing_workflow_worker.activities.preprocess_headtail_image import (
+    preprocess_headtail_image,
+)
 from fishsense_data_processing_workflow_worker.activities.preprocess_laser_image import (
     preprocess_laser_image,
 )
@@ -21,6 +24,9 @@ from fishsense_data_processing_workflow_worker.workflows.dive_frame_clustering_w
 )
 from fishsense_data_processing_workflow_worker.workflows.preprocess_dive_images_workflow import (
     PreprocessDiveImagesWorkflow,
+)
+from fishsense_data_processing_workflow_worker.workflows.preprocess_headtail_images_workflow import (
+    PreprocessHeadtailImagesWorkflow,
 )
 from fishsense_data_processing_workflow_worker.workflows.preprocess_laser_images_workflow import (
     PreprocessLaserImagesWorkflow,
@@ -52,12 +58,14 @@ async def main():
             workflows=[
                 DiveFrameClusteringWorkflow,
                 PreprocessDiveImagesWorkflow,
+                PreprocessHeadtailImagesWorkflow,
                 PreprocessLaserImagesWorkflow,
             ],
             activity_executor=executor,
             activities=[
                 cluster_dive_frames,
                 preprocess_dive_image,
+                preprocess_headtail_image,
                 preprocess_laser_image,
             ],
         )
