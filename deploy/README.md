@@ -1,6 +1,25 @@
 # fishsense-web-services
 FishSense Web Services - Deploy
 
+# Local development (devcontainer)
+
+The repo ships a devcontainer that brings up a self-contained local stack
+(postgres + temporal + fishsense-api + nginx) so you can iterate on
+workflows + activities without touching prod.
+
+1. `cp deploy/.env.local.example deploy/.env`
+2. Edit `FISHSENSE_DUMP_PATH` to point at your prod backup (`pg_dump -Fc`).
+3. Open the repo in VSCode and "Reopen in Container".
+
+The first boot of the postgres service runs
+`deploy/pg_volumes/scripts.local/00_restore.sh`, which `pg_restore`s the dump
+into a named docker volume (NOT under the repo — the data is large). To start
+clean later: `docker volume rm fishsense-local_pg_data`.
+
+The local stack lives in `deploy/compose.local.yml` and is intentionally
+**not** layered on the prod `compose.yml` — prod's Authentik/mTLS/letsencrypt
+coupling makes that messier than a separate file.
+
 # Deploy Procedure
 1. Ensure `//e4e-nas.ucsd.edu/fishsense_data/REEF/data` is mounted as a docker volume named `fishsense_data_reef`.
 2. Ensure `//e4e-nas.ucsd.edu/fishsense/Fishsense Lite Calibration Parameters` is mounted as a docker volume named `fishsense_lens_cal`.

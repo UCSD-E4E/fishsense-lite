@@ -1,0 +1,44 @@
+{
+  "name": "fishsense-lite-mono",
+  "dockerComposeFile": [
+    "../deploy/compose.local.yml"
+  ],
+  "service": "dev",
+  // The dev service in compose.local.yml bind-mounts the repo at the SAME
+  // absolute path inside the container as on the host (driven by
+  // HOST_REPO_PATH in deploy/.env). ${localWorkspaceFolder} resolves to that
+  // host path automatically, so anything keyed by absolute path stays
+  // consistent across the host/container boundary.
+  "workspaceFolder": "${localWorkspaceFolder}",
+  "shutdownAction": "stopCompose",
+  "remoteUser": "vscode",
+  "containerEnv": {
+    "FISHSENSE_LOCAL_DEV": "true"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "tamasfe.even-better-toml",
+        "ms-azuretools.vscode-docker",
+        "ms-toolsai.jupyter"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "${containerWorkspaceFolder}/.venv/bin/python",
+        "python.testing.pytestEnabled": true,
+        "python.testing.unittestEnabled": false
+      }
+    }
+  },
+  "forwardPorts": [5432, 7233, 8000, 8080, 8233],
+  "portsAttributes": {
+    "5432": { "label": "postgres" },
+    "7233": { "label": "temporal-grpc" },
+    "8000": { "label": "fishsense-api" },
+    "8080": { "label": "static-file-server (nginx)" },
+    "8233": { "label": "temporal-ui" }
+  },
+  "postCreateCommand": "uv sync --all-packages --all-groups"
+}

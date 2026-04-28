@@ -41,9 +41,19 @@ Thumbs.db
 .secrets.toml
 *.env
 !example.env
+!*.env.example
 
-# Local dev compose overrides (committed when intentional, ignored when scratch)
-deploy/compose.local.yml
+# deploy/.env is the user-specific devcontainer env (paths, local passwords).
+# deploy/.env.local.example is the committed template.
+deploy/.env
+
+# Postgres dumps must never land in the repo (large). The committed *.sql
+# files under deploy/pg_volumes/scripts/ are schema migrations, not dumps —
+# only dump-like extensions are blocked here.
+*.dump
+*.pgdump
+*_backup
+*_backup.sql
 
 # Stage13 refactor validation + dry-run outputs (contain prod data samples)
 services/fishsense-data-processing-workflow-worker/scripts/validate_stage13_refactor_*.json

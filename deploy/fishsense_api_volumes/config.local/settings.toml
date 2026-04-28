@@ -1,0 +1,6 @@
+[postgres]
+host = "postgres"
+port = 5432
+database = "fishsense"
+# username + password come from E4EFS_POSTGRES__USERNAME / __PASSWORD env vars
+# set in compose.local.yml.

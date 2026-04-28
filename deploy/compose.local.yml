@@ -1,0 +1,206 @@
+# Self-contained local stack for the devcontainer.
+#
+# This file is INTENTIONALLY NOT layered on compose.yml. The prod compose pulls
+# in Authentik middleware, mTLS certs, letsencrypt, multi-replica deploys, and
+# Superset — none of which are appropriate (or even bootable) on a laptop.
+# Keep prod and local cleanly separated.
+#
+# Usage:
+#   1. Copy .env.local.example to .env (in this deploy/ directory).
+#   2. Edit FISHSENSE_DUMP_PATH to point at the prod backup on your host.
+#   3. From the repo root, open in VSCode and "Reopen in Container".
+#      OR from this directory: docker compose -f compose.local.yml up -d
+#
+# Volumes are NAMED docker volumes (not bind mounts into the repo) so the
+# restored prod data — which is large — never lands inside the git tree.
+
+name: fishsense-local
+
+services:
+  postgres:
+    # Bumped past the prod compose.yml's pin (16.11) because the prod backup
+    # uses pg_dump custom format v1.16, which only Postgres 17+ pg_restore can
+    # read. Prod itself is presumably already on PG17 (otherwise it couldn't
+    # produce that format) — deploy/compose.yml's pin is just stale. Local
+    # tracks the dump.
+    image: postgres:17
+    restart: on-failure:15
+    shm_size: 256mb
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fishsense_local}
+      POSTGRES_USER: postgres
+      # Consumed by 00_restore.sh
+      FISHSENSE_DB_NAME: ${FISHSENSE_DB_NAME:-fishsense}
+      TEMPORAL_DB_USER: temporal
+      TEMPORAL_DB_PWD: ${TEMPORAL_DB_PWD:-temporal_local}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./pg_volumes/scripts.local:/docker-entrypoint-initdb.d:ro
+      # Read-only mount of the prod backup on the host. Path resolved from .env.
+      - ${FISHSENSE_DUMP_PATH:-/dev/null}:/var/backups/fishsense.dump:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - fishsense_local
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  temporal:
+    image: temporalio/auto-setup:1.29
+    restart: on-failure:15
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      DBNAME: temporal_db
+      VISIBILITY_DBNAME: temporal_visibility_db
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: ${TEMPORAL_DB_PWD:-temporal_local}
+      POSTGRES_SEEDS: postgres
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/docker.yaml
+      BIND_ON_IP: 0.0.0.0
+      # No TEMPORAL_TLS_* on purpose — the upstream config_template.yaml only
+      # writes TLS sections when those env vars are set, so omitting them
+      # disables TLS cleanly without a custom template.
+    ports:
+      - "7233:7233"
+    volumes:
+      - ./temporal_volumes/dynamicconfig:/etc/temporal/config/dynamicconfig:ro
+    networks:
+      - fishsense_local
+
+  temporal-ui:
+    image: temporalio/ui:2.44.0
+    restart: on-failure:15
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+      # No auth in local — TEMPORAL_AUTH_ENABLED unset means anonymous.
+    ports:
+      - "8233:8080"
+    networks:
+      - fishsense_local
+
+  fishsense-api:
+    # Using the pinned prod image because the in-repo Dockerfile is broken in
+    # the monorepo layout — it COPYs services/fishsense-api/uv.lock, but the
+    # lockfile only exists at the repo root post-migration. Switching to a
+    # local `build:` here also requires fixing services/fishsense-api/Dockerfile
+    # (and .github/workflows/docker.yml) to use a workspace-aware build.
+    # Tracked as a follow-up; not needed for data-worker TDD work.
+    image: ghcr.io/ucsd-e4e/fishsense-api:v1.18.1
+    restart: on-failure:15
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      E4EFS_DOCKER: "true"
+      # fishsense-api reads dynaconf from /e4efs/config/{settings.toml,.secrets.toml}.
+      # We pass postgres credentials via env (E4EFS_ prefix) so the local
+      # settings.toml only carries non-secret host/port/db.
+      E4EFS_POSTGRES__USERNAME: postgres
+      E4EFS_POSTGRES__PASSWORD: ${POSTGRES_PASSWORD:-fishsense_local}
+    volumes:
+      - ./fishsense_api_volumes/config.local:/e4efs/config:ro
+    ports:
+      - "8000:8000"
+    networks:
+      - fishsense_local
+
+  static_file_server:
+    image: nginx:1.29-alpine
+    restart: on-failure:15
+    # The named volume is created root-owned on first boot, but nginx workers
+    # run as the `nginx` user and need to write under /data/exchange/ for the
+    # worker-to-worker file-exchange (PUT). Chown on startup so the DAV
+    # location's create_full_put_path can mkdir + write.
+    command: ["sh", "-c", "chown -R nginx:nginx /data && exec nginx -g 'daemon off;'"]
+    volumes:
+      - ./static_file_server/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - static_file_server_data:/data
+    ports:
+      - "8080:80"
+    networks:
+      - fishsense_local
+
+  # NOTE: fishsense-api-workflow-worker is intentionally NOT in the default
+  # local stack — its config requires Label Studio + NAS credentials we don't
+  # have on a laptop. Bring it up manually with `uv run` from the dev
+  # container once you've wired test credentials, or once those activities
+  # have been refactored to skip cleanly when those backends are unset.
+
+  # Workspace container the devcontainer attaches to. The data-processing
+  # worker has no Dockerfile — we run it from here with `uv run` while
+  # iterating, which is the whole point of this setup.
+  dev:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    command: sleep infinity
+    depends_on:
+      - postgres
+      - temporal
+      - fishsense-api
+      - static_file_server
+    environment:
+      E4EFS_DOCKER: "false"
+      # Default endpoints for tests + manual `uv run` invocations from inside
+      # the dev container. Override per-shell as needed.
+      FISHSENSE_API_URL: http://fishsense-api:8000
+      FISHSENSE_TEMPORAL_HOST: temporal
+      FISHSENSE_TEMPORAL_PORT: "7233"
+      FISHSENSE_POSTGRES_HOST: postgres
+      FISHSENSE_POSTGRES_PORT: "5432"
+      FISHSENSE_POSTGRES_USER: postgres
+      FISHSENSE_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fishsense_local}
+      FISHSENSE_POSTGRES_DB: ${FISHSENSE_DB_NAME:-fishsense}
+      FISHSENSE_STATIC_FILE_SERVER_URL: http://static_file_server
+      # The data-processing-workflow-worker still uses the E4EFS_ envvar
+      # prefix (see services/fishsense-data-processing-workflow-worker/
+      # src/.../config.py). Mirror the static_file_server URL under that
+      # prefix so the worker's settings.static_file_server.url validator
+      # passes when the worker is started from inside this container.
+      E4EFS_STATIC_FILE_SERVER__URL: http://static_file_server
+    working_dir: ${HOST_REPO_PATH:?Set HOST_REPO_PATH in deploy/.env to the absolute path of this repo on your host (run "realpath .." from this directory).}
+    # Give the in-container `vscode` user access to the host's docker socket
+    # via supplementary group membership. The kernel only checks numeric GID,
+    # so we don't need a matching named group inside the container — set
+    # DOCKER_GID in deploy/.env to the host's docker group GID
+    # (`getent group docker | cut -d: -f3`).
+    group_add:
+      - "${DOCKER_GID:?Set DOCKER_GID in deploy/.env (run 'getent group docker | cut -d: -f3' on your host).}"
+    volumes:
+      # Bind the repo at the SAME absolute path inside the container as on the
+      # host. This makes any tool that keys state by absolute path (e.g.
+      # Claude Code's per-project memory under ~/.claude/projects/<path-encoded>/)
+      # see a single, consistent project key whether it runs from the host or
+      # from inside the container. HOST_REPO_PATH lives in deploy/.env so each
+      # developer can set it to wherever they cloned the repo.
+      - ..:${HOST_REPO_PATH}:cached
+      - dev_uv_cache:/home/vscode/.cache/uv
+      # Share the host's Claude Code state (auth, settings, memory). Because
+      # the workspace is bind-mounted at the same path inside the container as
+      # on the host, the project-memory directory encoded by Claude Code is
+      # identical on both sides — no symlink needed.
+      - ${HOME}/.claude:/home/vscode/.claude
+      # Mount the host's docker socket so the dev container can drive the
+      # local stack itself. Paired with `group_add` above for socket access.
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - fishsense_local
+
+volumes:
+  pg_data:
+  static_file_server_data:
+  dev_uv_cache:
+
+networks:
+  fishsense_local:
+    driver: bridge
