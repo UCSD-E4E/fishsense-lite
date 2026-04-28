@@ -91,6 +91,34 @@ async def test_upload_processed_jpeg_raises_on_5xx():
 
 
 @pytest.mark.asyncio
+async def test_download_slate_pdf_uses_exchange_dive_slate_pdfs_url():
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, content=b"%PDF-1.4 fake")
+
+    client = _client(handler)
+
+    data = await client.download_slate_pdf(slate_id=10)
+
+    assert data == b"%PDF-1.4 fake"
+    assert seen[0].method == "GET"
+    assert seen[0].url.path == "/api/v1/exchange/dive_slate_pdfs/10.pdf"
+
+
+@pytest.mark.asyncio
+async def test_download_slate_pdf_raises_on_404():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404)
+
+    client = _client(handler)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await client.download_slate_pdf(slate_id=999)
+
+
+@pytest.mark.asyncio
 async def test_upload_processed_jpeg_accepts_multiple_folders():
     """Stages 5.1 (headtail), 9 (slate), 0.1 (laser) all use the same
     PUT path with different folders. The folder is a string param."""

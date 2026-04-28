@@ -4,6 +4,7 @@ The exchange brokers files between the api-worker (NAS-facing) and the
 data-worker (this service). URL contract:
 
     GET  /api/v1/exchange/raw/{checksum}.ORF             # raw input
+    GET  /api/v1/exchange/dive_slate_pdfs/{slate_id}.pdf # slate template
     PUT  /api/v1/exchange/{folder}/{checksum}.JPG        # processed output
 
 Where `{folder}` is one of `preprocess_groups_jpeg`,
@@ -25,6 +26,13 @@ class FileExchangeClient:
 
     async def download_raw(self, checksum: str) -> bytes:
         response = await self._http.get(f"/api/v1/exchange/raw/{checksum}.ORF")
+        response.raise_for_status()
+        return response.content
+
+    async def download_slate_pdf(self, slate_id: int) -> bytes:
+        response = await self._http.get(
+            f"/api/v1/exchange/dive_slate_pdfs/{slate_id}.pdf"
+        )
         response.raise_for_status()
         return response.content
 

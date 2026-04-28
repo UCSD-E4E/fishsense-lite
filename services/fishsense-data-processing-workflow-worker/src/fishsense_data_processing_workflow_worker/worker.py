@@ -18,6 +18,9 @@ from fishsense_data_processing_workflow_worker.activities.preprocess_headtail_im
 from fishsense_data_processing_workflow_worker.activities.preprocess_laser_image import (
     preprocess_laser_image,
 )
+from fishsense_data_processing_workflow_worker.activities.preprocess_slate_image import (
+    preprocess_slate_image,
+)
 from fishsense_data_processing_workflow_worker.config import configure_logging, settings
 from fishsense_data_processing_workflow_worker.workflows.dive_frame_clustering_workflow import (
     DiveFrameClusteringWorkflow,
@@ -30,6 +33,9 @@ from fishsense_data_processing_workflow_worker.workflows.preprocess_headtail_ima
 )
 from fishsense_data_processing_workflow_worker.workflows.preprocess_laser_images_workflow import (
     PreprocessLaserImagesWorkflow,
+)
+from fishsense_data_processing_workflow_worker.workflows.preprocess_slate_images_workflow import (
+    PreprocessSlateImagesWorkflow,
 )
 
 TASK_QUEUE_NAME = "fishsense_data_processing_queue"
@@ -60,6 +66,7 @@ async def main():
                 PreprocessDiveImagesWorkflow,
                 PreprocessHeadtailImagesWorkflow,
                 PreprocessLaserImagesWorkflow,
+                PreprocessSlateImagesWorkflow,
             ],
             activity_executor=executor,
             activities=[
@@ -67,6 +74,7 @@ async def main():
                 preprocess_dive_image,
                 preprocess_headtail_image,
                 preprocess_laser_image,
+                preprocess_slate_image,
             ],
         )
 
