@@ -1,0 +1,45 @@
+[project]
+name = "fishsense-backup-worker"
+version = "0.1.0"
+description = "Scheduled Postgres -> NAS backup worker. Runs pg_dump nightly for the fishsense, superset, and temporal_db databases via Temporal Schedules."
+readme = "README.md"
+# Same Python pin as the rest of the workspace; this worker doesn't need
+# fishsense-core's narrower wheel range, but matching keeps deploy images
+# consistent.
+requires-python = ">=3.13,<3.15"
+dependencies = [
+    "dynaconf>=3.2.11",
+    "fishsense-shared",
+    "platformdirs>=4.3.8",
+    "pydantic>=2.11.9",
+    "synology-api>=0.8.1",
+    "temporalio>=1.17.0",
+    "validators>=0.35.0",
+]
+
+[project.scripts]
+fishsense_backup_worker = "fishsense_backup_worker.worker:run"
+
+[tool.uv.sources]
+fishsense-shared = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.8.12,<0.9.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pylint>=3.3.8",
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.25.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Same convention the data-processing-workflow-worker uses:
+# default suite skips integration tests; opt in with `pytest -m integration`
+# from inside the devcontainer (needs the local Postgres + NAS).
+markers = [
+    "integration: requires the local devcontainer stack",
+]
+addopts = "-m 'not integration'"

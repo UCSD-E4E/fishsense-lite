@@ -2,6 +2,35 @@
 
 Loose ends and architectural conventions that aren't otherwise tracked.
 
+## Service map
+
+| Service | Purpose | Task queue |
+|---|---|---|
+| `services/fishsense-api/` | FastAPI app (DB CRUD, label endpoints) | — |
+| `services/fishsense-api-workflow-worker/` | api-side Temporal worker (NAS + Label Studio orchestration; no activities yet) | (TBD) |
+| `services/fishsense-data-processing-workflow-worker/` | image preprocessing (rectify/overlay/JPEG) | `fishsense_data_processing_queue` |
+| `services/fishsense-backup-worker/` | nightly Postgres → NAS backups + retention | `fishsense_backup_queue` |
+
+The backup worker is **deliberately separate** from the data-processing
+worker so it doesn't have to share Postgres credentials. It's the only
+service in the repo that runs `pg_dump` and the only one with a
+`postgres.*` config section. Its blast radius is "read every DB it has
+creds for + write to a single NAS root" — narrower than mixing it into
+a worker that already does heavy image processing.
+
+The schedule is registered idempotently at worker startup: first
+deploy creates `fishsense-daily-db-backup` (cron `0 3 * * *` UTC),
+subsequent deploys see "already exists" and leave it alone. To change
+config (cron, retention, db list), an operator must
+`temporal schedule delete fishsense-daily-db-backup` and let the next
+worker startup recreate it — refusing to update in-place avoids a
+config typo silently retiring the schedule.
+
+Default DB list: `fishsense`, `superset`, `temporal_db`. Skipping
+`temporal_visibility_db` (rebuildable index) and the system `postgres`
+DB (negligible). To add or remove, override
+`E4EFS_BACKUP__DATABASES='["a","b"]'` (or set in settings.toml).
+
 ## Notebook port status
 
 | Stage | Notebook | Owner | Status |

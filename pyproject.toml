@@ -28,6 +28,7 @@ dev = [
 members = [
     "services/fishsense-api",
     "services/fishsense-api-workflow-worker",
+    "services/fishsense-backup-worker",
     "services/fishsense-data-processing-workflow-worker",
     "libs/*",
 ]

@@ -15,6 +15,7 @@ members = [
     "fishsense-api",
     "fishsense-api-sdk",
     "fishsense-api-workflow-worker",
+    "fishsense-backup-worker",
     "fishsense-data-processing-workflow-worker",
     "fishsense-lite",
     "fishsense-shared",
@@ -747,6 +748,45 @@ dev = [
     { name = "ipywidgets", specifier = ">=8.1.7" },
     { name = "pylint", specifier = ">=3.3.8" },
     { name = "tqdm", specifier = ">=4.67.1" },
+]
+
+[[package]]
+name = "fishsense-backup-worker"
+version = "0.1.0"
+source = { editable = "services/fishsense-backup-worker" }
+dependencies = [
+    { name = "dynaconf" },
+    { name = "fishsense-shared" },
+    { name = "platformdirs" },
+    { name = "pydantic" },
+    { name = "synology-api" },
+    { name = "temporalio" },
+    { name = "validators" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pylint" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "dynaconf", specifier = ">=3.2.11" },
+    { name = "fishsense-shared", editable = "libs/fishsense-shared" },
+    { name = "platformdirs", specifier = ">=4.3.8" },
+    { name = "pydantic", specifier = ">=2.11.9" },
+    { name = "synology-api", specifier = ">=0.8.1" },
+    { name = "temporalio", specifier = ">=1.17.0" },
+    { name = "validators", specifier = ">=0.35.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pylint", specifier = ">=3.3.8" },
+    { name = "pytest", specifier = ">=8.3.0" },
+    { name = "pytest-asyncio", specifier = ">=0.25.2" },
 ]
 
 [[package]]
