@@ -41,7 +41,17 @@ local stack via `deploy/compose.local.yml`. One-time setup:
    restores from it.
 
 `uv sync --all-packages --all-groups` happens automatically on container
-create. After that:
+create. The fastest way to verify a change before pushing is the top-level
+`check.sh` script, which mirrors what CI runs:
+
+```
+./check.sh lint         # pylint on Python files changed since origin/main
+./check.sh unit         # pytest with default markers across all packages
+./check.sh integration  # pytest -m integration (needs the local stack up)
+./check.sh all          # lint, then unit, then integration
+```
+
+To invoke pytest directly against a specific package:
 
 ```
 uv run --package <pkg> python -m pytest <path>            # unit tests (default)
