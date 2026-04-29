@@ -15,7 +15,7 @@ How the four services, two libs, and external systems wire together.
 flowchart LR
     subgraph EXT[External systems]
         LS[Label Studio]
-        NAS["E4E NAS<br/>(SMB share)"]
+        NAS["E4E NAS<br/>(Synology, FileStation HTTPS)"]
         TC["Temporal cluster"]
     end
 
@@ -40,14 +40,12 @@ flowchart LR
     API   --->|asyncpg| PG
     APIWW --->|sdk| API
     APIWW --->|label-studio-sdk| LS
-    APIWW --->|smb| NAS
     APIWW --->|gRPC mTLS| TC
     DPW   --->|sdk| API
-    DPW   --->|smb| NAS
     DPW   --->|gRPC mTLS| TC
     DPW   --->|GET raw / PUT jpeg| FX
     BUW   --->|pg_dump -Fc| PG
-    BUW   --->|smb| NAS
+    BUW   --->|FileStation HTTPS| NAS
     BUW   --->|gRPC mTLS| TC
     SUP   --->|read-only| PG
 
