@@ -6,22 +6,32 @@
   "packages": {
     "services/fishsense-api": {
       "package-name": "fishsense-api",
-      "version-file": "src/fishsense_api/__version__.py"
+      "version-file": "src/fishsense_api/__version__.py",
+      "bootstrap-sha": "75d2979c384343f87845554588ac114d742a695e"
     },
     "services/fishsense-api-workflow-worker": {
       "package-name": "fishsense-api-workflow-worker",
-      "version-file": "src/fishsense_api_workflow_worker/__init__.py"
+      "version-file": "src/fishsense_api_workflow_worker/__init__.py",
+      "bootstrap-sha": "75d2979c384343f87845554588ac114d742a695e"
+    },
+    "services/fishsense-backup-worker": {
+      "package-name": "fishsense-backup-worker",
+      "version-file": "src/fishsense_backup_worker/__init__.py",
+      "bootstrap-sha": "75d2979c384343f87845554588ac114d742a695e"
     },
     "services/fishsense-data-processing-workflow-worker": {
       "package-name": "fishsense-data-processing-workflow-worker",
-      "version-file": "src/fishsense_data_processing_workflow_worker/__init__.py"
+      "version-file": "src/fishsense_data_processing_workflow_worker/__init__.py",
+      "bootstrap-sha": "75d2979c384343f87845554588ac114d742a695e"
     },
     "libs/fishsense-shared": {
-      "package-name": "fishsense-shared"
+      "package-name": "fishsense-shared",
+      "bootstrap-sha": "75d2979c384343f87845554588ac114d742a695e"
     },
     "libs/fishsense-api-sdk": {
       "package-name": "fishsense-api-sdk",
-      "version-file": "src/fishsense_api_sdk/__init__.py"
+      "version-file": "src/fishsense_api_sdk/__init__.py",
+      "bootstrap-sha": "75d2979c384343f87845554588ac114d742a695e"
     }
   }
 }

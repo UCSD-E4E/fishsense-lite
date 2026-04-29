@@ -161,6 +161,26 @@ Bumped in working tree before the stage-2 commit and rolled into commit
 fishsense-core version is in `uv.lock`, look at `669f933` *and* the
 workspace pyproject change in `75d2979` (the prior 1.7.0 bump).
 
+## release-please bootstrap-sha — bump when the Release job times out
+
+The Release workflow runs `googleapis/release-please-action@v4`, which
+walks main's commit history backwards looking for each package's last
+release. Because no GitHub releases or tags exist in this monorepo yet
+(the manifest versions are inherited from the polyrepos), every run is
+a "first release" walk and the GraphQL API has timed out twice with
+`We couldn't respond to your request in time` after ~250 commits.
+
+Fix: every package in `release-please-config.json` carries a
+`bootstrap-sha` that caps the walk. When the Release job times out
+again, bump the `bootstrap-sha` forward to a more recent commit on
+main (the last successful Release run, or any recent commit that
+predates the unreleased work). Same SHA across all packages is fine —
+release-please just needs *some* lower bound to stop paginating.
+
+After the first successful release-please run cuts a release PR + tag,
+this becomes self-maintaining (release-please uses its own tags as the
+walk floor) and bootstrap-sha can stay pinned forever or be removed.
+
 ## Other open work lives in project memory
 
 Migration findings #1 (core↔sdk dep direction) and #4 (service
