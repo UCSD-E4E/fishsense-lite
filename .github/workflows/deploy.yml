@@ -1,178 +1,51 @@
 name: Deploy
 
-# Fires when release-please publishes a release. Two side effects:
+# Runs `docker compose pull && up -d` on the prod orchestrator host
+# after a promote.yml-generated PR is merged. Intentional gate: a human
+# reviews the version-pin diff and merges, then this fires.
 #
-# 1. Promotes the SHA-tagged GHCR image (built by build.yml) to
-#    `:v<version>` + `:latest`. Manifest-only retag — no rebuild — so
-#    the image bound to the release tag is exactly the one built from
-#    the release commit, regardless of any newer commits that landed.
-#
-# 2. Opens a PR on `deploy/compose*.yml` bumping the package's image
-#    pin to `:v<version>`. Merging that PR triggers rollout.yml, which
-#    runs `docker compose pull && up -d` on the prod self-hosted
-#    runner. The rollout is intentional — humans review the diff
-#    before prod restarts.
-#
-# Skipped for fishsense-data-processing-workflow-worker: it lives on a
-# separate host and is held off auto-deploy for now (image promotion
-# still happens so the version is available; just no compose-pin PR).
+# Prereq: a self-hosted runner registered with the `fishsense-prod`
+# label, co-located with the docker engine that runs deploy/compose.yml.
+# Until that runner exists, jobs created by this workflow sit in queue
+# (visible in Actions UI). They pick up automatically when the runner
+# comes online.
 
 on:
-  release:
-    types: [published]
+  pull_request:
+    types: [closed]
+    branches: [main]
+  # Manual re-run (re-pull + recreate without bumping a pin). Useful
+  # when a service crash-loops and you just want a clean restart.
+  workflow_dispatch:
 
 permissions:
-  contents: write       # peter-evans/create-pull-request: push branch
-  pull-requests: write  # peter-evans/create-pull-request: open PR
-  packages: write       # promote image manifests in GHCR
-
-env:
-  REGISTRY: ghcr.io
+  contents: read
+  packages: read
 
 jobs:
-  promote-and-pr:
-    runs-on: ubuntu-latest
+  deploy:
+    # Only fire on actual merges of auto-deploy/* branches; manual edits
+    # to compose files merging via a non-auto-deploy PR shouldn't trigger
+    # an automatic prod recreate.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true && startsWith(github.head_ref, 'auto-deploy/'))
+    runs-on: [self-hosted, fishsense-prod]
     steps:
       - uses: actions/checkout@v4
-
-      - name: Parse package + version + SHA from release tag
-        id: parse
-        env:
-          TAG: ${{ github.event.release.tag_name }}
-          FULL_SHA: ${{ github.event.release.target_commitish }}
-        run: |
-          # release-please tag format with `include-component-in-tag: true`:
-          #   <package-name>-v<version>   e.g. fishsense-api-v1.18.2
-          package="${TAG%-v*}"
-          version="v${TAG##*-v}"
-          short_sha="$(echo "$FULL_SHA" | cut -c1-7)"
-
-          # `promotable` controls the GHCR image retag step.
-          # `deployable` controls whether we open a compose-pin PR.
-          case "$package" in
-            fishsense-api|fishsense-api-workflow-worker|fishsense-backup-worker)
-              promotable=true
-              deployable=true
-              ;;
-            fishsense-data-processing-workflow-worker)
-              # Held — separate host, no auto-deploy yet. Image
-              # promotion still happens so the version tag is available
-              # for manual rollout.
-              promotable=true
-              deployable=false
-              ;;
-            *)
-              # Pure-library packages (fishsense-shared, fishsense-api-sdk):
-              # no image at all.
-              echo "::notice::no deployable image for $package; skipping"
-              promotable=false
-              deployable=false
-              ;;
-          esac
-
-          echo "package=$package" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
-          echo "promotable=$promotable" >> "$GITHUB_OUTPUT"
-          echo "deployable=$deployable" >> "$GITHUB_OUTPUT"
-
-      - name: Compute image base name (lowercased owner)
-        id: img
-        if: steps.parse.outputs.promotable == 'true'
-        run: |
-          owner_lc="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
-          echo "name=${{ env.REGISTRY }}/${owner_lc}/${{ steps.parse.outputs.package }}" >> "$GITHUB_OUTPUT"
-
-      - name: Log in to GHCR
-        if: steps.parse.outputs.promotable == 'true'
-        uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          ref: main
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Wait for build.yml's SHA-tagged image (race guard)
-        if: steps.parse.outputs.promotable == 'true'
-        env:
-          SRC: ${{ steps.img.outputs.name }}:sha-${{ steps.parse.outputs.short_sha }}
-        run: |
-          # build.yml is triggered by the same merge commit's push event
-          # and runs in parallel with release-please. Poll up to 20 min
-          # for the SHA-tagged image to land before promoting.
-          for i in $(seq 1 40); do
-            if docker buildx imagetools inspect "$SRC" >/dev/null 2>&1; then
-              echo "found: $SRC"
-              exit 0
-            fi
-            echo "[$i/40] $SRC not ready yet; sleeping 30s"
-            sleep 30
-          done
-          echo "::error::source image $SRC never appeared. build.yml probably failed for this commit; rerun build, then rerun this Deploy."
-          exit 1
+      - name: Pull updated images
+        working-directory: deploy
+        run: docker compose pull
 
-      - name: Promote SHA-tagged image to v<version> + latest
-        if: steps.parse.outputs.promotable == 'true'
-        env:
-          SRC: ${{ steps.img.outputs.name }}:sha-${{ steps.parse.outputs.short_sha }}
-          DST_VERSION: ${{ steps.img.outputs.name }}:${{ steps.parse.outputs.version }}
-          DST_LATEST: ${{ steps.img.outputs.name }}:latest
-        run: |
-          docker buildx imagetools create \
-            -t "$DST_VERSION" \
-            -t "$DST_LATEST" \
-            "$SRC"
-          echo "promoted $SRC -> $DST_VERSION and $DST_LATEST"
-
-      - name: Bump image pin in deploy/compose*.yml
-        if: steps.parse.outputs.deployable == 'true'
-        id: bump
-        env:
-          PKG: ${{ steps.parse.outputs.package }}
-          NEW_VER: ${{ steps.parse.outputs.version }}
-        run: |
-          set -e
-          owner_lc="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
-          pin_re="image: ${{ env.REGISTRY }}/${owner_lc}/${PKG}:v[0-9]+\.[0-9]+\.[0-9]+"
-
-          # Service may live in compose.yml or any of the included files
-          # (compose.orchestrator.yml / compose.temporal.yml / etc.).
-          files="$(grep -lE "$pin_re" deploy/compose*.yml 2>/dev/null || true)"
-
-          if [ -z "$files" ]; then
-            echo "::notice::no compose pin found for $PKG; PR will not be opened. Add a service stanza to deploy/compose*.yml first if you want auto-rollout."
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          for f in $files; do
-            sed -i -E "s|(image: ${{ env.REGISTRY }}/${owner_lc}/${PKG}:)v[0-9]+\.[0-9]+\.[0-9]+|\1${NEW_VER}|g" "$f"
-            echo "updated: $f"
-          done
-          echo "changed=true" >> "$GITHUB_OUTPUT"
-
-      - name: Open deploy PR
-        if: steps.parse.outputs.deployable == 'true' && steps.bump.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v6
-        with:
-          # rollout.yml keys off this branch prefix to know it's an
-          # auto-deploy PR vs. an unrelated edit to a compose file.
-          branch: auto-deploy/${{ steps.parse.outputs.package }}-${{ steps.parse.outputs.version }}
-          base: main
-          delete-branch: true
-          title: "chore(deploy): bump ${{ steps.parse.outputs.package }} to ${{ steps.parse.outputs.version }}"
-          body: |
-            Auto-generated by `.github/workflows/deploy.yml` on
-            release ${{ github.event.release.html_url }}.
-
-            - **Package**: `${{ steps.parse.outputs.package }}`
-            - **Version**: `${{ steps.parse.outputs.version }}`
-            - **Image**: `${{ steps.img.outputs.name }}:${{ steps.parse.outputs.version }}`
-            - **Source SHA**: `${{ steps.parse.outputs.short_sha }}`
-
-            Merging this PR triggers `.github/workflows/rollout.yml`,
-            which runs `docker compose pull && up -d` on the
-            `fishsense-prod` self-hosted runner.
-          commit-message: "chore(deploy): bump ${{ steps.parse.outputs.package }} to ${{ steps.parse.outputs.version }}"
-          labels: |
-            deploy
-            auto
+      - name: Recreate services with changed images
+        working-directory: deploy
+        run: docker compose up -d --remove-orphans

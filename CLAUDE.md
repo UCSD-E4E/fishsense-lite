@@ -161,43 +161,53 @@ Bumped in working tree before the stage-2 commit and rolled into commit
 fishsense-core version is in `uv.lock`, look at `669f933` *and* the
 workspace pyproject change in `75d2979` (the prior 1.7.0 bump).
 
-## Build + Deploy CI: build-once / promote-tag
+## CI pipeline: build → release → promote → deploy
+
+The four-workflow pipeline:
+
+```
+push to main         → build.yml    (image -> :sha-<short> + :main)
+release-please merge → release.yml  (cuts GitHub release + tag)
+release: published   → promote.yml  (:sha-<short> -> :v<version> + :latest;
+                                      opens auto-deploy/* PR bumping
+                                      deploy/compose*.yml pin)
+auto-deploy PR merge → deploy.yml   (docker compose pull && up -d on
+                                      self-hosted [fishsense-prod] runner)
+```
 
 `.github/workflows/build.yml` runs on **every push to main + every PR**.
-It builds each service's Docker image with the repo root as context
-(uv.lock + every workspace member's pyproject.toml have to be
-reachable), and on push to main it pushes to GHCR tagged by the commit
-SHA (`:sha-<short>`) and the branch (`:main`). PR runs build only — no
+On push to main it pushes to GHCR tagged by the commit SHA
+(`:sha-<short>`) and the branch (`:main`). PR runs build only — no
 push — as a Dockerfile-validity check.
 
-`.github/workflows/deploy.yml` runs on `release: published` (the event
-release-please fires after a release PR is merged). It does **not**
-rebuild — it (a) pulls the SHA-tagged image from build.yml and retags
-it with `:v<version>` and `:latest` via `docker buildx imagetools
-create` (manifest-only push, no layer transfer), and (b) opens a PR
-on `deploy/compose*.yml` bumping the package's image pin to the new
-version.
+`.github/workflows/promote.yml` runs on `release: published` (fired by
+release-please after the release PR is merged). It does **not**
+rebuild — (a) retags the SHA-tagged image to `:v<version>` and
+`:latest` via `docker buildx imagetools create` (manifest-only push,
+no layer transfer); (b) opens a PR on `deploy/compose*.yml` bumping
+the package's image pin to the new version. Branch name pattern:
+`auto-deploy/<package>-<version>`.
 
-`.github/workflows/rollout.yml` runs on the deploy PR's merge (via
-`pull_request: types:[closed]` + a `startsWith(head_ref,
-'auto-deploy/')` filter so unrelated compose edits don't trigger it).
-It runs `docker compose pull && up -d` on a self-hosted runner
-labeled `fishsense-prod` that's co-located with the docker engine
-running `deploy/compose.yml`. **The runner doesn't exist yet** — until
-one is registered, rollout jobs sit in queue.
+`.github/workflows/deploy.yml` runs when an `auto-deploy/*` PR is
+merged (via `pull_request: types:[closed]` + branch-prefix filter, so
+unrelated compose edits don't trigger it). Plus a `workflow_dispatch`
+for manual re-pulls. Runs `docker compose pull && up -d` on a
+self-hosted runner labeled `fishsense-prod`, co-located with the
+docker engine running `deploy/compose.yml`. **The runner doesn't
+exist yet** — until one is registered, deploy jobs sit in queue.
 
-Three reasons for the build/deploy/rollout split:
+Three reasons for the split:
 1. **Race-proof promotion.** The release tag points at a specific
-   commit SHA. Deploy promotes the image built from that exact SHA,
+   commit SHA. Promote retags the image built from that exact SHA,
    not whatever happens to be `:latest`. If a newer non-release
-   commit lands on main between the release-please merge and deploy
+   commit lands on main between the release-please merge and promote
    running, the wrong image can't get tagged with the release version.
 2. **Don't pay the build cost twice.** build.yml already built the
-   image when the release commit landed; deploy.yml is just a tag
-   promotion (~seconds).
-3. **Intentional rollout.** rollout.yml only fires when a human
-   merges the deploy PR. The compose-pin diff is reviewable in the
-   PR before any prod restart happens.
+   image when the release commit landed; promote.yml is a manifest
+   retag (~seconds).
+3. **Intentional deploy.** deploy.yml only fires when a human merges
+   the auto-deploy PR. The compose-pin diff is reviewable in the PR
+   before any prod restart happens.
 
 `fishsense-data-processing-workflow-worker` is held off auto-deploy:
 its image still gets the `:v<version>` tag (so manual rollout is
@@ -211,9 +221,9 @@ on 2026-04-29 — workers consume Temporal but aren't part of the
 cluster). `fishsense-backup-worker`'s stanza will land here once the
 prod `backup` Postgres role + NAS creds are set up.
 
-Race guard: deploy.yml polls for the `:sha-<short>` image to appear
-(up to 20 min) before promoting. build.yml is triggered by the same
-push event and runs in parallel with release-please, so deploy may
+Race guard: promote.yml polls for the `:sha-<short>` image to appear
+(up to 20 min) before retagging. build.yml is triggered by the same
+push event and runs in parallel with release-please, so promote may
 arrive first.
 
 ### Service Dockerfile pattern (monorepo-aware)
