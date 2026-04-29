@@ -90,15 +90,5 @@ services:
       - "traefik.http.routers.temporal_ui.tls.certresolver=letsencrypt"
     restart: on-failure:15
 
-  fishsense-api-workflow-worker:
-    image: ghcr.io/ucsd-e4e/fishsense-api-workflow-worker:v1.20.1
-    depends_on:
-      - temporal
-    volumes:
-      - ./temporal_volumes/certs:/certs:ro
-      - ./worker_volumes/config:/e4efs/config:ro
-      - ./worker_volumes/logs:/e4efs/logs:rw
-      - ./mafl_volumes/data/config.yml:/config/dashboard_config.yaml:rw
-    restart: on-failure:15
-    deploy:
-      replicas: 2
+# fishsense-api-workflow-worker moved to compose.workers.yml — it
+# consumes Temporal but isn't part of the cluster.

@@ -1,0 +1,28 @@
+# fishsense-* worker services that run on the orchestrator host.
+#
+# Workers consume Temporal but aren't part of the Temporal cluster, so
+# they don't belong in compose.temporal.yml. Group them here and the
+# deploy.yml workflow will find any GHCR pin matching
+# `image: ghcr.io/ucsd-e4e/<package>:v*` and bump it via PR on release.
+#
+# fishsense-data-processing-workflow-worker is intentionally NOT here:
+# it runs on a separate host (held off auto-deploy for now) — see the
+# corresponding compose file on that host once it exists.
+#
+# fishsense-backup-worker is intentionally NOT here yet: it needs a
+# narrow `backup` Postgres role + NAS creds in .secrets/ before its
+# stanza can be added. See services/fishsense-backup-worker/README.md.
+
+services:
+  fishsense-api-workflow-worker:
+    image: ghcr.io/ucsd-e4e/fishsense-api-workflow-worker:v1.20.1
+    depends_on:
+      - temporal
+    volumes:
+      - ./temporal_volumes/certs:/certs:ro
+      - ./worker_volumes/config:/e4efs/config:ro
+      - ./worker_volumes/logs:/e4efs/logs:rw
+      - ./mafl_volumes/data/config.yml:/config/dashboard_config.yaml:rw
+    restart: on-failure:15
+    deploy:
+      replicas: 2

@@ -2,6 +2,7 @@ include:
   - compose.orchestrator.yml
   - compose.superset.yml
   - compose.temporal.yml
+  - compose.workers.yml
 
 
 

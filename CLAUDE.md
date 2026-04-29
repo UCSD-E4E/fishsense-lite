@@ -172,11 +172,21 @@ push — as a Dockerfile-validity check.
 
 `.github/workflows/deploy.yml` runs on `release: published` (the event
 release-please fires after a release PR is merged). It does **not**
-rebuild — it pulls the SHA-tagged image from build.yml and retags it
-with `:v<version>` and `:latest` via `docker buildx imagetools create`
-(manifest-only push, no layer transfer).
+rebuild — it (a) pulls the SHA-tagged image from build.yml and retags
+it with `:v<version>` and `:latest` via `docker buildx imagetools
+create` (manifest-only push, no layer transfer), and (b) opens a PR
+on `deploy/compose*.yml` bumping the package's image pin to the new
+version.
 
-Two reasons for the split:
+`.github/workflows/rollout.yml` runs on the deploy PR's merge (via
+`pull_request: types:[closed]` + a `startsWith(head_ref,
+'auto-deploy/')` filter so unrelated compose edits don't trigger it).
+It runs `docker compose pull && up -d` on a self-hosted runner
+labeled `fishsense-prod` that's co-located with the docker engine
+running `deploy/compose.yml`. **The runner doesn't exist yet** — until
+one is registered, rollout jobs sit in queue.
+
+Three reasons for the build/deploy/rollout split:
 1. **Race-proof promotion.** The release tag points at a specific
    commit SHA. Deploy promotes the image built from that exact SHA,
    not whatever happens to be `:latest`. If a newer non-release
@@ -185,6 +195,21 @@ Two reasons for the split:
 2. **Don't pay the build cost twice.** build.yml already built the
    image when the release commit landed; deploy.yml is just a tag
    promotion (~seconds).
+3. **Intentional rollout.** rollout.yml only fires when a human
+   merges the deploy PR. The compose-pin diff is reviewable in the
+   PR before any prod restart happens.
+
+`fishsense-data-processing-workflow-worker` is held off auto-deploy:
+its image still gets the `:v<version>` tag (so manual rollout is
+possible), but no compose-pin PR is opened. The data-worker runs on
+a separate host and that host's compose isn't in this repo yet.
+
+`deploy/compose.workers.yml` is the home for `fishsense-*` worker
+services running on the orchestrator host. Currently has
+`fishsense-api-workflow-worker` (moved out of `compose.temporal.yml`
+on 2026-04-29 — workers consume Temporal but aren't part of the
+cluster). `fishsense-backup-worker`'s stanza will land here once the
+prod `backup` Postgres role + NAS creds are set up.
 
 Race guard: deploy.yml polls for the `:sha-<short>` image to appear
 (up to 20 min) before promoting. build.yml is triggered by the same
