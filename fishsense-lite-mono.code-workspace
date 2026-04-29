@@ -1,0 +1,46 @@
+{
+    "folders": [
+        {
+            "name": "monorepo",
+            "path": "."
+        },
+        {
+            "name": "fishsense-api",
+            "path": "services/fishsense-api"
+        },
+        {
+            "name": "fishsense-api-workflow-worker",
+            "path": "services/fishsense-api-workflow-worker"
+        },
+        {
+            "name": "fishsense-data-processing-workflow-worker",
+            "path": "services/fishsense-data-processing-workflow-worker"
+        },
+        {
+            "name": "fishsense-backup-worker",
+            "path": "services/fishsense-backup-worker"
+        },
+        {
+            "name": "fishsense-shared",
+            "path": "libs/fishsense-shared"
+        },
+        {
+            "name": "fishsense-api-sdk",
+            "path": "libs/fishsense-api-sdk"
+        }
+    ],
+    "settings": {},
+    "extensions": {
+        "recommendations": [
+            "ms-python.vscode-pylance",
+            "ms-python.python",
+            "ms-python.black-formatter",
+            "ms-python.isort",
+            "njpwerner.autodocstring",
+            "eamodio.gitlens",
+            "ms-azuretools.vscode-containers",
+            "ms-vscode-remote.remote-containers",
+            "ms-ossdata.vscode-pgsql"
+        ]
+    }
+}
