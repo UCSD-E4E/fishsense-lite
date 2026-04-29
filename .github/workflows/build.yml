@@ -1,0 +1,77 @@
+name: Build
+
+# Builds each service's Docker image. On push to main, pushes the
+# resulting images to GHCR tagged by the commit SHA so that deploy.yml
+# can promote them to a release tag later (release: published event).
+# On pull_request, builds only — no push — as a Dockerfile-validity check.
+#
+# We deliberately split build (this workflow) from deploy
+# (deploy.yml) so a release-please merge doesn't have to rebuild the
+# image; deploy just retags an already-pushed SHA-tagged image. That
+# also rules out the race where a newer non-release commit gets
+# promoted by accident: the release tag points at a specific SHA, and
+# we only ever promote the image built from that SHA.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - fishsense-api
+          - fishsense-api-workflow-worker
+          - fishsense-backup-worker
+          - fishsense-data-processing-workflow-worker
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Lowercase the owner because GHCR repo paths must be lowercase
+      # (UCSD-E4E -> ucsd-e4e).
+      - name: Compute lowercased image name
+        id: img
+        run: |
+          owner_lc="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "name=${{ env.REGISTRY }}/${owner_lc}/${{ matrix.service }}" >> "$GITHUB_OUTPUT"
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.img.outputs.name }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch
+            type=ref,event=pr
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/${{ matrix.service }}/Dockerfile
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ steps.img.outputs.name }}:buildcache
+          cache-to: type=registry,ref=${{ steps.img.outputs.name }}:buildcache,mode=max

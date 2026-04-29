@@ -1,0 +1,104 @@
+name: Deploy
+
+# Promotes a SHA-tagged image (already built + pushed by build.yml)
+# to the release-version tag when release-please publishes a release.
+# We don't rebuild — we retag the existing image, keyed by the commit
+# SHA the release tag points at. Result: even if newer non-release
+# commits have landed on main, we promote the EXACT image that was
+# built from the release commit.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse package + version from release tag
+        id: parse
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          # release.target_commitish is the full SHA the tag points at
+          # for tag-based releases (which is what release-please creates).
+          FULL_SHA: ${{ github.event.release.target_commitish }}
+        run: |
+          # release-please tag format with `include-component-in-tag: true`:
+          #   <package-name>-v<version>   e.g. fishsense-api-v1.18.2
+          package="${TAG%-v*}"
+          version="v${TAG##*-v}"
+          short_sha="$(echo "$FULL_SHA" | cut -c1-7)"
+
+          # Map package -> Dockerfile presence (sanity check + skip
+          # with a clear message if a release fires for something we
+          # don't ship as an image, e.g. fishsense-shared).
+          case "$package" in
+            fishsense-api|fishsense-api-workflow-worker|fishsense-backup-worker|fishsense-data-processing-workflow-worker)
+              echo "deployable=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::notice::no deployable image for package=$package; skipping"
+              echo "deployable=false" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+          echo "package=$package" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Compute image base name (lowercased owner)
+        id: img
+        if: steps.parse.outputs.deployable == 'true'
+        run: |
+          owner_lc="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "name=${{ env.REGISTRY }}/${owner_lc}/${{ steps.parse.outputs.package }}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        if: steps.parse.outputs.deployable == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Wait for build.yml's SHA-tagged image (race guard)
+        if: steps.parse.outputs.deployable == 'true'
+        env:
+          SRC: ${{ steps.img.outputs.name }}:sha-${{ steps.parse.outputs.short_sha }}
+        run: |
+          # build.yml is triggered by the same merge commit's push event
+          # and runs in parallel with release-please. Poll up to 20 min
+          # for the SHA-tagged image to land before promoting.
+          for i in $(seq 1 40); do
+            if docker buildx imagetools inspect "$SRC" >/dev/null 2>&1; then
+              echo "found: $SRC"
+              exit 0
+            fi
+            echo "[$i/40] $SRC not ready yet; sleeping 30s"
+            sleep 30
+          done
+          echo "::error::source image $SRC never appeared. build.yml probably failed for this commit; rerun build, then rerun this Deploy."
+          exit 1
+
+      - name: Promote SHA-tagged image to v<version> + latest
+        if: steps.parse.outputs.deployable == 'true'
+        env:
+          SRC: ${{ steps.img.outputs.name }}:sha-${{ steps.parse.outputs.short_sha }}
+          DST_VERSION: ${{ steps.img.outputs.name }}:${{ steps.parse.outputs.version }}
+          DST_LATEST: ${{ steps.img.outputs.name }}:latest
+        run: |
+          # `docker buildx imagetools create` only manipulates manifests;
+          # no layers are pulled or pushed. Fast and atomic — both new
+          # tags point at the same digest as the SHA tag.
+          docker buildx imagetools create \
+            -t "$DST_VERSION" \
+            -t "$DST_LATEST" \
+            "$SRC"
+          echo "promoted $SRC -> $DST_VERSION and $DST_LATEST"

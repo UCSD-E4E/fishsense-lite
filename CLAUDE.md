@@ -161,6 +161,57 @@ Bumped in working tree before the stage-2 commit and rolled into commit
 fishsense-core version is in `uv.lock`, look at `669f933` *and* the
 workspace pyproject change in `75d2979` (the prior 1.7.0 bump).
 
+## Build + Deploy CI: build-once / promote-tag
+
+`.github/workflows/build.yml` runs on **every push to main + every PR**.
+It builds each service's Docker image with the repo root as context
+(uv.lock + every workspace member's pyproject.toml have to be
+reachable), and on push to main it pushes to GHCR tagged by the commit
+SHA (`:sha-<short>`) and the branch (`:main`). PR runs build only — no
+push — as a Dockerfile-validity check.
+
+`.github/workflows/deploy.yml` runs on `release: published` (the event
+release-please fires after a release PR is merged). It does **not**
+rebuild — it pulls the SHA-tagged image from build.yml and retags it
+with `:v<version>` and `:latest` via `docker buildx imagetools create`
+(manifest-only push, no layer transfer).
+
+Two reasons for the split:
+1. **Race-proof promotion.** The release tag points at a specific
+   commit SHA. Deploy promotes the image built from that exact SHA,
+   not whatever happens to be `:latest`. If a newer non-release
+   commit lands on main between the release-please merge and deploy
+   running, the wrong image can't get tagged with the release version.
+2. **Don't pay the build cost twice.** build.yml already built the
+   image when the release commit landed; deploy.yml is just a tag
+   promotion (~seconds).
+
+Race guard: deploy.yml polls for the `:sha-<short>` image to appear
+(up to 20 min) before promoting. build.yml is triggered by the same
+push event and runs in parallel with release-please, so deploy may
+arrive first.
+
+### Service Dockerfile pattern (monorepo-aware)
+
+All four service Dockerfiles use the same shape — see migration
+finding #4 in project memory for the rationale and prior broken state.
+
+- Build context = repo root (`docker build -f services/<svc>/Dockerfile .`).
+- COPY `pyproject.toml uv.lock` + every workspace member's
+  `pyproject.toml` (uv requires all of them to satisfy
+  `[tool.uv.workspace] members`).
+- COPY the source trees the target needs: always its own, plus
+  `libs/fishsense-shared` (and `libs/fishsense-api-sdk` for services
+  that import it at runtime — currently api-workflow-worker and
+  data-processing-workflow-worker; fishsense-api uses it dev-only and
+  fishsense-backup-worker doesn't use it at all).
+- Single `uv sync --frozen --no-dev --no-editable --package <name>`
+  to install runtime deps + the package itself.
+- Two-stage build with `python:3.13-slim-trixie` runtime; copy `.venv`
+  from builder.
+- System libs per-service: opencv-python needs `libgl1 + libglib2.0-0`
+  in the data-worker image; backup-worker needs `postgresql-client`.
+
 ## release-please bootstrap-sha — bump when the Release job times out
 
 The Release workflow runs `googleapis/release-please-action@v4`, which

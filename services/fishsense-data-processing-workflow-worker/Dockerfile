@@ -1,9 +1,9 @@
-# fishsense-api-workflow-worker (Temporal worker — api-side)
+# fishsense-data-processing-workflow-worker (Temporal worker — data-side)
 #
 # IMPORTANT: build with the **repo root** as context.
 #
-#   docker build -t fishsense-api-workflow-worker \
-#     -f services/fishsense-api-workflow-worker/Dockerfile .
+#   docker build -t fishsense-data-processing-workflow-worker \
+#     -f services/fishsense-data-processing-workflow-worker/Dockerfile .
 
 FROM ghcr.io/astral-sh/uv:python3.13-trixie AS builder
 
@@ -18,20 +18,28 @@ COPY services/fishsense-api-workflow-worker/pyproject.toml /app/services/fishsen
 COPY services/fishsense-backup-worker/pyproject.toml /app/services/fishsense-backup-worker/pyproject.toml
 COPY services/fishsense-data-processing-workflow-worker/pyproject.toml /app/services/fishsense-data-processing-workflow-worker/pyproject.toml
 
-# api-workflow-worker imports from both fishsense-api-sdk + fishsense-shared.
+# data-worker imports from fishsense-api-sdk + fishsense-shared.
+# fishsense-core is a prebuilt cp313 manylinux wheel pinned in this
+# package's pyproject; no build-time C deps needed in the builder stage.
 COPY libs/fishsense-api-sdk /app/libs/fishsense-api-sdk
 COPY libs/fishsense-shared /app/libs/fishsense-shared
-COPY services/fishsense-api-workflow-worker /app/services/fishsense-api-workflow-worker
+COPY services/fishsense-data-processing-workflow-worker /app/services/fishsense-data-processing-workflow-worker
 
 RUN uv sync --frozen --no-dev --no-editable \
-        --package fishsense-api-workflow-worker \
+        --package fishsense-data-processing-workflow-worker \
     && uv cache clean
 
 # --- Runtime ---
 FROM python:3.13-slim-trixie AS runtime
 
+# OpenCV runtime libs — same set the devcontainer pulls in (libgl1 +
+# libglib2.0-0 are what opencv-python links against). ca-certificates
+# for HTTPS to fishsense-api / static_file_server / NAS.
 RUN apt-get update && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends \
+        libgl1 \
+        libglib2.0-0 \
+        ca-certificates \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 ENV VIRTUAL_ENV=/app/.venv
@@ -42,4 +50,4 @@ RUN mkdir -p /e4efs/config /e4efs/logs /e4efs/data /e4efs/cache
 
 COPY --from=builder /app/.venv /app/.venv
 
-ENTRYPOINT ["fishsense_api_workflow_worker"]
+ENTRYPOINT ["fishsense_data_processing_workflow_worker"]
