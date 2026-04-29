@@ -30,7 +30,7 @@ class PruneDatabaseBackupsInput(BaseModel):
 
 
 class BackupDatabasesInput(BaseModel):
-    """Whole-workflow input."""
+    """Whole-workflow payload."""
 
     databases: List[str]
     nas_root_path: str
@@ -41,11 +41,11 @@ class BackupDatabasesInput(BaseModel):
 class BackupDatabasesWorkflow:
     # pylint: disable=too-few-public-methods
     @workflow.run
-    async def run(self, input: BackupDatabasesInput) -> None:
+    async def run(self, payload: BackupDatabasesInput) -> None:
         workflow.logger.info(
             "backup workflow start dbs=%s retention=%d",
-            input.databases,
-            input.retention_count,
+            payload.databases,
+            payload.retention_count,
         )
 
         # Dump each DB in parallel. pg_dump on Postgres uses MVCC
@@ -56,12 +56,12 @@ class BackupDatabasesWorkflow:
                     "pg_dump_database",
                     PgDumpDatabaseInput(
                         db_name=db,
-                        nas_root_path=input.nas_root_path,
+                        nas_root_path=payload.nas_root_path,
                     ),
                     schedule_to_close_timeout=timedelta(hours=2),
                     start_to_close_timeout=timedelta(hours=2),
                 )
-                for db in input.databases
+                for db in payload.databases
             ]
         )
 
@@ -74,11 +74,11 @@ class BackupDatabasesWorkflow:
                     "prune_database_backups",
                     PruneDatabaseBackupsInput(
                         db_name=db,
-                        nas_root_path=input.nas_root_path,
-                        keep=input.retention_count,
+                        nas_root_path=payload.nas_root_path,
+                        keep=payload.retention_count,
                     ),
                     schedule_to_close_timeout=timedelta(minutes=10),
                 )
-                for db in input.databases
+                for db in payload.databases
             ]
         )

@@ -81,9 +81,8 @@ def configure_worker_settings(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.mark.asyncio
-async def test_workflow_processes_one_image_end_to_end(
-    raw_orf_bytes: bytes, configure_worker_settings
-):
+@pytest.mark.usefixtures("configure_worker_settings")
+async def test_workflow_processes_one_image_end_to_end(raw_orf_bytes: bytes):
     checksum = f"itest-stage9-{uuid.uuid4().hex}"
     # Use a per-test slate_id so concurrent runs don't collide.
     slate_id = int(uuid.uuid4().int % 1_000_000)

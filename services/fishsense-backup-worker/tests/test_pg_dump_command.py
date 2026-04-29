@@ -6,13 +6,11 @@ flag must be `-Fc` (custom format — what the prod backup convention
 uses, what `pg_restore` expects).
 """
 
-import pytest
-
 from fishsense_backup_worker.pg_dump import build_pg_dump_command
 
 
 def test_uses_custom_format():
-    cmd, env = build_pg_dump_command(
+    cmd, _env = build_pg_dump_command(
         db_name="fishsense",
         host="postgres",
         port=5432,

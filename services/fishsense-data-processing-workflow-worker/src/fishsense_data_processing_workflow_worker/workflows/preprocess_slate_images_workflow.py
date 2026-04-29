@@ -19,7 +19,7 @@ ReferencePoint = Tuple[float, float]
 
 
 class PreprocessSlateImageInput(BaseModel):
-    """Per-image input passed to the preprocess_slate_image activity."""
+    """Per-image payload passed to the preprocess_slate_image activity."""
 
     checksum: str
     output_folder: str
@@ -31,7 +31,7 @@ class PreprocessSlateImageInput(BaseModel):
 
 
 class PreprocessSlateImagesInput(BaseModel):
-    """Whole-workflow input."""
+    """Whole-workflow payload."""
 
     dive_id: int
     image_checksums: List[str]
@@ -46,12 +46,12 @@ class PreprocessSlateImagesInput(BaseModel):
 class PreprocessSlateImagesWorkflow:
     # pylint: disable=too-few-public-methods
     @workflow.run
-    async def run(self, input: PreprocessSlateImagesInput) -> None:
+    async def run(self, payload: PreprocessSlateImagesInput) -> None:
         workflow.logger.info(
             "preprocessing slate images dive_id=%d images=%d slate_id=%d",
-            input.dive_id,
-            len(input.image_checksums),
-            input.slate_id,
+            payload.dive_id,
+            len(payload.image_checksums),
+            payload.slate_id,
         )
 
         await asyncio.gather(
@@ -61,14 +61,14 @@ class PreprocessSlateImagesWorkflow:
                     PreprocessSlateImageInput(
                         checksum=checksum,
                         output_folder="preprocess_slate_images_jpeg",
-                        slate_id=input.slate_id,
-                        slate_dpi=input.slate_dpi,
-                        reference_points=input.reference_points,
-                        camera_matrix=input.camera_matrix,
-                        distortion_coefficients=input.distortion_coefficients,
+                        slate_id=payload.slate_id,
+                        slate_dpi=payload.slate_dpi,
+                        reference_points=payload.reference_points,
+                        camera_matrix=payload.camera_matrix,
+                        distortion_coefficients=payload.distortion_coefficients,
                     ),
                     schedule_to_close_timeout=timedelta(minutes=5),
                 )
-                for checksum in input.image_checksums
+                for checksum in payload.image_checksums
             ]
         )

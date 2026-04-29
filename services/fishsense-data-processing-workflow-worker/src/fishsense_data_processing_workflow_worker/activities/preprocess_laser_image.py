@@ -62,26 +62,26 @@ def _rectify_overlay_bbox_encode(
 
 
 def _input_model():
-    from fishsense_data_processing_workflow_worker.workflows.preprocess_laser_images_workflow import (
-        PreprocessLaserImageInput,
-    )
+    # pylint: disable=import-outside-toplevel
+    from fishsense_data_processing_workflow_worker.workflows.preprocess_laser_images_workflow \
+        import PreprocessLaserImageInput
 
     return PreprocessLaserImageInput
 
 
 @activity.defn
-async def preprocess_laser_image(input) -> None:  # type: ignore[no-untyped-def]
+async def preprocess_laser_image(payload) -> None:  # type: ignore[no-untyped-def]
     """Download one raw image from the file-exchange, rectify it, draw
     the expected-laser bounding box, and PUT the JPEG back to the
     file-exchange under `{output_folder}/{checksum}.JPG`."""
-    PreprocessLaserImageInput = _input_model()
-    if not isinstance(input, PreprocessLaserImageInput):
-        input = PreprocessLaserImageInput.model_validate(input)
+    payload_cls = _input_model()
+    if not isinstance(payload, payload_cls):
+        payload = payload_cls.model_validate(payload)
 
     activity.logger.info(
         "preprocessing laser image checksum=%s bbox=%s",
-        input.checksum,
-        input.bbox,
+        payload.checksum,
+        payload.bbox,
     )
 
     async with httpx.AsyncClient(
@@ -90,16 +90,16 @@ async def preprocess_laser_image(input) -> None:  # type: ignore[no-untyped-def]
         client = FileExchangeClient(
             base_url=settings.static_file_server.url, http=http
         )
-        raw_bytes = await client.download_raw(input.checksum)
+        raw_bytes = await client.download_raw(payload.checksum)
         jpeg_bytes = await asyncio.to_thread(
             _rectify_overlay_bbox_encode,
             raw_bytes,
-            input.camera_matrix,
-            input.distortion_coefficients,
-            tuple(input.bbox),
+            payload.camera_matrix,
+            payload.distortion_coefficients,
+            tuple(payload.bbox),
         )
         await client.upload_processed_jpeg(
-            folder=input.output_folder,
-            checksum=input.checksum,
+            folder=payload.output_folder,
+            checksum=payload.checksum,
             data=jpeg_bytes,
         )

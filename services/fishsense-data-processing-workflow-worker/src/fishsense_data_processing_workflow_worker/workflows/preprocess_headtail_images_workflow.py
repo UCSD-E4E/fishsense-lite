@@ -15,7 +15,7 @@ from temporalio import workflow
 
 
 class PreprocessHeadtailImageInput(BaseModel):
-    """Per-image input passed to the preprocess_headtail_image activity."""
+    """Per-image payload passed to the preprocess_headtail_image activity."""
 
     checksum: str
     output_folder: str
@@ -24,7 +24,7 @@ class PreprocessHeadtailImageInput(BaseModel):
 
 
 class PreprocessHeadtailImagesInput(BaseModel):
-    """Whole-workflow input: a flat list of image checksums plus
+    """Whole-workflow payload: a flat list of image checksums plus
     intrinsics."""
 
     dive_id: int
@@ -37,11 +37,11 @@ class PreprocessHeadtailImagesInput(BaseModel):
 class PreprocessHeadtailImagesWorkflow:
     # pylint: disable=too-few-public-methods
     @workflow.run
-    async def run(self, input: PreprocessHeadtailImagesInput) -> None:
+    async def run(self, payload: PreprocessHeadtailImagesInput) -> None:
         workflow.logger.info(
             "preprocessing headtail images dive_id=%d images=%d",
-            input.dive_id,
-            len(input.image_checksums),
+            payload.dive_id,
+            len(payload.image_checksums),
         )
 
         await asyncio.gather(
@@ -51,11 +51,11 @@ class PreprocessHeadtailImagesWorkflow:
                     PreprocessHeadtailImageInput(
                         checksum=checksum,
                         output_folder="preprocess_headtail_jpeg",
-                        camera_matrix=input.camera_matrix,
-                        distortion_coefficients=input.distortion_coefficients,
+                        camera_matrix=payload.camera_matrix,
+                        distortion_coefficients=payload.distortion_coefficients,
                     ),
                     schedule_to_close_timeout=timedelta(minutes=5),
                 )
-                for checksum in input.image_checksums
+                for checksum in payload.image_checksums
             ]
         )

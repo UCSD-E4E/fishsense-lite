@@ -25,8 +25,8 @@ async def test_workflow_fans_out_one_activity_per_image_with_correct_args():
     calls: List[PreprocessSlateImageInput] = []
 
     @activity.defn(name="preprocess_slate_image")
-    async def stub(input: PreprocessSlateImageInput) -> None:
-        calls.append(input)
+    async def stub(payload: PreprocessSlateImageInput) -> None:
+        calls.append(payload)
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
@@ -65,8 +65,8 @@ async def test_workflow_with_no_images_makes_no_activity_calls():
     calls: List[PreprocessSlateImageInput] = []
 
     @activity.defn(name="preprocess_slate_image")
-    async def stub(input: PreprocessSlateImageInput) -> None:
-        calls.append(input)
+    async def stub(payload: PreprocessSlateImageInput) -> None:
+        calls.append(payload)
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
@@ -90,4 +90,4 @@ async def test_workflow_with_no_images_makes_no_activity_calls():
                 task_queue="test-stage9-empty",
             )
 
-    assert calls == []
+    assert not calls

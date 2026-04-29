@@ -16,9 +16,9 @@ _log = logging.getLogger(__name__)
 
 
 def _input_model():
-    from fishsense_backup_worker.workflows.backup_databases_workflow import (
-        PruneDatabaseBackupsInput,
-    )
+    # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker.workflows.backup_databases_workflow \
+        import PruneDatabaseBackupsInput
 
     return PruneDatabaseBackupsInput
 
@@ -43,26 +43,26 @@ def _prune(
 
 
 @activity.defn
-async def prune_database_backups(input) -> None:  # type: ignore[no-untyped-def]
-    PruneDatabaseBackupsInput = _input_model()
-    if not isinstance(input, PruneDatabaseBackupsInput):
-        input = PruneDatabaseBackupsInput.model_validate(input)
+async def prune_database_backups(payload) -> None:  # type: ignore[no-untyped-def]
+    payload_cls = _input_model()
+    if not isinstance(payload, payload_cls):
+        payload = payload_cls.model_validate(payload)
 
     activity.logger.info(
         "prune_database_backups start db=%s keep=%d",
-        input.db_name,
-        input.keep,
+        payload.db_name,
+        payload.keep,
     )
 
     pruned = await asyncio.to_thread(
         _prune,
-        db_name=input.db_name,
-        nas_root_path=input.nas_root_path,
-        keep=input.keep,
+        db_name=payload.db_name,
+        nas_root_path=payload.nas_root_path,
+        keep=payload.keep,
     )
 
     activity.logger.info(
         "prune_database_backups done db=%s pruned_count=%d",
-        input.db_name,
+        payload.db_name,
         len(pruned),
     )

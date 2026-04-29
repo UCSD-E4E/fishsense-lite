@@ -9,7 +9,6 @@ from io import BytesIO
 
 import numpy as np
 import pymupdf
-import pytest
 
 from fishsense_data_processing_workflow_worker.activities.preprocess_slate_image import (
     render_slate_pdf_to_binarized_bgr,

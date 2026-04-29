@@ -1,11 +1,10 @@
 """Workflow contract test for PreprocessLaserImagesWorkflow.
 
 Runs the workflow against an in-process Temporal test server and stubs
-the activity to record its inputs. We don't assert on real image work
+the activity to record its payloads. We don't assert on real image work
 here — only on the workflow's fanout shape and per-image arg propagation.
 """
 
-import asyncio
 import uuid
 from typing import List
 
@@ -32,9 +31,9 @@ async def test_workflow_fans_out_one_activity_per_image_with_correct_args():
 
     @activity.defn(name="preprocess_laser_image")
     async def stub_preprocess_laser_image(
-        input: PreprocessLaserImageInput,
+        payload: PreprocessLaserImageInput,
     ) -> None:
-        calls.append(input)
+        calls.append(payload)
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
@@ -73,9 +72,9 @@ async def test_workflow_with_no_images_makes_no_activity_calls():
 
     @activity.defn(name="preprocess_laser_image")
     async def stub_preprocess_laser_image(
-        input: PreprocessLaserImageInput,
+        payload: PreprocessLaserImageInput,
     ) -> None:
-        calls.append(input)
+        calls.append(payload)
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
@@ -97,4 +96,4 @@ async def test_workflow_with_no_images_makes_no_activity_calls():
                 task_queue="test-stage01-empty",
             )
 
-    assert calls == []
+    assert not calls

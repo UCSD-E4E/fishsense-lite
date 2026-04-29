@@ -80,9 +80,8 @@ def configure_worker_settings(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.mark.asyncio
-async def test_workflow_processes_one_image_end_to_end(
-    raw_orf_bytes: bytes, configure_worker_settings
-):
+@pytest.mark.usefixtures("configure_worker_settings")
+async def test_workflow_processes_one_image_end_to_end(raw_orf_bytes: bytes):
     checksum = f"itest-{uuid.uuid4().hex}"
 
     async with httpx.AsyncClient(

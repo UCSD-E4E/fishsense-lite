@@ -115,26 +115,26 @@ def _build_slate_jpeg(
 
 
 def _input_model():
-    from fishsense_data_processing_workflow_worker.workflows.preprocess_slate_images_workflow import (
-        PreprocessSlateImageInput,
-    )
+    # pylint: disable=import-outside-toplevel
+    from fishsense_data_processing_workflow_worker.workflows.preprocess_slate_images_workflow \
+        import PreprocessSlateImageInput
 
     return PreprocessSlateImageInput
 
 
 @activity.defn
-async def preprocess_slate_image(input) -> None:  # type: ignore[no-untyped-def]
+async def preprocess_slate_image(payload) -> None:  # type: ignore[no-untyped-def]
     """Download one raw image + the slate-template PDF, build the slate
     composite, and PUT the JPEG back to the file-exchange under
     `{output_folder}/{checksum}.JPG`."""
-    PreprocessSlateImageInput = _input_model()
-    if not isinstance(input, PreprocessSlateImageInput):
-        input = PreprocessSlateImageInput.model_validate(input)
+    payload_cls = _input_model()
+    if not isinstance(payload, payload_cls):
+        payload = payload_cls.model_validate(payload)
 
     activity.logger.info(
         "preprocessing slate image checksum=%s slate_id=%d",
-        input.checksum,
-        input.slate_id,
+        payload.checksum,
+        payload.slate_id,
     )
 
     async with httpx.AsyncClient(
@@ -143,19 +143,19 @@ async def preprocess_slate_image(input) -> None:  # type: ignore[no-untyped-def]
         client = FileExchangeClient(
             base_url=settings.static_file_server.url, http=http
         )
-        raw_bytes = await client.download_raw(input.checksum)
-        pdf_bytes = await client.download_slate_pdf(input.slate_id)
+        raw_bytes = await client.download_raw(payload.checksum)
+        pdf_bytes = await client.download_slate_pdf(payload.slate_id)
         jpeg_bytes = await asyncio.to_thread(
             _build_slate_jpeg,
             raw_bytes,
             pdf_bytes,
-            input.camera_matrix,
-            input.distortion_coefficients,
-            input.slate_dpi,
-            [tuple(p) for p in input.reference_points],
+            payload.camera_matrix,
+            payload.distortion_coefficients,
+            payload.slate_dpi,
+            [tuple(p) for p in payload.reference_points],
         )
         await client.upload_processed_jpeg(
-            folder=input.output_folder,
-            checksum=input.checksum,
+            folder=payload.output_folder,
+            checksum=payload.checksum,
             data=jpeg_bytes,
         )

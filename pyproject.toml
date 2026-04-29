@@ -36,3 +36,59 @@ members = [
 [tool.uv.sources]
 fishsense-api-sdk = { workspace = true }
 fishsense-shared = { workspace = true }
+
+# Workspace-wide pylint configuration. Lives at the repo root so every
+# package picks up the same rules; pylint walks up the directory tree
+# from the target file looking for the closest `pyproject.toml` with a
+# `[tool.pylint.*]` section.
+[tool.pylint.main]
+extension-pkg-allow-list = ["cv2"]
+
+[tool.pylint."messages control"]
+# fail-under=10 with all checks on is unworkable for a real codebase;
+# disable the high-noise checks and require the rest to be clean.
+disable = [
+    # Famously noisy across test files where fixture boilerplate is
+    # repeated by design. Most projects disable.
+    "duplicate-code",
+    # Tests document themselves by name; no need to require docstrings
+    # on `def test_<thing_being_asserted>`.
+    "missing-function-docstring",
+    "missing-module-docstring",
+    "missing-class-docstring",
+    # Standard pytest fixture pattern shadows the fixture function name
+    # in the test parameter list. Pylint flags every fixture use.
+    "redefined-outer-name",
+    # Pydantic BaseModel + workflow input DTOs are data-only by design;
+    # this warning treats every one of them as a code smell.
+    "too-few-public-methods",
+]
+
+[tool.pylint.basic]
+# Linear-algebra / pinhole-camera variable names + a few helper names
+# that read worse in snake_case (camera matrix `_make_K`, OpenCV's
+# camelCase parameter mirroring in notebook-parity tests).
+good-names = [
+    "i", "j", "k", "n", "x", "y", "z",
+    "K", "D", "P", "_K", "_D", "_P",
+    "P_laser", "P_head", "P_tail",
+    "_make_K",
+    "fontFace", "fontScale", "lineType",
+]
+
+[tool.pylint.design]
+# Activity entrypoints take 6+ kwargs (db_name, host, port, user, password,
+# output_path); 8 lets these stay flat instead of forcing a dataclass per
+# call site. Locals bumped because notebook-parity tests recreate the
+# notebook line-for-line and need to track many intermediate arrays.
+max-args = 8
+max-positional-arguments = 8
+max-locals = 20
+
+[tool.pylint.format]
+max-line-length = 100
+
+[tool.pylint.typecheck]
+# Pylint can't introspect cv2's C-extension members; whitelist the
+# whole namespace rather than listing each function.
+generated-members = ["cv2.*"]

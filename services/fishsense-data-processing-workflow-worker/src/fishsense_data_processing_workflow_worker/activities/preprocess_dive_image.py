@@ -70,29 +70,29 @@ def _rectify_overlay_encode(
 # Imported lazily to keep this module importable without the workflow
 # package side-effects during unit-test collection.
 def _input_model():
-    from fishsense_data_processing_workflow_worker.workflows.preprocess_dive_images_workflow import (
-        PreprocessDiveImageInput,
-    )
+    # pylint: disable=import-outside-toplevel
+    from fishsense_data_processing_workflow_worker.workflows.preprocess_dive_images_workflow \
+        import PreprocessDiveImageInput
 
     return PreprocessDiveImageInput
 
 
 @activity.defn
-async def preprocess_dive_image(input) -> None:  # type: ignore[no-untyped-def]
+async def preprocess_dive_image(payload) -> None:  # type: ignore[no-untyped-def]
     """Download one raw image from the file-exchange, rectify it,
     overlay the cluster index, and PUT the JPEG back to the
     file-exchange under `{output_folder}/{checksum}.JPG`."""
     # Late-bind the model so tests that don't import the workflow module
     # can still construct the activity registration.
-    PreprocessDiveImageInput = _input_model()
-    if not isinstance(input, PreprocessDiveImageInput):
-        input = PreprocessDiveImageInput.model_validate(input)
+    payload_cls = _input_model()
+    if not isinstance(payload, payload_cls):
+        payload = payload_cls.model_validate(payload)
 
     activity.logger.info(
         "preprocessing image checksum=%s cluster=%d/%d",
-        input.checksum,
-        input.cluster_index,
-        input.cluster_size,
+        payload.checksum,
+        payload.cluster_index,
+        payload.cluster_size,
     )
 
     async with httpx.AsyncClient(
@@ -101,17 +101,17 @@ async def preprocess_dive_image(input) -> None:  # type: ignore[no-untyped-def]
         client = FileExchangeClient(
             base_url=settings.static_file_server.url, http=http
         )
-        raw_bytes = await client.download_raw(input.checksum)
+        raw_bytes = await client.download_raw(payload.checksum)
         jpeg_bytes = await asyncio.to_thread(
             _rectify_overlay_encode,
             raw_bytes,
-            input.camera_matrix,
-            input.distortion_coefficients,
-            input.cluster_index,
-            input.cluster_size,
+            payload.camera_matrix,
+            payload.distortion_coefficients,
+            payload.cluster_index,
+            payload.cluster_size,
         )
         await client.upload_processed_jpeg(
-            folder=input.output_folder,
-            checksum=input.checksum,
+            folder=payload.output_folder,
+            checksum=payload.checksum,
             data=jpeg_bytes,
         )

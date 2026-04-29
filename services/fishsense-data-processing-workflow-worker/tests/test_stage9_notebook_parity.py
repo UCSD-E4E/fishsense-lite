@@ -54,7 +54,7 @@ def orf_path() -> Path:
     return _ORF_FIXTURE
 
 
-def _notebook_transform(
+def _notebook_transform(  # pylint: disable=too-many-locals
     image_path: Path,
     pdf_bytes: bytes,
     intrinsics: CameraIntrinsics,

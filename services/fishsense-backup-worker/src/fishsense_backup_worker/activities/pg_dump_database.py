@@ -11,6 +11,7 @@ import asyncio
 import logging
 import os
 import tempfile
+from datetime import datetime, timezone
 
 from temporalio import activity
 
@@ -23,9 +24,9 @@ _log = logging.getLogger(__name__)
 
 
 def _input_model():
-    from fishsense_backup_worker.workflows.backup_databases_workflow import (
-        PgDumpDatabaseInput,
-    )
+    # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker.workflows.backup_databases_workflow \
+        import PgDumpDatabaseInput
 
     return PgDumpDatabaseInput
 
@@ -34,8 +35,6 @@ def _dump_and_upload(*, db_name: str, nas_root_path: str) -> str:
     """Sync helper run via asyncio.to_thread. Returns the NAS folder
     path the dump landed in (purely for logging — Temporal doesn't
     need the return value)."""
-    from datetime import datetime, timezone
-
     filename = backup_filename(datetime.now(tz=timezone.utc))
     nas_dir = f"{nas_root_path.rstrip('/')}/{db_name}"
 
@@ -79,21 +78,21 @@ def _dump_and_upload(*, db_name: str, nas_root_path: str) -> str:
 
 
 @activity.defn
-async def pg_dump_database(input) -> None:  # type: ignore[no-untyped-def]
-    PgDumpDatabaseInput = _input_model()
-    if not isinstance(input, PgDumpDatabaseInput):
-        input = PgDumpDatabaseInput.model_validate(input)
+async def pg_dump_database(payload) -> None:  # type: ignore[no-untyped-def]
+    payload_cls = _input_model()
+    if not isinstance(payload, payload_cls):
+        payload = payload_cls.model_validate(payload)
 
     activity.logger.info(
         "pg_dump_database start db=%s nas_root=%s",
-        input.db_name,
-        input.nas_root_path,
+        payload.db_name,
+        payload.nas_root_path,
     )
 
     await asyncio.to_thread(
         _dump_and_upload,
-        db_name=input.db_name,
-        nas_root_path=input.nas_root_path,
+        db_name=payload.db_name,
+        nas_root_path=payload.nas_root_path,
     )
 
-    activity.logger.info("pg_dump_database done db=%s", input.db_name)
+    activity.logger.info("pg_dump_database done db=%s", payload.db_name)

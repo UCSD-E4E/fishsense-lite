@@ -18,7 +18,7 @@ from temporalio import workflow
 
 
 class PreprocessLaserImageInput(BaseModel):
-    """Per-image input passed to the preprocess_laser_image activity."""
+    """Per-image payload passed to the preprocess_laser_image activity."""
 
     checksum: str
     output_folder: str
@@ -28,14 +28,14 @@ class PreprocessLaserImageInput(BaseModel):
 
 
 class PreprocessLaserImagesInput(BaseModel):
-    """Whole-workflow input: a flat list of image checksums plus the
+    """Whole-workflow payload: a flat list of image checksums plus the
     camera intrinsics and laser-bbox constant."""
 
     dive_id: int
     image_checksums: List[str]
     camera_matrix: List[List[float]]
     distortion_coefficients: List[float]
-    # Original notebook hardcoded (1800, 700, 2400, 1600); kept as input so
+    # Original notebook hardcoded (1800, 700, 2400, 1600); kept as payload so
     # the api-worker can promote it to config without touching this code.
     bbox: List[int]
 
@@ -44,11 +44,11 @@ class PreprocessLaserImagesInput(BaseModel):
 class PreprocessLaserImagesWorkflow:
     # pylint: disable=too-few-public-methods
     @workflow.run
-    async def run(self, input: PreprocessLaserImagesInput) -> None:
+    async def run(self, payload: PreprocessLaserImagesInput) -> None:
         workflow.logger.info(
             "preprocessing laser images dive_id=%d images=%d",
-            input.dive_id,
-            len(input.image_checksums),
+            payload.dive_id,
+            len(payload.image_checksums),
         )
 
         await asyncio.gather(
@@ -58,12 +58,12 @@ class PreprocessLaserImagesWorkflow:
                     PreprocessLaserImageInput(
                         checksum=checksum,
                         output_folder="preprocess_jpeg",
-                        bbox=tuple(input.bbox),
-                        camera_matrix=input.camera_matrix,
-                        distortion_coefficients=input.distortion_coefficients,
+                        bbox=tuple(payload.bbox),
+                        camera_matrix=payload.camera_matrix,
+                        distortion_coefficients=payload.distortion_coefficients,
                     ),
                     schedule_to_close_timeout=timedelta(minutes=5),
                 )
-                for checksum in input.image_checksums
+                for checksum in payload.image_checksums
             ]
         )

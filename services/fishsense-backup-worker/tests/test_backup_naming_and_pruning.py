@@ -5,7 +5,7 @@ The naming convention has to be sortable lexicographically (so a `sort
 N) and unambiguous about timezone (we always use UTC).
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -26,8 +26,6 @@ def test_backup_filename_uses_iso_utc_timestamp_with_dump_extension():
 def test_backup_filename_normalizes_aware_datetime_to_utc():
     """Pacific 20:00 → UTC 04:00 (during PDT). The filename must stay
     UTC-anchored regardless of the input tz."""
-    from datetime import timedelta
-
     pdt = timezone(timedelta(hours=-7))
     moment = datetime(2026, 4, 27, 21, 0, 0, tzinfo=pdt)
     assert backup_filename(moment) == "2026-04-28T04-00-00Z.dump"
@@ -55,8 +53,6 @@ def test_backup_filenames_sort_chronologically_as_strings():
 
 def _names_for_days(n: int):
     """N daily backup filenames in ascending order."""
-    from datetime import timedelta
-
     base = datetime(2026, 4, 1, 3, 0, tzinfo=timezone.utc)
     return [backup_filename(base + timedelta(days=i)) for i in range(n)]
 

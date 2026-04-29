@@ -90,7 +90,7 @@ def _normalize(annotation: object) -> object:
     if origin is types.UnionType or origin is typing.Union:
         return ("Union", frozenset(_normalize(a) for a in args))
     if not args:
-        if annotation is type(None):
+        if annotation is type(None):  # pylint: disable=unidiomatic-typecheck
             return "None"
         return getattr(annotation, "__qualname__", repr(annotation))
     head = getattr(origin, "__qualname__", repr(origin))

@@ -28,7 +28,7 @@ from fishsense_data_processing_workflow_worker.workflows.dive_frame_clustering_w
 from fishsense_data_processing_workflow_worker.workflows.preprocess_dive_images_workflow import (
     PreprocessDiveImagesWorkflow,
 )
-from fishsense_data_processing_workflow_worker.workflows.preprocess_headtail_images_workflow import (
+from fishsense_data_processing_workflow_worker.workflows.preprocess_headtail_images_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PreprocessHeadtailImagesWorkflow,
 )
 from fishsense_data_processing_workflow_worker.workflows.preprocess_laser_images_workflow import (

@@ -15,7 +15,7 @@ from temporalio.worker import Worker
 from fishsense_data_processing_workflow_worker.activities.preprocess_headtail_image import (
     preprocess_headtail_image,
 )
-from fishsense_data_processing_workflow_worker.workflows.preprocess_headtail_images_workflow import (
+from fishsense_data_processing_workflow_worker.workflows.preprocess_headtail_images_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PreprocessHeadtailImagesInput,
     PreprocessHeadtailImagesWorkflow,
 )
@@ -61,9 +61,8 @@ def configure_worker_settings(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.mark.asyncio
-async def test_workflow_processes_one_image_end_to_end(
-    raw_orf_bytes: bytes, configure_worker_settings
-):
+@pytest.mark.usefixtures("configure_worker_settings")
+async def test_workflow_processes_one_image_end_to_end(raw_orf_bytes: bytes):
     checksum = f"itest-stage51-{uuid.uuid4().hex}"
 
     async with httpx.AsyncClient(

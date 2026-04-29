@@ -43,7 +43,7 @@ async def test_download_raw_uses_exchange_raw_url_and_returns_bytes():
 
 @pytest.mark.asyncio
 async def test_download_raw_raises_on_404():
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(404)
 
     client = _client(handler)
@@ -77,7 +77,7 @@ async def test_upload_processed_jpeg_puts_bytes_at_folder_checksum_url():
 
 @pytest.mark.asyncio
 async def test_upload_processed_jpeg_raises_on_5xx():
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(500)
 
     client = _client(handler)
@@ -109,7 +109,7 @@ async def test_download_slate_pdf_uses_exchange_dive_slate_pdfs_url():
 
 @pytest.mark.asyncio
 async def test_download_slate_pdf_raises_on_404():
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(404)
 
     client = _client(handler)

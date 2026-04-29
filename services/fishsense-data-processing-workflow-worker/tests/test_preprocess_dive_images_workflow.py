@@ -3,11 +3,10 @@
 Runs the workflow end-to-end against an in-process Temporal test server
 (`WorkflowEnvironment.start_time_skipping()` — no real temporald). The
 preprocess_dive_image activity is replaced with a stub that records its
-inputs so we can assert the workflow's fanout and per-image arg shape
+payloads so we can assert the workflow's fanout and per-image arg shape
 without doing any real image work.
 """
 
-import asyncio
 import uuid
 from typing import List
 
@@ -35,9 +34,9 @@ async def test_workflow_fans_out_one_activity_per_image_with_correct_indices():
 
     @activity.defn(name="preprocess_dive_image")
     async def stub_preprocess_dive_image(
-        input: PreprocessDiveImageInput,
+        payload: PreprocessDiveImageInput,
     ) -> None:
-        calls.append(input)
+        calls.append(payload)
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
@@ -88,9 +87,9 @@ async def test_workflow_with_no_clusters_makes_no_activity_calls():
 
     @activity.defn(name="preprocess_dive_image")
     async def stub_preprocess_dive_image(
-        input: PreprocessDiveImageInput,
+        payload: PreprocessDiveImageInput,
     ) -> None:
-        calls.append(input)
+        calls.append(payload)
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
@@ -111,4 +110,4 @@ async def test_workflow_with_no_clusters_makes_no_activity_calls():
                 task_queue="test-stage2-empty",
             )
 
-    assert calls == []
+    assert not calls

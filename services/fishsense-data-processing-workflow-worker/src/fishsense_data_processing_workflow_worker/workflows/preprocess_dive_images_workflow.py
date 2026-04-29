@@ -45,15 +45,15 @@ class PreprocessDiveImagesInput(BaseModel):
 class PreprocessDiveImagesWorkflow:
     # pylint: disable=too-few-public-methods
     @workflow.run
-    async def run(self, input: PreprocessDiveImagesInput) -> None:
+    async def run(self, payload: PreprocessDiveImagesInput) -> None:
         workflow.logger.info(
             "preprocessing dive_id=%d clusters=%d images=%d",
-            input.dive_id,
-            len(input.clusters),
-            sum(len(c) for c in input.clusters),
+            payload.dive_id,
+            len(payload.clusters),
+            sum(len(c) for c in payload.clusters),
         )
 
-        for cluster in input.clusters:
+        for cluster in payload.clusters:
             await asyncio.gather(
                 *[
                     workflow.execute_activity(
@@ -63,8 +63,8 @@ class PreprocessDiveImagesWorkflow:
                             cluster_index=i + 1,
                             cluster_size=len(cluster),
                             output_folder="preprocess_groups_jpeg",
-                            camera_matrix=input.camera_matrix,
-                            distortion_coefficients=input.distortion_coefficients,
+                            camera_matrix=payload.camera_matrix,
+                            distortion_coefficients=payload.distortion_coefficients,
                         ),
                         schedule_to_close_timeout=timedelta(minutes=5),
                     )

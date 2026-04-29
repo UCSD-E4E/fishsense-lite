@@ -28,12 +28,12 @@ async def test_workflow_dumps_each_db_then_prunes_each_db():
     prune_calls: List[PruneDatabaseBackupsInput] = []
 
     @activity.defn(name="pg_dump_database")
-    async def stub_pg_dump(input: PgDumpDatabaseInput) -> None:
-        dump_calls.append(input)
+    async def stub_pg_dump(payload: PgDumpDatabaseInput) -> None:
+        dump_calls.append(payload)
 
     @activity.defn(name="prune_database_backups")
-    async def stub_prune(input: PruneDatabaseBackupsInput) -> None:
-        prune_calls.append(input)
+    async def stub_prune(payload: PruneDatabaseBackupsInput) -> None:
+        prune_calls.append(payload)
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
@@ -70,12 +70,12 @@ async def test_workflow_does_not_prune_until_all_dumps_complete():
     timeline: List[str] = []
 
     @activity.defn(name="pg_dump_database")
-    async def stub_pg_dump(input: PgDumpDatabaseInput) -> None:
-        timeline.append(f"dump:{input.db_name}")
+    async def stub_pg_dump(payload: PgDumpDatabaseInput) -> None:
+        timeline.append(f"dump:{payload.db_name}")
 
     @activity.defn(name="prune_database_backups")
-    async def stub_prune(input: PruneDatabaseBackupsInput) -> None:
-        timeline.append(f"prune:{input.db_name}")
+    async def stub_prune(payload: PruneDatabaseBackupsInput) -> None:
+        timeline.append(f"prune:{payload.db_name}")
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
@@ -108,12 +108,12 @@ async def test_workflow_with_no_databases_makes_no_activity_calls():
     prune_calls: List[PruneDatabaseBackupsInput] = []
 
     @activity.defn(name="pg_dump_database")
-    async def stub_pg_dump(input: PgDumpDatabaseInput) -> None:
-        dump_calls.append(input)
+    async def stub_pg_dump(payload: PgDumpDatabaseInput) -> None:
+        dump_calls.append(payload)
 
     @activity.defn(name="prune_database_backups")
-    async def stub_prune(input: PruneDatabaseBackupsInput) -> None:
-        prune_calls.append(input)
+    async def stub_prune(payload: PruneDatabaseBackupsInput) -> None:
+        prune_calls.append(payload)
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
@@ -133,5 +133,5 @@ async def test_workflow_with_no_databases_makes_no_activity_calls():
                 task_queue="test-backup-empty",
             )
 
-    assert dump_calls == []
-    assert prune_calls == []
+    assert not dump_calls
+    assert not prune_calls

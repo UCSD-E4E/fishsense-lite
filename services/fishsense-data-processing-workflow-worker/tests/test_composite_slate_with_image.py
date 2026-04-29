@@ -4,7 +4,6 @@ Notebook layout: PDF rendering on the left, rectified image on the
 right; reference points drawn as red filled circles + numbered labels,
 each scaled by `img_height / pdf_height`."""
 
-import cv2
 import numpy as np
 
 from fishsense_data_processing_workflow_worker.activities.preprocess_slate_image import (
