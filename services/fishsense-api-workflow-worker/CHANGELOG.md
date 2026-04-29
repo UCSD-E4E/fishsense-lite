@@ -2,6 +2,20 @@
 
 <!-- version list -->
 
+## [1.21.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.20.1...fishsense-api-workflow-worker-v1.21.0) (2026-04-29)
+
+
+### Features
+
+* **ci:** build-once / promote-tag deploy split + monorepo-aware Dockerfiles ([66d20b9](https://github.com/UCSD-E4E/fishsense-lite/commit/66d20b9b9bc834bc2ebc88461006d71a7dd14faa))
+* **ci:** root monorepo workflows (lint, release, docker) ([d58b806](https://github.com/UCSD-E4E/fishsense-lite/commit/d58b806b2ebf40e4826c7c601c8bd8ffd4fa4790))
+* **shared:** extract fishsense-shared lib for Dynaconf, logging, TLS, ExceptionGroup helpers ([f896c5f](https://github.com/UCSD-E4E/fishsense-lite/commit/f896c5fc6017edc509e0e0c651da2b2a4c6519e6))
+
+
+### Documentation
+
+* fill in package-level READMEs across services and libs ([df477db](https://github.com/UCSD-E4E/fishsense-lite/commit/df477dbb4c0956d4aa3864c66a2ffc13a31a9feb))
+
 ## v1.20.1 (2026-02-25)
 
 ### Bug Fixes
