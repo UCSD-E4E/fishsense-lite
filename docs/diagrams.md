@@ -77,50 +77,53 @@ flowchart TB
         direction TB
         subgraph C_BASE["compose.yml + compose.orchestrator.yml"]
             P_API["fishsense-api"]
-            P_FX["static_file_server (nginx DAV)"]
+            P_FX["static_file_server nginx DAV"]
             P_PG[("PostgreSQL 17")]
-            P_AUTHENTIK["Authentik (OAuth proxy)"]
+            P_AUTHENTIK["Authentik OAuth proxy"]
         end
         subgraph C_TEMPORAL["compose.temporal.yml"]
             P_TEMPORAL["Temporal cluster"]
         end
         subgraph C_WORKERS["compose.workers.yml"]
             P_APIWW["fishsense-api-workflow-worker"]
-            P_BUW["fishsense-backup-worker (planned)"]
+            P_BUW["fishsense-backup-worker planned"]
         end
         subgraph C_SUPERSET["compose.superset.yml"]
             P_SUP["Superset"]
         end
     end
 
-    subgraph DWHOST["Data-worker host (separate, compose not in this repo)"]
+    subgraph DWHOST["Data-worker host - separate, compose not in this repo"]
         D_DPW["fishsense-data-processing-workflow-worker"]
     end
 
-    subgraph DEV["Local devcontainer (compose.local.yml)"]
-        L_PG[("postgres:17 (named volume pg_data)")]
-        L_TEMPORAL["temporalio/auto-setup:1.29 (no TLS)"]
-        L_API["ghcr.io/.../fishsense-api:v1.18.1"]
+    subgraph DEV["Local devcontainer - compose.local.yml"]
+        L_PG[("postgres 17")]
+        L_TEMPORAL["temporal auto-setup"]
+        L_API["fishsense-api pinned image"]
         L_FX["nginx static_file_server"]
-        L_DEV["dev (workspace bind-mount)"]
+        L_DEV["dev workspace bind-mount"]
     end
 
     subgraph CI["GitHub Actions"]
-        CI_BUILD["build.yml<br/>:sha-X + :main"]
-        CI_RELEASE["release.yml<br/>(release-please)"]
-        CI_PROMOTE["promote.yml<br/>retag :sha-X → :vN.N + :latest<br/>opens auto-deploy/* PR"]
-        CI_DEPLOY["deploy.yml<br/>self-hosted [fishsense-prod]<br/>docker compose pull && up -d"]
+        CI_BUILD["build.yml"]
+        CI_RELEASE["release.yml"]
+        CI_PROMOTE["promote.yml"]
+        CI_DEPLOY["deploy.yml"]
+        GHCR["GHCR images"]
+        GH_REL["GitHub release tag"]
+        AUTO_PR["auto-deploy PR"]
     end
 
-    CI_BUILD   -->|on push to main| GHCR[("GHCR images")]
-    CI_RELEASE -->|on PR merge|     GH_REL["GitHub release tag"]
-    GH_REL     -->|release: published| CI_PROMOTE
+    CI_BUILD   -->|on push to main| GHCR
+    CI_RELEASE -->|on release PR merge| GH_REL
+    GH_REL     -->|release published event| CI_PROMOTE
     CI_PROMOTE --> GHCR
-    CI_PROMOTE -->|opens compose-pin PR| AUTO_PR["auto-deploy/* PR"]
+    CI_PROMOTE -->|opens compose-pin PR| AUTO_PR
     AUTO_PR    -->|on merge| CI_DEPLOY
     CI_DEPLOY  -->|target| PROD
 
-    DWHOST -.->|"manual `docker compose pull && up -d` —<br/>no auto-deploy PR for the data-worker"| GHCR
+    DWHOST -.->|manual docker compose pull and up| GHCR
 ```
 
 Notes:
@@ -474,28 +477,27 @@ State of an image as it moves from a commit to prod.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Pushed : git push main
-    Pushed --> Built : build.yml<br/>image :sha-X + :main
+    [*] --> Pushed
+    Pushed --> Built : build.yml builds and tags image
     Built --> ReleasePR : release-please opens PR
-    ReleasePR --> Tagged : PR merged → release.yml<br/>cuts vN.N tag + GH release
-    Tagged --> Promoted : release: published →<br/>promote.yml retags :sha-X → :vN.N + :latest
-    Promoted --> AutoDeployPR : promote.yml opens<br/>auto-deploy/&lt;pkg&gt;-&lt;ver&gt; PR<br/>(bumps deploy/compose*.yml pin)
-    AutoDeployPR --> Deployed : human merges PR →<br/>deploy.yml on [fishsense-prod] runner<br/>docker compose pull && up -d
+    ReleasePR --> Tagged : PR merged so release.yml cuts tag
+    Tagged --> Promoted : promote.yml retags image
+    Promoted --> AutoDeployPR : promote.yml opens compose-pin PR
+    AutoDeployPR --> Deployed : human merges so deploy.yml runs compose
     Deployed --> [*]
 
     note right of Promoted
-        Manifest-only retag<br/>
-        (no layer push, ~seconds).<br/>
-        Race-proof: tags the image built<br/>
-        from the release commit, not whatever<br/>
-        :latest happens to be.
+        Manifest-only retag, no layer push.
+        Race-proof - tags the image built from the
+        release commit, not whatever latest happens
+        to be.
     end note
 
     note right of AutoDeployPR
-        data-processing-workflow-worker is<br/>
-        held off auto-deploy — its host's<br/>
-        compose isn't in this repo.<br/>
-        :vN.N still gets tagged for manual rollout.
+        data-processing-workflow-worker is held off
+        auto-deploy because its host compose is not
+        in this repo. The image still gets a version
+        tag for manual rollout.
     end note
 ```
 
