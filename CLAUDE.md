@@ -196,6 +196,25 @@ self-hosted runner labeled `fishsense-prod`, co-located with the
 docker engine running `deploy/compose.yml`. **The runner doesn't
 exist yet** — until one is registered, deploy jobs sit in queue.
 
+The workflow operates on a **persistent ops-managed deploy directory**
+on the host (path supplied via repo variable `DEPLOY_DIR`),
+NOT the runner's default `_work` checkout. This matters because
+`deploy/compose*.yml` uses relative bind mounts (`./pg_volumes`,
+`./worker_volumes`, `./.secrets/...`) for postgres data, worker
+config, postgres admin password, temporal env files, etc. — none of
+which are tracked in git. Running compose against the runner's
+fresh `_work` checkout would silently start postgres with an empty
+data dir.
+
+Host bootstrap (one-time):
+1. Register the runner with `--labels fishsense-prod`.
+2. `git clone` the repo to a persistent path (e.g. `/srv/fishsense`).
+3. Set repo variable `DEPLOY_DIR` to that path under Settings ->
+   Secrets and variables -> Actions -> Variables.
+4. Restore `pg_volumes/`, `worker_volumes/`, `temporal_volumes/`,
+   `mafl_volumes/`, and `.secrets/` (untracked siblings of the
+   compose files) from existing prod state.
+
 Three reasons for the split:
 1. **Race-proof promotion.** The release tag points at a specific
    commit SHA. Promote retags the image built from that exact SHA,
