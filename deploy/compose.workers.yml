@@ -29,6 +29,6 @@ services:
       - temporal
     volumes:
       - ./temporal_volumes/certs:/certs:ro
-      - ./worker_volumes/backup_worker_config:/e4efs/config:ro
+      - ./worker_volumes/backup_config:/e4efs/config:ro
       - ./worker_volumes/backup_worker/logs:/e4efs/logs:rw
     restart: on-failure:15
