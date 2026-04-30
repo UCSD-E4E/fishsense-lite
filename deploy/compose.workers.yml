@@ -8,10 +8,6 @@
 # fishsense-data-processing-workflow-worker is intentionally NOT here:
 # it runs on a separate host (held off auto-deploy for now) — see the
 # corresponding compose file on that host once it exists.
-#
-# fishsense-backup-worker is intentionally NOT here yet: it needs a
-# narrow `backup` Postgres role + NAS creds in .secrets/ before its
-# stanza can be added. See services/fishsense-backup-worker/README.md.
 
 services:
   fishsense-api-workflow-worker:
@@ -26,3 +22,13 @@ services:
     restart: on-failure:15
     deploy:
       replicas: 2
+
+  fishsense-backup-worker:
+    image: ghcr.io/ucsd-e4e/fishsense-backup-worker:v0.2.0
+    depends_on:
+      - temporal
+    volumes:
+      - ./temporal_volumes/certs:/certs:ro
+      - ./backup_worker_volumes/config:/e4efs/config:ro
+      - ./backup_worker_volumes/logs:/e4efs/logs:rw
+    restart: on-failure:15
