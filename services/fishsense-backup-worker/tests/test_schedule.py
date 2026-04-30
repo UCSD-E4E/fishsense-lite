@@ -23,7 +23,7 @@ def _schedule() -> Schedule:
         retention_count=14,
         cron_expression="0 3 * * *",
         task_queue="fishsense_backup_queue",
-        workflow_id="fishsense-daily-db-backup-{ScheduledStartTime}",
+        workflow_id="fishsense-daily-db-backup",
     )
 
 

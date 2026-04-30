@@ -66,10 +66,26 @@ def run_pg_dump(
         "pg_dump start db=%s host=%s:%d user=%s out=%s",
         db_name, host, port, username, output_path,
     )
-    subprocess.run(
+    # Capture stderr so the failure reason (auth / missing DB / network)
+    # ends up in the CalledProcessError that Temporal records, instead
+    # of only on the worker's stderr stream where it's easy to miss.
+    result = subprocess.run(
         cmd,
         env=env,
-        check=True,
         timeout=timeout_s,
+        capture_output=True,
+        text=True,
+        check=False,
     )
+    if result.returncode != 0:
+        _log.error(
+            "pg_dump failed db=%s rc=%d stderr=%s",
+            db_name, result.returncode, result.stderr,
+        )
+        raise subprocess.CalledProcessError(
+            returncode=result.returncode,
+            cmd=cmd,
+            output=result.stdout,
+            stderr=result.stderr,
+        )
     _log.info("pg_dump done db=%s out=%s", db_name, output_path)

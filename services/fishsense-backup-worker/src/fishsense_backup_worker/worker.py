@@ -47,7 +47,7 @@ async def main() -> None:
         retention_count=int(settings.backup.retention_count),
         cron_expression=settings.backup.schedule_cron,
         task_queue=settings.backup.task_queue,
-        workflow_id="fishsense-daily-db-backup-{ScheduledStartTime}",
+        workflow_id="fishsense-daily-db-backup",
     )
     await ensure_backup_schedule(
         client, schedule_id=settings.backup.schedule_id, schedule=schedule
