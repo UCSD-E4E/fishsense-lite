@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-backup-worker-v0.2.0...fishsense-backup-worker-v0.2.1) (2026-04-30)
+
+
+### Bug Fixes
+
+* **backup-worker:** surface pg_dump stderr and drop bogus workflow-id placeholder ([ce4f748](https://github.com/UCSD-E4E/fishsense-lite/commit/ce4f7484ffc1e093afc5ba319c6bc5eca45a2d1c))
+
 ## [0.2.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-backup-worker-v0.1.0...fishsense-backup-worker-v0.2.0) (2026-04-29)
 
 
