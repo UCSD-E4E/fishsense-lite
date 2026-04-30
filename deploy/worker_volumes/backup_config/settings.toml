@@ -1,0 +1,29 @@
+[general]
+max_workers = 8
+
+[temporal]
+host = "fishsense-temporal"
+port = 7233
+tls = true
+client_cert = "/certs/client/fishsense-backup-worker.pem"
+client_private_key = "/certs/client/fishsense-backup-worker.key"
+domain = "workflows.fishsense.e4e.ucsd.edu"
+server_root_ca_cert = "/certs/ca/root-ca.pem"
+
+[postgres]
+host = "postgres"
+port = 5432
+username = "backup"
+
+[e4e_nas]
+# Synology DSM URL — must include hostname AND port (synology-api needs both).
+# Default DSM HTTPS is :5001. Replace with the actual NAS host+port.
+url = "https://nas.e4e.ucsd.edu:6021"
+
+[backup]
+databases = ["fishsense", "superset", "temporal_db"]
+retention_count = 14
+nas_root_path = "/fishsense_data"
+schedule_id = "fishsense-daily-db-backup"
+schedule_cron = "0 3 * * *"
+task_queue = "fishsense_backup_queue"

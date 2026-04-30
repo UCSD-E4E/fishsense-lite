@@ -237,8 +237,10 @@ a separate host and that host's compose isn't in this repo yet.
 services running on the orchestrator host. Currently has
 `fishsense-api-workflow-worker` (moved out of `compose.temporal.yml`
 on 2026-04-29 — workers consume Temporal but aren't part of the
-cluster). `fishsense-backup-worker`'s stanza will land here once the
-prod `backup` Postgres role + NAS creds are set up.
+cluster) and `fishsense-backup-worker`. The backup worker reads its
+postgres + NAS credentials from `./backup_worker_volumes/config/`
+(`settings.toml` + `.secrets.toml`); that directory must be
+populated on the host before the service will start successfully.
 
 Race guard: promote.yml polls for the `:sha-<short>` image to appear
 (up to 20 min) before retagging. build.yml is triggered by the same
