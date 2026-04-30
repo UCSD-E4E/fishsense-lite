@@ -1,0 +1,77 @@
+name: Rebuild images from main
+
+# Manual recovery workflow. Builds every service image at current
+# main HEAD and pushes it tagged with the version recorded in
+# .release-please-manifest.json plus :latest, :main, and
+# :sha-<short>. Use when GHCR packages have been deleted/relinked
+# and need to be repopulated end-to-end without going through a
+# full release-please cycle.
+#
+# This is additive to build.yml + promote.yml — it doesn't replace
+# them. Future releases still land via the normal flow; this
+# workflow exists for one-off recovery.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - fishsense-api
+          - fishsense-api-workflow-worker
+          - fishsense-backup-worker
+          - fishsense-data-processing-workflow-worker
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Read version from release-please manifest
+        id: ver
+        run: |
+          v="$(jq -r --arg k "services/${{ matrix.service }}" '.[$k]' .release-please-manifest.json)"
+          if [ -z "$v" ] || [ "$v" = "null" ]; then
+            echo "::error::no manifest entry for services/${{ matrix.service }}"
+            exit 1
+          fi
+          echo "version=v${v}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute lowercased image name
+        id: img
+        run: |
+          owner_lc="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "name=${{ env.REGISTRY }}/${owner_lc}/${{ matrix.service }}" >> "$GITHUB_OUTPUT"
+
+      - name: Compute short SHA
+        id: sha
+        run: echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/${{ matrix.service }}/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.img.outputs.name }}:${{ steps.ver.outputs.version }}
+            ${{ steps.img.outputs.name }}:latest
+            ${{ steps.img.outputs.name }}:main
+            ${{ steps.img.outputs.name }}:sha-${{ steps.sha.outputs.short }}
+          cache-from: type=registry,ref=${{ steps.img.outputs.name }}:buildcache
+          cache-to: type=registry,ref=${{ steps.img.outputs.name }}:buildcache,mode=max
