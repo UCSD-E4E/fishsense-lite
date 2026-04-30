@@ -3,10 +3,10 @@ max_workers = 8
 
 [temporal]
 host = "fishsense-temporal"
-port = 7233
+port = "7233"
 tls = true
-client_cert = "/certs/client/fishsense-backup-worker.pem"
-client_private_key = "/certs/client/fishsense-backup-worker.key"
+client_cert = "/certs/client/fishsense-api-workflow-worker.pem"
+client_private_key = "/certs/client/fishsense-api-workflow-worker.key"
 domain = "workflows.fishsense.e4e.ucsd.edu"
 server_root_ca_cert = "/certs/ca/root-ca.pem"
 
