@@ -2,6 +2,18 @@
 
 <!-- version list -->
 
+## [1.30.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.29.1...fishsense-api-sdk-v1.30.0) (2026-04-29)
+
+
+### Features
+
+* **ci:** wire workspace pytest suites into CI matrix ([0cef4e4](https://github.com/UCSD-E4E/fishsense-lite/commit/0cef4e4d5747502faf6a9f2d218099da3bece161))
+
+
+### Documentation
+
+* fill in package-level READMEs across services and libs ([df477db](https://github.com/UCSD-E4E/fishsense-lite/commit/df477dbb4c0956d4aa3864c66a2ffc13a31a9feb))
+
 ## v1.29.1 (2026-04-27)
 
 ### Bug Fixes
