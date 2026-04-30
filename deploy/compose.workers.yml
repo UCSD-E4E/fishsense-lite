@@ -24,7 +24,7 @@ services:
       replicas: 2
 
   fishsense-backup-worker:
-    image: ghcr.io/ucsd-e4e/fishsense-backup-worker:v0.2.0
+    image: ghcr.io/ucsd-e4e/fishsense-backup-worker:v0.2.1
     depends_on:
       - temporal
     volumes:
