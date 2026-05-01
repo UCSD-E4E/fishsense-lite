@@ -15,6 +15,11 @@ from fishsense_shared import ExceptionGroupErrorLogging
 
 SYNC_CONCURRENCY = 8
 
+# Heartbeat cadence for the long initial LS-task listing on a backlog
+# project. Comfortably under the 2m heartbeat_timeout in the workflow
+# (see sync_label_studio_*_workflow.py).
+_LISTING_HEARTBEAT_INTERVAL_SECONDS = 30.0
+
 
 def get_ls_client():
     """Get Label Studio client.
@@ -57,6 +62,40 @@ def _coerce_updated_at(value: Any) -> datetime | None:
     return None
 
 
+async def _list_ls_tasks_with_heartbeat(
+    ls: LabelStudio, project_id: int
+) -> list[Any]:
+    """Fully materialize an LS project's task list off the asyncio event
+    loop while pumping heartbeats.
+
+    `ls.tasks.list(...)` returns a lazy `SyncPager`; iterating it issues
+    one synchronous HTTP call per page. On a backlog project this can
+    page for the full activity timeout, so doing it on the main thread
+    starves heartbeat flush and trips the 2m heartbeat_timeout. Page in
+    a worker thread; heartbeat from the main thread on a fixed cadence.
+    """
+
+    async def _pump() -> None:
+        try:
+            while True:
+                await asyncio.sleep(_LISTING_HEARTBEAT_INTERVAL_SECONDS)
+                activity.heartbeat()
+        except asyncio.CancelledError:
+            return
+
+    pump = asyncio.create_task(_pump())
+    try:
+        return await asyncio.to_thread(
+            lambda: list(ls.tasks.list(project=project_id))
+        )
+    finally:
+        pump.cancel()
+        try:
+            await pump
+        except asyncio.CancelledError:
+            pass
+
+
 async def sync_label_studio_project(
     project_id: int,
     update_fn: Callable[[Client, Any], Awaitable[None]],
@@ -86,7 +125,7 @@ async def sync_label_studio_project(
         activity.logger.warning(f"Error fetching project {project_id}: {e}")
         return
 
-    tasks = await asyncio.to_thread(ls.tasks.list, project=project_id)
+    tasks = await _list_ls_tasks_with_heartbeat(ls, project_id)
     sem = asyncio.Semaphore(concurrency)
 
     async with get_fs_client() as fs:

@@ -16,6 +16,7 @@ Asserts the helper's contract with `LabelStudioSyncCursor`:
 
 from __future__ import annotations
 
+import time
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any, List
@@ -222,3 +223,41 @@ async def test_kind_is_forwarded_to_cursor_calls(monkeypatch):
     args, _ = fs.labels.put_sync_cursor.await_args
     assert args[0] == "headtail"
     assert args[1] == 42
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_pumps_during_slow_ls_listing(monkeypatch):
+    """A backlog project's pager iterates synchronously inside a worker
+    thread; the helper must pump heartbeats from the asyncio main thread
+    so the 2m heartbeat_timeout doesn't trip mid-listing.
+    """
+    monkeypatch.setattr(sut_utils, "_LISTING_HEARTBEAT_INTERVAL_SECONDS", 0.05)
+
+    tasks = [_task(1, updated_at="2026-04-01T00:00:00Z")]
+
+    def _slow_list(*_args, **_kwargs):
+        # Block the worker thread long enough for ≥2 heartbeat ticks.
+        time.sleep(0.25)
+        return tasks
+
+    fs = _make_fs_client(cursor=None)
+    ls = _make_ls_client(tasks)
+    ls.tasks.list = MagicMock(side_effect=_slow_list)
+    monkeypatch.setattr(sut_utils, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "get_ls_client", lambda: ls)
+
+    heartbeats: list[tuple] = []
+
+    @activity.defn(name="_test")
+    async def stub_activity():
+        await sut_utils.sync_label_studio_project(42, lambda *_: _noop(), kind="laser")
+
+    async def _noop():
+        return None
+
+    env = ActivityEnvironment()
+    env.on_heartbeat = lambda *args: heartbeats.append(args)
+    await env.run(stub_activity)
+
+    # ≥2 from the listing pump (per-task heartbeat in _run is one more).
+    assert len(heartbeats) >= 2
