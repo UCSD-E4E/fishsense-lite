@@ -45,7 +45,10 @@ run_lint() {
     local base
     base="$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD)"
     local changed
-    changed="$(git diff --name-only --diff-filter=ACMR "$base" HEAD -- '*.py')"
+    # Compare working tree (committed + staged + unstaged) to $base, not
+    # HEAD, so a local pre-commit run lints uncommitted edits. CI is
+    # unaffected because there the working tree equals HEAD.
+    changed="$(git diff --name-only --diff-filter=ACMR "$base" -- '*.py')"
     if [ -z "$changed" ]; then
         echo "no Python changes since origin/main; skipping pylint"
         return 0
