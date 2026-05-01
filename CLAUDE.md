@@ -8,7 +8,7 @@ Loose ends and architectural conventions that aren't otherwise tracked.
 |---|---|---|
 | `services/fishsense-api/` | FastAPI app (DB CRUD, label endpoints) | — |
 | `services/fishsense-api-workflow-worker/` | api-side Temporal worker: hourly Label Studio sync (laser/headtail/dive-slate/species), Superset dashboard-config writer, on-demand Create/Populate × {Laser,Species,HeadTail,DiveSlate} LS project workflows | `fishsense_api_queue` |
-| `services/fishsense-data-processing-workflow-worker/` | image preprocessing (rectify/overlay/JPEG), laser calibration, fish measurement | `fishsense_data_processing_queue` |
+| `services/fishsense-data-processing-workflow-worker/` | image preprocessing (rectify/overlay/JPEG), laser calibration, fish measurement; hourly stage-0.1 sweep | `fishsense_data_processing_queue` |
 | `services/fishsense-backup-worker/` | nightly Postgres → NAS backups + retention | `fishsense_backup_queue` |
 
 The backup worker is **deliberately separate** from the data-processing
@@ -35,7 +35,7 @@ DB (negligible). To add or remove, override
 
 | Stage | Notebook | Owner | Status |
 |---|---|---|---|
-| 0.1 | preprocess_laser_images | data-worker | ported |
+| 0.1 | preprocess_laser_images | data-worker | ported (hourly) |
 | 0.3 | populate_label_studio_project | api-worker | ported |
 | 1   | cluster_dive_frames | data-worker | ported (pre-existing) |
 | 2   | preprocess_dive_images | data-worker | ported |
@@ -84,6 +84,17 @@ The activity refuses to re-run when LABEL_STUDIO clusters already
 exist — the cluster API has no DELETE, so a re-POST would silently
 double-count. To re-group after labels change, an operator must
 manually drop the existing LABEL_STUDIO clusters first.
+
+`PreprocessLaserImagesWorkflow()` is the stage-0.1 self-pacing
+workflow: it takes no args, picks the lowest-id HIGH-priority dive
+without `LaserExtrinsics` via
+`select_next_high_priority_dive_for_laser_preprocessing_activity`,
+resolves its incomplete-laser-label image set + camera intrinsics via
+`resolve_laser_preprocess_inputs_activity`, then fans out
+`preprocess_laser_image` per checksum. Hourly schedule on the
+data-worker drains an N-dive backlog in N hours; operators can also
+trigger ad-hoc runs. Selector cohort matches `dry_run_stage13.py` so
+preprocessing always lines up with the next calibration target.
 
 ## Data-worker activity pattern
 

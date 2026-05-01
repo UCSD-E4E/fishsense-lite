@@ -1,12 +1,10 @@
-"""Stage 0.1 workflow: fan out preprocess_laser_image across every
-incomplete laser-labeled image of a dive.
+"""Stage 0.1 workflow: pick the next HIGH-priority dive needing laser
+preprocessing, resolve its incomplete-laser-label image set, and fan
+out per-image rectify/overlay/encode work.
 
-Inputs are pre-resolved by the api-worker (image checksums of incomplete
-laser labels for the dive, camera intrinsics, the laser-bbox constant).
-The workflow does not call fishsense-api, the NAS, or the file-exchange
-itself — it only orchestrates activities. Raw `.ORF` bytes must already
-have been staged on the file-exchange under
-`/api/v1/exchange/raw/{checksum}.ORF` before the workflow runs.
+The selector + resolver activities live alongside the per-image activity
+on the data-worker — the data-worker already uses the SDK for stages
+13/14, so the api-worker stays thin (no orchestrator).
 """
 
 import asyncio
@@ -15,6 +13,16 @@ from typing import List, Tuple
 
 from pydantic import BaseModel
 from temporalio import workflow
+
+with workflow.unsafe.imports_passed_through():
+    from fishsense_data_processing_workflow_worker.activities.resolve_laser_preprocess_inputs_activity import (  # noqa: E501  pylint: disable=line-too-long
+        LaserPreprocessInputs,
+    )
+
+# Notebook hardcoded; promoted to a workflow constant when the input
+# layer was dropped. Move to settings if a second bbox is ever needed.
+DEFAULT_LASER_BBOX: Tuple[int, int, int, int] = (1800, 700, 2400, 1600)
+OUTPUT_FOLDER = "preprocess_jpeg"
 
 
 class PreprocessLaserImageInput(BaseModel):
@@ -27,29 +35,43 @@ class PreprocessLaserImageInput(BaseModel):
     distortion_coefficients: List[float]
 
 
-class PreprocessLaserImagesInput(BaseModel):
-    """Whole-workflow payload: a flat list of image checksums plus the
-    camera intrinsics and laser-bbox constant."""
-
-    dive_id: int
-    image_checksums: List[str]
-    camera_matrix: List[List[float]]
-    distortion_coefficients: List[float]
-    # Original notebook hardcoded (1800, 700, 2400, 1600); kept as payload so
-    # the api-worker can promote it to config without touching this code.
-    bbox: List[int]
-
-
 @workflow.defn
 class PreprocessLaserImagesWorkflow:
     # pylint: disable=too-few-public-methods
+    """Auto-pick the next HIGH-priority dive without laser extrinsics and
+    preprocess every still-incomplete laser image for it.
+
+    Returns the dive_id processed (or None when the backlog is empty).
+    Idempotent: each invocation drains exactly one dive, so an hourly
+    schedule clears an N-dive backlog in N hours. Operators can also
+    trigger ad-hoc runs via `temporal workflow start`.
+    """
+
     @workflow.run
-    async def run(self, payload: PreprocessLaserImagesInput) -> None:
+    async def run(self) -> int | None:
+        dive_id = await workflow.execute_activity(
+            "select_next_high_priority_dive_for_laser_preprocessing_activity",
+            args=(),
+            schedule_to_close_timeout=timedelta(minutes=5),
+        )
+        if dive_id is None:
+            return None
+
+        inputs: LaserPreprocessInputs = await workflow.execute_activity(
+            "resolve_laser_preprocess_inputs_activity",
+            args=(dive_id,),
+            schedule_to_close_timeout=timedelta(minutes=5),
+            result_type=LaserPreprocessInputs,
+        )
+
         workflow.logger.info(
             "preprocessing laser images dive_id=%d images=%d",
-            payload.dive_id,
-            len(payload.image_checksums),
+            inputs.dive_id,
+            len(inputs.image_checksums),
         )
+
+        if not inputs.image_checksums:
+            return inputs.dive_id
 
         await asyncio.gather(
             *[
@@ -57,13 +79,15 @@ class PreprocessLaserImagesWorkflow:
                     "preprocess_laser_image",
                     PreprocessLaserImageInput(
                         checksum=checksum,
-                        output_folder="preprocess_jpeg",
-                        bbox=tuple(payload.bbox),
-                        camera_matrix=payload.camera_matrix,
-                        distortion_coefficients=payload.distortion_coefficients,
+                        output_folder=OUTPUT_FOLDER,
+                        bbox=DEFAULT_LASER_BBOX,
+                        camera_matrix=inputs.camera_matrix,
+                        distortion_coefficients=inputs.distortion_coefficients,
                     ),
                     schedule_to_close_timeout=timedelta(minutes=5),
                 )
-                for checksum in payload.image_checksums
+                for checksum in inputs.image_checksums
             ]
         )
+
+        return inputs.dive_id

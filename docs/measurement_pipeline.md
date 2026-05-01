@@ -21,13 +21,14 @@ status" section of [CLAUDE.md](../CLAUDE.md).
 
 | Stage | Notebook | Worker | Status |
 |---|---|---|---|
-| 0.1 | `preprocess_laser_images` | data | ported |
+| 0.1 | `preprocess_laser_images` | data | ported (hourly self-paced) |
 | 0.3 | `populate_label_studio_project` (Laser) | api | ported |
 | —   | hourly `SyncLabelStudioLaserLabelsWorkflow` | api | scheduled |
 | 13  | `perform_laser_calibration` | data | ported (kernel in fishsense-core) |
 
 1. **Stage 0.1** rectifies + JPEG-encodes laser-only flat-target shots
-   (data-worker, writes to `preprocess_jpeg/`).
+   (data-worker, writes to `preprocess_jpeg/`). Hourly schedule
+   self-picks the next HIGH-priority dive without `LaserExtrinsics`.
 2. **Stage 0.3** `PopulateLaserLabelStudioProjectWorkflow` pushes them
    into the LS Laser project.
 3. *Humans label the laser dot* in each frame.

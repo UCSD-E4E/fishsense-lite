@@ -193,6 +193,28 @@ Safe sequence per dive: confirm `species_label.grouping` is
 populated for the dive's images (the hourly species sync has run at
 least once with completed labels), then trigger 6.1.
 
+#### Stage 0.1 (PreprocessLaserImagesWorkflow) — hourly self-paced
+
+Stage 0.1 runs hourly on the data-worker (`fishsense_data_processing_queue`).
+Each invocation picks the lowest-id HIGH-priority dive without
+`LaserExtrinsics`, resolves its incomplete-laser-label image set, and
+fans out per-image rectify/overlay/encode. An N-dive backlog clears
+in N hours.
+
+The workflow takes no input — to manually drain the queue faster, just
+trigger the same workflow:
+
+```
+temporal workflow start \
+  --type PreprocessLaserImagesWorkflow \
+  --task-queue fishsense_data_processing_queue
+```
+
+The schedule is `PreprocessLaserImagesWorkflow-workflow` /
+`preprocess-laser-images-workflow-schedule`. To change cadence,
+`temporal schedule delete preprocess-laser-images-workflow-schedule`
+and let the next worker restart recreate it.
+
 #### Stages 13 + 14 require a data-worker rollout
 
 Stages 13 (laser calibration) and 14 (fish measurement) are baked
