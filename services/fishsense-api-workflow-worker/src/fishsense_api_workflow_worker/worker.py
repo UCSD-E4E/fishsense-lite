@@ -16,6 +16,8 @@ from temporalio.client import (
     Schedule,
     ScheduleActionStartWorkflow,
     ScheduleIntervalSpec,
+    ScheduleOverlapPolicy,
+    SchedulePolicy,
     ScheduleSpec,
     ScheduleState,
 )
@@ -66,6 +68,12 @@ from fishsense_api_workflow_worker.activities.populate_laser_label_studio_projec
 from fishsense_api_workflow_worker.activities.populate_species_label_studio_project_activity import (  # pylint: disable=line-too-long
     populate_species_label_studio_project_activity,
 )
+from fishsense_api_workflow_worker.activities.resolve_laser_preprocess_inputs_activity import (  # pylint: disable=line-too-long
+    resolve_laser_preprocess_inputs_activity,
+)
+from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_laser_preprocessing_activity import (  # pylint: disable=line-too-long
+    select_next_high_priority_dive_for_laser_preprocessing_activity,
+)
 from fishsense_api_workflow_worker.activities.sync_dive_slate_labels_for_label_studio_project_activity import (  # pylint: disable=line-too-long
     sync_dive_slate_labels_for_label_studio_project_activity,
 )
@@ -112,6 +120,9 @@ from fishsense_api_workflow_worker.workflows.populate_laser_label_studio_project
 from fishsense_api_workflow_worker.workflows.populate_species_label_studio_project_workflow import (  # pylint: disable=line-too-long
     PopulateSpeciesLabelStudioProjectWorkflow,
 )
+from fishsense_api_workflow_worker.workflows.preprocess_laser_images_parent_workflow import (  # pylint: disable=line-too-long
+    PreprocessLaserImagesParentWorkflow,
+)
 from fishsense_api_workflow_worker.workflows.sync_label_studio_dive_slate_labels_workflow import (
     SyncLabelStudioDiveSlateLabelsWorkflow,
 )
@@ -135,13 +146,30 @@ TASK_QUEUE_NAME = "fishsense_api_queue"
 
 
 async def schedule_workflow(
-    client: Client, schedule_id: str, workflow_cls: Callable, interval: timedelta
+    client: Client,
+    schedule_id: str,
+    workflow_cls: Callable,
+    interval: timedelta,
+    *,
+    run_timeout: timedelta = timedelta(hours=3),
+    overlap: ScheduleOverlapPolicy = ScheduleOverlapPolicy.ALLOW_ALL,
 ):
     """Schedule a workflow to run periodically.
 
     Idempotent — uses the shared `ensure_schedule` helper, which treats
     `ScheduleAlreadyRunningError` as success and refuses to update an
     existing schedule in-place.
+
+    Default `run_timeout` (3h) is sized for the worst-case label-studio
+    sync run: 4 per-project sync activities in parallel, each capped
+    at 2h schedule_to_close for first-run-on-backlog projects, plus
+    margin for users + project-id activities. Workflows with shorter
+    bounded work should override.
+
+    `overlap=ALLOW_ALL` matches the long-standing behavior of the
+    label-studio sync schedules. Workflows that read mutable shared
+    state and need to be exclusive of themselves (e.g. selectors that
+    pick the next dive in a queue) should pass `overlap=SKIP`.
     """
     schedule = Schedule(
         action=ScheduleActionStartWorkflow(
@@ -149,14 +177,10 @@ async def schedule_workflow(
             args=(),
             id=f"{workflow_cls.__name__}-workflow",
             task_queue=TASK_QUEUE_NAME,
-            # Sized to cover the worst-case sync run: 4 per-project sync
-            # activities in parallel, each capped at 2h schedule_to_close
-            # for first-run-on-backlog projects (see sync_label_studio_*
-            # workflows). 3h leaves margin for the users + project-id
-            # activities ahead of the per-project fan-out.
-            run_timeout=timedelta(hours=3),
+            run_timeout=run_timeout,
         ),
         spec=ScheduleSpec(intervals=[ScheduleIntervalSpec(every=interval)]),
+        policy=SchedulePolicy(overlap=overlap),
         state=ScheduleState(),
     )
     await ensure_schedule(client, schedule_id=schedule_id, schedule=schedule)
@@ -207,6 +231,23 @@ async def schedule_workflows(client: Client):
                     timedelta(hours=1),
                 )
             )
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "preprocess-laser-images-workflow-schedule",
+                    PreprocessLaserImagesParentWorkflow,
+                    timedelta(hours=1),
+                    # One dive per run + child workflow on the data-worker.
+                    # 1h is plenty for any single-dive backlog.
+                    run_timeout=timedelta(hours=1),
+                    # Cluster safety: don't fire a second run while the
+                    # previous is still selecting/dispatching — both
+                    # selectors would call dives.get() and pick the same
+                    # dive_id, leading to duplicate (idempotent but
+                    # wasteful) work.
+                    overlap=ScheduleOverlapPolicy.SKIP,
+                )
+            )
 
 
 async def main():
@@ -240,6 +281,7 @@ async def main():
                 PopulateHeadTailLabelStudioProjectWorkflow,
                 PopulateDiveSlateLabelStudioProjectWorkflow,
                 UpdateDiveImageGroupsWorkflow,
+                PreprocessLaserImagesParentWorkflow,
             ],
             activity_executor=executor,
             activities=[
@@ -267,6 +309,8 @@ async def main():
                 populate_headtail_label_studio_project_activity,
                 populate_dive_slate_label_studio_project_activity,
                 update_dive_image_groups_activity,
+                resolve_laser_preprocess_inputs_activity,
+                select_next_high_priority_dive_for_laser_preprocessing_activity,
             ],
         )
 

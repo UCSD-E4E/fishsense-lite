@@ -17,7 +17,7 @@ fishsense-core).
 |---|---|---|
 | —     | `DiveFrameClusteringWorkflow`       | n/a (DB writes)              |
 | 2     | `PreprocessDiveImagesWorkflow`      | `preprocess_groups_jpeg`     |
-| 0.1   | `PreprocessLaserImagesWorkflow`     | `preprocess_jpeg` (hourly schedule, self-picks next HIGH-priority dive without `LaserExtrinsics`) |
+| 0.1   | `PreprocessLaserImagesWorkflow`     | `preprocess_jpeg` (started as child by `PreprocessLaserImagesParentWorkflow` on the api-worker) |
 | 5.1   | `PreprocessHeadtailImagesWorkflow`  | `preprocess_headtail_jpeg`   |
 | 9     | `PreprocessSlateImagesWorkflow`     | `preprocess_slate_images_jpeg` |
 

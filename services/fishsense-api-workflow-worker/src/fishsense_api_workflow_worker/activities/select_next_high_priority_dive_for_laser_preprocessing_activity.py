@@ -3,12 +3,13 @@ laser preprocessing.
 
 Cohort definition: HIGH priority + no `LaserExtrinsics` row yet (same
 target the stage-13 calibration script uses, see
-`scripts/dry_run_stage13.py`). Producing JPEGs for these dives is the
-work that unblocks downstream calibration.
+`scripts/dry_run_stage13.py` in the data-worker package). Producing
+JPEGs for these dives is the work that unblocks downstream
+calibration.
 
-Returns the lowest dive_id in the cohort, or None when the cohort is
-empty. Ordering by `id` is FIFO-ish; if dives ever get backfilled out
-of order, swap to `dive_datetime`.
+Lives on the api-worker so the SDK call runs on the orchestrator's
+docker network (no authentik / cross-host hop). Returns the lowest
+dive_id in the cohort, or None when the cohort is empty.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from __future__ import annotations
 from fishsense_api_sdk.models.priority import Priority
 from temporalio import activity
 
-from fishsense_data_processing_workflow_worker.activities.utils import get_fs_client
+from fishsense_api_workflow_worker.activities.utils import get_fs_client
 
 
 @activity.defn

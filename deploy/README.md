@@ -193,27 +193,45 @@ Safe sequence per dive: confirm `species_label.grouping` is
 populated for the dive's images (the hourly species sync has run at
 least once with completed labels), then trigger 6.1.
 
-#### Stage 0.1 (PreprocessLaserImagesWorkflow) — hourly self-paced
+#### Stage 0.1 (PreprocessLaserImagesParentWorkflow) — hourly, parent on api-worker
 
-Stage 0.1 runs hourly on the data-worker (`fishsense_data_processing_queue`).
-Each invocation picks the lowest-id HIGH-priority dive without
-`LaserExtrinsics`, resolves its incomplete-laser-label image set, and
-fans out per-image rectify/overlay/encode. An N-dive backlog clears
-in N hours.
+Stage 0.1 splits across both workers. Hourly schedule lives on the
+api-worker; the schedule fires
+`PreprocessLaserImagesParentWorkflow` on `fishsense_api_queue` with
+`overlap=ScheduleOverlapPolicy.SKIP`. The parent:
 
-The workflow takes no input — to manually drain the queue faster, just
-trigger the same workflow:
+1. Selects the lowest-id HIGH-priority dive without `LaserExtrinsics`
+   via `select_next_high_priority_dive_for_laser_preprocessing_activity`.
+2. Resolves checksums + camera intrinsics via
+   `resolve_laser_preprocess_inputs_activity`.
+3. `start_child_workflow("PreprocessLaserImagesWorkflow", ...,
+   id="preprocess-laser-{dive_id}",
+   task_queue="fishsense_data_processing_queue")` to dispatch the
+   per-image work to the data-worker.
+
+The deterministic child id makes a manual+scheduled trigger overlap
+a `WorkflowAlreadyStarted` no-op rather than redoing the dive. An
+N-dive backlog clears in N hours.
+
+To trigger a manual run (drains one extra dive immediately):
 
 ```
 temporal workflow start \
-  --type PreprocessLaserImagesWorkflow \
-  --task-queue fishsense_data_processing_queue
+  --type PreprocessLaserImagesParentWorkflow \
+  --task-queue fishsense_api_queue
 ```
 
-The schedule is `PreprocessLaserImagesWorkflow-workflow` /
-`preprocess-laser-images-workflow-schedule`. To change cadence,
-`temporal schedule delete preprocess-laser-images-workflow-schedule`
-and let the next worker restart recreate it.
+The schedule is `preprocess-laser-images-workflow-schedule` /
+`PreprocessLaserImagesParentWorkflow-workflow`. To change cadence
+or `overlap_policy`, `temporal schedule delete
+preprocess-laser-images-workflow-schedule` and let the next
+api-worker restart recreate it.
+
+**Cluster note**: when the data-worker scales to multiple replicas,
+the per-image activities load-balance for free across replicas
+(Temporal task-queue distribution); the parent's
+`overlap=SKIP` plus the deterministic child id keep the selector
+side race-free.
 
 #### Stages 13 + 14 require a data-worker rollout
 

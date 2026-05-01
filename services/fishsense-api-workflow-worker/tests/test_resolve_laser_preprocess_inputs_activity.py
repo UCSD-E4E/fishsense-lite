@@ -1,12 +1,14 @@
+# pylint: disable=unused-argument
 """Unit tests for resolve_laser_preprocess_inputs_activity.
 
 Pins down:
   1. Returns only checksums of images whose laser label is missing or
      not completed (matches stage-0.3 populate semantics).
   2. Camera intrinsics are flattened from numpy to lists.
-  3. Missing dive / camera_id / intrinsics raise ValueError so the
-     workflow surfaces the data problem instead of silently fanning
-     out 0 activities.
+  3. Default bbox lands in the resolved input.
+  4. Missing dive / camera_id / intrinsics raise ValueError so the
+     parent workflow surfaces the data problem instead of silently
+     dispatching 0-image work to the data-worker.
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ from fishsense_api_sdk.models.camera_intrinsics import CameraIntrinsics
 from fishsense_api_sdk.models.dive import Dive
 from fishsense_api_sdk.models.image import Image
 from fishsense_api_sdk.models.laser_label import LaserLabel
-from fishsense_data_processing_workflow_worker.activities import (
+from fishsense_api_workflow_worker.activities import (
     resolve_laser_preprocess_inputs_activity as sut,
 )
 
@@ -74,6 +76,14 @@ def _label(image_id: int, *, completed: bool) -> LaserLabel:
     )
 
 
+def _intrinsics() -> CameraIntrinsics:
+    return CameraIntrinsics(
+        camera_matrix=_K,
+        distortion_coefficients=_D,
+        camera_id=1,
+    )
+
+
 def _make_fs(
     *,
     dive: Optional[Dive],
@@ -99,14 +109,6 @@ def _make_fs(
     return fs
 
 
-def _intrinsics() -> CameraIntrinsics:
-    return CameraIntrinsics(
-        camera_matrix=_K,
-        distortion_coefficients=_D,
-        camera_id=1,
-    )
-
-
 @pytest.mark.asyncio
 async def test_returns_only_incomplete_image_checksums(monkeypatch):
     images = [_image(1, "aaa"), _image(2, "bbb"), _image(3, "ccc")]
@@ -129,6 +131,10 @@ async def test_returns_only_incomplete_image_checksums(monkeypatch):
     assert set(result.image_checksums) == {"bbb", "ccc"}
     assert result.camera_matrix == _K.tolist()
     assert result.distortion_coefficients == _D.tolist()
+    assert result.bbox == sut.DEFAULT_LASER_BBOX
+    # Defensive copy: the resolver must not hand back the module-level
+    # constant by reference, since pydantic doesn't deep-copy on input.
+    assert result.bbox is not sut.DEFAULT_LASER_BBOX
 
 
 @pytest.mark.asyncio

@@ -7,8 +7,8 @@ Loose ends and architectural conventions that aren't otherwise tracked.
 | Service | Purpose | Task queue |
 |---|---|---|
 | `services/fishsense-api/` | FastAPI app (DB CRUD, label endpoints) | — |
-| `services/fishsense-api-workflow-worker/` | api-side Temporal worker: hourly Label Studio sync (laser/headtail/dive-slate/species), Superset dashboard-config writer, on-demand Create/Populate × {Laser,Species,HeadTail,DiveSlate} LS project workflows | `fishsense_api_queue` |
-| `services/fishsense-data-processing-workflow-worker/` | image preprocessing (rectify/overlay/JPEG), laser calibration, fish measurement; hourly stage-0.1 sweep | `fishsense_data_processing_queue` |
+| `services/fishsense-api-workflow-worker/` | api-side Temporal worker: hourly Label Studio sync (laser/headtail/dive-slate/species), Superset dashboard-config writer, on-demand Create/Populate × {Laser,Species,HeadTail,DiveSlate} LS project workflows, hourly stage-0.1 parent (selects + resolves; dispatches to data-worker) | `fishsense_api_queue` |
+| `services/fishsense-data-processing-workflow-worker/` | image preprocessing (rectify/overlay/JPEG), laser calibration, fish measurement | `fishsense_data_processing_queue` |
 | `services/fishsense-backup-worker/` | nightly Postgres → NAS backups + retention | `fishsense_backup_queue` |
 
 The backup worker is **deliberately separate** from the data-processing
@@ -35,7 +35,7 @@ DB (negligible). To add or remove, override
 
 | Stage | Notebook | Owner | Status |
 |---|---|---|---|
-| 0.1 | preprocess_laser_images | data-worker | ported (hourly) |
+| 0.1 | preprocess_laser_images | api-worker (parent) + data-worker (child) | ported (hourly) |
 | 0.3 | populate_label_studio_project | api-worker | ported |
 | 1   | cluster_dive_frames | data-worker | ported (pre-existing) |
 | 2   | preprocess_dive_images | data-worker | ported |
@@ -85,16 +85,54 @@ exist — the cluster API has no DELETE, so a re-POST would silently
 double-count. To re-group after labels change, an operator must
 manually drop the existing LABEL_STUDIO clusters first.
 
-`PreprocessLaserImagesWorkflow()` is the stage-0.1 self-pacing
-workflow: it takes no args, picks the lowest-id HIGH-priority dive
-without `LaserExtrinsics` via
-`select_next_high_priority_dive_for_laser_preprocessing_activity`,
-resolves its incomplete-laser-label image set + camera intrinsics via
-`resolve_laser_preprocess_inputs_activity`, then fans out
-`preprocess_laser_image` per checksum. Hourly schedule on the
-data-worker drains an N-dive backlog in N hours; operators can also
-trigger ad-hoc runs. Selector cohort matches `dry_run_stage13.py` so
-preprocessing always lines up with the next calibration target.
+## Cross-worker orchestration pattern (stage 0.1, template for 2/5.1/9)
+
+The api-worker is the brains; the data-worker is the executor. Stages
+that need both SDK-side decision-making *and* CPU-heavy per-image
+work split into two workflows:
+
+* **Parent** on api-worker (`fishsense_api_queue`). Hourly schedule.
+  Two SDK-using activities: a selector (returns the next dive_id in
+  some cohort, or None) and a resolver (returns a fully-populated
+  workflow-input DTO for that dive — checksums, intrinsics, etc.).
+  Then `start_child_workflow` against the data-worker task queue.
+* **Child** on data-worker (`fishsense_data_processing_queue`). Thin
+  pre-input workflow that fans out per-image activities. No SDK
+  calls; all decisions baked into the input DTO.
+
+The workflow-input DTOs (`PreprocessLaserImagesInput`, eventually
+`PreprocessDiveImagesInput`, etc.) live in
+[fishsense_shared.preprocess_contracts](libs/fishsense-shared/src/fishsense_shared/preprocess_contracts.py)
+because they're the api-worker / data-worker contract; per-image
+DTOs stay in the data-worker workflow modules because they're
+internal to the fan-out.
+
+**Cluster correctness** (relevant once the data-worker scales beyond
+one replica):
+
+* Schedule for the parent uses
+  `overlap=ScheduleOverlapPolicy.SKIP` — a previous run still in
+  flight blocks the next firing, so two selectors can't race past
+  the same `dives.get()` and pick the same dive.
+* Child workflow id is deterministic (`preprocess-laser-{dive_id}`).
+  If a parent run *does* race past the schedule guard (e.g. manual
+  trigger overlapping a scheduled one), the second
+  `start_child_workflow` hits `WorkflowAlreadyStarted` and is a
+  no-op rather than redoing the dive.
+* Per-image activities are idempotent: nginx DAV PUT overwrites,
+  SDK upserts.
+
+This pattern was first applied to stage 0.1
+(`PreprocessLaserImagesParentWorkflow`); stages 2 / 5.1 / 9 / 1
+should follow when ported.
+
+The four data-worker preprocess workflows (0.1, 2, 5.1, 9) and the
+clustering workflow (stage 1) are *intentionally orphans today*
+except for 0.1 — they take pre-resolved inputs and wait for an
+api-worker parent. Stages 13 and 14 deliberately keep their SDK
+fetches inline (the math kernels need opencv + fishsense-core, so
+splitting fetch/math across workers would add 5+ activity handoffs
+per dive for no gain).
 
 ## Data-worker activity pattern
 

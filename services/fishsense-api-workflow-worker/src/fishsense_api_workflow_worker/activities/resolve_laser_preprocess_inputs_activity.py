@@ -1,32 +1,29 @@
 """Activity to resolve the per-image inputs stage 0.1 needs for a dive.
 
-Returns the image checksums whose laser label is missing or not yet
-completed (the same `incomplete` predicate stage 0.3 populate uses,
-see `populate_laser_label_studio_project_activity`), plus the dive's
-camera intrinsics flattened to plain lists for activity-payload
-serialization.
+Returns a fully-populated `PreprocessLaserImagesInput` ready to hand
+to the data-worker's child workflow. Image checksum filter matches
+stage 0.3's populate predicate (laser label missing or
+`completed=False`), so a re-run after some labels complete naturally
+narrows the work.
+
+Default bbox is the original notebook constant — kept here rather
+than baked into the data-worker so the api-worker can swap to a
+per-camera bbox once we ship a second sensor without touching the
+data-worker.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import List
 
 from fishsense_api_sdk.models.image import Image
 from fishsense_api_sdk.models.laser_label import LaserLabel
+from fishsense_shared import PreprocessLaserImagesInput
 from temporalio import activity
 
-from fishsense_data_processing_workflow_worker.activities.utils import get_fs_client
+from fishsense_api_workflow_worker.activities.utils import get_fs_client
 
-
-@dataclass
-class LaserPreprocessInputs:
-    """Resolved inputs for one dive's stage 0.1 fan-out."""
-
-    dive_id: int
-    image_checksums: List[str]
-    camera_matrix: List[List[float]]
-    distortion_coefficients: List[float]
+DEFAULT_LASER_BBOX: List[int] = [1800, 700, 2400, 1600]
 
 
 def _select_incomplete_images(
@@ -43,7 +40,7 @@ def _select_incomplete_images(
 @activity.defn
 async def resolve_laser_preprocess_inputs_activity(
     dive_id: int,
-) -> LaserPreprocessInputs:
+) -> PreprocessLaserImagesInput:
     async with get_fs_client() as fs:
         dive = await fs.dives.get(dive_id=dive_id)
         if dive is None:
@@ -61,9 +58,10 @@ async def resolve_laser_preprocess_inputs_activity(
         existing_labels = await fs.labels.get_laser_labels(dive_id) or []
         incomplete = _select_incomplete_images(images, existing_labels)
 
-        return LaserPreprocessInputs(
+        return PreprocessLaserImagesInput(
             dive_id=dive_id,
             image_checksums=[image.checksum for image in incomplete],
             camera_matrix=intrinsics.camera_matrix.tolist(),
             distortion_coefficients=intrinsics.distortion_coefficients.tolist(),
+            bbox=list(DEFAULT_LASER_BBOX),
         )

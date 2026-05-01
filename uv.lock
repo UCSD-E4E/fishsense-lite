@@ -631,7 +631,7 @@ wheels = [
 
 [[package]]
 name = "fishsense-api"
-version = "1.20.1"
+version = "1.22.0"
 source = { editable = "services/fishsense-api" }
 dependencies = [
     { name = "asyncpg" },
@@ -682,7 +682,7 @@ dev = [
 
 [[package]]
 name = "fishsense-api-sdk"
-version = "1.31.1"
+version = "1.33.0"
 source = { editable = "libs/fishsense-api-sdk" }
 dependencies = [
     { name = "httpx" },
@@ -711,7 +711,7 @@ dev = [
 
 [[package]]
 name = "fishsense-api-workflow-worker"
-version = "1.23.1"
+version = "1.25.0"
 source = { editable = "services/fishsense-api-workflow-worker" }
 dependencies = [
     { name = "dynaconf" },
@@ -865,7 +865,7 @@ requires-dist = [
 
 [[package]]
 name = "fishsense-data-processing-workflow-worker"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "services/fishsense-data-processing-workflow-worker" }
 dependencies = [
     { name = "dynaconf" },
@@ -987,6 +987,7 @@ source = { editable = "libs/fishsense-shared" }
 dependencies = [
     { name = "dynaconf" },
     { name = "platformdirs" },
+    { name = "pydantic" },
     { name = "temporalio" },
     { name = "validators" },
 ]
@@ -1001,6 +1002,7 @@ dev = [
 requires-dist = [
     { name = "dynaconf", specifier = ">=3.2.11" },
     { name = "platformdirs", specifier = ">=4.3.8" },
+    { name = "pydantic", specifier = ">=2.0" },
     { name = "temporalio", specifier = ">=1.15.0" },
     { name = "validators", specifier = ">=0.35.0" },
 ]

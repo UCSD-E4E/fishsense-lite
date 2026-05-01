@@ -1,6 +1,7 @@
+# pylint: disable=unused-argument
 """Unit tests for select_next_high_priority_dive_for_laser_preprocessing_activity.
 
-Pins down four things:
+Pins down:
   1. Skip LOW-priority dives.
   2. Skip HIGH-priority dives that already have laser_extrinsics.
   3. Pick the lowest-id dive among the remaining cohort.
@@ -19,7 +20,7 @@ from temporalio.testing import ActivityEnvironment
 
 from fishsense_api_sdk.models.dive import Dive
 from fishsense_api_sdk.models.laser_extrinsics import LaserExtrinsics
-from fishsense_data_processing_workflow_worker.activities import (
+from fishsense_api_workflow_worker.activities import (
     select_next_high_priority_dive_for_laser_preprocessing_activity as sut,
 )
 
@@ -96,7 +97,7 @@ async def test_skips_high_priority_dives_with_extrinsics(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_returns_none_when_no_low_priority_or_uncalibrated_dives(monkeypatch):
+async def test_returns_none_when_no_high_priority_dives(monkeypatch):
     fs = _make_fs(
         dives=[_dive(1, priority="LOW"), _dive(2, priority="LOW")],
         extrinsics_for={},
@@ -111,7 +112,7 @@ async def test_returns_none_when_no_low_priority_or_uncalibrated_dives(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_returns_none_when_all_high_priority_dives_have_extrinsics(monkeypatch):
+async def test_returns_none_when_all_high_priority_dives_calibrated(monkeypatch):
     fs = _make_fs(
         dives=[_dive(1), _dive(2)],
         extrinsics_for={1: _extrinsics(), 2: _extrinsics()},

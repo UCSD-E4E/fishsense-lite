@@ -1,10 +1,9 @@
 """End-to-end stage 0.1 integration test against the local devcontainer
 stack (temporal + nginx static_file_server).
 
-Mocks: only the selector + resolver activities (which would otherwise
-hit fishsense-api). We seed the raw `.ORF` onto the file-exchange
-directly and assert the data-worker produces a valid JPEG at
-`preprocess_jpeg/{checksum}.JPG` (the labeler-facing GET route).
+Mocks: only the upstream api-worker side. We seed the raw `.ORF` onto
+the file-exchange directly and assert the data-worker produces a valid
+JPEG at `preprocess_jpeg/{checksum}.JPG` (the labeler-facing GET route).
 """
 
 import os
@@ -15,17 +14,14 @@ import cv2
 import httpx
 import numpy as np
 import pytest
-from temporalio import activity
 from temporalio.client import Client
 from temporalio.worker import Worker
 
 from fishsense_data_processing_workflow_worker.activities.preprocess_laser_image import (
     preprocess_laser_image,
 )
-from fishsense_data_processing_workflow_worker.activities.resolve_laser_preprocess_inputs_activity import (  # noqa: E501  pylint: disable=line-too-long
-    LaserPreprocessInputs,
-)
-from fishsense_data_processing_workflow_worker.workflows.preprocess_laser_images_workflow import (  # noqa: E501  pylint: disable=line-too-long
+from fishsense_data_processing_workflow_worker.workflows.preprocess_laser_images_workflow import (
+    PreprocessLaserImagesInput,
     PreprocessLaserImagesWorkflow,
 )
 
@@ -37,6 +33,7 @@ _ORF_FIXTURE = _FIXTURE_DIR / "stage2_sample.ORF"
 
 _K = [[3000.0, 0.0, 2000.0], [0.0, 3000.0, 1500.0], [0.0, 0.0, 1.0]]
 _D = [-0.05, 0.01, 0.0, 0.0, 0.0]
+_BBOX = [1800, 700, 2400, 1600]
 
 
 def _exchange_url() -> str:
@@ -74,21 +71,6 @@ def configure_worker_settings(monkeypatch: pytest.MonkeyPatch):
 @pytest.mark.usefixtures("configure_worker_settings")
 async def test_workflow_processes_one_image_end_to_end(raw_orf_bytes: bytes):
     checksum = f"itest-stage01-{uuid.uuid4().hex}"
-    fake_dive_id = -1
-
-    @activity.defn(name="select_next_high_priority_dive_for_laser_preprocessing_activity")
-    async def stub_select() -> int:
-        return fake_dive_id
-
-    @activity.defn(name="resolve_laser_preprocess_inputs_activity")
-    async def stub_resolve(dive_id: int) -> LaserPreprocessInputs:
-        assert dive_id == fake_dive_id
-        return LaserPreprocessInputs(
-            dive_id=dive_id,
-            image_checksums=[checksum],
-            camera_matrix=_K,
-            distortion_coefficients=_D,
-        )
 
     async with httpx.AsyncClient(
         base_url=_exchange_url(), timeout=httpx.Timeout(60.0)
@@ -105,10 +87,17 @@ async def test_workflow_processes_one_image_end_to_end(raw_orf_bytes: bytes):
             client,
             task_queue=task_queue,
             workflows=[PreprocessLaserImagesWorkflow],
-            activities=[stub_select, stub_resolve, preprocess_laser_image],
+            activities=[preprocess_laser_image],
         ):
             await client.execute_workflow(
                 PreprocessLaserImagesWorkflow.run,
+                PreprocessLaserImagesInput(
+                    dive_id=-1,
+                    image_checksums=[checksum],
+                    camera_matrix=_K,
+                    distortion_coefficients=_D,
+                    bbox=_BBOX,
+                ),
                 id=f"stage01-itest-{uuid.uuid4().hex}",
                 task_queue=task_queue,
             )
