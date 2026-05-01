@@ -1,18 +1,23 @@
 """Activity to sync headtail labels for a Label Studio project."""
 
-import asyncio
 import json
 from typing import Any
 
 from fishsense_api_sdk.client import Client
-from label_studio_sdk.core import ApiError
 from temporalio import activity
 
-from fishsense_api_workflow_worker.activities.utils import get_fs_client, get_ls_client
-from fishsense_shared import ExceptionGroupErrorLogging
+from fishsense_api_workflow_worker.activities.utils import (
+    SYNC_CONCURRENCY,
+    sync_label_studio_project,
+)
+
+__all__ = [
+    "sync_headtail_labels_for_label_studio_project_activity",
+    "SYNC_CONCURRENCY",
+]
 
 
-async def __update_headtail_label(fs: Client, task: Any):
+async def __update_headtail_label(fs: Client, task: Any) -> None:
     headtail_label = await fs.labels.get_headtail_label(label_studio_id=task.id)
 
     # Skip if no headtail label exists for this task
@@ -67,29 +72,5 @@ async def __update_headtail_label(fs: Client, task: Any):
 
 @activity.defn
 async def sync_headtail_labels_for_label_studio_project_activity(project_id: int):
-    """Sync headtail labels for a Label Studio project."""
-    # pylint: disable=duplicate-code
-
-    ls = get_ls_client()
-
-    # Handle case where project does not exist
-    try:
-        _ = await asyncio.to_thread(ls.projects.get, project_id)
-    except ApiError as e:
-        activity.logger.warning(f"Error fetching project {project_id}: {e}")
-        return
-
-    tasks = await asyncio.to_thread(ls.tasks.list, project=project_id)
-
-    async with get_fs_client() as fs:
-        async with ExceptionGroupErrorLogging(activity.logger):
-            async with asyncio.TaskGroup() as tg:
-                for task in tasks:
-                    if activity.is_cancelled():
-                        activity.logger.info(
-                            "Activity cancelled, stopping sync for project %d",
-                            project_id,
-                        )
-                        return
-
-                    tg.create_task(__update_headtail_label(fs, task))
+    """Activity to sync headtail labels for a Label Studio project."""
+    await sync_label_studio_project(project_id, __update_headtail_label)
