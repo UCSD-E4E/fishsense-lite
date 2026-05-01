@@ -20,3 +20,6 @@ host = "postgres"
 port = "5432"
 username = "postgres"
 database = "fishsense"
+
+[static_files]
+public_url_base = "https://orchestrator.fishsense.e4e.ucsd.edu"
