@@ -66,3 +66,27 @@ uv run --package fishsense-api-workflow-worker fishsense_api_workflow_worker  # 
 Inside the devcontainer the rest of the stack is already up via
 `deploy/compose.local.yml`, so only the worker needs to be run
 manually.
+
+## Tests
+
+```
+./check.sh unit           # default markers, mocks only — fast
+./check.sh integration    # -m integration; needs the local stack
+```
+
+Integration tests exercise the populate / create activities against
+the real Label Studio container at `http://label-studio:8080`. The
+container is provisioned in `deploy/compose.local.yml` with a
+hard-coded admin token (`fishsense_local_test_token_42`) so tests can
+authenticate without going through the LS UI — the token is also
+mirrored into the `dev` container's env (`E4EFS_LABEL_STUDIO__API_KEY`)
+so newly-spawned tests pick it up automatically. The `dev` container
+must be recreated (`docker compose -f deploy/compose.local.yml up -d
+--force-recreate dev`) the first time you pull these env vars from
+upstream — bare `docker compose up -d` doesn't pick up env changes on
+already-running containers.
+
+Each integration test creates its own LS project (UUID-suffixed
+title, ≤ 50 chars per LS limit) and deletes it on teardown. State
+between tests is fully isolated; a `docker compose down -v label-studio`
+also resets the LS volume if you want a clean slate.

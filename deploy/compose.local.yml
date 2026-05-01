@@ -130,11 +130,55 @@ services:
     networks:
       - fishsense_local
 
+  label-studio:
+    # Pinned to a known-good OSS release that honors LABEL_STUDIO_USER_TOKEN
+    # for legacy-API-token bootstrap. Unpin only after verifying that
+    # programmatic admin-token boot still works on the new image — every
+    # 1.x minor has slightly different bootstrap env-var semantics, and
+    # losing programmatic boot would force UI-clicks back into setup.
+    image: heartexlabs/label-studio:1.13.1
+    restart: on-failure:15
+    environment:
+      # Disables the public signup form so the only account that exists is
+      # the bootstrapped admin below. Tests never sign up, never click.
+      LABEL_STUDIO_DISABLE_SIGNUP_WITHOUT_LINK: "true"
+      # Admin user provisioned at first boot. The username/password let a
+      # human log into the UI when debugging; tests use the fixed token
+      # below and never need credentials.
+      LABEL_STUDIO_USERNAME: admin@fishsense.local
+      LABEL_STUDIO_PASSWORD: fishsense_local_admin
+      # Fixed legacy API token for the admin user. Hard-coded here so the
+      # integration test conftest can consume it directly — no
+      # token-fetching round-trip, no shared secret outside the local
+      # stack. SAFE because this image is never reachable outside the
+      # devcontainer's internal network.
+      LABEL_STUDIO_USER_TOKEN: fishsense_local_test_token_42
+      # JSON logs make container logs greppable for failure diagnosis.
+      JSON_LOG: "true"
+    volumes:
+      - label_studio_data:/label-studio/data
+    ports:
+      # Avoid clash with static_file_server (8080) and any host process
+      # already on 8081. LS's default internal port is 8080 — only the
+      # host-side mapping changes here.
+      - "8082:8080"
+    healthcheck:
+      # LS exposes a cheap /health endpoint; we wait on it before tests
+      # are allowed to run. First-time boot includes a SQLite migrate
+      # which can take 30s+, so retries are generous.
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    networks:
+      - fishsense_local
+
   # NOTE: fishsense-api-workflow-worker is intentionally NOT in the default
-  # local stack — its config requires Label Studio + NAS credentials we don't
-  # have on a laptop. Bring it up manually with `uv run` from the dev
-  # container once you've wired test credentials, or once those activities
-  # have been refactored to skip cleanly when those backends are unset.
+  # local stack — even now that LS runs locally, its NAS credentials still
+  # need to be wired before it'll boot cleanly. Bring it up manually with
+  # `uv run` from the dev container, or refactor those activities to skip
+  # cleanly when their backends are unset.
 
   # Workspace container the devcontainer attaches to. The data-processing
   # worker has no Dockerfile — we run it from here with `uv run` while
@@ -149,6 +193,7 @@ services:
       - temporal
       - fishsense-api
       - static_file_server
+      - label-studio
     environment:
       E4EFS_DOCKER: "false"
       # Default endpoints for tests + manual `uv run` invocations from inside
@@ -168,6 +213,11 @@ services:
       # prefix so the worker's settings.static_file_server.url validator
       # passes when the worker is started from inside this container.
       E4EFS_STATIC_FILE_SERVER__URL: http://static_file_server
+      # Label Studio endpoints for the api-workflow-worker integration tests.
+      # Token must match LABEL_STUDIO_USER_TOKEN on the label-studio service.
+      E4EFS_LABEL_STUDIO__URL: http://label-studio:8080
+      E4EFS_LABEL_STUDIO__API_KEY: fishsense_local_test_token_42
+      E4EFS_STATIC_FILES__PUBLIC_URL_BASE: http://static_file_server
     working_dir: ${HOST_REPO_PATH:?Set HOST_REPO_PATH in deploy/.env to the absolute path of this repo on your host (run "realpath .." from this directory).}
     # Give the in-container `vscode` user access to the host's docker socket
     # via supplementary group membership. The kernel only checks numeric GID,
@@ -200,6 +250,7 @@ volumes:
   pg_data:
   static_file_server_data:
   dev_uv_cache:
+  label_studio_data:
 
 networks:
   fishsense_local:
