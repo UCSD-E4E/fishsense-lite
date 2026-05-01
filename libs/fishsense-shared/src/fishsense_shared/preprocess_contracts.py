@@ -14,9 +14,12 @@ construction.
 
 from __future__ import annotations
 
-from typing import List
+from typing import List, Tuple
 
 from pydantic import BaseModel
+
+
+ReferencePoint = Tuple[float, float]
 
 
 class PreprocessLaserImagesInput(BaseModel):
@@ -34,3 +37,49 @@ class PreprocessLaserImagesInput(BaseModel):
     camera_matrix: List[List[float]]
     distortion_coefficients: List[float]
     bbox: List[int]
+
+
+class PreprocessDiveImagesInput(BaseModel):
+    """Stage 2 (dive-image preprocess) workflow-level input.
+
+    Clusters preserve the temporal grouping from
+    `DiveFrameCluster(data_source=PREDICTION)` so the per-image overlay
+    can render "image i of N" for each cluster.
+    """
+
+    dive_id: int
+    clusters: List[List[str]]  # each inner list is a PREDICTION cluster of checksums
+    camera_matrix: List[List[float]]
+    distortion_coefficients: List[float]
+
+
+class PreprocessHeadtailImagesInput(BaseModel):
+    """Stage 5.1 (head/tail preprocess) workflow-level input.
+
+    Image set is filtered to species labels with
+    `top_three_photos_of_group=True` whose head/tail label is not yet
+    complete — same predicate `populate_headtail_label_studio_project_activity`
+    uses, so populate consumes exactly what preprocess produces.
+    """
+
+    dive_id: int
+    image_checksums: List[str]
+    camera_matrix: List[List[float]]
+    distortion_coefficients: List[float]
+
+
+class PreprocessSlateImagesInput(BaseModel):
+    """Stage 9 (slate preprocess) workflow-level input.
+
+    Slate metadata travels alongside the image set so the data-worker
+    can render the PDF-composite overlay without an extra
+    fishsense-api call.
+    """
+
+    dive_id: int
+    image_checksums: List[str]
+    slate_id: int
+    slate_dpi: int
+    reference_points: List[ReferencePoint]
+    camera_matrix: List[List[float]]
+    distortion_coefficients: List[float]

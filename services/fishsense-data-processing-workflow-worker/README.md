@@ -16,10 +16,10 @@ fishsense-core).
 | Stage | Workflow | Output folder |
 |---|---|---|
 | —     | `DiveFrameClusteringWorkflow`       | n/a (DB writes)              |
-| 2     | `PreprocessDiveImagesWorkflow`      | `preprocess_groups_jpeg`     |
+| 2     | `PreprocessDiveImagesWorkflow`      | `preprocess_groups_jpeg` (started as child by `PreprocessDiveImagesParentWorkflow` on the api-worker) |
 | 0.1   | `PreprocessLaserImagesWorkflow`     | `preprocess_jpeg` (started as child by `PreprocessLaserImagesParentWorkflow` on the api-worker) |
-| 5.1   | `PreprocessHeadtailImagesWorkflow`  | `preprocess_headtail_jpeg`   |
-| 9     | `PreprocessSlateImagesWorkflow`     | `preprocess_slate_images_jpeg` |
+| 5.1   | `PreprocessHeadtailImagesWorkflow`  | `preprocess_headtail_jpeg` (started as child by `PreprocessHeadtailImagesParentWorkflow` on the api-worker) |
+| 9     | `PreprocessSlateImagesWorkflow`     | `preprocess_slate_images_jpeg` (started as child by `PreprocessSlateImagesParentWorkflow` on the api-worker) |
 
 ## Activity pattern
 

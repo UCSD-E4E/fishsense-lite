@@ -68,11 +68,29 @@ from fishsense_api_workflow_worker.activities.populate_laser_label_studio_projec
 from fishsense_api_workflow_worker.activities.populate_species_label_studio_project_activity import (  # pylint: disable=line-too-long
     populate_species_label_studio_project_activity,
 )
+from fishsense_api_workflow_worker.activities.resolve_dive_image_preprocess_inputs_activity import (  # pylint: disable=line-too-long
+    resolve_dive_image_preprocess_inputs_activity,
+)
+from fishsense_api_workflow_worker.activities.resolve_headtail_preprocess_inputs_activity import (  # pylint: disable=line-too-long
+    resolve_headtail_preprocess_inputs_activity,
+)
 from fishsense_api_workflow_worker.activities.resolve_laser_preprocess_inputs_activity import (  # pylint: disable=line-too-long
     resolve_laser_preprocess_inputs_activity,
 )
+from fishsense_api_workflow_worker.activities.resolve_slate_preprocess_inputs_activity import (  # pylint: disable=line-too-long
+    resolve_slate_preprocess_inputs_activity,
+)
+from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_dive_image_preprocessing_activity import (  # pylint: disable=line-too-long
+    select_next_high_priority_dive_for_dive_image_preprocessing_activity,
+)
+from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_headtail_preprocessing_activity import (  # pylint: disable=line-too-long
+    select_next_high_priority_dive_for_headtail_preprocessing_activity,
+)
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_laser_preprocessing_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_laser_preprocessing_activity,
+)
+from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_slate_preprocessing_activity import (  # pylint: disable=line-too-long
+    select_next_high_priority_dive_for_slate_preprocessing_activity,
 )
 from fishsense_api_workflow_worker.activities.sync_dive_slate_labels_for_label_studio_project_activity import (  # pylint: disable=line-too-long
     sync_dive_slate_labels_for_label_studio_project_activity,
@@ -120,8 +138,17 @@ from fishsense_api_workflow_worker.workflows.populate_laser_label_studio_project
 from fishsense_api_workflow_worker.workflows.populate_species_label_studio_project_workflow import (  # pylint: disable=line-too-long
     PopulateSpeciesLabelStudioProjectWorkflow,
 )
+from fishsense_api_workflow_worker.workflows.preprocess_dive_images_parent_workflow import (  # pylint: disable=line-too-long
+    PreprocessDiveImagesParentWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.preprocess_headtail_images_parent_workflow import (  # pylint: disable=line-too-long
+    PreprocessHeadtailImagesParentWorkflow,
+)
 from fishsense_api_workflow_worker.workflows.preprocess_laser_images_parent_workflow import (  # pylint: disable=line-too-long
     PreprocessLaserImagesParentWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.preprocess_slate_images_parent_workflow import (  # pylint: disable=line-too-long
+    PreprocessSlateImagesParentWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.sync_label_studio_dive_slate_labels_workflow import (
     SyncLabelStudioDiveSlateLabelsWorkflow,
@@ -151,6 +178,7 @@ async def schedule_workflow(
     workflow_cls: Callable,
     interval: timedelta,
     *,
+    offset: timedelta | None = None,
     run_timeout: timedelta = timedelta(hours=3),
     overlap: ScheduleOverlapPolicy = ScheduleOverlapPolicy.ALLOW_ALL,
 ):
@@ -170,7 +198,16 @@ async def schedule_workflow(
     label-studio sync schedules. Workflows that read mutable shared
     state and need to be exclusive of themselves (e.g. selectors that
     pick the next dive in a queue) should pass `overlap=SKIP`.
+
+    `offset` shifts the firing point within the interval — useful for
+    spreading multiple hourly schedules across the hour so they don't
+    all hit fishsense-api at the same moment.
     """
+    interval_spec = (
+        ScheduleIntervalSpec(every=interval, offset=offset)
+        if offset is not None
+        else ScheduleIntervalSpec(every=interval)
+    )
     schedule = Schedule(
         action=ScheduleActionStartWorkflow(
             workflow_cls.run,
@@ -179,7 +216,7 @@ async def schedule_workflow(
             task_queue=TASK_QUEUE_NAME,
             run_timeout=run_timeout,
         ),
-        spec=ScheduleSpec(intervals=[ScheduleIntervalSpec(every=interval)]),
+        spec=ScheduleSpec(intervals=[interval_spec]),
         policy=SchedulePolicy(overlap=overlap),
         state=ScheduleState(),
     )
@@ -231,20 +268,52 @@ async def schedule_workflows(client: Client):
                     timedelta(hours=1),
                 )
             )
+            # The four cross-worker preprocess parents run hourly with
+            # SKIP-on-overlap (cluster safety: prevents two selectors
+            # picking the same dive_id concurrently). Stagger by 15 min
+            # so their selectors don't all hit `dives.get()` at the same
+            # instant on the top of the hour. Stage-2 child can run
+            # ~2h on a deep cluster; the others fit in 1h.
             tg.create_task(
                 schedule_workflow(
                     client,
                     "preprocess-laser-images-workflow-schedule",
                     PreprocessLaserImagesParentWorkflow,
                     timedelta(hours=1),
-                    # One dive per run + child workflow on the data-worker.
-                    # 1h is plenty for any single-dive backlog.
                     run_timeout=timedelta(hours=1),
-                    # Cluster safety: don't fire a second run while the
-                    # previous is still selecting/dispatching — both
-                    # selectors would call dives.get() and pick the same
-                    # dive_id, leading to duplicate (idempotent but
-                    # wasteful) work.
+                    overlap=ScheduleOverlapPolicy.SKIP,
+                )
+            )
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "preprocess-dive-images-workflow-schedule",
+                    PreprocessDiveImagesParentWorkflow,
+                    timedelta(hours=1),
+                    offset=timedelta(minutes=15),
+                    run_timeout=timedelta(hours=2),
+                    overlap=ScheduleOverlapPolicy.SKIP,
+                )
+            )
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "preprocess-headtail-images-workflow-schedule",
+                    PreprocessHeadtailImagesParentWorkflow,
+                    timedelta(hours=1),
+                    offset=timedelta(minutes=30),
+                    run_timeout=timedelta(hours=1),
+                    overlap=ScheduleOverlapPolicy.SKIP,
+                )
+            )
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "preprocess-slate-images-workflow-schedule",
+                    PreprocessSlateImagesParentWorkflow,
+                    timedelta(hours=1),
+                    offset=timedelta(minutes=45),
+                    run_timeout=timedelta(hours=1),
                     overlap=ScheduleOverlapPolicy.SKIP,
                 )
             )
@@ -282,6 +351,9 @@ async def main():
                 PopulateDiveSlateLabelStudioProjectWorkflow,
                 UpdateDiveImageGroupsWorkflow,
                 PreprocessLaserImagesParentWorkflow,
+                PreprocessDiveImagesParentWorkflow,
+                PreprocessHeadtailImagesParentWorkflow,
+                PreprocessSlateImagesParentWorkflow,
             ],
             activity_executor=executor,
             activities=[
@@ -310,7 +382,13 @@ async def main():
                 populate_dive_slate_label_studio_project_activity,
                 update_dive_image_groups_activity,
                 resolve_laser_preprocess_inputs_activity,
+                resolve_dive_image_preprocess_inputs_activity,
+                resolve_headtail_preprocess_inputs_activity,
+                resolve_slate_preprocess_inputs_activity,
                 select_next_high_priority_dive_for_laser_preprocessing_activity,
+                select_next_high_priority_dive_for_dive_image_preprocessing_activity,
+                select_next_high_priority_dive_for_headtail_preprocessing_activity,
+                select_next_high_priority_dive_for_slate_preprocessing_activity,
             ],
         )
 

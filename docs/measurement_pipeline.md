@@ -52,8 +52,8 @@ status" section of [CLAUDE.md](../CLAUDE.md).
 
 | Stage | Notebook | Worker | Status |
 |---|---|---|---|
-| 1   | `cluster_dive_frames` | data | ported |
-| 2   | `preprocess_dive_images` | data | ported |
+| 1   | `cluster_dive_frames` | data | ported (no api-worker parent yet) |
+| 2   | `preprocess_dive_images` | api (parent) + data (child) | ported (hourly self-paced, +15min) |
 | 4   | `populate_label_studio_project` (Species) | api | ported |
 | 4.2 | `sync_species_labels` | api | partial — generic sync runs; species-specific TBD |
 
@@ -71,7 +71,7 @@ status" section of [CLAUDE.md](../CLAUDE.md).
 
 | Stage | Notebook | Worker | Status |
 |---|---|---|---|
-| 5.1 | `preprocess_headtail_images` | data | ported |
+| 5.1 | `preprocess_headtail_images` | api (parent) + data (child) | ported (hourly self-paced, +30min) |
 | 5.3 | `populate_label_studio_project` (HeadTail) | api | ported |
 | —   | hourly `SyncLabelStudioHeadTailLabelsWorkflow` | api | scheduled |
 
@@ -87,7 +87,7 @@ status" section of [CLAUDE.md](../CLAUDE.md).
 
 | Stage | Notebook | Worker | Status |
 |---|---|---|---|
-| 9   | `preprocess_slate_images` | data | ported |
+| 9   | `preprocess_slate_images` | api (parent) + data (child) | ported (hourly self-paced, +45min) |
 | 11  | `populate_label_studio_project` (DiveSlate) | api | ported |
 | —   | hourly `SyncLabelStudioDiveSlateLabelsWorkflow` | api | scheduled |
 | 12  | `sync_slate_label` | api | ported |

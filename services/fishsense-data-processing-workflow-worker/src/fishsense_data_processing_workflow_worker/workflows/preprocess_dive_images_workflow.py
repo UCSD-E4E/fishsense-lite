@@ -1,23 +1,25 @@
 """Stage 2 workflow: fan out preprocess_dive_image across every image
 in every cluster of a dive.
 
-Inputs are pre-resolved by the caller (the api-worker, in production):
-the workflow does not call fishsense-api, the NAS, or the file-exchange
-itself — it only orchestrates activities. Raw `.ORF` bytes must already
-have been staged on the file-exchange under
-`/api/v1/exchange/raw/{checksum}.ORF` before the workflow runs."""
+Inputs are pre-resolved by the api-worker parent
+(`PreprocessDiveImagesParentWorkflow` on `fishsense_api_queue`),
+which does dive selection + SDK fetches and then starts this workflow
+as a child on `fishsense_data_processing_queue`. This workflow does
+not call fishsense-api, the NAS, or the file-exchange itself — it
+only orchestrates per-image activities.
+
+The workflow-level input DTO `PreprocessDiveImagesInput` lives in
+`fishsense_shared` because it's the api-worker / data-worker
+contract.
+"""
 
 import asyncio
 from datetime import timedelta
 from typing import List
 
+from fishsense_shared import PreprocessDiveImagesInput
 from pydantic import BaseModel
 from temporalio import workflow
-
-# Note: this stage's parent (which fetches dive/clusters/intrinsics from
-# fishsense-api and stages raw .ORFs to the file-exchange) lives in the
-# api-worker and is intentionally not part of this workflow. Wire it up
-# when porting the api-worker side.
 
 
 class PreprocessDiveImageInput(BaseModel):
@@ -27,16 +29,6 @@ class PreprocessDiveImageInput(BaseModel):
     cluster_index: int  # 1-based
     cluster_size: int
     output_folder: str
-    camera_matrix: List[List[float]]
-    distortion_coefficients: List[float]
-
-
-class PreprocessDiveImagesInput(BaseModel):
-    """Whole-workflow input: clusters of image checksums plus the
-    camera intrinsics needed to rectify each one."""
-
-    dive_id: int
-    clusters: List[List[str]]  # each inner list is a cluster of checksums in order
     camera_matrix: List[List[float]]
     distortion_coefficients: List[float]
 

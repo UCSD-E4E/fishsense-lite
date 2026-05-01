@@ -1,16 +1,20 @@
 """Stage 9 workflow: fan out preprocess_slate_image across slate-labeled
 images of a dive.
 
-Inputs are pre-resolved by the api-worker. Raw `.ORF` bytes must be
-staged on the file-exchange under
-`/api/v1/exchange/raw/{checksum}.ORF`, and the slate template PDF under
-`/api/v1/exchange/dive_slate_pdfs/{slate_id}.pdf`, before the workflow
-runs."""
+Inputs are pre-resolved by the api-worker parent
+(`PreprocessSlateImagesParentWorkflow` on `fishsense_api_queue`),
+which does dive selection + SDK fetches and then starts this workflow
+as a child on `fishsense_data_processing_queue`.
+
+The workflow-level input DTO `PreprocessSlateImagesInput` lives in
+`fishsense_shared` because it's the api-worker / data-worker contract.
+"""
 
 import asyncio
 from datetime import timedelta
 from typing import List, Tuple
 
+from fishsense_shared import PreprocessSlateImagesInput
 from pydantic import BaseModel
 from temporalio import workflow
 
@@ -23,18 +27,6 @@ class PreprocessSlateImageInput(BaseModel):
 
     checksum: str
     output_folder: str
-    slate_id: int
-    slate_dpi: int
-    reference_points: List[ReferencePoint]
-    camera_matrix: List[List[float]]
-    distortion_coefficients: List[float]
-
-
-class PreprocessSlateImagesInput(BaseModel):
-    """Whole-workflow payload."""
-
-    dive_id: int
-    image_checksums: List[str]
     slate_id: int
     slate_dpi: int
     reference_points: List[ReferencePoint]

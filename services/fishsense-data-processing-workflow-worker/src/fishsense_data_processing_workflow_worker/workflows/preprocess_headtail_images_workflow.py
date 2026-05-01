@@ -1,15 +1,20 @@
 """Stage 5.1 workflow: fan out preprocess_headtail_image across every
 image whose head/tail label is incomplete for a dive.
 
-Inputs are pre-resolved by the api-worker; raw `.ORF` bytes must
-already be staged on the file-exchange under
-`/api/v1/exchange/raw/{checksum}.ORF` before the workflow runs.
+Inputs are pre-resolved by the api-worker parent
+(`PreprocessHeadtailImagesParentWorkflow` on `fishsense_api_queue`),
+which does dive selection + SDK fetches and then starts this workflow
+as a child on `fishsense_data_processing_queue`.
+
+The workflow-level input DTO `PreprocessHeadtailImagesInput` lives in
+`fishsense_shared` because it's the api-worker / data-worker contract.
 """
 
 import asyncio
 from datetime import timedelta
 from typing import List
 
+from fishsense_shared import PreprocessHeadtailImagesInput
 from pydantic import BaseModel
 from temporalio import workflow
 
@@ -19,16 +24,6 @@ class PreprocessHeadtailImageInput(BaseModel):
 
     checksum: str
     output_folder: str
-    camera_matrix: List[List[float]]
-    distortion_coefficients: List[float]
-
-
-class PreprocessHeadtailImagesInput(BaseModel):
-    """Whole-workflow payload: a flat list of image checksums plus
-    intrinsics."""
-
-    dive_id: int
-    image_checksums: List[str]
     camera_matrix: List[List[float]]
     distortion_coefficients: List[float]
 

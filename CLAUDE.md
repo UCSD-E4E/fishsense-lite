@@ -7,7 +7,7 @@ Loose ends and architectural conventions that aren't otherwise tracked.
 | Service | Purpose | Task queue |
 |---|---|---|
 | `services/fishsense-api/` | FastAPI app (DB CRUD, label endpoints) | — |
-| `services/fishsense-api-workflow-worker/` | api-side Temporal worker: hourly Label Studio sync (laser/headtail/dive-slate/species), Superset dashboard-config writer, on-demand Create/Populate × {Laser,Species,HeadTail,DiveSlate} LS project workflows, hourly stage-0.1 parent (selects + resolves; dispatches to data-worker) | `fishsense_api_queue` |
+| `services/fishsense-api-workflow-worker/` | api-side Temporal worker: hourly Label Studio sync (laser/headtail/dive-slate/species), Superset dashboard-config writer, on-demand Create/Populate × {Laser,Species,HeadTail,DiveSlate} LS project workflows, hourly preprocess parents for stages 0.1 / 2 / 5.1 / 9 (select + resolve; dispatch child to data-worker) | `fishsense_api_queue` |
 | `services/fishsense-data-processing-workflow-worker/` | image preprocessing (rectify/overlay/JPEG), laser calibration, fish measurement | `fishsense_data_processing_queue` |
 | `services/fishsense-backup-worker/` | nightly Postgres → NAS backups + retention | `fishsense_backup_queue` |
 
@@ -37,14 +37,14 @@ DB (negligible). To add or remove, override
 |---|---|---|---|
 | 0.1 | preprocess_laser_images | api-worker (parent) + data-worker (child) | ported (hourly) |
 | 0.3 | populate_label_studio_project | api-worker | ported |
-| 1   | cluster_dive_frames | data-worker | ported (pre-existing) |
-| 2   | preprocess_dive_images | data-worker | ported |
+| 1   | cluster_dive_frames | data-worker | ported (pre-existing; no api-worker parent yet — workflow doesn't write back to DB) |
+| 2   | preprocess_dive_images | api-worker (parent) + data-worker (child) | ported (hourly, +15min offset) |
 | 4   | populate_label_studio_project | api-worker | ported |
 | 4.2 | sync_species_labels | api-worker | ported (hourly) |
-| 5.1 | preprocess_headtail_images | data-worker | ported |
+| 5.1 | preprocess_headtail_images | api-worker (parent) + data-worker (child) | ported (hourly, +30min offset) |
 | 5.3 | populate_label_studio_project | api-worker | ported |
 | 6.1 | update_dive_image_groups | api-worker | ported (on-demand) |
-| 9   | preprocess_slate_images | data-worker | ported |
+| 9   | preprocess_slate_images | api-worker (parent) + data-worker (child) | ported (hourly, +45min offset) |
 | 11  | populate_label_studio_project | api-worker | ported |
 | 12  | sync_slate_label | api-worker | ported (hourly) |
 | 13  | perform_laser_calibration | data-worker | ported (kernel in fishsense-core) |
@@ -122,17 +122,28 @@ one replica):
 * Per-image activities are idempotent: nginx DAV PUT overwrites,
   SDK upserts.
 
-This pattern was first applied to stage 0.1
-(`PreprocessLaserImagesParentWorkflow`); stages 2 / 5.1 / 9 / 1
-should follow when ported.
+Applied to stages 0.1, 2, 5.1, 9 — each parent runs hourly with a
+15-minute offset between them
+(`preprocess-{laser,dive-images,headtail,slate}-images-workflow-schedule`)
+so their selectors don't all hit `dives.get()` at the top of the
+hour. Per-stage cohort:
 
-The four data-worker preprocess workflows (0.1, 2, 5.1, 9) and the
-clustering workflow (stage 1) are *intentionally orphans today*
-except for 0.1 — they take pre-resolved inputs and wait for an
-api-worker parent. Stages 13 and 14 deliberately keep their SDK
-fetches inline (the math kernels need opencv + fishsense-core, so
-splitting fetch/math across workers would add 5+ activity handoffs
-per dive for no gain).
+| Stage | Parent cohort definition |
+|---|---|
+| 0.1 | HIGH-priority + no `LaserExtrinsics` (matches `dry_run_stage13.py`) |
+| 2   | HIGH-priority + has PREDICTION clusters + at least one image without a completed `SpeciesLabel` |
+| 5.1 | HIGH-priority + at least one `SpeciesLabel.top_three_photos_of_group=True` whose `HeadTailLabel` is incomplete |
+| 9   | HIGH-priority + `dive_slate_id` set + at least one `SpeciesLabel.content_of_image='Slate, Laser on slate'` whose `DiveSlateLabel` is incomplete |
+
+Stage 1 (clustering) does NOT yet have a parent — its data-worker
+workflow returns clusters but doesn't write them back to the DB, so
+adding a parent requires deciding whether the parent persists the
+output (via `images.post_cluster`) or whether the workflow itself
+gains a write step. Defer until a real consumer needs it.
+
+Stages 13 and 14 deliberately keep their SDK fetches inline (the
+math kernels need opencv + fishsense-core, so splitting fetch/math
+across workers would add 5+ activity handoffs per dive for no gain).
 
 ## Data-worker activity pattern
 

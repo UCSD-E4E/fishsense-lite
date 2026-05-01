@@ -17,6 +17,9 @@ Task queue: `fishsense_api_queue`.
 | `Create<Stage>LabelStudioProjectWorkflow` × 4 | on-demand | Idempotently create the LS project for a stage (laser / species / headtail / dive_slate). Title-lookup or create from labeling-config XML. |
 | `Populate<Stage>LabelStudioProjectWorkflow(dive_id)` × 4 | on-demand | Query SQL for active LS projects (`incomplete=True`), fan out task imports across them with `Semaphore(4)`. |
 | `PreprocessLaserImagesParentWorkflow` | every 1 h (`overlap=SKIP`) | Stage-0.1 orchestrator: select next HIGH-priority dive without `LaserExtrinsics`, resolve its incomplete-image-set + camera intrinsics, dispatch `PreprocessLaserImagesWorkflow` as child on `fishsense_data_processing_queue`. |
+| `PreprocessDiveImagesParentWorkflow` | every 1 h, +15 min (`overlap=SKIP`) | Stage-2 orchestrator: HIGH-priority dives with PREDICTION clusters + incomplete species labels. Dispatches `PreprocessDiveImagesWorkflow`. |
+| `PreprocessHeadtailImagesParentWorkflow` | every 1 h, +30 min (`overlap=SKIP`) | Stage-5.1 orchestrator: HIGH-priority dives with `top_three_photos_of_group=True` species labels lacking complete head/tail labels. Dispatches `PreprocessHeadtailImagesWorkflow`. |
+| `PreprocessSlateImagesParentWorkflow` | every 1 h, +45 min (`overlap=SKIP`) | Stage-9 orchestrator: HIGH-priority dives with a `dive_slate_id` and slate-marked species labels lacking complete slate labels. Dispatches `PreprocessSlateImagesWorkflow`. |
 
 Schedules are auto-registered at worker startup if missing, so the
 first deploy creates them and subsequent deploys are no-ops. To change

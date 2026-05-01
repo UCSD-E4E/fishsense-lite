@@ -9,13 +9,21 @@ from fishsense_shared.config import (
 )
 from fishsense_shared.exception_group import ExceptionGroupErrorLogging
 from fishsense_shared.logging import configure_log_handler, configure_logging
-from fishsense_shared.preprocess_contracts import PreprocessLaserImagesInput
+from fishsense_shared.preprocess_contracts import (
+    PreprocessDiveImagesInput,
+    PreprocessHeadtailImagesInput,
+    PreprocessLaserImagesInput,
+    PreprocessSlateImagesInput,
+)
 from fishsense_shared.temporal import build_tls_config, ensure_schedule
 
 __all__ = [
     "IS_DOCKER",
     "ExceptionGroupErrorLogging",
+    "PreprocessDiveImagesInput",
+    "PreprocessHeadtailImagesInput",
     "PreprocessLaserImagesInput",
+    "PreprocessSlateImagesInput",
     "build_tls_config",
     "configure_log_handler",
     "configure_logging",

@@ -193,27 +193,43 @@ Safe sequence per dive: confirm `species_label.grouping` is
 populated for the dive's images (the hourly species sync has run at
 least once with completed labels), then trigger 6.1.
 
-#### Stage 0.1 (PreprocessLaserImagesParentWorkflow) — hourly, parent on api-worker
+#### Cross-worker preprocess parents (stages 0.1, 2, 5.1, 9)
 
-Stage 0.1 splits across both workers. Hourly schedule lives on the
-api-worker; the schedule fires
-`PreprocessLaserImagesParentWorkflow` on `fishsense_api_queue` with
-`overlap=ScheduleOverlapPolicy.SKIP`. The parent:
+Each preprocess stage splits across both workers: an api-worker
+parent does dive selection + SDK resolution, then dispatches a child
+workflow on `fishsense_data_processing_queue` for the per-image
+CPU work. All four parents are hourly with
+`overlap=ScheduleOverlapPolicy.SKIP` and a 15-minute stagger so
+their selectors don't all hit `dives.get()` at the top of the hour.
 
-1. Selects the lowest-id HIGH-priority dive without `LaserExtrinsics`
-   via `select_next_high_priority_dive_for_laser_preprocessing_activity`.
-2. Resolves checksums + camera intrinsics via
-   `resolve_laser_preprocess_inputs_activity`.
-3. `start_child_workflow("PreprocessLaserImagesWorkflow", ...,
-   id="preprocess-laser-{dive_id}",
-   task_queue="fishsense_data_processing_queue")` to dispatch the
-   per-image work to the data-worker.
+| Stage | Parent workflow | Schedule offset | Child id pattern |
+|---|---|---|---|
+| 0.1 | `PreprocessLaserImagesParentWorkflow` | :00 | `preprocess-laser-{dive_id}` |
+| 2   | `PreprocessDiveImagesParentWorkflow` | :15 | `preprocess-dive-images-{dive_id}` |
+| 5.1 | `PreprocessHeadtailImagesParentWorkflow` | :30 | `preprocess-headtail-{dive_id}` |
+| 9   | `PreprocessSlateImagesParentWorkflow` | :45 | `preprocess-slate-{dive_id}` |
+
+Per-stage cohort (selector predicate):
+
+* **0.1** — HIGH-priority dive without `LaserExtrinsics` (matches
+  `dry_run_stage13.py`'s target cohort, so preprocessing always
+  feeds the next calibration).
+* **2** — HIGH-priority dive with PREDICTION clusters AND at least
+  one image without a completed `SpeciesLabel`.
+* **5.1** — HIGH-priority dive with at least one
+  `SpeciesLabel.top_three_photos_of_group=True` whose `HeadTailLabel`
+  is missing or incomplete.
+* **9** — HIGH-priority dive with `dive_slate_id` set AND at least
+  one `SpeciesLabel.content_of_image='Slate, Laser on slate'` whose
+  `DiveSlateLabel` is missing or incomplete.
 
 The deterministic child id makes a manual+scheduled trigger overlap
-a `WorkflowAlreadyStarted` no-op rather than redoing the dive. An
-N-dive backlog clears in N hours.
+a `WorkflowAlreadyStarted` no-op rather than redoing the dive. Each
+parent drains exactly one dive per run, so an N-dive backlog clears
+in N hours per stage.
 
-To trigger a manual run (drains one extra dive immediately):
+To trigger a manual run for any stage (drains one extra dive
+immediately):
 
 ```
 temporal workflow start \
@@ -221,17 +237,17 @@ temporal workflow start \
   --task-queue fishsense_api_queue
 ```
 
-The schedule is `preprocess-laser-images-workflow-schedule` /
-`PreprocessLaserImagesParentWorkflow-workflow`. To change cadence
-or `overlap_policy`, `temporal schedule delete
-preprocess-laser-images-workflow-schedule` and let the next
-api-worker restart recreate it.
+(Same pattern with `Preprocess{DiveImages,Headtail,Slate}ImagesParentWorkflow`
+for the others.)
+
+To change cadence / overlap_policy / stagger, `temporal schedule
+delete preprocess-{laser,dive-images,headtail,slate}-images-workflow-schedule`
+and let the next api-worker restart recreate it.
 
 **Cluster note**: when the data-worker scales to multiple replicas,
-the per-image activities load-balance for free across replicas
-(Temporal task-queue distribution); the parent's
-`overlap=SKIP` plus the deterministic child id keep the selector
-side race-free.
+per-image activities load-balance for free across replicas (Temporal
+task-queue distribution). The parent's `overlap=SKIP` plus
+deterministic child ids keep the selector side race-free.
 
 #### Stages 13 + 14 require a data-worker rollout
 
