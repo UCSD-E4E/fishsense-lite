@@ -87,9 +87,12 @@ without its mTLS certs.
    - `pg_volumes/config/` — `postgres.conf`, etc.
    - `pg_volumes/scripts/` — init scripts.
    - `temporal_volumes/certs/` — mTLS certs (read by workers too).
-   - `worker_volumes/config/` — `settings.toml` + `.secrets.toml` for
-     `fishsense-api-workflow-worker`.
-   - `worker_volumes/backup_config/` — same for `fishsense-backup-worker`.
+   - `worker_volumes/api_worker/config/.secrets.toml` — basic auth /
+     LS API token / etc. for `fishsense-api-workflow-worker`. The
+     paired `settings.toml` is tracked in repo.
+   - `worker_volumes/api_worker/logs/` — log volume.
+   - `worker_volumes/backup_worker/config/.secrets.toml` — same shape
+     for `fishsense-backup-worker` (paired `settings.toml` tracked).
    - `worker_volumes/backup_worker/logs/` — log volume.
    - `mafl_volumes/data/` — mafl config + dashboard config.
    - `superset_volumes/`, `qcomm_static_file_server_volumes/`,
@@ -117,12 +120,13 @@ with the orchestrator's postgres / Temporal / authentik traffic.
 2. `git clone` this repo to a persistent path
    (e.g. `/srv/fishsense-data-worker`).
 3. Set repo variable `DATA_WORKER_DEPLOY_DIR` to that absolute path.
-4. Populate the untracked sibling directories under `deploy/`:
-   - `worker_volumes/config/settings.toml` — `[temporal]`,
-     `[fishsense_api]`, `[file_exchange]`, `[e4e_nas]` blocks.
-   - `worker_volumes/config/.secrets.toml` — fishsense-api basic auth,
-     NAS creds.
-   - `worker_volumes/logs/` — log volume.
+4. The in-repo `worker_volumes/data_worker/config/settings.toml` is
+   the canonical config and flows in via `git pull --ff-only origin main`
+   (same atomic-with-image-pin guarantee the orchestrator workers
+   have). Populate the untracked siblings on the host:
+   - `worker_volumes/data_worker/config/.secrets.toml` — fishsense-api
+     basic auth, NAS creds (untracked, host-only).
+   - `worker_volumes/data_worker/logs/` — log volume.
    - `temporal_volumes/certs/client/fishsense-data-processing-workflow-worker.pem`
      + `.key` — data-worker-specific mTLS client cert.
    - `temporal_volumes/certs/ca/root-ca.pem` — same root CA the
@@ -142,9 +146,9 @@ silently ignore the old prefix.
 #### Settings-file changes ride the deploy atomically
 
 `deploy.yml` does `git pull --ff-only origin main` BEFORE
-`docker compose pull && up -d`. Schema changes to
-`worker_volumes/config/settings.toml` (the in-repo copy) flow to the
-host atomically with the image-pin bump — no drift window where the
+`docker compose pull && up -d`. Schema changes to the in-repo
+`worker_volumes/<svc>/config/settings.toml` files flow to the host
+atomically with the image-pin bump — no drift window where the
 new image runs against the old settings or vice versa.
 
 Caveat: `--ff-only` will refuse if ops manually edited the host's
@@ -245,7 +249,8 @@ activities:
   (Label Studio task URLs reference them).
 
 Configurable: set `processed_jpegs.nas_root_path` in
-`worker_volumes/config/settings.toml` to override the default root.
+`worker_volumes/api_worker/config/settings.toml` to override the
+default root.
 
 | Stage | Parent workflow | Schedule offset | Child id pattern |
 |---|---|---|---|

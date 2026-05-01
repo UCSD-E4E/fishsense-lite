@@ -19,6 +19,6 @@ services:
     image: ghcr.io/ucsd-e4e/fishsense-data-processing-workflow-worker:v0.4.0
     volumes:
       - ./temporal_volumes/certs:/certs:ro
-      - ./worker_volumes/config:/e4efs/config:ro
-      - ./worker_volumes/logs:/e4efs/logs:rw
+      - ./worker_volumes/data_worker/config:/e4efs/config:ro
+      - ./worker_volumes/data_worker/logs:/e4efs/logs:rw
     restart: on-failure:15

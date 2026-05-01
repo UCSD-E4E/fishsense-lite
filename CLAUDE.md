@@ -317,9 +317,11 @@ Data-worker:
 1. Register a runner with `--labels fishsense-data-worker`.
 2. `git clone` the repo to a persistent path (e.g. `/srv/fishsense-data-worker`).
 3. Set repo variable `DATA_WORKER_DEPLOY_DIR` to that path.
-4. Populate `worker_volumes/config/{settings.toml,.secrets.toml}`,
-   `worker_volumes/logs/`, and `temporal_volumes/certs/` (a
-   data-worker-specific client cert + key + the same root CA).
+4. The in-repo `worker_volumes/data_worker/config/settings.toml` is
+   the canonical config — flows in via `git pull --ff-only origin main`
+   like the api-worker's. Populate `worker_volumes/data_worker/config/.secrets.toml`
+   (untracked) and `temporal_volumes/certs/` (a data-worker-specific
+   client cert + key + the same root CA) on the host.
 
 Three reasons for the split:
 1. **Race-proof promotion.** The release tag points at a specific
@@ -346,7 +348,7 @@ services running on the orchestrator host. Currently has
 `fishsense-api-workflow-worker` (moved out of `compose.temporal.yml`
 on 2026-04-29 — workers consume Temporal but aren't part of the
 cluster) and `fishsense-backup-worker`. The backup worker reads its
-postgres + NAS credentials from `./backup_worker_volumes/config/`
+postgres + NAS credentials from `./worker_volumes/backup_worker/config/`
 (`settings.toml` + `.secrets.toml`); that directory must be
 populated on the host before the service will start successfully.
 

@@ -17,8 +17,8 @@ services:
       - temporal
     volumes:
       - ./temporal_volumes/certs:/certs:ro
-      - ./worker_volumes/config:/e4efs/config:ro
-      - ./worker_volumes/logs:/e4efs/logs:rw
+      - ./worker_volumes/api_worker/config:/e4efs/config:ro
+      - ./worker_volumes/api_worker/logs:/e4efs/logs:rw
       - ./mafl_volumes/data/config.yml:/config/dashboard_config.yaml:rw
     restart: on-failure:15
     deploy:
@@ -30,6 +30,6 @@ services:
       - temporal
     volumes:
       - ./temporal_volumes/certs:/certs:ro
-      - ./worker_volumes/backup_config:/e4efs/config:ro
+      - ./worker_volumes/backup_worker/config:/e4efs/config:ro
       - ./worker_volumes/backup_worker/logs:/e4efs/logs:rw
     restart: on-failure:15

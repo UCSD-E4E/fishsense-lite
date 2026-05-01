@@ -1,0 +1,40 @@
+# fishsense-data-processing-workflow-worker — production settings.
+#
+# Loaded by Dynaconf (E4EFS_ prefix) at worker startup. The companion
+# `.secrets.toml` (gitignored, populated on the host next to this file)
+# carries credentials. See validators in
+# services/fishsense-data-processing-workflow-worker/src/.../config.py
+# for the required key set.
+#
+# Networking assumption: the data-worker host shares a network with
+# the orchestrator (same docker overlay, VPN, or first-class L2/L3) so
+# it can reach `fishsense-temporal`, `static_file_server`, and the
+# Authentik-fronted public hostname for fishsense-api the same way
+# `fishsense-api-workflow-worker` does. The file-exchange surface
+# (/api/v1/exchange/) is intentionally NOT publicly routed via Traefik,
+# so an off-network host has no way to reach it without ops opening
+# a route.
+
+[general]
+max_workers = 8
+
+[temporal]
+host = "fishsense-temporal"
+port = "7233"
+tls = true
+client_cert = "/certs/client/fishsense-data-processing-workflow-worker.pem"
+client_private_key = "/certs/client/fishsense-data-processing-workflow-worker.key"
+domain = "workflows.fishsense.e4e.ucsd.edu"
+server_root_ca_cert = "/certs/ca/root-ca.pem"
+
+[fishsense_api]
+url = "https://orchestrator.fishsense.e4e.ucsd.edu"
+
+# Internal docker hostname for the file-exchange nginx — same surface
+# the api-worker uses to GET slate PDFs / PUT processed JPEGs.
+# Bypasses Traefik+authentik (see api-worker settings.toml comment).
+[file_exchange]
+url = "http://static_file_server"
+
+[e4e_nas]
+url = "https://e4e-nas.ucsd.edu:6021"
