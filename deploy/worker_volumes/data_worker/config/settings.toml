@@ -6,14 +6,19 @@
 # services/fishsense-data-processing-workflow-worker/src/.../config.py
 # for the required key set.
 #
-# Networking assumption: the data-worker host shares a network with
-# the orchestrator (same docker overlay, VPN, or first-class L2/L3) so
-# it can reach `fishsense-temporal`, `static_file_server`, and the
-# Authentik-fronted public hostname for fishsense-api the same way
-# `fishsense-api-workflow-worker` does. The file-exchange surface
-# (/api/v1/exchange/) is intentionally NOT publicly routed via Traefik,
-# so an off-network host has no way to reach it without ops opening
-# a route.
+# Networking: the data-worker host is genuinely off-network (separate
+# machine, not on the orchestrator's docker network), so every URL
+# below must be publicly routable. That's a change from the api-worker
+# pattern, where some endpoints use internal docker hostnames.
+#
+# Prereq for `file_exchange.url`: today static_file_server's Traefik
+# router rule is `PathPrefix(/api/v1/data)` only — the file-exchange
+# surface (/api/v1/exchange/) supports PUT/DELETE and is intentionally
+# not publicly exposed. Before the data-worker can run, ops must
+# extend that Traefik route (e.g.
+# `(PathPrefix(/api/v1/data) || PathPrefix(/api/v1/exchange))`) AND
+# protect the exchange path with basic auth or an IP allowlist
+# (otherwise PUT/DELETE is open to the internet).
 
 [general]
 max_workers = 8
@@ -30,11 +35,13 @@ server_root_ca_cert = "/certs/ca/root-ca.pem"
 [fishsense_api]
 url = "https://orchestrator.fishsense.e4e.ucsd.edu"
 
-# Internal docker hostname for the file-exchange nginx — same surface
-# the api-worker uses to GET slate PDFs / PUT processed JPEGs.
-# Bypasses Traefik+authentik (see api-worker settings.toml comment).
+# Public hostname — the data-worker is on a separate machine, so it
+# cannot use the internal docker hostname `static_file_server` like
+# the api-worker does. Routes through Traefik on the orchestrator
+# host. See top-of-file note about the prerequisite Traefik rule
+# extension + auth that ops must put in place.
 [file_exchange]
-url = "http://static_file_server"
+url = "https://orchestrator.fishsense.e4e.ucsd.edu"
 
 [e4e_nas]
 url = "https://e4e-nas.ucsd.edu:6021"
