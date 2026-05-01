@@ -69,7 +69,10 @@ def _dive(dive_id: int = 42) -> Dive:
     )
 
 
-def _species_label(image_id: int, content: str | None = "Stuff, Lingcod (Ophiodon elongatus)") -> SpeciesLabel:
+def _species_label(
+    image_id: int,
+    content: str | None = "Stuff, Lingcod (Ophiodon elongatus)",
+) -> SpeciesLabel:
     return SpeciesLabel(
         id=image_id * 11,
         label_studio_task_id=image_id * 13,
@@ -120,7 +123,11 @@ def _headtail_label(
     )
 
 
-def _cluster(image_ids: list[int], cluster_id: int = 1, fish_id: int | None = None) -> DiveFrameCluster:
+def _cluster(
+    image_ids: list[int],
+    cluster_id: int = 1,
+    fish_id: int | None = None,
+) -> DiveFrameCluster:
     return DiveFrameCluster(
         id=cluster_id,
         image_ids=image_ids,
@@ -158,7 +165,7 @@ def _build_observation(
     return _project(head_world), _project(tail_world), _project(laser_hit)
 
 
-def _make_fs(
+def _make_fs(  # pylint: disable=too-many-arguments
     *,
     dive: Dive,
     intrinsics: CameraIntrinsics | None,
@@ -198,7 +205,7 @@ def _make_fs(
     fs.fish = MagicMock()
     species_lookup = species_lookup or {}
     fs.fish.get_species_by_scientific_name = AsyncMock(
-        side_effect=lambda name: species_lookup.get(name)
+        side_effect=species_lookup.get
     )
     fs.fish.post_species = AsyncMock(return_value=new_species_id)
     fs.fish.get = AsyncMock(return_value=None)

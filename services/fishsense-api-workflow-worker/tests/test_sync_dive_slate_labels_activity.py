@@ -108,7 +108,7 @@ def test_parse_results_extracts_all_fields():
         ]
     }
 
-    parsed = sut._parse_results(annotation)
+    parsed = sut._parse_results(annotation)  # pylint: disable=protected-access
     assert parsed["upside_down"] is True
     assert parsed["reference_points"] == [(500.0, 125.0), (750.0, 150.0)]
     assert parsed["slate_rectangle"] == [(600.0, 50.0), (800.0, 200.0)]
@@ -117,7 +117,7 @@ def test_parse_results_extracts_all_fields():
 
 
 def test_parse_results_handles_minimal_annotation():
-    parsed = sut._parse_results({"result": []})
+    parsed = sut._parse_results({"result": []})  # pylint: disable=protected-access
     assert parsed["upside_down"] is None
     assert parsed["reference_points"] == []
     assert parsed["slate_rectangle"] is None
@@ -131,7 +131,7 @@ def test_parse_results_upside_down_false_when_choice_is_other():
             {"from_name": "upside_down", "value": {"choices": ["Slate right side up"]}}
         ]
     }
-    parsed = sut._parse_results(annotation)
+    parsed = sut._parse_results(annotation)  # pylint: disable=protected-access
     assert parsed["upside_down"] is False
 
 

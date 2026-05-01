@@ -158,8 +158,26 @@ def _filter_top_three(
     ]
 
 
+def _has_complete_keypoints(laser_label, headtail_label) -> bool:
+    """True iff both labels exist and every keypoint coord is set."""
+    if laser_label is None or headtail_label is None:
+        return False
+    return (
+        laser_label.x is not None
+        and laser_label.y is not None
+        and headtail_label.head_x is not None
+        and headtail_label.head_y is not None
+        and headtail_label.tail_x is not None
+        and headtail_label.tail_y is not None
+    )
+
+
 @activity.defn
 async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
+    # pylint: disable=too-many-locals
+    # Orchestration function — gathers dive/camera/laser/cluster/label
+    # context plus per-iteration locals. Splitting it would just push
+    # the same state into a parameter list of a helper.
     """Walk the dive's top-three species labels and write a `Measurement`
     for each one whose laser + headtail + cluster context is present and
     whose triangulated length is finite.
@@ -215,16 +233,7 @@ async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
 
             laser_label = await fs.labels.get_laser_label(image_id=image_id)
             headtail_label = await fs.labels.get_headtail_label(image_id=image_id)
-            if (
-                laser_label is None
-                or laser_label.x is None
-                or laser_label.y is None
-                or headtail_label is None
-                or headtail_label.head_x is None
-                or headtail_label.head_y is None
-                or headtail_label.tail_x is None
-                or headtail_label.tail_y is None
-            ):
+            if not _has_complete_keypoints(laser_label, headtail_label):
                 activity.logger.warning(
                     "dive_id=%d image_id=%d: missing laser/headtail; skipping",
                     dive_id, image_id,
