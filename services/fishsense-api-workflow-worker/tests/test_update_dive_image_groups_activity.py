@@ -129,10 +129,10 @@ def test_regroup_skips_image_ids_without_a_species_label():
 
 
 def test_regroup_empty_inputs():
-    assert sut.regroup_by_species_labels([], {}) == []
-    assert sut.regroup_by_species_labels(
+    assert not sut.regroup_by_species_labels([], {})
+    assert not sut.regroup_by_species_labels(
         [_prediction_cluster(1, [101])], {}
-    ) == []
+    )
 
 
 def test_regroup_first_cluster_starts_with_part_of_previous_does_not_open_extra_group():

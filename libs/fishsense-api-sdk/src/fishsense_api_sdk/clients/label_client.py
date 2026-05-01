@@ -346,27 +346,59 @@ class LabelClient(ClientBase):
         response.raise_for_status()
         return response.json()
 
-    async def get_species_label(self, image_id: int) -> SpeciesLabel | None:
-        """Get a species label .
+    async def get_species_label(
+        self,
+        image_id: int | None = None,
+        label_studio_id: int | None = None,
+    ) -> SpeciesLabel | None:
+        """Get a SpeciesLabel by image ID or Label Studio task ID.
 
         Args:
-            image_id (int): The ID of the image to retrieve the species label for.
+            image_id (int | None): The ID of the image to retrieve the species
+                label for.
+            label_studio_id (int | None): The Label Studio task ID to retrieve
+                the species label for.
 
         Returns:
-            SpeciesLabel | None: The species label for the specified image.
+            SpeciesLabel | None: The species label, or None if not found.
         """
-        response = await self._get(f"/api/v1/labels/species/{image_id}")
-        if response.status_code == 404:
-            self.logger.debug("No species label found for image ID %s", image_id)
-            return None
-        response.raise_for_status()
+        if image_id is not None:
+            response = await self._get(f"/api/v1/labels/species/{image_id}")
+            if response.status_code == 404:
+                self.logger.debug("No species label found for image ID %s", image_id)
+                return None
+            response.raise_for_status()
 
-        json = response.json()
-        if json is None:
-            self.logger.debug("No species label found for image ID %s", image_id)
-            return None
+            json = response.json()
+            if json is None:
+                self.logger.debug("No species label found for image ID %s", image_id)
+                return None
 
-        return SpeciesLabel.model_validate(json)
+            return SpeciesLabel.model_validate(json)
+
+        if label_studio_id is not None:
+            response = await self._get(
+                f"/api/v1/labels/species/label-studio/{label_studio_id}"
+            )
+            if response.status_code == 404:
+                self.logger.debug(
+                    "No species label found for label studio ID %s",
+                    label_studio_id,
+                )
+                return None
+            response.raise_for_status()
+
+            json = response.json()
+            if json is None:
+                self.logger.debug(
+                    "No species label found for label studio ID %s",
+                    label_studio_id,
+                )
+                return None
+
+            return SpeciesLabel.model_validate(json)
+
+        raise NotImplementedError("Fetching without a parameter is not supported")
 
     async def get_species_labels(self, dive_id: int) -> List[SpeciesLabel] | None:
         """Get species labels for all images in a dive .

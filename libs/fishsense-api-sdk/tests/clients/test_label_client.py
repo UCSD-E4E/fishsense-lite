@@ -77,6 +77,15 @@ class TestLabelClient:
             async with client:
                 assert await client.get_species_label(999) is None
 
+    async def test_get_species_label_by_label_studio_id_returns_none_on_404(self):
+        client = _make_client()
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = _mock_404()
+            async with client:
+                assert (
+                    await client.get_species_label(label_studio_id=999) is None
+                )
+
     async def test_get_laser_label_studio_project_ids_hits_collection_endpoint(self):
         client = _make_client()
         response = Mock()

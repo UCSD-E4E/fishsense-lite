@@ -449,6 +449,27 @@ async def put_species_label(
     return label_id
 
 
+@app.get("/api/v1/labels/species/label-studio/{label_studio_id}")
+async def get_species_label_by_label_studio_id(
+    label_studio_id: int, session: AsyncSession = Depends(get_async_session)
+) -> SpeciesLabel | None:
+    """Retrieve a species label for a given Label Studio task ID."""
+    logger.debug(
+        "Retrieving species label for Label Studio id=%d", label_studio_id
+    )
+    query = select(SpeciesLabel).where(
+        SpeciesLabel.label_studio_task_id == label_studio_id
+    )
+
+    label = (await session.exec(query)).first()
+    if label is None:
+        logger.warning(
+            "Species label for Label Studio id=%d not found", label_studio_id
+        )
+        raise HTTPException(status_code=404, detail="Label not found")
+    return label
+
+
 @app.get("/api/v1/labels/sync-cursor/{kind}/{label_studio_project_id}")
 async def get_label_studio_sync_cursor(
     kind: str,

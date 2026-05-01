@@ -7,7 +7,7 @@ Loose ends and architectural conventions that aren't otherwise tracked.
 | Service | Purpose | Task queue |
 |---|---|---|
 | `services/fishsense-api/` | FastAPI app (DB CRUD, label endpoints) | — |
-| `services/fishsense-api-workflow-worker/` | api-side Temporal worker: hourly Label Studio sync (laser/headtail/dive-slate), Superset dashboard-config writer, on-demand Create/Populate × {Laser,Species,HeadTail,DiveSlate} LS project workflows | `fishsense_api_queue` |
+| `services/fishsense-api-workflow-worker/` | api-side Temporal worker: hourly Label Studio sync (laser/headtail/dive-slate/species), Superset dashboard-config writer, on-demand Create/Populate × {Laser,Species,HeadTail,DiveSlate} LS project workflows | `fishsense_api_queue` |
 | `services/fishsense-data-processing-workflow-worker/` | image preprocessing (rectify/overlay/JPEG), laser calibration, fish measurement | `fishsense_data_processing_queue` |
 | `services/fishsense-backup-worker/` | nightly Postgres → NAS backups + retention | `fishsense_backup_queue` |
 
@@ -40,7 +40,7 @@ DB (negligible). To add or remove, override
 | 1   | cluster_dive_frames | data-worker | ported (pre-existing) |
 | 2   | preprocess_dive_images | data-worker | ported |
 | 4   | populate_label_studio_project | api-worker | ported |
-| 4.2 | sync_species_labels | api-worker | partial (sync runs as `SyncLabelStudio*LabelsWorkflow`; species-specific sync TBD) |
+| 4.2 | sync_species_labels | api-worker | ported (hourly) |
 | 5.1 | preprocess_headtail_images | data-worker | ported |
 | 5.3 | populate_label_studio_project | api-worker | ported |
 | 6.1 | update_dive_image_groups | api-worker | ported (on-demand) |
