@@ -11,7 +11,6 @@ slate label so the workflow is idempotent.
 
 from typing import List
 
-from fishsense_api_sdk.client import Client
 from fishsense_api_sdk.models.dive_slate_label import DiveSlateLabel
 from fishsense_api_sdk.models.image import Image
 from fishsense_api_sdk.models.species_label import SpeciesLabel

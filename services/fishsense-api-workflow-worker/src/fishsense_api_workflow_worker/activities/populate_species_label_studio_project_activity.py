@@ -15,7 +15,6 @@ data forward into SpeciesLabel rows post-labeling.
 
 from typing import List
 
-from fishsense_api_sdk.client import Client
 from fishsense_api_sdk.models.image import Image
 from fishsense_api_sdk.models.species_label import SpeciesLabel
 from temporalio import activity

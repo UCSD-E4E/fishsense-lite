@@ -111,7 +111,7 @@ async def test_workflow_short_circuits_when_no_active_projects(
         return []
 
     @activity.defn(name=populate_name)
-    async def stub_populate(dive_id: int, project_id: int) -> int:
+    async def stub_populate(_dive_id: int, _project_id: int) -> int:
         nonlocal populate_called
         populate_called = True
         return 0
@@ -150,7 +150,7 @@ async def test_workflow_caps_per_project_concurrency():
         return list(range(20))
 
     @activity.defn(name="populate_laser_label_studio_project_activity")
-    async def stub_populate(dive_id: int, project_id: int) -> int:
+    async def stub_populate(_dive_id: int, project_id: int) -> int:
         nonlocal in_flight, peak_in_flight
         in_flight += 1
         peak_in_flight = max(peak_in_flight, in_flight)

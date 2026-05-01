@@ -98,7 +98,7 @@ def test_select_targets_filters_by_top_three_and_drops_completed():
     images_by_id = {1: _image(1, "a"), 3: _image(3, "c")}
     existing = [_headtail_label(1, completed=True)]
 
-    selected = sut._select_target_images(species, images_by_id, existing)
+    selected = sut._select_target_images(species, images_by_id, existing)  # pylint: disable=protected-access
 
     assert [img.id for img in selected] == [3]
 

@@ -17,6 +17,7 @@ from typing import Any, Awaitable, Callable, Iterable, List
 from label_studio_sdk.client import LabelStudio
 from temporalio import activity
 
+from fishsense_api_workflow_worker.activities.utils import get_ls_client
 from fishsense_api_workflow_worker.config import settings
 
 
@@ -119,9 +120,8 @@ async def import_tasks_and_record_labels(
 
 
 def _get_ls_client() -> LabelStudio:
-    """Local indirection over `activities.utils.get_ls_client` to keep
-    this module self-contained for unit tests that monkeypatch only
-    one symbol."""
-    from fishsense_api_workflow_worker.activities.utils import get_ls_client
-
+    """Local indirection over `activities.utils.get_ls_client` so unit
+    tests can monkeypatch a single symbol on `populate_utils` and have
+    both `create_or_get_label_studio_project` and
+    `import_tasks_and_record_labels` pick up the fake client."""
     return get_ls_client()

@@ -81,7 +81,7 @@ def test_select_targets_filters_by_slate_marker_and_completion():
     ]
     existing = [_slate_label(1, completed=True)]
 
-    result = sut._select_target_image_ids(species, existing)
+    result = sut._select_target_image_ids(species, existing)  # pylint: disable=protected-access
 
     assert result == [3]
 

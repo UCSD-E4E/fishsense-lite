@@ -23,7 +23,6 @@ ignore stale rows that were obsoleted by a re-import.
 
 from typing import List
 
-from fishsense_api_sdk.client import Client
 from fishsense_api_sdk.models.headtail_label import HeadTailLabel
 from fishsense_api_sdk.models.image import Image
 from fishsense_api_sdk.models.species_label import SpeciesLabel

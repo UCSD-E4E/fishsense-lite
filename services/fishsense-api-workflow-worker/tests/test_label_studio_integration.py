@@ -24,8 +24,8 @@ or directly:
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
-from types import SimpleNamespace
 from typing import List
 from unittest.mock import AsyncMock, MagicMock
 
@@ -37,8 +37,8 @@ from fishsense_api_sdk.models.laser_label import LaserLabel
 from fishsense_api_workflow_worker.activities import (
     create_laser_label_studio_project_activity as create_sut,
     populate_laser_label_studio_project_activity as populate_sut,
-    populate_utils,
 )
+from fishsense_api_workflow_worker.activities.utils import get_ls_client
 
 pytestmark = pytest.mark.integration
 
@@ -76,10 +76,6 @@ async def test_create_activity_creates_then_returns_existing_on_rerun(monkeypatc
     """First run creates the project; second run finds it by title and
     returns the same ID. This is the contract that lets us re-run the
     Create workflow without accumulating duplicate projects."""
-    from fishsense_api_workflow_worker.activities.utils import get_ls_client
-
-    import uuid
-
     title = f"fs-create-rerun-{uuid.uuid4().hex[:8]}"
     monkeypatch.setattr(create_sut, "LASER_PROJECT_TITLE", title)
     monkeypatch.setattr(create_sut, "LASER_LABELING_CONFIG_XML", _MIN_LASER_XML)
@@ -109,8 +105,6 @@ async def test_create_activity_creates_then_returns_existing_on_rerun(monkeypatc
 async def test_create_activity_raises_when_xml_constant_empty(monkeypatch):
     """Empty XML must raise rather than silently make an unlabel-able
     project, even when LS is reachable."""
-    import uuid
-
     title = f"fs-empty-xml-{uuid.uuid4().hex[:8]}"
     monkeypatch.setattr(create_sut, "LASER_PROJECT_TITLE", title)
     monkeypatch.setattr(create_sut, "LASER_LABELING_CONFIG_XML", "")

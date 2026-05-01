@@ -9,7 +9,6 @@ pull annotated values back into SQL once a labeler completes them.
 
 from typing import List
 
-from fishsense_api_sdk.client import Client
 from fishsense_api_sdk.models.image import Image
 from fishsense_api_sdk.models.laser_label import LaserLabel
 from temporalio import activity

@@ -58,7 +58,7 @@ def test_select_incomplete_filters_completed():
     images = [_image(1, "a"), _image(2, "b"), _image(3, "c")]
     existing = [_label(1, completed=True), _label(2, completed=False)]
 
-    result = sut._select_incomplete_images(images, existing)
+    result = sut._select_incomplete_images(images, existing)  # pylint: disable=protected-access
 
     assert [img.id for img in result] == [2, 3]
 
@@ -67,15 +67,15 @@ def test_build_task_uses_groups_jpeg_folder(monkeypatch):
     monkeypatch.setenv(
         "E4EFS_STATIC_FILES__PUBLIC_URL_BASE", "https://orchestrator.example.com"
     )
-    from fishsense_api_workflow_worker import config as cfg
+    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
     cfg.settings.reload()
 
-    task = sut._build_task(_image(7, "abc123"))
+    task = sut._build_task(_image(7, "abc123"))  # pylint: disable=protected-access
 
     assert task["data"]["image"] == (
         "https://orchestrator.example.com/api/v1/data/groups_jpeg/abc123"
     )
-    assert task["predictions"] == []
+    assert not task["predictions"]
 
 
 def _make_fs_client(images: List[Image], existing_labels: List[SpeciesLabel]):

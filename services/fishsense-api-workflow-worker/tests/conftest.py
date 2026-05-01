@@ -14,7 +14,12 @@ real fishsense-api). This is what `@pytest.mark.integration` is wired
 to in the section below.
 """
 
+import uuid
+
 import pytest
+from label_studio_sdk.client import LabelStudio
+
+from fishsense_api_workflow_worker.activities.utils import get_ls_client
 
 
 def _is_integration_test(request: pytest.FixtureRequest) -> bool:
@@ -41,7 +46,7 @@ def configure_worker_settings(
         # them — that's the point of integration tests. Force a settings
         # reload so any earlier placeholder-based attribute access is
         # invalidated.
-        from fishsense_api_workflow_worker import config as cfg
+        from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
 
         cfg.settings.reload()
         yield
@@ -66,16 +71,10 @@ def label_studio_test_project(request: pytest.FixtureRequest):
     minimal `<View><Image/></View>` — enough for LS to accept tasks
     referencing an image URL, which is all the populate path needs.
     """
-    from label_studio_sdk.client import LabelStudio
-
-    from fishsense_api_workflow_worker.activities.utils import get_ls_client
-
     if not _is_integration_test(request):
         pytest.skip("label_studio_test_project fixture is integration-only")
 
     ls: LabelStudio = get_ls_client()
-
-    import uuid
 
     # LS caps title at 50 chars — keep this short.
     title = f"fs-int-{uuid.uuid4().hex[:8]}"
