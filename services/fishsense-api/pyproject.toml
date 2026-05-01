@@ -29,6 +29,10 @@ dev = [
     "pytest-asyncio>=0.24.0",
     # Dev-only: drift test imports the SDK side to compare against API SQLModel.
     "fishsense-api-sdk",
+    # Dev-only: tools/generate_sdk_models.py + the generated-models freshness
+    # test invoke datamodel-codegen against the FastAPI app's openapi schema.
+    # Pinned to label-studio-sdk's transitive version to avoid resolver conflict.
+    "datamodel-code-generator==0.26.1",
 ]
 
 [tool.pytest.ini_options]
