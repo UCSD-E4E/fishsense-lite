@@ -22,6 +22,38 @@ from fishsense_api.server import app
 logger = logging.getLogger(__name__)
 
 
+@app.get("/api/v1/labels/dive-slate/label-studio-project-ids")
+async def get_dive_slate_label_studio_project_ids(
+    incomplete: bool = False,
+    session: AsyncSession = Depends(get_async_session),
+) -> List[int]:
+    """Distinct Label Studio project IDs that have at least one dive-slate label.
+
+    `incomplete=true` narrows to projects that have at least one label
+    where `completed` is NULL or false — matching the Python predicate
+    `not label.completed` the dashboard-config activity used to apply
+    after pulling every label across the wire.
+
+    NOTE: must precede the `/api/v1/labels/dive-slate/{image_id}` route —
+    Starlette's default path converter treats `{image_id}` as `[^/]+`,
+    so registration order is what disambiguates the literal segment.
+    """
+    logger.debug(
+        "Retrieving distinct Label Studio project IDs with dive-slate labels "
+        "(incomplete=%s)",
+        incomplete,
+    )
+    query = select(DiveSlateLabel.label_studio_project_id).where(
+        DiveSlateLabel.label_studio_project_id != None
+    )
+    if incomplete:
+        query = query.where(
+            (DiveSlateLabel.completed == False)
+            | (DiveSlateLabel.completed.is_(None))  # pylint: disable=no-member
+        )
+    return list((await session.exec(query.distinct())).all())
+
+
 @app.get("/api/v1/labels/dive-slate/{image_id}")
 async def get_dive_slate_label(
     image_id: int, session: AsyncSession = Depends(get_async_session)
@@ -71,6 +103,42 @@ async def put_dive_slate_label(
     label_id = label.id
 
     return label_id
+
+
+@app.get("/api/v1/labels/headtail/label-studio-project-ids")
+async def get_headtail_label_studio_project_ids(
+    incomplete: bool = False,
+    session: AsyncSession = Depends(get_async_session),
+) -> List[int]:
+    """Distinct Label Studio project IDs that have at least one head-tail label.
+
+    `incomplete=true` narrows to projects that have at least one label
+    where `completed` is NULL or false — matching the Python predicate
+    `not label.completed` the dashboard-config activity used to apply
+    after pulling every label across the wire.
+
+    Replaces a per-dive fan-out the api-workflow-worker used to do (one
+    HTTP round trip per canonical dive) — that approach blew past the
+    activity's 10-minute schedule_to_close timeout as the dataset grew.
+
+    NOTE: must precede the `/api/v1/labels/headtail/{image_id}` route —
+    Starlette's default path converter treats `{image_id}` as `[^/]+`,
+    so registration order is what disambiguates the literal segment.
+    """
+    logger.debug(
+        "Retrieving distinct Label Studio project IDs with head-tail labels "
+        "(incomplete=%s)",
+        incomplete,
+    )
+    query = select(HeadTailLabel.label_studio_project_id).where(
+        HeadTailLabel.label_studio_project_id != None
+    )
+    if incomplete:
+        query = query.where(
+            (HeadTailLabel.completed == False)
+            | (HeadTailLabel.completed.is_(None))  # pylint: disable=no-member
+        )
+    return list((await session.exec(query.distinct())).all())
 
 
 @app.get("/api/v1/labels/headtail/{image_id}")
@@ -154,6 +222,42 @@ async def get_headtail_label_by_label_studio_id(
         )
         raise HTTPException(status_code=404, detail="Label not found")
     return label
+
+
+@app.get("/api/v1/labels/laser/label-studio-project-ids")
+async def get_laser_label_studio_project_ids(
+    incomplete: bool = False,
+    session: AsyncSession = Depends(get_async_session),
+) -> List[int]:
+    """Distinct Label Studio project IDs that have at least one laser label.
+
+    `incomplete=true` narrows to projects that have at least one label
+    where `completed` is NULL or false — matching the Python predicate
+    `not label.completed` the dashboard-config activity used to apply
+    after pulling every label across the wire.
+
+    Replaces a per-dive fan-out the api-workflow-worker used to do (one
+    HTTP round trip per canonical dive) — that approach blew past the
+    activity's 10-minute schedule_to_close timeout as the dataset grew.
+
+    NOTE: must precede the `/api/v1/labels/laser/{image_id}` route —
+    Starlette's default path converter treats `{image_id}` as `[^/]+`,
+    so registration order is what disambiguates the literal segment.
+    """
+    logger.debug(
+        "Retrieving distinct Label Studio project IDs with laser labels "
+        "(incomplete=%s)",
+        incomplete,
+    )
+    query = select(LaserLabel.label_studio_project_id).where(
+        LaserLabel.label_studio_project_id != None
+    )
+    if incomplete:
+        query = query.where(
+            (LaserLabel.completed == False)
+            | (LaserLabel.completed.is_(None))  # pylint: disable=no-member
+        )
+    return list((await session.exec(query.distinct())).all())
 
 
 @app.get("/api/v1/labels/laser/{image_id}")
@@ -256,6 +360,38 @@ async def get_species_labels_for_dive(
         logger.warning("Species labels for dive with id=%d not found", dive_id)
         raise HTTPException(status_code=404, detail="Labels not found")
     return labels
+
+
+@app.get("/api/v1/labels/species/label-studio-project-ids")
+async def get_species_label_studio_project_ids(
+    incomplete: bool = False,
+    session: AsyncSession = Depends(get_async_session),
+) -> List[int]:
+    """Distinct Label Studio project IDs that have at least one species label.
+
+    `incomplete=true` narrows to projects that have at least one label
+    where `completed` is NULL or false — matching the Python predicate
+    `not label.completed` the dashboard-config activity used to apply
+    after pulling every label across the wire.
+
+    NOTE: must precede the `/api/v1/labels/species/{image_id}` route —
+    Starlette's default path converter treats `{image_id}` as `[^/]+`,
+    so registration order is what disambiguates the literal segment.
+    """
+    logger.debug(
+        "Retrieving distinct Label Studio project IDs with species labels "
+        "(incomplete=%s)",
+        incomplete,
+    )
+    query = select(SpeciesLabel.label_studio_project_id).where(
+        SpeciesLabel.label_studio_project_id != None
+    )
+    if incomplete:
+        query = query.where(
+            (SpeciesLabel.completed == False)
+            | (SpeciesLabel.completed.is_(None))  # pylint: disable=no-member
+        )
+    return list((await session.exec(query.distinct())).all())
 
 
 @app.get("/api/v1/labels/species/{image_id}")

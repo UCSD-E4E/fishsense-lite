@@ -138,6 +138,60 @@ class LabelClient(ClientBase):
 
         return [HeadTailLabel.model_validate(label) for label in json]
 
+    async def get_headtail_label_studio_project_ids(
+        self, *, incomplete: bool = False
+    ) -> List[int]:
+        """Get the distinct Label Studio project IDs that have head-tail labels.
+
+        Single-query alternative to walking every canonical dive.
+
+        Args:
+            incomplete: when True, restrict to projects with at least one
+                label whose `completed` is NULL or false.
+        """
+        suffix = "?incomplete=true" if incomplete else ""
+        response = await self._get(
+            f"/api/v1/labels/headtail/label-studio-project-ids{suffix}"
+        )
+        response.raise_for_status()
+        return list(response.json() or [])
+
+    async def get_species_label_studio_project_ids(
+        self, *, incomplete: bool = False
+    ) -> List[int]:
+        """Get the distinct Label Studio project IDs that have species labels.
+
+        Single-query alternative to walking every canonical dive.
+
+        Args:
+            incomplete: when True, restrict to projects with at least one
+                label whose `completed` is NULL or false.
+        """
+        suffix = "?incomplete=true" if incomplete else ""
+        response = await self._get(
+            f"/api/v1/labels/species/label-studio-project-ids{suffix}"
+        )
+        response.raise_for_status()
+        return list(response.json() or [])
+
+    async def get_dive_slate_label_studio_project_ids(
+        self, *, incomplete: bool = False
+    ) -> List[int]:
+        """Get the distinct Label Studio project IDs that have dive-slate labels.
+
+        Single-query alternative to walking every canonical dive.
+
+        Args:
+            incomplete: when True, restrict to projects with at least one
+                label whose `completed` is NULL or false.
+        """
+        suffix = "?incomplete=true" if incomplete else ""
+        response = await self._get(
+            f"/api/v1/labels/dive-slate/label-studio-project-ids{suffix}"
+        )
+        response.raise_for_status()
+        return list(response.json() or [])
+
     async def put_headtail_label(
         self, image_id: int, headtail_label: HeadTailLabel
     ) -> int:
@@ -222,6 +276,24 @@ class LabelClient(ClientBase):
             return None
 
         return [LaserLabel.model_validate(label) for label in json]
+
+    async def get_laser_label_studio_project_ids(
+        self, *, incomplete: bool = False
+    ) -> List[int]:
+        """Get the distinct Label Studio project IDs that have laser labels.
+
+        Single-query alternative to walking every canonical dive.
+
+        Args:
+            incomplete: when True, restrict to projects with at least one
+                label whose `completed` is NULL or false.
+        """
+        suffix = "?incomplete=true" if incomplete else ""
+        response = await self._get(
+            f"/api/v1/labels/laser/label-studio-project-ids{suffix}"
+        )
+        response.raise_for_status()
+        return list(response.json() or [])
 
     async def put_laser_label(self, image_id: int, laser_label: LaserLabel) -> int:
         """Put a laser label to an image .

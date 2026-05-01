@@ -76,3 +76,145 @@ class TestLabelClient:
             mock_get.return_value = _mock_404()
             async with client:
                 assert await client.get_species_label(999) is None
+
+    async def test_get_laser_label_studio_project_ids_hits_collection_endpoint(self):
+        client = _make_client()
+        response = Mock()
+        response.status_code = 200
+        response.raise_for_status = Mock()
+        response.json = Mock(return_value=[101, 202, 303])
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = response
+            async with client:
+                ids = await client.get_laser_label_studio_project_ids()
+        mock_get.assert_awaited_once_with(
+            "/api/v1/labels/laser/label-studio-project-ids"
+        )
+        assert ids == [101, 202, 303]
+
+    async def test_get_laser_label_studio_project_ids_handles_null_body(self):
+        client = _make_client()
+        response = Mock()
+        response.status_code = 200
+        response.raise_for_status = Mock()
+        response.json = Mock(return_value=None)
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = response
+            async with client:
+                assert await client.get_laser_label_studio_project_ids() == []
+
+    async def test_get_laser_label_studio_project_ids_passes_incomplete_flag(self):
+        client = _make_client()
+        response = Mock()
+        response.status_code = 200
+        response.raise_for_status = Mock()
+        response.json = Mock(return_value=[5])
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = response
+            async with client:
+                await client.get_laser_label_studio_project_ids(incomplete=True)
+        mock_get.assert_awaited_once_with(
+            "/api/v1/labels/laser/label-studio-project-ids?incomplete=true"
+        )
+
+    async def test_get_headtail_label_studio_project_ids_hits_collection_endpoint(self):
+        client = _make_client()
+        response = Mock()
+        response.status_code = 200
+        response.raise_for_status = Mock()
+        response.json = Mock(return_value=[11, 22])
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = response
+            async with client:
+                ids = await client.get_headtail_label_studio_project_ids()
+        mock_get.assert_awaited_once_with(
+            "/api/v1/labels/headtail/label-studio-project-ids"
+        )
+        assert ids == [11, 22]
+
+    async def test_get_headtail_label_studio_project_ids_handles_null_body(self):
+        client = _make_client()
+        response = Mock()
+        response.status_code = 200
+        response.raise_for_status = Mock()
+        response.json = Mock(return_value=None)
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = response
+            async with client:
+                assert await client.get_headtail_label_studio_project_ids() == []
+
+    async def test_get_headtail_label_studio_project_ids_passes_incomplete_flag(self):
+        client = _make_client()
+        response = Mock()
+        response.status_code = 200
+        response.raise_for_status = Mock()
+        response.json = Mock(return_value=[])
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = response
+            async with client:
+                await client.get_headtail_label_studio_project_ids(incomplete=True)
+        mock_get.assert_awaited_once_with(
+            "/api/v1/labels/headtail/label-studio-project-ids?incomplete=true"
+        )
+
+    async def test_get_species_label_studio_project_ids_hits_collection_endpoint(self):
+        client = _make_client()
+        response = Mock()
+        response.status_code = 200
+        response.raise_for_status = Mock()
+        response.json = Mock(return_value=[31, 32])
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = response
+            async with client:
+                ids = await client.get_species_label_studio_project_ids()
+        mock_get.assert_awaited_once_with(
+            "/api/v1/labels/species/label-studio-project-ids"
+        )
+        assert ids == [31, 32]
+
+    async def test_get_species_label_studio_project_ids_passes_incomplete_flag(self):
+        client = _make_client()
+        response = Mock()
+        response.status_code = 200
+        response.raise_for_status = Mock()
+        response.json = Mock(return_value=[])
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = response
+            async with client:
+                await client.get_species_label_studio_project_ids(incomplete=True)
+        mock_get.assert_awaited_once_with(
+            "/api/v1/labels/species/label-studio-project-ids?incomplete=true"
+        )
+
+    async def test_get_dive_slate_label_studio_project_ids_hits_collection_endpoint(
+        self,
+    ):
+        client = _make_client()
+        response = Mock()
+        response.status_code = 200
+        response.raise_for_status = Mock()
+        response.json = Mock(return_value=[41])
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = response
+            async with client:
+                ids = await client.get_dive_slate_label_studio_project_ids()
+        mock_get.assert_awaited_once_with(
+            "/api/v1/labels/dive-slate/label-studio-project-ids"
+        )
+        assert ids == [41]
+
+    async def test_get_dive_slate_label_studio_project_ids_passes_incomplete_flag(
+        self,
+    ):
+        client = _make_client()
+        response = Mock()
+        response.status_code = 200
+        response.raise_for_status = Mock()
+        response.json = Mock(return_value=[])
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = response
+            async with client:
+                await client.get_dive_slate_label_studio_project_ids(incomplete=True)
+        mock_get.assert_awaited_once_with(
+            "/api/v1/labels/dive-slate/label-studio-project-ids?incomplete=true"
+        )
