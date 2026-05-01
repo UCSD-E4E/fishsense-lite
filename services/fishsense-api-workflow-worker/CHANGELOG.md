@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.25.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.24.0...fishsense-api-workflow-worker-v1.25.0) (2026-05-01)
+
+
+### Features
+
+* **api-worker:** port stage 4.2 sync_species_labels ([91d17f4](https://github.com/UCSD-E4E/fishsense-lite/commit/91d17f44d7266fae2338fb6e3c8bef364940eb7b))
+* **api-worker:** port stage 6.1 update_dive_image_groups ([0ae07a2](https://github.com/UCSD-E4E/fishsense-lite/commit/0ae07a2e375246d84e246447d624bd4ea51ce55b))
+
 ## [1.24.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.23.1...fishsense-api-workflow-worker-v1.24.0) (2026-05-01)
 
 
