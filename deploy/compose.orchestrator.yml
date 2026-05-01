@@ -18,7 +18,7 @@ services:
     restart: on-failure:15
 
   fishsense-api:
-    image: ghcr.io/ucsd-e4e/fishsense-api:v1.21.0
+    image: ghcr.io/ucsd-e4e/fishsense-api:v1.22.0
     volumes:
       - ./fishsense_api_volumes/config:/e4efs/config:ro
     labels:
