@@ -2,6 +2,18 @@
 
 <!-- version list -->
 
+## [1.22.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.21.0...fishsense-api-workflow-worker-v1.22.0) (2026-05-01)
+
+
+### Features
+
+* **api,sdk:** incremental Label Studio sync via LabelStudioSyncCursor ([726a147](https://github.com/UCSD-E4E/fishsense-lite/commit/726a1477e436c8ca0235e60e2354e4154b1dac22))
+
+
+### Bug Fixes
+
+* **api-workflow-worker:** bound sync concurrency, add heartbeats, extract helper ([40e04fe](https://github.com/UCSD-E4E/fishsense-lite/commit/40e04fe4b4bfeeccb7258f49914f9a6b44914c5a))
+
 ## [1.21.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.20.1...fishsense-api-workflow-worker-v1.21.0) (2026-04-29)
 
 

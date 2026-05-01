@@ -1,6 +1,6 @@
 [project]
 name = "fishsense-api"
-version = "1.19.0"
+version = "1.20.0"
 description = "This is the FishSense API server."
 readme = "README.md"
 requires-python = ">=3.13"
