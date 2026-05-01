@@ -66,10 +66,24 @@ def run_pg_dump(
         "pg_dump start db=%s host=%s:%d user=%s out=%s",
         db_name, host, port, username, output_path,
     )
-    subprocess.run(
+    # Capture stderr so a failure surfaces the actual pg_dump message
+    # (auth failed, role missing, permission denied for table X, …) in
+    # the CalledProcessError — otherwise Temporal only sees the exit
+    # code and the real reason stays buried in container logs.
+    result = subprocess.run(
         cmd,
         env=env,
-        check=True,
+        check=False,
         timeout=timeout_s,
+        stderr=subprocess.PIPE,
+        text=True,
     )
+    if result.returncode != 0:
+        _log.error(
+            "pg_dump failed db=%s rc=%d stderr=%s",
+            db_name, result.returncode, result.stderr,
+        )
+        raise subprocess.CalledProcessError(
+            result.returncode, cmd, output=None, stderr=result.stderr,
+        )
     _log.info("pg_dump done db=%s out=%s", db_name, output_path)

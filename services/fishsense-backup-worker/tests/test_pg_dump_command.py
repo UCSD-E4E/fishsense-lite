@@ -6,7 +6,12 @@ flag must be `-Fc` (custom format — what the prod backup convention
 uses, what `pg_restore` expects).
 """
 
-from fishsense_backup_worker.pg_dump import build_pg_dump_command
+import subprocess
+from subprocess import CompletedProcess
+
+import pytest
+
+from fishsense_backup_worker.pg_dump import build_pg_dump_command, run_pg_dump
 
 
 def test_uses_custom_format():
@@ -87,6 +92,40 @@ def test_first_arg_is_pg_dump_executable():
         output_path="/tmp/out.dump",
     )
     assert cmd[0] == "pg_dump"
+
+
+def test_failure_surfaces_stderr_in_exception(monkeypatch, tmp_path):
+    """A non-zero pg_dump exit must raise CalledProcessError with the
+    captured stderr attached, so Temporal failure events carry the
+    real reason (auth, role missing, permission denied) instead of
+    just the exit code."""
+
+    def fake_run(cmd, env, check, timeout, stderr, text):
+        assert check is False
+        assert stderr is subprocess.PIPE
+        assert text is True
+        return CompletedProcess(
+            args=cmd,
+            returncode=1,
+            stdout=None,
+            stderr='pg_dump: error: connection to server at "postgres" '
+            'failed: FATAL:  password authentication failed for user "backup"\n',
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(subprocess.CalledProcessError) as excinfo:
+        run_pg_dump(
+            db_name="fishsense",
+            host="postgres",
+            port=5432,
+            username="backup",
+            password="wrong",
+            output_path=str(tmp_path / "out.dump"),
+        )
+
+    assert excinfo.value.returncode == 1
+    assert "password authentication failed" in (excinfo.value.stderr or "")
 
 
 def test_env_does_not_set_other_pg_vars():
