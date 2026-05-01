@@ -11,15 +11,13 @@ domain = "workflows.fishsense.e4e.ucsd.edu"
 server_root_ca_cert = "/certs/ca/root-ca.pem"
 
 [label_studio]
-host = "labeler.e4e.ucsd.edu"
-laser_project_ids = [43, 42]
-head_tail_project_ids = [44, 45]
+url = "https://labeler.e4e.ucsd.edu"
 
-[postgres]
-host = "postgres"
-port = "5432"
-username = "postgres"
-database = "fishsense"
+[e4e_nas]
+url = "https://e4e-nas.ucsd.edu:6021"
+
+[fishsense_api]
+url = "https://orchestrator.fishsense.e4e.ucsd.edu"
 
 [static_files]
 public_url_base = "https://orchestrator.fishsense.e4e.ucsd.edu"
