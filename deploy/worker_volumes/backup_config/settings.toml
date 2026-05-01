@@ -23,7 +23,7 @@ url = "https://e4e-nas.ucsd.edu:6021"
 [backup]
 databases = ["fishsense", "superset", "temporal_db"]
 retention_count = 14
-nas_root_path = "/fishsense_data"
+nas_root_path = "/fishsense_data/database_backups"
 schedule_id = "fishsense-daily-db-backup"
 schedule_cron = "0 3 * * *"
 task_queue = "fishsense_backup_queue"
