@@ -98,11 +98,12 @@ status" section of [CLAUDE.md](../CLAUDE.md).
 | Stage | Notebook | Worker | Status |
 |---|---|---|---|
 | 6.1 | `update_dive_image_groups` | api | not started |
-| 14  | `measure_fish` | api | not started (kernel in fishsense-core) |
+| 14  | `measure_fish` | data | ported (kernel in fishsense-core) |
 
 19. **Stage 6.1** reconciles species labels back into the frame clusters
     from stage 1.
-20. **Stage 14** computes the fish length:
+20. **Stage 14** (`MeasureFishWorkflow(dive_id)` on the data-worker)
+    computes the fish length per top-three species label:
     1. Laser-dot pixel + `LaserExtrinsics` → triangulate depth at the
        laser-hit point (`compute_world_point_from_laser`).
     2. Feed that depth into `compute_world_point_from_depth` for the
@@ -110,6 +111,11 @@ status" section of [CLAUDE.md](../CLAUDE.md).
        positive sign convention, no internal flip.
     3. `‖head₃d − tail₃d‖` is the fish length, written to
        `Measurement`.
+
+    Returns a `MeasureFishResult` summary (`measured`,
+    `dropped_nan`, `missing_laser_or_headtail`, `missing_cluster`)
+    so silent drops from the notebook are observable. Raises if
+    `LaserExtrinsics` is absent — run stage 13 first.
 
 The math layer for stages 13/14 is pinned down by synthetic-geometry
 tests (commits `15a545a`, `a5e92c6`); the open follow-up is a
@@ -123,10 +129,14 @@ and current status.
   (0.1, 2, 5.1, 9), all four `Populate*LabelStudioProjectWorkflow`s,
   the two sync-back workflows scheduled hourly
   (`SyncLabelStudioLaserLabelsWorkflow`,
-  `SyncLabelStudioHeadTailLabelsWorkflow`), and the dashboard-config
-  writer.
+  `SyncLabelStudioHeadTailLabelsWorkflow`), the dashboard-config
+  writer, and the laser-calibration + measurement workflows
+  (`PerformLaserCalibrationWorkflow`, `MeasureFishWorkflow` —
+  both data-worker, on-demand).
 * **Still needed before a fresh dive can be measured end-to-end in
-  the monorepo:** stages 6.1, 12, 13, 14.
+  the monorepo:** stages 6.1, 12, plus the real-frame regression
+  for stages 13 + 14 against historical `Measurement` rows
+  (gated on prod-DB / api-worker access — see CLAUDE.md).
 
 ## Workflow scheduling vs on-demand
 
