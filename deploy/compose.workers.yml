@@ -11,7 +11,7 @@
 
 services:
   fishsense-api-workflow-worker:
-    image: ghcr.io/ucsd-e4e/fishsense-api-workflow-worker:v1.24.0
+    image: ghcr.io/ucsd-e4e/fishsense-api-workflow-worker:v1.25.0
     depends_on:
       - temporal
     volumes:
