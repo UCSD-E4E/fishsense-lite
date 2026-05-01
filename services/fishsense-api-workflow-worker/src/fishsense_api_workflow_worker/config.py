@@ -10,6 +10,7 @@ from fishsense_shared import (
     configure_logging as _configure_logging,
     get_config_path,
     path_validator,
+    url_condition,
 )
 
 APP_NAME = "e4efs_api_workflow_worker"
@@ -29,12 +30,18 @@ _VALIDATORS = [
     Validator("temporal.client_private_key", cast=str, condition=path_validator),
     Validator("temporal.domain", cast=str),
     Validator("temporal.server_root_ca_cert", cast=str, condition=path_validator),
-    Validator("label_studio.url", required=True, condition=validators.url),
+    Validator("label_studio.url", required=True, condition=url_condition),
     Validator("label_studio.api_key", required=True, cast=str),
-    Validator("e4e_nas.url", required=True, cast=str, condition=validators.url),
+    Validator(
+        "static_files.public_url_base",
+        required=True,
+        cast=str,
+        condition=url_condition,
+    ),
+    Validator("e4e_nas.url", required=True, cast=str, condition=url_condition),
     Validator("e4e_nas.username", required=True, cast=str),
     Validator("e4e_nas.password", required=True, cast=str),
-    Validator("fishsense_api.url", required=True, cast=str, condition=validators.url),
+    Validator("fishsense_api.url", required=True, cast=str, condition=url_condition),
     Validator("fishsense_api.username", cast=str),
     Validator("fishsense_api.password", cast=str),
 ]

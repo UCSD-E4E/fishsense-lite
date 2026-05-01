@@ -36,23 +36,44 @@ DB (negligible). To add or remove, override
 | Stage | Notebook | Owner | Status |
 |---|---|---|---|
 | 0.1 | preprocess_laser_images | data-worker | ported |
-| 0.3 | populate_label_studio_project | api-worker | not started |
+| 0.3 | populate_label_studio_project | api-worker | ported |
 | 1   | cluster_dive_frames | data-worker | ported (pre-existing) |
 | 2   | preprocess_dive_images | data-worker | ported |
-| 4   | populate_label_studio_project | api-worker | not started |
-| 4.2 | sync_species_labels | api-worker | not started |
+| 4   | populate_label_studio_project | api-worker | ported |
+| 4.2 | sync_species_labels | api-worker | partial (sync runs as `SyncLabelStudio*LabelsWorkflow`; species-specific sync TBD) |
 | 5.1 | preprocess_headtail_images | data-worker | ported |
-| 5.3 | populate_label_studio_project | api-worker | not started |
+| 5.3 | populate_label_studio_project | api-worker | ported |
 | 6.1 | update_dive_image_groups | api-worker | not started |
 | 9   | preprocess_slate_images | data-worker | ported |
-| 11  | populate_label_studio_project | api-worker | not started |
+| 11  | populate_label_studio_project | api-worker | ported |
 | 12  | sync_slate_label | api-worker | not started |
 | 13  | perform_laser_calibration | api-worker | not started (kernel in fishsense-core) |
 | 14  | measure_fish | api-worker | not started (kernel in fishsense-core) |
 
-Owner column is the *target* worker once the api-worker side is built;
-currently the api-worker has no activities yet, so all api-worker
-notebooks are still hand-run.
+Create and populate are split into separate workflows per stage:
+
+* **`Create<Stage>LabelStudioProjectWorkflow()`** — calls
+  `create_<stage>_label_studio_project_activity` which idempotently
+  finds the LS project by title (`FishSense — <Stage> Labeling`) or
+  creates it from a stored labeling-config XML constant. Returns
+  `project_id`. The XML constants in
+  `activities/create_*_label_studio_project_activity.py` are empty
+  placeholders by default — paste from the existing prod LS project
+  (Project Settings -> Labeling Interface -> Code) before relying on
+  the create branch. With existing prod projects already in place,
+  re-running the create workflow just returns their IDs.
+* **`Populate<Stage>LabelStudioProjectWorkflow(dive_id)`** — calls
+  `get_active_<stage>_label_studio_project_ids_activity` (SDK query
+  for projects with at least one incomplete label of this kind), then
+  fans out `populate_<stage>_label_studio_project_activity(dive_id,
+  project_id)` across the returned set with a workflow-level
+  `Semaphore(4)`. No config IDs — populate's target set is computed
+  from SQL. Empty result is a no-op.
+
+Both are registered but not scheduled — they're on-demand
+(`temporal workflow start` with a `dive_id` for populate, no args for
+create). The eight workflows are: Create/Populate × Laser/Species/
+HeadTail/DiveSlate.
 
 ## Data-worker activity pattern
 

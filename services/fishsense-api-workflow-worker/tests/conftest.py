@@ -17,6 +17,10 @@ def configure_worker_settings(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("E4EFS_TEMPORAL__HOST", "temporal")
     monkeypatch.setenv("E4EFS_LABEL_STUDIO__URL", "http://label-studio.example.com")
     monkeypatch.setenv("E4EFS_LABEL_STUDIO__API_KEY", "unused")
+    monkeypatch.setenv(
+        "E4EFS_STATIC_FILES__PUBLIC_URL_BASE",
+        "http://static-files.example.com",
+    )
     monkeypatch.setenv("E4EFS_E4E_NAS__URL", "http://nas.example.com")
     monkeypatch.setenv("E4EFS_E4E_NAS__USERNAME", "unused")
     monkeypatch.setenv("E4EFS_E4E_NAS__PASSWORD", "unused")

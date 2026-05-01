@@ -21,6 +21,24 @@ from temporalio.client import (
 )
 from temporalio.worker import Worker
 
+from fishsense_api_workflow_worker.activities.create_dive_slate_label_studio_project_activity import (  # pylint: disable=line-too-long
+    create_dive_slate_label_studio_project_activity,
+)
+from fishsense_api_workflow_worker.activities.create_headtail_label_studio_project_activity import (  # pylint: disable=line-too-long
+    create_headtail_label_studio_project_activity,
+)
+from fishsense_api_workflow_worker.activities.create_laser_label_studio_project_activity import (  # pylint: disable=line-too-long
+    create_laser_label_studio_project_activity,
+)
+from fishsense_api_workflow_worker.activities.create_species_label_studio_project_activity import (  # pylint: disable=line-too-long
+    create_species_label_studio_project_activity,
+)
+from fishsense_api_workflow_worker.activities.get_active_label_studio_project_ids_activities import (  # pylint: disable=line-too-long
+    get_active_dive_slate_label_studio_project_ids_activity,
+    get_active_headtail_label_studio_project_ids_activity,
+    get_active_laser_label_studio_project_ids_activity,
+    get_active_species_label_studio_project_ids_activity,
+)
 from fishsense_api_workflow_worker.activities.get_headtail_label_studio_project_ids_activity import (  # pylint: disable=line-too-long
     get_headtail_label_studio_project_ids_activity,
 )
@@ -29,6 +47,18 @@ from fishsense_api_workflow_worker.activities.get_label_studio_projects_activity
 )
 from fishsense_api_workflow_worker.activities.get_laser_label_studio_project_ids_activity import (
     get_laser_label_studio_project_ids_activity,
+)
+from fishsense_api_workflow_worker.activities.populate_dive_slate_label_studio_project_activity import (  # pylint: disable=line-too-long
+    populate_dive_slate_label_studio_project_activity,
+)
+from fishsense_api_workflow_worker.activities.populate_headtail_label_studio_project_activity import (  # pylint: disable=line-too-long
+    populate_headtail_label_studio_project_activity,
+)
+from fishsense_api_workflow_worker.activities.populate_laser_label_studio_project_activity import (  # pylint: disable=line-too-long
+    populate_laser_label_studio_project_activity,
+)
+from fishsense_api_workflow_worker.activities.populate_species_label_studio_project_activity import (  # pylint: disable=line-too-long
+    populate_species_label_studio_project_activity,
 )
 from fishsense_api_workflow_worker.activities.sync_headtail_labels_for_label_studio_project_activity import (  # pylint: disable=line-too-long
     sync_headtail_labels_for_label_studio_project_activity,
@@ -43,6 +73,30 @@ from fishsense_api_workflow_worker.activities.write_dashboard_config_activity im
     write_dashboard_config_activity,
 )
 from fishsense_api_workflow_worker.config import configure_logging, settings
+from fishsense_api_workflow_worker.workflows.create_dive_slate_label_studio_project_workflow import (  # pylint: disable=line-too-long
+    CreateDiveSlateLabelStudioProjectWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.create_headtail_label_studio_project_workflow import (  # pylint: disable=line-too-long
+    CreateHeadTailLabelStudioProjectWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.create_laser_label_studio_project_workflow import (  # pylint: disable=line-too-long
+    CreateLaserLabelStudioProjectWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.create_species_label_studio_project_workflow import (  # pylint: disable=line-too-long
+    CreateSpeciesLabelStudioProjectWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.populate_dive_slate_label_studio_project_workflow import (  # pylint: disable=line-too-long
+    PopulateDiveSlateLabelStudioProjectWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.populate_headtail_label_studio_project_workflow import (  # pylint: disable=line-too-long
+    PopulateHeadTailLabelStudioProjectWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.populate_laser_label_studio_project_workflow import (  # pylint: disable=line-too-long
+    PopulateLaserLabelStudioProjectWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.populate_species_label_studio_project_workflow import (  # pylint: disable=line-too-long
+    PopulateSpeciesLabelStudioProjectWorkflow,
+)
 from fishsense_api_workflow_worker.workflows.sync_label_studio_headtail_labels_workflow import (
     SyncLabelStudioHeadTailLabelsWorkflow,
 )
@@ -130,6 +184,14 @@ async def main():
                 SyncLabelStudioLaserLabelsWorkflow,
                 SyncLabelStudioHeadTailLabelsWorkflow,
                 UpdateDashboardConfigWorkflow,
+                CreateLaserLabelStudioProjectWorkflow,
+                CreateSpeciesLabelStudioProjectWorkflow,
+                CreateHeadTailLabelStudioProjectWorkflow,
+                CreateDiveSlateLabelStudioProjectWorkflow,
+                PopulateLaserLabelStudioProjectWorkflow,
+                PopulateSpeciesLabelStudioProjectWorkflow,
+                PopulateHeadTailLabelStudioProjectWorkflow,
+                PopulateDiveSlateLabelStudioProjectWorkflow,
             ],
             activity_executor=executor,
             activities=[
@@ -140,6 +202,18 @@ async def main():
                 sync_headtail_labels_for_label_studio_project_activity,
                 sync_users_label_studio_activity,
                 write_dashboard_config_activity,
+                create_laser_label_studio_project_activity,
+                create_species_label_studio_project_activity,
+                create_headtail_label_studio_project_activity,
+                create_dive_slate_label_studio_project_activity,
+                get_active_laser_label_studio_project_ids_activity,
+                get_active_species_label_studio_project_ids_activity,
+                get_active_headtail_label_studio_project_ids_activity,
+                get_active_dive_slate_label_studio_project_ids_activity,
+                populate_laser_label_studio_project_activity,
+                populate_species_label_studio_project_activity,
+                populate_headtail_label_studio_project_activity,
+                populate_dive_slate_label_studio_project_activity,
             ],
         )
 

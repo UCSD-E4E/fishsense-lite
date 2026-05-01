@@ -14,6 +14,8 @@ Task queue: `fishsense_api_queue`.
 | `SyncLabelStudioLaserLabelsWorkflow` | every 1 h | Pull laser labels from Label Studio projects → write to fishsense-api. |
 | `SyncLabelStudioHeadTailLabelsWorkflow` | every 1 h | Same shape for head/tail labels. |
 | `UpdateDashboardConfigWorkflow` | every 1 h | Render the Superset dashboard config from current api state. |
+| `Create<Stage>LabelStudioProjectWorkflow` × 4 | on-demand | Idempotently create the LS project for a stage (laser / species / headtail / dive_slate). Title-lookup or create from labeling-config XML. |
+| `Populate<Stage>LabelStudioProjectWorkflow(dive_id)` × 4 | on-demand | Query SQL for active LS projects (`incomplete=True`), fan out task imports across them with `Semaphore(4)`. |
 
 Schedules are auto-registered at worker startup if missing, so the
 first deploy creates them and subsequent deploys are no-ops. To change
@@ -25,10 +27,11 @@ backup worker).
 
 ## Activities
 
-Per-workflow `activities/*.py` modules. Helpers in `label_utils.py` and
-`utils.py` are shared. None of the data-worker preprocessing notebooks
-(stages 0.3 / 4 / 4.2 / 5.3 / 6.1 / 11 / 12 / 13 / 14) have api-worker
-drivers yet — they're still hand-run; see `CLAUDE.md` for the port
+Per-workflow `activities/*.py` modules. Shared helpers in
+`label_utils.py`, `utils.py`, and `populate_utils.py`. The
+populate stages (0.3 / 4 / 5.3 / 11) are ported; the sync stages
+(4.2 / 12) are partial; calibration / measurement / dive-image-groups
+(6.1 / 13 / 14) are not yet ported. See `CLAUDE.md` for the full port
 status table.
 
 ## Required env (`E4EFS_` prefix)
