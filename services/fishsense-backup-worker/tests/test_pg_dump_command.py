@@ -100,10 +100,10 @@ def test_failure_surfaces_stderr_in_exception(monkeypatch, tmp_path):
     real reason (auth, role missing, permission denied) instead of
     just the exit code."""
 
-    def fake_run(cmd, env, timeout, capture_output, text, check):
-        assert check is False
-        assert capture_output is True
-        assert text is True
+    def fake_run(cmd, **kwargs):
+        assert kwargs["check"] is False
+        assert kwargs["capture_output"] is True
+        assert kwargs["text"] is True
         return CompletedProcess(
             args=cmd,
             returncode=1,
