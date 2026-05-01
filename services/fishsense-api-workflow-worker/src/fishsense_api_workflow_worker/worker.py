@@ -6,7 +6,11 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from typing import Callable
 
-from fishsense_shared import build_tls_config
+from fishsense_shared import (
+    ExceptionGroupErrorLogging,
+    build_tls_config,
+    ensure_schedule,
+)
 from temporalio.client import (
     Client,
     Schedule,
@@ -38,7 +42,6 @@ from fishsense_api_workflow_worker.activities.sync_users_label_studio_activity i
 from fishsense_api_workflow_worker.activities.write_dashboard_config_activity import (
     write_dashboard_config_activity,
 )
-from fishsense_shared import ExceptionGroupErrorLogging
 from fishsense_api_workflow_worker.config import configure_logging, settings
 from fishsense_api_workflow_worker.workflows.sync_label_studio_headtail_labels_workflow import (
     SyncLabelStudioHeadTailLabelsWorkflow,
@@ -53,39 +56,27 @@ from fishsense_api_workflow_worker.workflows.update_dashboard_config_workflow im
 TASK_QUEUE_NAME = "fishsense_api_queue"
 
 
-async def schedule_exists(client: Client, schedule_id: str) -> bool:
-    """Check if a schedule exists."""
-    schedules = await client.list_schedules()
-    async for s in schedules:
-        if s.id == schedule_id:
-            return True
-
-    # If we reach here, no schedule with the given ID was found
-    logging.info("No schedule found with ID: %s", schedule_id)
-
-
 async def schedule_workflow(
     client: Client, schedule_id: str, workflow_cls: Callable, interval: timedelta
 ):
-    """Schedule a workflow to run periodically."""
-    if await schedule_exists(client, schedule_id):
-        logging.info("Schedule %s already exists, skipping...", schedule_id)
-        return
+    """Schedule a workflow to run periodically.
 
-    await client.create_schedule(
-        schedule_id,
-        Schedule(
-            action=ScheduleActionStartWorkflow(
-                workflow_cls.run,
-                args=(),
-                id=f"{workflow_cls.__name__}-workflow",
-                task_queue=TASK_QUEUE_NAME,
-                run_timeout=timedelta(minutes=30),
-            ),
-            spec=ScheduleSpec(intervals=[ScheduleIntervalSpec(every=interval)]),
-            state=ScheduleState(),
+    Idempotent — uses the shared `ensure_schedule` helper, which treats
+    `ScheduleAlreadyRunningError` as success and refuses to update an
+    existing schedule in-place.
+    """
+    schedule = Schedule(
+        action=ScheduleActionStartWorkflow(
+            workflow_cls.run,
+            args=(),
+            id=f"{workflow_cls.__name__}-workflow",
+            task_queue=TASK_QUEUE_NAME,
+            run_timeout=timedelta(minutes=30),
         ),
+        spec=ScheduleSpec(intervals=[ScheduleIntervalSpec(every=interval)]),
+        state=ScheduleState(),
     )
+    await ensure_schedule(client, schedule_id=schedule_id, schedule=schedule)
 
 
 async def schedule_workflows(client: Client):

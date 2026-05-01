@@ -2,7 +2,6 @@
 
 import logging
 from importlib.metadata import version
-from urllib.parse import urlparse
 
 import validators
 from dynaconf import Dynaconf, Validator
@@ -11,23 +10,10 @@ from fishsense_shared import (
     configure_logging as _configure_logging,
     get_config_path,
     path_validator,
+    url_condition,
 )
 
 APP_NAME = "e4efs_data_processing_workflow_worker"
-
-
-def _url_condition(value: str) -> bool:
-    """Permissive URL validator: requires http/https + non-empty hostname.
-
-    `validators.url` rejects Docker-internal hostnames (underscores, no
-    TLD) like `http://static_file_server`, which is what the local
-    devcontainer stack actually uses. This still catches typos like a
-    missing scheme.
-    """
-    if not isinstance(value, str):
-        return False
-    parsed = urlparse(value)
-    return parsed.scheme in {"http", "https"} and bool(parsed.hostname)
 
 
 _VALIDATORS = [
@@ -45,14 +31,14 @@ _VALIDATORS = [
     Validator("temporal.client_private_key", cast=str, condition=path_validator),
     Validator("temporal.domain", cast=str),
     Validator("temporal.server_root_ca_cert", cast=str, condition=path_validator),
-    Validator("e4e_nas.url", required=True, cast=str, condition=_url_condition),
+    Validator("e4e_nas.url", required=True, cast=str, condition=url_condition),
     Validator("e4e_nas.username", required=True, cast=str),
     Validator("e4e_nas.password", required=True, cast=str),
-    Validator("fishsense_api.url", required=True, cast=str, condition=_url_condition),
+    Validator("fishsense_api.url", required=True, cast=str, condition=url_condition),
     Validator("fishsense_api.username", cast=str),
     Validator("fishsense_api.password", cast=str),
     Validator(
-        "static_file_server.url", required=True, cast=str, condition=_url_condition
+        "static_file_server.url", required=True, cast=str, condition=url_condition
     ),
     # Gates registration of the stage 0.1 / 2 / 5.1 / 9 preprocess workflows
     # in worker.py. Default OFF so deploying this binary doesn't accidentally

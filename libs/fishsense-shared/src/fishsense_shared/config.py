@@ -8,6 +8,7 @@ services co-installed on a host (e.g. via platformdirs).
 
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 import platformdirs
 
@@ -33,3 +34,17 @@ def get_log_path(app_name: str) -> Path:
 def path_validator(path: str) -> bool:
     """Dynaconf validator: True when ``path`` exists on disk."""
     return Path(path).exists()
+
+
+def url_condition(value: str) -> bool:
+    """Dynaconf validator: permissive http/https URL with a hostname.
+
+    `validators.url` rejects Docker-internal hostnames (underscores, no
+    TLD) like `http://static_file_server` and `http://fishsense-api:8000`,
+    which is what the local devcontainer + production compose stacks
+    actually use. This still catches typos like a missing scheme.
+    """
+    if not isinstance(value, str):
+        return False
+    parsed = urlparse(value)
+    return parsed.scheme in {"http", "https"} and bool(parsed.hostname)

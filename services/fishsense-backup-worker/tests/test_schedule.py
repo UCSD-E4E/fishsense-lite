@@ -1,24 +1,18 @@
-"""Unit tests for the idempotent backup-schedule registration.
+"""Tests for the backup-worker's `build_backup_schedule`.
 
-We don't need a real Temporal cluster here — the function's only job
-is to call `create_schedule` once and treat ScheduleAlreadyRunningError
-as success. A fake client with an async stub is enough.
+The idempotent registration helper (`ensure_schedule`) is owned by
+`fishsense_shared`; its tests live alongside it. This file only covers
+the backup-specific Schedule construction.
 """
 
-from typing import List
+from temporalio.client import Schedule, ScheduleActionStartWorkflow
 
-import pytest
-from temporalio.client import Schedule, ScheduleAlreadyRunningError
-
-from fishsense_backup_worker.schedule import (
-    build_backup_schedule,
-    ensure_backup_schedule,
-)
+from fishsense_backup_worker.schedule import build_backup_schedule
 
 
-def _schedule() -> Schedule:
-    return build_backup_schedule(
-        databases=["fishsense", "superset", "temporal_db"],
+def test_build_backup_schedule_wires_inputs_into_action():
+    schedule = build_backup_schedule(
+        databases=["fishsense", "superset"],
         nas_root_path="/fishsense_backups",
         retention_count=14,
         cron_expression="0 3 * * *",
@@ -26,37 +20,12 @@ def _schedule() -> Schedule:
         workflow_id="fishsense-daily-db-backup",
     )
 
-
-class _FakeClient:
-    """Records calls to create_schedule. `raise_already_running=True`
-    simulates the schedule already existing."""
-
-    def __init__(self, *, raise_already_running: bool = False):
-        self._raise = raise_already_running
-        self.calls: List[tuple] = []
-
-    async def create_schedule(self, schedule_id: str, schedule):
-        self.calls.append((schedule_id, schedule))
-        if self._raise:
-            raise ScheduleAlreadyRunningError()
-        return None
-
-
-@pytest.mark.asyncio
-async def test_creates_schedule_when_missing():
-    client = _FakeClient(raise_already_running=False)
-    await ensure_backup_schedule(
-        client, schedule_id="sched-id", schedule=_schedule()
-    )
-    assert len(client.calls) == 1
-    assert client.calls[0][0] == "sched-id"
-
-
-@pytest.mark.asyncio
-async def test_no_op_when_schedule_already_exists():
-    client = _FakeClient(raise_already_running=True)
-    # Must not raise — the function swallows ScheduleAlreadyRunningError.
-    await ensure_backup_schedule(
-        client, schedule_id="sched-id", schedule=_schedule()
-    )
-    assert len(client.calls) == 1
+    assert isinstance(schedule, Schedule)
+    action = schedule.action
+    assert isinstance(action, ScheduleActionStartWorkflow)
+    # pylint: disable=no-member
+    # The isinstance check above narrows `action` to ScheduleActionStartWorkflow,
+    # which has `.id` and `.task_queue`. Pylint can't narrow through the assert.
+    assert action.id == "fishsense-daily-db-backup"
+    assert action.task_queue == "fishsense_backup_queue"
+    assert schedule.spec.cron_expressions == ["0 3 * * *"]

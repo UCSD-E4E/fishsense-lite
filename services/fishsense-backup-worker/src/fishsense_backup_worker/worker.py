@@ -10,7 +10,7 @@ import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
-from fishsense_shared import build_tls_config
+from fishsense_shared import build_tls_config, ensure_schedule
 from temporalio.client import Client
 from temporalio.worker import Worker
 
@@ -21,10 +21,7 @@ from fishsense_backup_worker.activities.prune_database_backups import (
     prune_database_backups,
 )
 from fishsense_backup_worker.config import configure_logging, settings
-from fishsense_backup_worker.schedule import (
-    build_backup_schedule,
-    ensure_backup_schedule,
-)
+from fishsense_backup_worker.schedule import build_backup_schedule
 from fishsense_backup_worker.workflows.backup_databases_workflow import (
     BackupDatabasesWorkflow,
 )
@@ -49,7 +46,7 @@ async def main() -> None:
         task_queue=settings.backup.task_queue,
         workflow_id="fishsense-daily-db-backup",
     )
-    await ensure_backup_schedule(
+    await ensure_schedule(
         client, schedule_id=settings.backup.schedule_id, schedule=schedule
     )
 

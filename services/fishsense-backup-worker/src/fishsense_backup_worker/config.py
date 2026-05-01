@@ -8,7 +8,6 @@ the schedule + retention shape.
 
 import logging
 from importlib.metadata import version
-from urllib.parse import urlparse
 
 import validators
 from dynaconf import Dynaconf, Validator
@@ -17,19 +16,10 @@ from fishsense_shared import (
     configure_logging as _configure_logging,
     get_config_path,
     path_validator,
+    url_condition,
 )
 
 APP_NAME = "e4efs_backup_worker"
-
-
-def _url_condition(value: str) -> bool:
-    """Permissive URL validator: http/https scheme + non-empty hostname.
-    Same condition the data-processing-workflow-worker uses; see that
-    module for the rationale."""
-    if not isinstance(value, str):
-        return False
-    parsed = urlparse(value)
-    return parsed.scheme in {"http", "https"} and bool(parsed.hostname)
 
 
 _VALIDATORS = [
@@ -49,7 +39,7 @@ _VALIDATORS = [
     Validator("temporal.domain", cast=str),
     Validator("temporal.server_root_ca_cert", cast=str, condition=path_validator),
     # NAS (where dumps land).
-    Validator("e4e_nas.url", required=True, cast=str, condition=_url_condition),
+    Validator("e4e_nas.url", required=True, cast=str, condition=url_condition),
     Validator("e4e_nas.username", required=True, cast=str),
     Validator("e4e_nas.password", required=True, cast=str),
     # Postgres (this worker is the ONLY one with DB credentials — keep
