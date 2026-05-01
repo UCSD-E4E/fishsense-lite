@@ -760,7 +760,7 @@ dev = [
 
 [[package]]
 name = "fishsense-backup-worker"
-version = "0.2.1"
+version = "0.2.2"
 source = { editable = "services/fishsense-backup-worker" }
 dependencies = [
     { name = "dynaconf" },
