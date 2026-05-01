@@ -711,7 +711,7 @@ dev = [
 
 [[package]]
 name = "fishsense-api-workflow-worker"
-version = "1.23.0"
+version = "1.23.1"
 source = { editable = "services/fishsense-api-workflow-worker" }
 dependencies = [
     { name = "dynaconf" },
@@ -799,8 +799,8 @@ dev = [
 
 [[package]]
 name = "fishsense-core"
-version = "1.7.1"
-source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.1/fishsense_core-1.7.1-cp313-cp313-manylinux_2_34_x86_64.whl" }
+version = "2.0.0"
+source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v2.0.0/fishsense_core-2.0.0-cp313-cp313-manylinux_2_34_x86_64.whl" }
 resolution-markers = [
     "python_full_version < '3.14' and sys_platform == 'win32'",
     "python_full_version < '3.14' and sys_platform == 'emscripten'",
@@ -815,7 +815,7 @@ dependencies = [
     { name = "scikit-image", marker = "python_full_version < '3.14'" },
 ]
 wheels = [
-    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.1/fishsense_core-1.7.1-cp313-cp313-manylinux_2_34_x86_64.whl", hash = "sha256:2190de10ce30f3a0a64368f882bb0dcfe2ddd7b5eded2664ded711eef260a027" },
+    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v2.0.0/fishsense_core-2.0.0-cp313-cp313-manylinux_2_34_x86_64.whl", hash = "sha256:e64dd998cf2c452f7944d5dc5b5486208eca4234194c5b43e473bbb293af75d3" },
 ]
 
 [package.metadata]
@@ -830,8 +830,8 @@ requires-dist = [
 
 [[package]]
 name = "fishsense-core"
-version = "1.7.1"
-source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.1/fishsense_core-1.7.1-cp314-cp314-manylinux_2_34_x86_64.whl" }
+version = "2.0.0"
+source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v2.0.0/fishsense_core-2.0.0-cp314-cp314-manylinux_2_34_x86_64.whl" }
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
     "python_full_version >= '3.14' and sys_platform == 'emscripten'",
@@ -846,7 +846,7 @@ dependencies = [
     { name = "scikit-image", marker = "python_full_version >= '3.14'" },
 ]
 wheels = [
-    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.1/fishsense_core-1.7.1-cp314-cp314-manylinux_2_34_x86_64.whl", hash = "sha256:b90ba64721f8bb574d0914a164a6342bafddf05bbf43b6343a6600dea2be800e" },
+    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v2.0.0/fishsense_core-2.0.0-cp314-cp314-manylinux_2_34_x86_64.whl", hash = "sha256:c5cb49b42dfd930805cfcdf9e90a458837a5c48cbfccfcc0396027f8009d8039" },
 ]
 
 [package.metadata]
@@ -866,8 +866,8 @@ source = { editable = "services/fishsense-data-processing-workflow-worker" }
 dependencies = [
     { name = "dynaconf" },
     { name = "fishsense-api-sdk" },
-    { name = "fishsense-core", version = "1.7.1", source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.1/fishsense_core-1.7.1-cp313-cp313-manylinux_2_34_x86_64.whl" }, marker = "python_full_version < '3.14'" },
-    { name = "fishsense-core", version = "1.7.1", source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.1/fishsense_core-1.7.1-cp314-cp314-manylinux_2_34_x86_64.whl" }, marker = "python_full_version >= '3.14'" },
+    { name = "fishsense-core", version = "2.0.0", source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v2.0.0/fishsense_core-2.0.0-cp313-cp313-manylinux_2_34_x86_64.whl" }, marker = "python_full_version < '3.14'" },
+    { name = "fishsense-core", version = "2.0.0", source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v2.0.0/fishsense_core-2.0.0-cp314-cp314-manylinux_2_34_x86_64.whl" }, marker = "python_full_version >= '3.14'" },
     { name = "fishsense-shared" },
     { name = "httpx" },
     { name = "label-studio-sdk" },
@@ -912,8 +912,8 @@ requires-dist = [
     { name = "dynaconf", specifier = ">=3.2.11" },
     { name = "fishsense-api-sdk", editable = "libs/fishsense-api-sdk" },
     { name = "fishsense-core", marker = "python_full_version < '3.13' or python_full_version >= '3.15'" },
-    { name = "fishsense-core", marker = "python_full_version == '3.13.*'", url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.1/fishsense_core-1.7.1-cp313-cp313-manylinux_2_34_x86_64.whl" },
-    { name = "fishsense-core", marker = "python_full_version == '3.14.*'", url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v1.7.1/fishsense_core-1.7.1-cp314-cp314-manylinux_2_34_x86_64.whl" },
+    { name = "fishsense-core", marker = "python_full_version == '3.13.*'", url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v2.0.0/fishsense_core-2.0.0-cp313-cp313-manylinux_2_34_x86_64.whl" },
+    { name = "fishsense-core", marker = "python_full_version == '3.14.*'", url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v2.0.0/fishsense_core-2.0.0-cp314-cp314-manylinux_2_34_x86_64.whl" },
     { name = "fishsense-shared", editable = "libs/fishsense-shared" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "label-studio-sdk", specifier = ">=2.0.7" },
@@ -978,7 +978,7 @@ dev = [
 
 [[package]]
 name = "fishsense-shared"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "libs/fishsense-shared" }
 dependencies = [
     { name = "dynaconf" },

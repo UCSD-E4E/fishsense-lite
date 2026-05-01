@@ -9,6 +9,9 @@ from temporalio.worker import Worker
 from fishsense_data_processing_workflow_worker.activities.cluster_dive_frames import (
     cluster_dive_frames,
 )
+from fishsense_data_processing_workflow_worker.activities.perform_laser_calibration_activity import (  # noqa: E501  pylint: disable=line-too-long
+    perform_laser_calibration_activity,
+)
 from fishsense_data_processing_workflow_worker.activities.preprocess_dive_image import (
     preprocess_dive_image,
 )
@@ -24,6 +27,9 @@ from fishsense_data_processing_workflow_worker.activities.preprocess_slate_image
 from fishsense_data_processing_workflow_worker.config import configure_logging, settings
 from fishsense_data_processing_workflow_worker.workflows.dive_frame_clustering_workflow import (
     DiveFrameClusteringWorkflow,
+)
+from fishsense_data_processing_workflow_worker.workflows.perform_laser_calibration_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    PerformLaserCalibrationWorkflow,
 )
 from fishsense_data_processing_workflow_worker.workflows.preprocess_dive_images_workflow import (
     PreprocessDiveImagesWorkflow,
@@ -63,6 +69,7 @@ async def main():
             task_queue=TASK_QUEUE_NAME,
             workflows=[
                 DiveFrameClusteringWorkflow,
+                PerformLaserCalibrationWorkflow,
                 PreprocessDiveImagesWorkflow,
                 PreprocessHeadtailImagesWorkflow,
                 PreprocessLaserImagesWorkflow,
@@ -71,6 +78,7 @@ async def main():
             activity_executor=executor,
             activities=[
                 cluster_dive_frames,
+                perform_laser_calibration_activity,
                 preprocess_dive_image,
                 preprocess_headtail_image,
                 preprocess_laser_image,

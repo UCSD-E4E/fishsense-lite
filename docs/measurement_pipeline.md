@@ -24,7 +24,7 @@ status" section of [CLAUDE.md](../CLAUDE.md).
 | 0.1 | `preprocess_laser_images` | data | ported |
 | 0.3 | `populate_label_studio_project` (Laser) | api | ported |
 | —   | hourly `SyncLabelStudioLaserLabelsWorkflow` | api | scheduled |
-| 13  | `perform_laser_calibration` | api | not started (kernel in fishsense-core) |
+| 13  | `perform_laser_calibration` | data | ported (kernel in fishsense-core) |
 
 1. **Stage 0.1** rectifies + JPEG-encodes laser-only flat-target shots
    (data-worker, writes to `preprocess_jpeg/`).
@@ -33,9 +33,14 @@ status" section of [CLAUDE.md](../CLAUDE.md).
 3. *Humans label the laser dot* in each frame.
 4. The hourly `SyncLabelStudioLaserLabelsWorkflow` pulls labels back
    into Postgres as `LaserLabel` rows.
-5. **Stage 13** runs the Atanasov fit on all collected `LaserLabel`s
+5. **Stage 13** (`PerformLaserCalibrationWorkflow(dive_id)` on the
+   data-worker) runs the Atanasov fit on all collected `LaserLabel`s
    and produces a `LaserExtrinsics` row tying the laser line to the
-   camera intrinsics.
+   camera intrinsics. The fit delegates to
+   `fishsense_core.laser.calibrate_laser`; numerical equivalence vs
+   the pre-refactor inline implementation is validated against prod
+   (max axis delta 0.011°, max position delta 390µm over 8 dives;
+   see [scripts/validate_stage13_refactor.py](../services/fishsense-data-processing-workflow-worker/scripts/validate_stage13_refactor.py)).
 
 ## B. Dive species arm (per dive)
 
