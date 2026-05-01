@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.32.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.31.1...fishsense-api-sdk-v1.32.0) (2026-05-01)
+
+
+### Features
+
+* **api-worker:** port stage 12 sync_slate_label ([7922716](https://github.com/UCSD-E4E/fishsense-lite/commit/792271617a33bfc9c5907151814a02d3f21853ff))
+
 ## [1.31.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.31.0...fishsense-api-sdk-v1.31.1) (2026-05-01)
 
 

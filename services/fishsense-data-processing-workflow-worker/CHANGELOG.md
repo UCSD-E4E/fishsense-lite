@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v0.2.0...fishsense-data-processing-workflow-worker-v0.3.0) (2026-05-01)
+
+
+### Features
+
+* **data-worker:** port stage 13 perform_laser_calibration ([fdac76b](https://github.com/UCSD-E4E/fishsense-lite/commit/fdac76b275d0108cd80d9f965fa2659915776f33))
+* **data-worker:** port stage 14 measure_fish ([0283023](https://github.com/UCSD-E4E/fishsense-lite/commit/02830230259fd033b44b8b86e0f0ed3a8ddf3d84))
+
 ## [0.2.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v0.1.0...fishsense-data-processing-workflow-worker-v0.2.0) (2026-04-29)
 
 
