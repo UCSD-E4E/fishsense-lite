@@ -85,20 +85,29 @@ exist — the cluster API has no DELETE, so a re-POST would silently
 double-count. To re-group after labels change, an operator must
 manually drop the existing LABEL_STUDIO clusters first.
 
-## Cross-worker orchestration pattern (stage 0.1, template for 2/5.1/9)
+## Cross-worker orchestration pattern (stages 0.1, 2, 5.1, 9)
 
 The api-worker is the brains; the data-worker is the executor. Stages
 that need both SDK-side decision-making *and* CPU-heavy per-image
 work split into two workflows:
 
 * **Parent** on api-worker (`fishsense_api_queue`). Hourly schedule.
-  Two SDK-using activities: a selector (returns the next dive_id in
-  some cohort, or None) and a resolver (returns a fully-populated
-  workflow-input DTO for that dive — checksums, intrinsics, etc.).
-  Then `start_child_workflow` against the data-worker task queue.
+  Three activities ahead of dispatch: a selector (returns the next
+  dive_id in some cohort, or None), a resolver (returns a fully-
+  populated workflow-input DTO for that dive), and a NAS staging
+  activity (`stage_raw_bytes_for_dive_activity` — copies raw `.ORF`
+  bytes from NAS to the file-exchange so the data-worker can read
+  them). Stage 9 also runs `stage_slate_pdf_activity` for the slate
+  template. Then `start_child_workflow` against the data-worker
+  task queue.
 * **Child** on data-worker (`fishsense_data_processing_queue`). Thin
   pre-input workflow that fans out per-image activities. No SDK
-  calls; all decisions baked into the input DTO.
+  calls and no NAS calls; all bytes already on the file-exchange,
+  all decisions baked into the input DTO.
+
+NAS access lives only on the api-worker side. The data-worker stays
+file-exchange-only — narrows the data-worker's blast radius and
+keeps NAS credentials off the cluster.
 
 The workflow-input DTOs (`PreprocessLaserImagesInput`, eventually
 `PreprocessDiveImagesInput`, etc.) live in

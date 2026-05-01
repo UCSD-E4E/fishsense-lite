@@ -62,7 +62,11 @@ def _make_stubs(
         assert resolver_result is not None
         return resolver_result
 
-    return [stub_select, stub_resolve]
+    @activity.defn(name="stage_raw_bytes_for_dive_activity")
+    async def stub_stage(dive_id: int) -> None:
+        return None
+
+    return [stub_select, stub_resolve, stub_stage]
 
 
 @pytest.mark.asyncio

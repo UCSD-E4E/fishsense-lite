@@ -92,6 +92,12 @@ from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_slate_preprocessing_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_slate_preprocessing_activity,
 )
+from fishsense_api_workflow_worker.activities.stage_raw_bytes_for_dive_activity import (  # pylint: disable=line-too-long
+    stage_raw_bytes_for_dive_activity,
+)
+from fishsense_api_workflow_worker.activities.stage_slate_pdf_activity import (
+    stage_slate_pdf_activity,
+)
 from fishsense_api_workflow_worker.activities.sync_dive_slate_labels_for_label_studio_project_activity import (  # pylint: disable=line-too-long
     sync_dive_slate_labels_for_label_studio_project_activity,
 )
@@ -389,6 +395,8 @@ async def main():
                 select_next_high_priority_dive_for_dive_image_preprocessing_activity,
                 select_next_high_priority_dive_for_headtail_preprocessing_activity,
                 select_next_high_priority_dive_for_slate_preprocessing_activity,
+                stage_raw_bytes_for_dive_activity,
+                stage_slate_pdf_activity,
             ],
         )
 

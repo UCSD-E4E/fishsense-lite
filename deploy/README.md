@@ -196,11 +196,20 @@ least once with completed labels), then trigger 6.1.
 #### Cross-worker preprocess parents (stages 0.1, 2, 5.1, 9)
 
 Each preprocess stage splits across both workers: an api-worker
-parent does dive selection + SDK resolution, then dispatches a child
-workflow on `fishsense_data_processing_queue` for the per-image
-CPU work. All four parents are hourly with
+parent does dive selection + SDK resolution + NAS-to-file-exchange
+staging, then dispatches a child workflow on
+`fishsense_data_processing_queue` for the per-image CPU work. All
+four parents are hourly with
 `overlap=ScheduleOverlapPolicy.SKIP` and a 15-minute stagger so
 their selectors don't all hit `dives.get()` at the top of the hour.
+
+NAS access lives only on the api-worker side
+(`stage_raw_bytes_for_dive_activity` for raw `.ORF`s,
+`stage_slate_pdf_activity` for stage-9 slate PDFs). Both are
+idempotent — a HEAD-check skips already-staged content so retries
+are cheap. NAS failure is fatal for the parent run; the next
+schedule firing retries from scratch. The data-worker holds no NAS
+credentials and only reads/writes the file-exchange.
 
 | Stage | Parent workflow | Schedule offset | Child id pattern |
 |---|---|---|---|

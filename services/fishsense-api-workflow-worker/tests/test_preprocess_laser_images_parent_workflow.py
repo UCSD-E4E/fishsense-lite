@@ -73,6 +73,7 @@ def _make_stub_activities(
 ):
     selector_calls: List[None] = []
     resolver_calls: List[int] = []
+    stage_calls: List[int] = []
 
     @activity.defn(name="select_next_high_priority_dive_for_laser_preprocessing_activity")
     async def stub_select() -> Optional[int]:
@@ -85,7 +86,16 @@ def _make_stub_activities(
         assert resolver_result is not None
         return resolver_result
 
-    return [stub_select, stub_resolve], selector_calls, resolver_calls
+    @activity.defn(name="stage_raw_bytes_for_dive_activity")
+    async def stub_stage(dive_id: int) -> None:
+        stage_calls.append(dive_id)
+
+    return (
+        [stub_select, stub_resolve, stub_stage],
+        selector_calls,
+        resolver_calls,
+        stage_calls,
+    )
 
 
 @pytest.mark.asyncio
@@ -97,8 +107,8 @@ async def test_dispatches_child_with_deterministic_id_and_correct_payload():
         distortion_coefficients=_D,
         bbox=_BBOX,
     )
-    activities, selector_calls, resolver_calls = _make_stub_activities(
-        selector_result=440, resolver_result=inputs
+    activities, selector_calls, resolver_calls, stage_calls = (
+        _make_stub_activities(selector_result=440, resolver_result=inputs)
     )
     child_runs: List[tuple] = []
     record = _make_recording_activity(child_runs)
@@ -124,6 +134,7 @@ async def test_dispatches_child_with_deterministic_id_and_correct_payload():
     assert result == 440
     assert len(selector_calls) == 1
     assert resolver_calls == [440]
+    assert stage_calls == [440]
     assert len(child_runs) == 1
     child_id, child_dive_id, child_checksums = child_runs[0]
     assert child_id == "preprocess-laser-440"
@@ -133,8 +144,8 @@ async def test_dispatches_child_with_deterministic_id_and_correct_payload():
 
 @pytest.mark.asyncio
 async def test_returns_none_when_selector_finds_no_dive():
-    activities, selector_calls, resolver_calls = _make_stub_activities(
-        selector_result=None, resolver_result=None
+    activities, selector_calls, resolver_calls, stage_calls = (
+        _make_stub_activities(selector_result=None, resolver_result=None)
     )
     child_runs: List[tuple] = []
     record = _make_recording_activity(child_runs)
@@ -160,6 +171,7 @@ async def test_returns_none_when_selector_finds_no_dive():
     assert result is None
     assert len(selector_calls) == 1
     assert not resolver_calls
+    assert not stage_calls
     assert not child_runs
 
 
@@ -172,7 +184,7 @@ async def test_skips_child_dispatch_when_no_incomplete_images():
         distortion_coefficients=_D,
         bbox=_BBOX,
     )
-    activities, _, resolver_calls = _make_stub_activities(
+    activities, _, resolver_calls, stage_calls = _make_stub_activities(
         selector_result=440, resolver_result=inputs
     )
     child_runs: List[tuple] = []
@@ -198,4 +210,5 @@ async def test_skips_child_dispatch_when_no_incomplete_images():
 
     assert result == 440
     assert resolver_calls == [440]
+    assert not stage_calls
     assert not child_runs

@@ -1,3 +1,4 @@
+# pylint: disable=unused-argument
 """Workflow contract test for PreprocessDiveImagesParentWorkflow."""
 
 from __future__ import annotations
@@ -63,7 +64,15 @@ def _make_stubs(
         assert resolver_result is not None
         return resolver_result
 
-    return [stub_select, stub_resolve], selector_calls, resolver_calls
+    @activity.defn(name="stage_raw_bytes_for_dive_activity")
+    async def stub_stage(dive_id: int) -> None:
+        return None
+
+    return (
+        [stub_select, stub_resolve, stub_stage],
+        selector_calls,
+        resolver_calls,
+    )
 
 
 @pytest.mark.asyncio

@@ -50,6 +50,13 @@ class PreprocessHeadtailImagesParentWorkflow:
         if not inputs.image_checksums:
             return inputs.dive_id
 
+        await workflow.execute_activity(
+            "stage_raw_bytes_for_dive_activity",
+            args=(dive_id,),
+            schedule_to_close_timeout=timedelta(hours=1),
+            heartbeat_timeout=timedelta(minutes=5),
+        )
+
         await workflow.execute_child_workflow(
             "PreprocessHeadtailImagesWorkflow",
             inputs,

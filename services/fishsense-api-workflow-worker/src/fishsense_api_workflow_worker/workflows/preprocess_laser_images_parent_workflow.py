@@ -66,6 +66,19 @@ class PreprocessLaserImagesParentWorkflow:
         if not inputs.image_checksums:
             return inputs.dive_id
 
+        # Phase 3a: stage raw .ORF bytes from NAS to file-exchange
+        # before the data-worker child runs. Failure here is fatal —
+        # we don't want to dispatch a child that will 404 on every
+        # download_raw. The next schedule firing retries; HEAD-check
+        # in the staging activity makes the retry cheap for already-
+        # staged checksums.
+        await workflow.execute_activity(
+            "stage_raw_bytes_for_dive_activity",
+            args=(dive_id,),
+            schedule_to_close_timeout=timedelta(hours=1),
+            heartbeat_timeout=timedelta(minutes=5),
+        )
+
         await workflow.execute_child_workflow(
             "PreprocessLaserImagesWorkflow",
             inputs,
