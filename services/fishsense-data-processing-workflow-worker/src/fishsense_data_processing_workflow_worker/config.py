@@ -40,16 +40,6 @@ _VALIDATORS = [
     Validator(
         "static_file_server.url", required=True, cast=str, condition=url_condition
     ),
-    # Gates registration of the stage 0.1 / 2 / 5.1 / 9 preprocess workflows
-    # in worker.py. Default OFF so deploying this binary doesn't accidentally
-    # start servicing those task types before their api-worker drivers exist
-    # and the math has been re-verified on real frames.
-    Validator(
-        "feature_flags.new_preprocess_workflows",
-        required=True,
-        cast=bool,
-        default=False,
-    ),
 ]
 
 # NOTE: standardized on E4EFS_ envvar prefix (was DYNACONF_) to match the other

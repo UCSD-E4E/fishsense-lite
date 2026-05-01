@@ -13,26 +13,13 @@ fishsense-core).
 
 ## Workflows
 
-| Stage | Workflow | Output folder | Status |
-|---|---|---|---|
-| —     | `DiveFrameClusteringWorkflow`       | n/a (DB writes)              | always-on |
-| 2     | `PreprocessDiveImagesWorkflow`      | `preprocess_groups_jpeg`     | flag-gated |
-| 0.1   | `PreprocessLaserImagesWorkflow`     | `preprocess_jpeg`            | flag-gated |
-| 5.1   | `PreprocessHeadtailImagesWorkflow`  | `preprocess_headtail_jpeg`   | flag-gated |
-| 9     | `PreprocessSlateImagesWorkflow`     | `preprocess_slate_images_jpeg` | flag-gated |
-
-The four flag-gated workflows are registered with the worker only when
-`E4EFS_FEATURE_FLAGS__NEW_PREPROCESS_WORKFLOWS=true`. Default OFF —
-deploying the binary without that env set means only the legacy
-`DiveFrameClusteringWorkflow` runs. Workflow tasks for the gated types
-will sit in the queue forever (no worker claims them) rather than
-erroring, so the gate is a soft block.
-
-Lift the flag once the api-worker driver for a given stage exists *and*
-the relevant math has been re-verified on real frames (especially the
-stage 14 sign concern). The gate is deliberately all-or-nothing — if
-finer control is needed, split into per-stage flags rather than gating
-inside workflow code (workflow code must stay deterministic).
+| Stage | Workflow | Output folder |
+|---|---|---|
+| —     | `DiveFrameClusteringWorkflow`       | n/a (DB writes)              |
+| 2     | `PreprocessDiveImagesWorkflow`      | `preprocess_groups_jpeg`     |
+| 0.1   | `PreprocessLaserImagesWorkflow`     | `preprocess_jpeg`            |
+| 5.1   | `PreprocessHeadtailImagesWorkflow`  | `preprocess_headtail_jpeg`   |
+| 9     | `PreprocessSlateImagesWorkflow`     | `preprocess_slate_images_jpeg` |
 
 ## Activity pattern
 
@@ -73,7 +60,6 @@ E4EFS_TEMPORAL__CLIENT_CERT, E4EFS_TEMPORAL__CLIENT_PRIVATE_KEY  # when tls=true
 E4EFS_E4E_NAS__URL, E4EFS_E4E_NAS__USERNAME, E4EFS_E4E_NAS__PASSWORD
 E4EFS_FISHSENSE_API__URL
 E4EFS_STATIC_FILE_SERVER__URL
-E4EFS_FEATURE_FLAGS__NEW_PREPROCESS_WORKFLOWS=true|false  # default false
 ```
 
 The `*.url` validators use a custom `_url_condition` (http/https +
@@ -99,10 +85,6 @@ test, integration test against a real `.ORF` fixture (`-m
 integration`), and a notebook byte-parity test (`-m integration`).
 The integration + parity tests share `tests/fixtures/stage2_sample.ORF`
 — there is no per-stage raw fixture.
-
-Integration tests pass workflows directly to a one-off `Worker(...)`
-and don't depend on the `feature_flags.new_preprocess_workflows` gate,
-so the flag has no effect on tests.
 
 ## Running
 
