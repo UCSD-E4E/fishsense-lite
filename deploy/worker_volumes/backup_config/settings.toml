@@ -18,7 +18,7 @@ username = "backup"
 [e4e_nas]
 # Synology DSM URL — must include hostname AND port (synology-api needs both).
 # Default DSM HTTPS is :5001. Replace with the actual NAS host+port.
-url = "https://nas.e4e.ucsd.edu:6021"
+url = "https://nas-e4e.ucsd.edu:6021"
 
 [backup]
 databases = ["fishsense", "superset", "temporal_db"]
