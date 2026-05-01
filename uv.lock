@@ -631,7 +631,7 @@ wheels = [
 
 [[package]]
 name = "fishsense-api"
-version = "1.18.1"
+version = "1.19.0"
 source = { editable = "services/fishsense-api" }
 dependencies = [
     { name = "asyncpg" },
@@ -680,7 +680,7 @@ dev = [
 
 [[package]]
 name = "fishsense-api-sdk"
-version = "1.29.1"
+version = "1.30.0"
 source = { editable = "libs/fishsense-api-sdk" }
 dependencies = [
     { name = "httpx" },
@@ -709,7 +709,7 @@ dev = [
 
 [[package]]
 name = "fishsense-api-workflow-worker"
-version = "1.20.1"
+version = "1.21.0"
 source = { editable = "services/fishsense-api-workflow-worker" }
 dependencies = [
     { name = "dynaconf" },
@@ -752,7 +752,7 @@ dev = [
 
 [[package]]
 name = "fishsense-backup-worker"
-version = "0.1.0"
+version = "0.2.1"
 source = { editable = "services/fishsense-backup-worker" }
 dependencies = [
     { name = "dynaconf" },
@@ -853,7 +853,7 @@ requires-dist = [
 
 [[package]]
 name = "fishsense-data-processing-workflow-worker"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "services/fishsense-data-processing-workflow-worker" }
 dependencies = [
     { name = "dynaconf" },
@@ -970,7 +970,7 @@ dev = [
 
 [[package]]
 name = "fishsense-shared"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "libs/fishsense-shared" }
 dependencies = [
     { name = "dynaconf" },
