@@ -7,10 +7,13 @@ data-worker (this service). URL contract:
     GET  /api/v1/exchange/dive_slate_pdfs/{slate_id}.pdf # slate template
     PUT  /api/v1/exchange/{folder}/{checksum}.JPG        # processed output
 
-Where `{folder}` is one of `preprocess_groups_jpeg`,
-`preprocess_headtail_jpeg`, `preprocess_laser_jpeg`,
-`preprocess_slate_images_jpeg` — matching the existing labeler-facing
-GET routes in deploy/static_file_server/nginx.conf.
+Where `{folder}` is one of `preprocess_jpeg` (stage 0.1 / laser),
+`preprocess_groups_jpeg` (stage 2 / dive species),
+`preprocess_headtail_jpeg` (stage 5.1), or
+`preprocess_slate_images_jpeg` (stage 9). The labeler-facing GET
+routes in `deploy/static_file_server/nginx.conf` rewrite these to
+their virtual-folder names (`preprocess_jpeg`, `groups_jpeg`,
+`headtail_jpeg`, `dive_slate_jpgs`) for the LS task URLs.
 """
 
 import httpx

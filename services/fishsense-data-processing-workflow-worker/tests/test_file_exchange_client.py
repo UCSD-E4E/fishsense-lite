@@ -130,10 +130,14 @@ async def test_upload_processed_jpeg_accepts_multiple_folders():
 
     client = _client(handler)
 
+    # The actual folders the data-worker writes (one per stage):
+    # preprocess_jpeg (stage 0.1), preprocess_groups_jpeg (stage 2),
+    # preprocess_headtail_jpeg (stage 5.1), preprocess_slate_images_jpeg
+    # (stage 9). Test exercises URL construction across all four.
     for folder in (
+        "preprocess_jpeg",
         "preprocess_groups_jpeg",
         "preprocess_headtail_jpeg",
-        "preprocess_laser_jpeg",
         "preprocess_slate_images_jpeg",
     ):
         await client.upload_processed_jpeg(
@@ -141,8 +145,8 @@ async def test_upload_processed_jpeg_accepts_multiple_folders():
         )
 
     assert [r.url.path for r in seen] == [
+        "/api/v1/exchange/preprocess_jpeg/abc.JPG",
         "/api/v1/exchange/preprocess_groups_jpeg/abc.JPG",
         "/api/v1/exchange/preprocess_headtail_jpeg/abc.JPG",
-        "/api/v1/exchange/preprocess_laser_jpeg/abc.JPG",
         "/api/v1/exchange/preprocess_slate_images_jpeg/abc.JPG",
     ]
