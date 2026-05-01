@@ -22,3 +22,10 @@ url = "https://e4e-nas.ucsd.edu:6021"
 
 [fishsense_api]
 url = "https://orchestrator.fishsense.e4e.ucsd.edu"
+
+# Internal docker URL the api-worker uses to GET slate PDFs from the
+# worker file-exchange (/api/v1/exchange/*). Bypasses Traefik/authentik —
+# the worker would 302 going through label_studio.image_url_base. Same
+# backend nginx, different network layer.
+[file_exchange]
+url = "http://static_file_server"

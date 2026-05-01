@@ -13,27 +13,62 @@ from fishsense_api_sdk.models.species_label import SpeciesLabel
 class LabelClient(ClientBase):
     """Client for interacting with label-related endpoints of the Fishsense API."""
 
-    async def get_dive_slate_label(self, image_id: int) -> DiveSlateLabel | None:
-        """Get a DiveSlateLabel by its ID .
+    async def get_dive_slate_label(
+        self,
+        image_id: int | None = None,
+        label_studio_id: int | None = None,
+    ) -> DiveSlateLabel | None:
+        """Get a DiveSlateLabel by image ID or Label Studio task ID.
 
         Args:
-            image_id (int): The ID of the image to retrieve the dive slate labels for.
+            image_id (int | None): The ID of the image to retrieve the slate label for.
+            label_studio_id (int | None): The Label Studio task ID to retrieve the
+                slate label for.
 
         Returns:
-            DiveSlateLabel | None: The dive slate labels for the specified image.
+            DiveSlateLabel | None: The slate label, or None if not found.
         """
-        response = await self._get(f"/api/v1/labels/dive-slate/{image_id}")
-        if response.status_code == 404:
-            self.logger.debug("No dive slate label found for image ID %s", image_id)
-            return None
-        response.raise_for_status()
+        if image_id is not None:
+            response = await self._get(f"/api/v1/labels/dive-slate/{image_id}")
+            if response.status_code == 404:
+                self.logger.debug(
+                    "No dive slate label found for image ID %s", image_id
+                )
+                return None
+            response.raise_for_status()
 
-        json = response.json()
-        if json is None:
-            self.logger.debug("No dive slate label found for image ID %s", image_id)
-            return None
+            json = response.json()
+            if json is None:
+                self.logger.debug(
+                    "No dive slate label found for image ID %s", image_id
+                )
+                return None
 
-        return DiveSlateLabel.model_validate(json)
+            return DiveSlateLabel.model_validate(json)
+
+        if label_studio_id is not None:
+            response = await self._get(
+                f"/api/v1/labels/dive-slate/label-studio/{label_studio_id}"
+            )
+            if response.status_code == 404:
+                self.logger.debug(
+                    "No dive slate label found for label studio ID %s",
+                    label_studio_id,
+                )
+                return None
+            response.raise_for_status()
+
+            json = response.json()
+            if json is None:
+                self.logger.debug(
+                    "No dive slate label found for label studio ID %s",
+                    label_studio_id,
+                )
+                return None
+
+            return DiveSlateLabel.model_validate(json)
+
+        raise NotImplementedError("Fetching without a parameter is not supported")
 
     async def get_dive_slate_labels(self, dive_id: int) -> List[DiveSlateLabel] | None:
         """Get dive slate labels for all images in a dive .

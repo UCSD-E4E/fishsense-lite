@@ -7,7 +7,7 @@ Loose ends and architectural conventions that aren't otherwise tracked.
 | Service | Purpose | Task queue |
 |---|---|---|
 | `services/fishsense-api/` | FastAPI app (DB CRUD, label endpoints) | — |
-| `services/fishsense-api-workflow-worker/` | api-side Temporal worker: hourly Label Studio sync (laser/headtail), Superset dashboard-config writer, on-demand Create/Populate × {Laser,Species,HeadTail,DiveSlate} LS project workflows | `fishsense_api_queue` |
+| `services/fishsense-api-workflow-worker/` | api-side Temporal worker: hourly Label Studio sync (laser/headtail/dive-slate), Superset dashboard-config writer, on-demand Create/Populate × {Laser,Species,HeadTail,DiveSlate} LS project workflows | `fishsense_api_queue` |
 | `services/fishsense-data-processing-workflow-worker/` | image preprocessing (rectify/overlay/JPEG), laser calibration, fish measurement | `fishsense_data_processing_queue` |
 | `services/fishsense-backup-worker/` | nightly Postgres → NAS backups + retention | `fishsense_backup_queue` |
 
@@ -46,7 +46,7 @@ DB (negligible). To add or remove, override
 | 6.1 | update_dive_image_groups | api-worker | not started |
 | 9   | preprocess_slate_images | data-worker | ported |
 | 11  | populate_label_studio_project | api-worker | ported |
-| 12  | sync_slate_label | api-worker | not started |
+| 12  | sync_slate_label | api-worker | ported (hourly) |
 | 13  | perform_laser_calibration | data-worker | ported (kernel in fishsense-core) |
 | 14  | measure_fish | data-worker | ported (kernel in fishsense-core) |
 

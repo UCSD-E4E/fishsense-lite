@@ -83,7 +83,8 @@ status" section of [CLAUDE.md](../CLAUDE.md).
 |---|---|---|---|
 | 9   | `preprocess_slate_images` | data | ported |
 | 11  | `populate_label_studio_project` (DiveSlate) | api | ported |
-| 12  | `sync_slate_label` | api | not started |
+| —   | hourly `SyncLabelStudioDiveSlateLabelsWorkflow` | api | scheduled |
+| 12  | `sync_slate_label` | api | ported |
 
 15. **Stage 9** renders PDF-composited slate JPEGs (data-worker, writes
     to `preprocess_slate_images_jpeg/`).
@@ -91,7 +92,12 @@ status" section of [CLAUDE.md](../CLAUDE.md).
     slate images into LS.
 17. *Humans transcribe slate metadata, including which laser
     calibration applies.*
-18. **Stage 12** sync pulls slate labels back — **not started**.
+18. The hourly `SyncLabelStudioDiveSlateLabelsWorkflow` pulls
+    `DiveSlateLabel` rows back into Postgres. The LS image is a
+    composite (PDF panel on the left, photo on the right), so the
+    sync activity opens the slate PDF via the file-exchange and
+    shifts reference-point + slate-rectangle x-coords left by the
+    rendered panel width to land them in photo-frame coords.
 
 ## E. Measure
 
@@ -127,24 +133,27 @@ and current status.
 
 * **Ported and runnable:** all four data-worker preprocess stages
   (0.1, 2, 5.1, 9), all four `Populate*LabelStudioProjectWorkflow`s,
-  the two sync-back workflows scheduled hourly
+  the three sync-back workflows scheduled hourly
   (`SyncLabelStudioLaserLabelsWorkflow`,
-  `SyncLabelStudioHeadTailLabelsWorkflow`), the dashboard-config
+  `SyncLabelStudioHeadTailLabelsWorkflow`,
+  `SyncLabelStudioDiveSlateLabelsWorkflow`), the dashboard-config
   writer, and the laser-calibration + measurement workflows
   (`PerformLaserCalibrationWorkflow`, `MeasureFishWorkflow` —
   both data-worker, on-demand).
 * **Still needed before a fresh dive can be measured end-to-end in
-  the monorepo:** stages 6.1, 12, plus the real-frame regression
-  for stages 13 + 14 against historical `Measurement` rows
-  (gated on prod-DB / api-worker access — see CLAUDE.md).
+  the monorepo:** stage 6.1 (cluster reconciliation), plus the
+  real-frame regression for stages 13 + 14 against historical
+  `Measurement` rows (gated on prod-DB / api-worker access — see
+  CLAUDE.md).
 
 ## Workflow scheduling vs on-demand
 
-Of the workflows registered with the api-worker, only three are on a
+Of the workflows registered with the api-worker, four are on a
 Temporal schedule (all hourly):
 
 * `SyncLabelStudioLaserLabelsWorkflow`
 * `SyncLabelStudioHeadTailLabelsWorkflow`
+* `SyncLabelStudioDiveSlateLabelsWorkflow`
 * `UpdateDashboardConfigWorkflow`
 
 The eight `Create*` and `Populate*` workflows are **on-demand**:

@@ -717,9 +717,11 @@ dependencies = [
     { name = "dynaconf" },
     { name = "fishsense-api-sdk" },
     { name = "fishsense-shared" },
+    { name = "httpx" },
     { name = "label-studio-sdk" },
     { name = "platformdirs" },
     { name = "pyaml" },
+    { name = "pymupdf" },
     { name = "temporalio" },
     { name = "validators" },
 ]
@@ -740,9 +742,11 @@ requires-dist = [
     { name = "dynaconf", specifier = ">=3.2.11" },
     { name = "fishsense-api-sdk", editable = "libs/fishsense-api-sdk" },
     { name = "fishsense-shared", editable = "libs/fishsense-shared" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "label-studio-sdk", specifier = ">=2.0.1" },
     { name = "platformdirs", specifier = ">=4.3.8" },
     { name = "pyaml", specifier = ">=25.7.0" },
+    { name = "pymupdf", specifier = ">=1.24.0" },
     { name = "temporalio", specifier = ">=1.15.0" },
     { name = "validators", specifier = ">=0.35.0" },
 ]

@@ -58,6 +58,10 @@ def configure_worker_settings(
         "E4EFS_LABEL_STUDIO__IMAGE_URL_BASE",
         "http://orchestrator.example.com",
     )
+    monkeypatch.setenv(
+        "E4EFS_FILE_EXCHANGE__URL",
+        "http://static-file-server.example.com",
+    )
     yield
 
 

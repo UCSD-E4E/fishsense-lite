@@ -39,6 +39,9 @@ from fishsense_api_workflow_worker.activities.get_active_label_studio_project_id
     get_active_laser_label_studio_project_ids_activity,
     get_active_species_label_studio_project_ids_activity,
 )
+from fishsense_api_workflow_worker.activities.get_dive_slate_label_studio_project_ids_activity import (  # pylint: disable=line-too-long
+    get_dive_slate_label_studio_project_ids_activity,
+)
 from fishsense_api_workflow_worker.activities.get_headtail_label_studio_project_ids_activity import (  # pylint: disable=line-too-long
     get_headtail_label_studio_project_ids_activity,
 )
@@ -59,6 +62,9 @@ from fishsense_api_workflow_worker.activities.populate_laser_label_studio_projec
 )
 from fishsense_api_workflow_worker.activities.populate_species_label_studio_project_activity import (  # pylint: disable=line-too-long
     populate_species_label_studio_project_activity,
+)
+from fishsense_api_workflow_worker.activities.sync_dive_slate_labels_for_label_studio_project_activity import (  # pylint: disable=line-too-long
+    sync_dive_slate_labels_for_label_studio_project_activity,
 )
 from fishsense_api_workflow_worker.activities.sync_headtail_labels_for_label_studio_project_activity import (  # pylint: disable=line-too-long
     sync_headtail_labels_for_label_studio_project_activity,
@@ -96,6 +102,9 @@ from fishsense_api_workflow_worker.workflows.populate_laser_label_studio_project
 )
 from fishsense_api_workflow_worker.workflows.populate_species_label_studio_project_workflow import (  # pylint: disable=line-too-long
     PopulateSpeciesLabelStudioProjectWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.sync_label_studio_dive_slate_labels_workflow import (
+    SyncLabelStudioDiveSlateLabelsWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.sync_label_studio_headtail_labels_workflow import (
     SyncLabelStudioHeadTailLabelsWorkflow,
@@ -162,6 +171,14 @@ async def schedule_workflows(client: Client):
             tg.create_task(
                 schedule_workflow(
                     client,
+                    "sync-label-studio-dive-slate-labels-workflow-schedule",
+                    SyncLabelStudioDiveSlateLabelsWorkflow,
+                    timedelta(hours=1),
+                )
+            )
+            tg.create_task(
+                schedule_workflow(
+                    client,
                     "update-dashboard-config-workflow-schedule",
                     UpdateDashboardConfigWorkflow,
                     timedelta(hours=1),
@@ -188,6 +205,7 @@ async def main():
             workflows=[
                 SyncLabelStudioLaserLabelsWorkflow,
                 SyncLabelStudioHeadTailLabelsWorkflow,
+                SyncLabelStudioDiveSlateLabelsWorkflow,
                 UpdateDashboardConfigWorkflow,
                 CreateLaserLabelStudioProjectWorkflow,
                 CreateSpeciesLabelStudioProjectWorkflow,
@@ -203,8 +221,10 @@ async def main():
                 get_label_studio_projects_activity,
                 get_laser_label_studio_project_ids_activity,
                 get_headtail_label_studio_project_ids_activity,
+                get_dive_slate_label_studio_project_ids_activity,
                 sync_laser_labels_for_label_studio_project_activity,
                 sync_headtail_labels_for_label_studio_project_activity,
+                sync_dive_slate_labels_for_label_studio_project_activity,
                 sync_users_label_studio_activity,
                 write_dashboard_config_activity,
                 create_laser_label_studio_project_activity,

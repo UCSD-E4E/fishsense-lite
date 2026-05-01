@@ -42,6 +42,17 @@ _VALIDATORS = [
         cast=str,
         condition=url_condition,
     ),
+    # Internal docker URL for the static_file_server nginx that brokers
+    # the worker file-exchange (raw ORFs, slate PDFs, processed JPEGs).
+    # Same backend as `label_studio.image_url_base` but on the docker
+    # network, bypassing Traefik/authentik. Stage 12 fetches slate PDFs
+    # from here to compute the composite-image PDF panel offset.
+    Validator(
+        "file_exchange.url",
+        required=True,
+        cast=str,
+        condition=url_condition,
+    ),
     Validator("e4e_nas.url", required=True, cast=str, condition=url_condition),
     Validator("e4e_nas.username", required=True, cast=str),
     Validator("e4e_nas.password", required=True, cast=str),
