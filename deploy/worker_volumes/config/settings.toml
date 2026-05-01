@@ -12,12 +12,13 @@ server_root_ca_cert = "/certs/ca/root-ca.pem"
 
 [label_studio]
 url = "https://labeler.e4e.ucsd.edu"
+# URL prefix embedded into Label Studio task `data.image` fields —
+# labelers' browsers fetch from here through Traefik/authentik. Only
+# /api/v1/data is publicly routed; /api/v1/exchange is not.
+image_url_base = "https://orchestrator.fishsense.e4e.ucsd.edu"
 
 [e4e_nas]
 url = "https://e4e-nas.ucsd.edu:6021"
 
 [fishsense_api]
 url = "https://orchestrator.fishsense.e4e.ucsd.edu"
-
-[static_files]
-public_url_base = "https://orchestrator.fishsense.e4e.ucsd.edu"

@@ -96,10 +96,10 @@ async def preprocess_dive_image(payload) -> None:  # type: ignore[no-untyped-def
     )
 
     async with httpx.AsyncClient(
-        base_url=settings.static_file_server.url, timeout=httpx.Timeout(60.0)
+        base_url=settings.file_exchange.url, timeout=httpx.Timeout(60.0)
     ) as http:
         client = FileExchangeClient(
-            base_url=settings.static_file_server.url, http=http
+            base_url=settings.file_exchange.url, http=http
         )
         raw_bytes = await client.download_raw(payload.checksum)
         jpeg_bytes = await asyncio.to_thread(

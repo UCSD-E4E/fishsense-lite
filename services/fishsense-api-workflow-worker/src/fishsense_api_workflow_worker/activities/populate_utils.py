@@ -28,7 +28,7 @@ def build_image_url(folder: str, checksum: str) -> str:
     `deploy/static_file_server/nginx.conf` (preprocess_jpeg,
     groups_jpeg, headtail_jpeg, dive_slate_jpgs).
     """
-    base = settings.static_files.public_url_base.rstrip("/")
+    base = settings.label_studio.image_url_base.rstrip("/")
     return f"{base}/api/v1/data/{folder}/{checksum}"
 
 

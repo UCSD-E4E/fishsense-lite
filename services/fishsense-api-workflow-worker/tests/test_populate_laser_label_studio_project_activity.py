@@ -66,7 +66,7 @@ def test_select_incomplete_filters_completed():
 
 def test_build_task_uses_configured_url_base(monkeypatch):
     monkeypatch.setenv(
-        "E4EFS_STATIC_FILES__PUBLIC_URL_BASE", "https://orchestrator.example.com"
+        "E4EFS_LABEL_STUDIO__IMAGE_URL_BASE", "https://orchestrator.example.com"
     )
     from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
     cfg.settings.reload()

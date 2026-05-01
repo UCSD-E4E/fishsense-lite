@@ -32,8 +32,12 @@ _VALIDATORS = [
     Validator("temporal.server_root_ca_cert", cast=str, condition=path_validator),
     Validator("label_studio.url", required=True, condition=url_condition),
     Validator("label_studio.api_key", required=True, cast=str),
+    # URL prefix embedded into Label Studio task `data.image` fields —
+    # labelers' browsers fetch from here through Traefik/authentik.
+    # Public-facing; the file-exchange (`/api/v1/exchange/*`) is NOT
+    # routed publicly, so this URL works only for `/api/v1/data/*`.
     Validator(
-        "static_files.public_url_base",
+        "label_studio.image_url_base",
         required=True,
         cast=str,
         condition=url_condition,

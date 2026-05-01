@@ -55,8 +55,8 @@ def configure_worker_settings(
     monkeypatch.setenv("E4EFS_LABEL_STUDIO__URL", "http://label-studio.example.com")
     monkeypatch.setenv("E4EFS_LABEL_STUDIO__API_KEY", "unused")
     monkeypatch.setenv(
-        "E4EFS_STATIC_FILES__PUBLIC_URL_BASE",
-        "http://static-files.example.com",
+        "E4EFS_LABEL_STUDIO__IMAGE_URL_BASE",
+        "http://orchestrator.example.com",
     )
     yield
 

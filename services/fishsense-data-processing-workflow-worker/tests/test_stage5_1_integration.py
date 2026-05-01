@@ -51,7 +51,7 @@ def raw_orf_bytes() -> bytes:
 
 @pytest.fixture
 def configure_worker_settings(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("E4EFS_STATIC_FILE_SERVER__URL", _exchange_url())
+    monkeypatch.setenv("E4EFS_FILE_EXCHANGE__URL", _exchange_url())
     monkeypatch.setenv("E4EFS_TEMPORAL__HOST", "temporal")
     monkeypatch.setenv("E4EFS_E4E_NAS__URL", "http://nas.invalid")
     monkeypatch.setenv("E4EFS_E4E_NAS__USERNAME", "unused")

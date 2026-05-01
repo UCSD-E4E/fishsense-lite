@@ -67,10 +67,10 @@ def raw_orf_bytes() -> bytes:
 @pytest.fixture
 def configure_worker_settings(monkeypatch: pytest.MonkeyPatch):
     """Set the E4EFS_ envvars the worker's dynaconf config eagerly
-    validates on first access. Stage 2 only uses `static_file_server.url`;
+    validates on first access. Stage 2 only uses `file_exchange.url`;
     the other settings are placeholders so unrelated validators
     (temporal/nas/fishsense_api) don't reject the test process."""
-    monkeypatch.setenv("E4EFS_STATIC_FILE_SERVER__URL", _exchange_url())
+    monkeypatch.setenv("E4EFS_FILE_EXCHANGE__URL", _exchange_url())
     monkeypatch.setenv("E4EFS_TEMPORAL__HOST", "temporal")
     monkeypatch.setenv("E4EFS_E4E_NAS__URL", "http://nas.invalid")
     monkeypatch.setenv("E4EFS_E4E_NAS__USERNAME", "unused")

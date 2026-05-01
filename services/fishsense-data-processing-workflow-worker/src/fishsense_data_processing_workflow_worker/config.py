@@ -37,8 +37,10 @@ _VALIDATORS = [
     Validator("fishsense_api.url", required=True, cast=str, condition=url_condition),
     Validator("fishsense_api.username", cast=str),
     Validator("fishsense_api.password", cast=str),
+    # Internal docker URL for the static_file_server nginx that brokers
+    # the worker file-exchange (raw ORFs, slate PDFs, processed JPEGs).
     Validator(
-        "static_file_server.url", required=True, cast=str, condition=url_condition
+        "file_exchange.url", required=True, cast=str, condition=url_condition
     ),
 ]
 
