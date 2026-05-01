@@ -207,17 +207,18 @@ services:
       FISHSENSE_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fishsense_local}
       FISHSENSE_POSTGRES_DB: ${FISHSENSE_DB_NAME:-fishsense}
       FISHSENSE_STATIC_FILE_SERVER_URL: http://static_file_server
-      # The data-processing-workflow-worker still uses the E4EFS_ envvar
-      # prefix (see services/fishsense-data-processing-workflow-worker/
-      # src/.../config.py). Mirror the static_file_server URL under that
-      # prefix so the worker's settings.static_file_server.url validator
-      # passes when the worker is started from inside this container.
-      E4EFS_STATIC_FILE_SERVER__URL: http://static_file_server
+      # File-exchange URL (under the E4EFS_ prefix used by both the data-
+      # processing and api workflow workers — see each service's
+      # config.py). The worker's `settings.file_exchange.url` validator
+      # reads this when the worker is started from inside this container.
+      E4EFS_FILE_EXCHANGE__URL: http://static_file_server
       # Label Studio endpoints for the api-workflow-worker integration tests.
       # Token must match LABEL_STUDIO_USER_TOKEN on the label-studio service.
       E4EFS_LABEL_STUDIO__URL: http://label-studio:8080
       E4EFS_LABEL_STUDIO__API_KEY: fishsense_local_test_token_42
-      E4EFS_STATIC_FILES__PUBLIC_URL_BASE: http://static_file_server
+      # URL embedded into Label Studio task `data.image` fields — workers'
+      # populate activities use this when constructing per-task image URLs.
+      E4EFS_LABEL_STUDIO__IMAGE_URL_BASE: http://static_file_server
     working_dir: ${HOST_REPO_PATH:?Set HOST_REPO_PATH in deploy/.env to the absolute path of this repo on your host (run "realpath .." from this directory).}
     # Give the in-container `vscode` user access to the host's docker socket
     # via supplementary group membership. The kernel only checks numeric GID,
