@@ -11,14 +11,15 @@
 # below must be publicly routable. That's a change from the api-worker
 # pattern, where some endpoints use internal docker hostnames.
 #
-# Prereq for `file_exchange.url`: today static_file_server's Traefik
-# router rule is `PathPrefix(/api/v1/data)` only — the file-exchange
-# surface (/api/v1/exchange/) supports PUT/DELETE and is intentionally
-# not publicly exposed. Before the data-worker can run, ops must
-# extend that Traefik route (e.g.
-# `(PathPrefix(/api/v1/data) || PathPrefix(/api/v1/exchange))`) AND
-# protect the exchange path with basic auth or an IP allowlist
-# (otherwise PUT/DELETE is open to the internet).
+# `file_exchange.url` reaches static_file_server through Traefik's
+# `fishsense_static_file_server_exchange` router (deploy/
+# compose.orchestrator.yml). Auth is an IP allowlist pinned to the
+# data-worker host's public IP. If the host moves, update the
+# `ipallowlist.sourcerange=` middleware label there.
+#
+# TODO: migrate the auth to authentik basic-auth-passthrough so we
+# don't have to track the data-worker IP in compose. See project
+# memory `project_data_worker_authentik_todo.md`.
 
 [general]
 max_workers = 8

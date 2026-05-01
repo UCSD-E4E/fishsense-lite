@@ -17,18 +17,20 @@ services:
       # host, can't reach the internal `static_file_server` docker
       # hostname) GET/PUT/DELETE on `/api/v1/exchange/*`.
       #
-      # WARNING: this router currently has no auth middleware attached.
-      # `/api/v1/exchange/` supports PUT and DELETE — until auth is
-      # added (basic auth, IP allowlist, or authentik passthrough),
-      # those verbs are publicly reachable. Pick the auth scheme and
-      # attach the middleware before the next prod orchestrator
-      # deploy. The data-worker code today does not send credentials;
-      # basic auth would also require a httpx.AsyncClient `auth=`
-      # change in `services/fishsense-data-processing-workflow-worker/
-      # src/.../file_exchange.py` callers.
+      # Auth: IP allowlist scoped to the data-worker host's public IP.
+      # PUT/DELETE on the exchange surface stays inaccessible to the
+      # internet at large. Update the sourcerange when the data-worker
+      # host moves.
+      #
+      # TODO: migrate to authentik basic-auth-passthrough so we can
+      # drop the IP-pinning and consolidate auth on the same provider
+      # the rest of the orchestrator routes use. Tracked in project
+      # memory `project_data_worker_authentik_todo.md`.
       - "traefik.http.routers.fishsense_static_file_server_exchange.rule=Host(`orchestrator.fishsense.e4e.ucsd.edu`) && PathPrefix(`/api/v1/exchange`)"
       - "traefik.http.routers.fishsense_static_file_server_exchange.entrypoints=websecure"
       - "traefik.http.routers.fishsense_static_file_server_exchange.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.fishsense_static_file_server_exchange.middlewares=fishsense_exchange_ip_allowlist"
+      - "traefik.http.middlewares.fishsense_exchange_ip_allowlist.ipallowlist.sourcerange=132.239.95.67/32"
     volumes:
       - ./static_file_server/nginx.conf:/etc/nginx/conf.d/default.conf
       - ./static_file_server_volumes/data:/data
