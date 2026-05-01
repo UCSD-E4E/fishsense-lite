@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.22.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.21.0...fishsense-api-v1.22.0) (2026-05-01)
+
+
+### Features
+
+* **api-worker:** port stage 4.2 sync_species_labels ([91d17f4](https://github.com/UCSD-E4E/fishsense-lite/commit/91d17f44d7266fae2338fb6e3c8bef364940eb7b))
+
 ## [1.21.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.20.1...fishsense-api-v1.21.0) (2026-05-01)
 
 
