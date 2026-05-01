@@ -125,7 +125,12 @@ async def schedule_workflow(
             args=(),
             id=f"{workflow_cls.__name__}-workflow",
             task_queue=TASK_QUEUE_NAME,
-            run_timeout=timedelta(minutes=30),
+            # Sized to cover the worst-case sync run: 4 per-project sync
+            # activities in parallel, each capped at 2h schedule_to_close
+            # for first-run-on-backlog projects (see sync_label_studio_*
+            # workflows). 3h leaves margin for the users + project-id
+            # activities ahead of the per-project fan-out.
+            run_timeout=timedelta(hours=3),
         ),
         spec=ScheduleSpec(intervals=[ScheduleIntervalSpec(every=interval)]),
         state=ScheduleState(),

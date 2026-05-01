@@ -38,7 +38,12 @@ class SyncLabelStudioHeadTailLabelsWorkflow:
                 await workflow.execute_activity(
                     "sync_headtail_labels_for_label_studio_project_activity",
                     args=(project_id,),
-                    schedule_to_close_timeout=timedelta(minutes=30),
+                    # Sized for the *first* run on a backlog project — the
+                    # cursor is None initially, so we have to page every LS
+                    # task even if the project is dormant. Once the cursor
+                    # advances on a successful run, subsequent runs return
+                    # almost instantly. ~7k LS pages fit in 2h at ~1s/page.
+                    schedule_to_close_timeout=timedelta(hours=2),
                     heartbeat_timeout=timedelta(minutes=2),
                 )
 
