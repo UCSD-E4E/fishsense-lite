@@ -117,6 +117,93 @@ If the host is upgrading from the polyrepo worker, **rename
 `DYNACONF_*` env vars to `E4EFS_*`** before redeploying. Dynaconf will
 silently ignore the old prefix.
 
+### Rollout operational notes
+
+#### Settings-file changes ride the deploy atomically
+
+`deploy.yml` does `git pull --ff-only origin main` BEFORE
+`docker compose pull && up -d`. Schema changes to
+`worker_volumes/config/settings.toml` (the in-repo copy) flow to the
+host atomically with the image-pin bump — no drift window where the
+new image runs against the old settings or vice versa.
+
+Caveat: `--ff-only` will refuse if ops manually edited the host's
+checkout (e.g. tweaked `settings.toml` directly). Always commit
+config changes through PRs and let auto-deploy carry them in.
+
+#### Temporal schedules are idempotent-as-create
+
+Workers register schedules at startup via `ensure_schedule` (treats
+`ScheduleAlreadyRunningError` as success). First deploy creates the
+schedule; subsequent deploys leave existing schedules alone.
+
+To change a schedule's cron / timeout / args, manually delete then
+let the next worker restart recreate it:
+
+```
+temporal schedule delete <schedule-id>
+```
+
+A code-side timeout bump WILL NOT take effect on its own.
+
+#### First-run sync behavior
+
+Hourly `SyncLabelStudio*LabelsWorkflow` activities use a per-(kind,
+project) cursor (`LabelStudioSyncCursor`). On the first deploy of a
+new sync the cursor is NULL → the activity processes every existing
+label. Subsequent runs are incremental. Rough backlog sizes as of
+2026-05-01:
+
+| Kind | Projects | Backlog | First-run estimate |
+|---|---|---|---|
+| `laser` | varies | varies | already deployed |
+| `headtail` | varies | varies | already deployed |
+| `dive_slate` | ~1 | tens of tasks | seconds |
+| `species` | 8 | ~1218 tasks | ~5 min |
+
+After a new sync first deploys, watch `fishsense_api_queue` in
+Temporal UI. If a per-project activity trips its 2h
+`schedule_to_close_timeout`, raise the timeout in the workflow file
+and cut a release.
+
+#### Stage 6.1 (UpdateDiveImageGroupsWorkflow) — on-demand, ordering matters
+
+Stage 6.1 reconciles species labels into LABEL_STUDIO frame clusters
+that stage 14 measurement reads. It is on-demand (no schedule),
+triggered per dive:
+
+```
+temporal workflow start \
+  --type UpdateDiveImageGroupsWorkflow \
+  --task-queue fishsense_api_queue \
+  --input '<dive_id>'
+```
+
+**Order matters**: stage 6.1 reads `SpeciesLabel.grouping`. If 6.1
+fires before stage 4.2's species sync has touched the dive's labels,
+`grouping` is NULL everywhere → each PREDICTION cluster becomes a
+single-image LABEL_STUDIO cluster (suboptimal grouping, not broken).
+6.1 then refuses to re-run (skip-if-exists, since the cluster API
+has no DELETE), so the suboptimal result is locked in. To recover:
+manually delete the dive's LABEL_STUDIO clusters in Postgres
+(`DELETE FROM dive_frame_cluster WHERE dive_id=? AND data_source='LABEL_STUDIO'`
+plus the join table), then re-trigger.
+
+Safe sequence per dive: confirm `species_label.grouping` is
+populated for the dive's images (the hourly species sync has run at
+least once with completed labels), then trigger 6.1.
+
+#### Stages 13 + 14 require a data-worker rollout
+
+Stages 13 (laser calibration) and 14 (fish measurement) are baked
+into the data-worker image, but the data-worker is held off
+auto-deploy (separate host, no in-repo compose). After tagging a
+new data-worker version, ops must manually roll it (see "Manual
+rollout" above). Without that step:
+- Stage 6.1 will create LABEL_STUDIO clusters successfully, but
+- Stage 14 measurement won't run, so no `Measurement` rows get
+  written and no fish lengths land in the dashboard.
+
 ## Where things live in `compose.yml`
 
 ```
