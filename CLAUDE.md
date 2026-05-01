@@ -257,7 +257,10 @@ release: published   → promote.yml  (:sha-<short> -> :v<version> + :latest;
                                       opens auto-deploy/* PR bumping
                                       deploy/compose*.yml pin)
 auto-deploy PR merge → deploy.yml   (docker compose pull && up -d on
-                                      self-hosted [fishsense-prod] runner)
+                                      the matching self-hosted runner —
+                                      [fishsense-prod] for the orchestrator
+                                      stack, [fishsense-data-worker] for
+                                      the data-processing worker host)
 ```
 
 `.github/workflows/build.yml` runs on **every push to main + every PR**.
@@ -276,29 +279,47 @@ the package's image pin to the new version. Branch name pattern:
 `.github/workflows/deploy.yml` runs when an `auto-deploy/*` PR is
 merged (via `pull_request: types:[closed]` + branch-prefix filter, so
 unrelated compose edits don't trigger it). Plus a `workflow_dispatch`
-for manual re-pulls. Runs `docker compose pull && up -d` on a
-self-hosted runner labeled `fishsense-prod`, co-located with the
-docker engine running `deploy/compose.yml`. **The runner doesn't
-exist yet** — until one is registered, deploy jobs sit in queue.
+for manual re-pulls. Two jobs route by branch name:
 
-The workflow operates on a **persistent ops-managed deploy directory**
-on the host (path supplied via repo variable `DEPLOY_DIR`),
-NOT the runner's default `_work` checkout. This matters because
+- `auto-deploy/fishsense-data-processing-workflow-worker-*` ->
+  `[self-hosted, fishsense-data-worker]`, repo variable
+  `DATA_WORKER_DEPLOY_DIR`, `compose.data-worker.yml`.
+- any other `auto-deploy/*` -> `[self-hosted, fishsense-prod]`, repo
+  variable `DEPLOY_DIR`, `compose.yml` (which `include:`s the four
+  orchestrator-stack siblings).
+
+**Neither runner exists yet** — until each is registered, the matching
+deploy jobs sit in queue.
+
+Each job operates on a **persistent ops-managed deploy directory**
+on its host (paths in `DEPLOY_DIR` / `DATA_WORKER_DEPLOY_DIR`), NOT
+the runner's default `_work` checkout. This matters because
 `deploy/compose*.yml` uses relative bind mounts (`./pg_volumes`,
-`./worker_volumes`, `./.secrets/...`) for postgres data, worker
-config, postgres admin password, temporal env files, etc. — none of
-which are tracked in git. Running compose against the runner's
-fresh `_work` checkout would silently start postgres with an empty
-data dir.
+`./worker_volumes`, `./.secrets/...`, `./temporal_volumes/certs`)
+for postgres data, worker config, secrets, and Temporal mTLS certs —
+none of which are tracked in git. Running compose against the
+runner's fresh `_work` checkout would silently start postgres with
+an empty data dir on the orchestrator, or the data-worker without
+its mTLS certs.
 
-Host bootstrap (one-time):
-1. Register the runner with `--labels fishsense-prod`.
+Host bootstrap (one-time, per host):
+
+Orchestrator:
+1. Register a runner with `--labels fishsense-prod`.
 2. `git clone` the repo to a persistent path (e.g. `/srv/fishsense`).
 3. Set repo variable `DEPLOY_DIR` to that path under Settings ->
    Secrets and variables -> Actions -> Variables.
 4. Restore `pg_volumes/`, `worker_volumes/`, `temporal_volumes/`,
    `mafl_volumes/`, and `.secrets/` (untracked siblings of the
    compose files) from existing prod state.
+
+Data-worker:
+1. Register a runner with `--labels fishsense-data-worker`.
+2. `git clone` the repo to a persistent path (e.g. `/srv/fishsense-data-worker`).
+3. Set repo variable `DATA_WORKER_DEPLOY_DIR` to that path.
+4. Populate `worker_volumes/config/{settings.toml,.secrets.toml}`,
+   `worker_volumes/logs/`, and `temporal_volumes/certs/` (a
+   data-worker-specific client cert + key + the same root CA).
 
 Three reasons for the split:
 1. **Race-proof promotion.** The release tag points at a specific
@@ -313,10 +334,12 @@ Three reasons for the split:
    the auto-deploy PR. The compose-pin diff is reviewable in the PR
    before any prod restart happens.
 
-`fishsense-data-processing-workflow-worker` is held off auto-deploy:
-its image still gets the `:v<version>` tag (so manual rollout is
-possible), but no compose-pin PR is opened. The data-worker runs on
-a separate host and that host's compose isn't in this repo yet.
+`fishsense-data-processing-workflow-worker` runs on a separate host
+(with its own compose file `deploy/compose.data-worker.yml`, NOT
+included by `deploy/compose.yml`) and uses the second deploy.yml job
+described above. Its compose-pin PR opens just like the orchestrator
+services; the routing in `deploy.yml` sends the merge to the
+`fishsense-data-worker` runner instead of `fishsense-prod`.
 
 `deploy/compose.workers.yml` is the home for `fishsense-*` worker
 services running on the orchestrator host. Currently has

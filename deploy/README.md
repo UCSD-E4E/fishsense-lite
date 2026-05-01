@@ -1,18 +1,18 @@
 # deploy/
 
-Docker-compose stack for FishSense Lite — both the local devcontainer
-and the prod orchestrator host. The prod data-processing-worker host
-runs a separate compose file that lives elsewhere (held off auto-deploy).
+Docker-compose stacks for FishSense Lite — local devcontainer, prod
+orchestrator host, and prod data-worker host.
 
 ## Compose layout
 
 | File | Purpose |
 |---|---|
-| `compose.yml` | Top-level prod stack. `include:`s the four siblings below + defines `postgres`, `qcomm-static-file-server`, `mafl`. Pulls `prometheus_network` and `traefik_proxy` as external networks. |
+| `compose.yml` | Top-level prod orchestrator stack. `include:`s the four siblings below + defines `postgres`, `qcomm-static-file-server`, `mafl`. Pulls `prometheus_network` and `traefik_proxy` as external networks. |
 | `compose.orchestrator.yml` | `fishsense-api` + nginx `static_file_server` (file-exchange DAV). Behind Traefik + `authentik@docker` middleware. |
 | `compose.temporal.yml` | Temporal cluster (history, frontend, matching, worker, UI). |
 | `compose.workers.yml` | `fishsense-*` workers running on the orchestrator host: `fishsense-api-workflow-worker`, `fishsense-backup-worker`. (Workers consume Temporal but aren't part of the cluster.) |
 | `compose.superset.yml` | Superset + redis + worker / beat. |
+| `compose.data-worker.yml` | `fishsense-data-processing-workflow-worker` on a **separate host** (image preprocessing + laser calibration + measurement). **Not** included by `compose.yml`. Invoked on the data-worker host as `docker compose -f compose.data-worker.yml ...`. |
 | `compose.local.yml` | Self-contained local devcontainer stack — postgres, temporal, fishsense-api (pinned image), nginx static_file_server, label-studio, dev container. **Not** layered on `compose.yml`; prod's authentik / mTLS / letsencrypt coupling is intentionally absent. |
 | `compose.dev.yml` | Dev-only compose extras (used inside the devcontainer for tooling). |
 
@@ -57,22 +57,25 @@ containers.
 
 ## Production deploy
 
-Prod runs `compose.yml` (which `include:`s the four sibling files) on
-the orchestrator host. **Bringing it up by hand is not the path** —
-the auto-deploy pipeline handles version bumps via reviewable PRs.
+Prod runs on two hosts: the **orchestrator host** runs `compose.yml`
+(which `include:`s the four sibling files), and the **data-worker host**
+runs `compose.data-worker.yml` standalone. **Bringing them up by hand
+is not the path** — the auto-deploy pipeline handles version bumps via
+reviewable PRs, and routes the merge to the matching host's runner.
 See [.github/workflows/deploy.yml](../.github/workflows/deploy.yml)
 and the "CI pipeline" section of [CLAUDE.md](../CLAUDE.md).
 
-### Host bootstrap (one-time, ops)
-
 The deploy workflow does **not** check the repo out into the runner's
-default `_work` directory. It operates on a persistent ops-managed
-directory on the host. This matters because the compose files use
+default `_work` directory. Each job operates on a persistent ops-managed
+directory on its host. This matters because the compose files use
 relative bind mounts (`./pg_volumes/`, `./worker_volumes/`, `./.secrets/`,
-etc.) for postgres data, worker config, secrets, and Temporal env
-files — none of which are tracked in git. Running compose against a
-fresh `_work` checkout would silently start postgres with an empty
-data dir.
+`./temporal_volumes/certs`, etc.) for postgres data, worker config,
+secrets, and Temporal mTLS certs — none of which are tracked in git.
+Running compose against a fresh `_work` checkout would silently start
+postgres with an empty data dir on the orchestrator, or the data-worker
+without its mTLS certs.
+
+### Orchestrator host bootstrap (one-time, ops)
 
 1. Register a self-hosted GitHub runner with `--labels fishsense-prod`,
    co-located with the docker engine that will run the stack.
@@ -102,18 +105,35 @@ data dir.
 6. Set `USER_ID` / `GROUP_ID` in `.env` so the postgres container runs
    as the host owner of `pg_volumes/data/`.
 
-### Manual rollout (workers off auto-deploy)
+### Data-worker host bootstrap (one-time, ops)
 
-`fishsense-data-processing-workflow-worker` runs on a different host
-whose compose file isn't in this repo. `promote.yml` still publishes
-`:v<version>` tags for it, so manual rollout on that host is just:
+The data-worker is on its own host because it's CPU-heavy (rectify +
+JPEG encode + fishsense-core kernels) and we don't want it competing
+with the orchestrator's postgres / Temporal / authentik traffic.
 
-```
-docker compose pull fishsense-data-processing-workflow-worker
-docker compose up -d fishsense-data-processing-workflow-worker
-```
+1. Register a self-hosted GitHub runner with
+   `--labels fishsense-data-worker`, co-located with the docker engine
+   that will run the worker.
+2. `git clone` this repo to a persistent path
+   (e.g. `/srv/fishsense-data-worker`).
+3. Set repo variable `DATA_WORKER_DEPLOY_DIR` to that absolute path.
+4. Populate the untracked sibling directories under `deploy/`:
+   - `worker_volumes/config/settings.toml` — `[temporal]`,
+     `[fishsense_api]`, `[file_exchange]`, `[e4e_nas]` blocks.
+   - `worker_volumes/config/.secrets.toml` — fishsense-api basic auth,
+     NAS creds.
+   - `worker_volumes/logs/` — log volume.
+   - `temporal_volumes/certs/client/fishsense-data-processing-workflow-worker.pem`
+     + `.key` — data-worker-specific mTLS client cert.
+   - `temporal_volumes/certs/ca/root-ca.pem` — same root CA the
+     orchestrator workers use.
+5. `docker login ghcr.io` with a PAT that has `read:packages` on
+   `UCSD-E4E` so the runner user can pull the worker image.
+6. First boot manually:
+   `docker compose -f compose.data-worker.yml up -d`. After it's
+   running, all subsequent rollouts ride the auto-deploy pipeline.
 
-If the host is upgrading from the polyrepo worker, **rename
+If the host is upgrading from the polyrepo data-worker, **rename
 `DYNACONF_*` env vars to `E4EFS_*`** before redeploying. Dynaconf will
 silently ignore the old prefix.
 
@@ -274,18 +294,22 @@ per-image activities load-balance for free across replicas (Temporal
 task-queue distribution). The parent's `overlap=SKIP` plus
 deterministic child ids keep the selector side race-free.
 
-#### Stages 13 + 14 require a data-worker rollout
+#### Stages 13 + 14 ride the data-worker auto-deploy
 
 Stages 13 (laser calibration) and 14 (fish measurement) are baked
-into the data-worker image, but the data-worker is held off
-auto-deploy (separate host, no in-repo compose). After tagging a
-new data-worker version, ops must manually roll it (see "Manual
-rollout" above). Without that step:
-- Stage 6.1 will create LABEL_STUDIO clusters successfully, but
-- Stage 14 measurement won't run, so no `Measurement` rows get
-  written and no fish lengths land in the dashboard.
+into the data-worker image. They roll out via the same auto-deploy
+flow as everything else — release-please cuts a data-worker version,
+promote.yml opens the compose-pin PR against
+`compose.data-worker.yml`, and merging it routes the deploy to the
+`fishsense-data-worker` runner. No manual step required *once the
+data-worker host is bootstrapped*. Until that runner is registered
+and `DATA_WORKER_DEPLOY_DIR` is set, the auto-deploy job sits in
+queue and stages 13/14 changes won't reach prod — see
+"Data-worker host bootstrap" above.
 
-## Where things live in `compose.yml`
+## Where things live
+
+Orchestrator host (one runner: `fishsense-prod`):
 
 ```
 compose.yml
@@ -300,6 +324,14 @@ compose.yml
 └── include: compose.workers.yml
       ├── fishsense-api-workflow-worker (× 2 replicas)
       └── fishsense-backup-worker
+```
+
+Data-worker host (separate runner: `fishsense-data-worker`,
+**not** included by `compose.yml`):
+
+```
+compose.data-worker.yml
+└── fishsense-data-processing-workflow-worker
 ```
 
 ## Related docs

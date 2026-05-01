@@ -6,8 +6,9 @@
 # `image: ghcr.io/ucsd-e4e/<package>:v*` and bump it via PR on release.
 #
 # fishsense-data-processing-workflow-worker is intentionally NOT here:
-# it runs on a separate host (held off auto-deploy for now) — see the
-# corresponding compose file on that host once it exists.
+# it runs on a separate host with its own compose file
+# (compose.data-worker.yml). Auto-deploy still applies — deploy.yml
+# routes its bumps to the `fishsense-data-worker` runner.
 
 services:
   fishsense-api-workflow-worker:
