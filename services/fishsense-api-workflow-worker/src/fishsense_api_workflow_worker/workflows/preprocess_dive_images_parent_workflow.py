@@ -16,6 +16,8 @@ from fishsense_shared import PreprocessDiveImagesInput
 from temporalio import workflow
 
 DATA_PROCESSING_TASK_QUEUE = "fishsense_data_processing_queue"
+EXCHANGE_FOLDER = "preprocess_groups_jpeg"
+NAS_WORKFLOW = "dive_images"
 
 
 @workflow.defn
@@ -71,6 +73,19 @@ class PreprocessDiveImagesParentWorkflow:
             id=f"preprocess-dive-images-{dive_id}",
             task_queue=DATA_PROCESSING_TASK_QUEUE,
             execution_timeout=timedelta(hours=2),
+        )
+
+        await workflow.execute_activity(
+            "archive_processed_jpegs_to_nas_activity",
+            args=(dive_id, EXCHANGE_FOLDER, NAS_WORKFLOW),
+            schedule_to_close_timeout=timedelta(hours=1),
+            heartbeat_timeout=timedelta(minutes=5),
+        )
+        await workflow.execute_activity(
+            "cleanup_raw_bytes_for_dive_activity",
+            args=(dive_id,),
+            schedule_to_close_timeout=timedelta(minutes=15),
+            heartbeat_timeout=timedelta(minutes=5),
         )
 
         return inputs.dive_id

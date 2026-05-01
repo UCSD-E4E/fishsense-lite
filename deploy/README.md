@@ -205,11 +205,27 @@ their selectors don't all hit `dives.get()` at the top of the hour.
 
 NAS access lives only on the api-worker side
 (`stage_raw_bytes_for_dive_activity` for raw `.ORF`s,
-`stage_slate_pdf_activity` for stage-9 slate PDFs). Both are
-idempotent — a HEAD-check skips already-staged content so retries
-are cheap. NAS failure is fatal for the parent run; the next
-schedule firing retries from scratch. The data-worker holds no NAS
-credentials and only reads/writes the file-exchange.
+`stage_slate_pdf_activity` for stage-9 slate PDFs). All NAS
+activities are idempotent — a HEAD-equivalent skips already-staged
+content so retries are cheap. NAS failure is fatal for the parent
+run; the next schedule firing retries from scratch. The data-worker
+holds no NAS credentials and only reads/writes the file-exchange.
+
+After the data-worker child completes, the parent runs two more
+activities:
+
+* **`archive_processed_jpegs_to_nas_activity(dive_id, exchange_folder, nas_workflow)`** —
+  reads JPEGs from the file-exchange and uploads to
+  `{processed_jpegs.nas_root_path}/{nas_workflow}/{dive_id}/{checksum}.JPG`
+  (default root: `/fishsense_process_work/processed_jpegs`). Skips
+  checksums already on NAS; counts file-exchange 404s as missing-
+  not-fatal.
+* **`cleanup_raw_bytes_for_dive_activity(dive_id)`** — DELETEs raw
+  `.ORF` entries from the file-exchange. JPEGs intentionally stay
+  (Label Studio task URLs reference them).
+
+Configurable: set `processed_jpegs.nas_root_path` in
+`worker_volumes/config/settings.toml` to override the default root.
 
 | Stage | Parent workflow | Schedule offset | Child id pattern |
 |---|---|---|---|

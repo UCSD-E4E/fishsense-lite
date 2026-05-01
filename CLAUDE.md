@@ -92,14 +92,16 @@ that need both SDK-side decision-making *and* CPU-heavy per-image
 work split into two workflows:
 
 * **Parent** on api-worker (`fishsense_api_queue`). Hourly schedule.
-  Three activities ahead of dispatch: a selector (returns the next
-  dive_id in some cohort, or None), a resolver (returns a fully-
-  populated workflow-input DTO for that dive), and a NAS staging
-  activity (`stage_raw_bytes_for_dive_activity` — copies raw `.ORF`
-  bytes from NAS to the file-exchange so the data-worker can read
-  them). Stage 9 also runs `stage_slate_pdf_activity` for the slate
-  template. Then `start_child_workflow` against the data-worker
-  task queue.
+  Five activity calls per dive bracketing the child:
+  1. Selector — returns next dive_id in cohort, or None.
+  2. Resolver — returns a fully-populated workflow-input DTO.
+  3. `stage_raw_bytes_for_dive_activity` — NAS → file-exchange.
+     Stage 9 also runs `stage_slate_pdf_activity` for the slate PDF.
+  4. `start_child_workflow` against the data-worker task queue.
+  5. `archive_processed_jpegs_to_nas_activity` — file-exchange JPEGs
+     → NAS (`processed_jpegs/<workflow>/<dive_id>/<checksum>.JPG`).
+     Then `cleanup_raw_bytes_for_dive_activity` deletes the dive's
+     raw `.ORF`s from the file-exchange.
 * **Child** on data-worker (`fishsense_data_processing_queue`). Thin
   pre-input workflow that fans out per-image activities. No SDK
   calls and no NAS calls; all bytes already on the file-exchange,
@@ -108,6 +110,11 @@ work split into two workflows:
 NAS access lives only on the api-worker side. The data-worker stays
 file-exchange-only — narrows the data-worker's blast radius and
 keeps NAS credentials off the cluster.
+
+JPEGs intentionally stay on the file-exchange after archive (LS task
+URLs point at them). Raw `.ORF`s are deleted because they're
+reproducible from NAS. JPEG retention is a separate operational
+decision — see the project memory entry.
 
 The workflow-input DTOs (`PreprocessLaserImagesInput`, eventually
 `PreprocessDiveImagesInput`, etc.) live in

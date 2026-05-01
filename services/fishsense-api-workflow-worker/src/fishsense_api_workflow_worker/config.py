@@ -56,6 +56,16 @@ _VALIDATORS = [
     Validator("e4e_nas.url", required=True, cast=str, condition=url_condition),
     Validator("e4e_nas.username", required=True, cast=str),
     Validator("e4e_nas.password", required=True, cast=str),
+    # NAS path under which Phase 3b's archive activity writes
+    # processed JPEGs. Per-stage subfolders + per-dive subfolders
+    # are appended at archive time; the final NAS path is
+    # `{processed_jpegs.nas_root_path}/{workflow}/{dive_id}/{checksum}.JPG`.
+    Validator(
+        "processed_jpegs.nas_root_path",
+        required=True,
+        cast=str,
+        default="/fishsense_process_work/processed_jpegs",
+    ),
     Validator("fishsense_api.url", required=True, cast=str, condition=url_condition),
     Validator("fishsense_api.username", cast=str),
     Validator("fishsense_api.password", cast=str),

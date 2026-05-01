@@ -27,6 +27,8 @@ from fishsense_shared import PreprocessLaserImagesInput
 from temporalio import workflow
 
 DATA_PROCESSING_TASK_QUEUE = "fishsense_data_processing_queue"
+EXCHANGE_FOLDER = "preprocess_jpeg"
+NAS_WORKFLOW = "laser"
 
 
 @workflow.defn
@@ -85,6 +87,23 @@ class PreprocessLaserImagesParentWorkflow:
             id=f"preprocess-laser-{dive_id}",
             task_queue=DATA_PROCESSING_TASK_QUEUE,
             execution_timeout=timedelta(hours=1),
+        )
+
+        # Phase 3b: archive processed JPEGs to NAS, then drop the raw
+        # `.ORF` bytes from the file-exchange. JPEGs intentionally stay
+        # on the file-exchange — LS tasks reference them by URL and
+        # their retention is a separate operational decision.
+        await workflow.execute_activity(
+            "archive_processed_jpegs_to_nas_activity",
+            args=(dive_id, EXCHANGE_FOLDER, NAS_WORKFLOW),
+            schedule_to_close_timeout=timedelta(hours=1),
+            heartbeat_timeout=timedelta(minutes=5),
+        )
+        await workflow.execute_activity(
+            "cleanup_raw_bytes_for_dive_activity",
+            args=(dive_id,),
+            schedule_to_close_timeout=timedelta(minutes=15),
+            heartbeat_timeout=timedelta(minutes=5),
         )
 
         return inputs.dive_id

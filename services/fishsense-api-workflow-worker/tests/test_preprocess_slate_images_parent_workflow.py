@@ -70,7 +70,24 @@ def _make_stubs(
     async def stub_stage_pdf(slate_id: int) -> bool:
         return True
 
-    return [stub_select, stub_resolve, stub_stage, stub_stage_pdf]
+    @activity.defn(name="archive_processed_jpegs_to_nas_activity")
+    async def stub_archive(
+        dive_id: int, exchange_folder: str, nas_workflow: str
+    ) -> None:
+        return None
+
+    @activity.defn(name="cleanup_raw_bytes_for_dive_activity")
+    async def stub_cleanup(dive_id: int) -> None:
+        return None
+
+    return [
+        stub_select,
+        stub_resolve,
+        stub_stage,
+        stub_stage_pdf,
+        stub_archive,
+        stub_cleanup,
+    ]
 
 
 @pytest.mark.asyncio

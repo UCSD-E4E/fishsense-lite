@@ -16,8 +16,8 @@ Task queue: `fishsense_api_queue`.
 | `UpdateDashboardConfigWorkflow` | every 1 h | Render the Superset dashboard config from current api state. |
 | `Create<Stage>LabelStudioProjectWorkflow` × 4 | on-demand | Idempotently create the LS project for a stage (laser / species / headtail / dive_slate). Title-lookup or create from labeling-config XML. |
 | `Populate<Stage>LabelStudioProjectWorkflow(dive_id)` × 4 | on-demand | Query SQL for active LS projects (`incomplete=True`), fan out task imports across them with `Semaphore(4)`. |
-| `PreprocessLaserImagesParentWorkflow` | every 1 h (`overlap=SKIP`) | Stage-0.1 orchestrator: select → resolve → stage raw `.ORF`s NAS→file-exchange → dispatch `PreprocessLaserImagesWorkflow` on `fishsense_data_processing_queue`. |
-| `PreprocessDiveImagesParentWorkflow` | every 1 h, +15 min (`overlap=SKIP`) | Stage-2 orchestrator (PREDICTION clusters + incomplete species labels). Same select / resolve / stage / dispatch shape. |
+| `PreprocessLaserImagesParentWorkflow` | every 1 h (`overlap=SKIP`) | Stage-0.1 orchestrator: select → resolve → stage raw `.ORF`s NAS→file-exchange → dispatch `PreprocessLaserImagesWorkflow` → archive JPEGs file-exchange→NAS → cleanup raw `.ORF`s. |
+| `PreprocessDiveImagesParentWorkflow` | every 1 h, +15 min (`overlap=SKIP`) | Stage-2 orchestrator (PREDICTION clusters + incomplete species labels). Same five-step shape. |
 | `PreprocessHeadtailImagesParentWorkflow` | every 1 h, +30 min (`overlap=SKIP`) | Stage-5.1 orchestrator (top-three species labels lacking head/tail). Same shape. |
 | `PreprocessSlateImagesParentWorkflow` | every 1 h, +45 min (`overlap=SKIP`) | Stage-9 orchestrator (slate-marked species labels lacking slate labels). Also stages the slate template PDF (`stage_slate_pdf_activity`) before dispatch. |
 
