@@ -2,6 +2,21 @@
 
 <!-- version list -->
 
+## [1.23.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.22.1...fishsense-api-workflow-worker-v1.23.0) (2026-05-01)
+
+
+### Features
+
+* **api-workflow-worker:** add Create + Populate Label Studio project workflows ([ab3fde5](https://github.com/UCSD-E4E/fishsense-lite/commit/ab3fde54144be88cd1c5997052c54ef196074ea9))
+* **api-workflow-worker:** wire labeling-config XML for all four LS create activities ([9386057](https://github.com/UCSD-E4E/fishsense-lite/commit/9386057fa4edc144854ce8d3052cc6b354e348a2))
+* **deploy,api-workflow-worker:** add Label Studio to local stack + integration tests ([09d4e6b](https://github.com/UCSD-E4E/fishsense-lite/commit/09d4e6b9a5e829b97ddf0f1c368e86ebdd9fb114))
+
+
+### Bug Fixes
+
+* **api-workflow-worker:** bump per-project sync timeout for backlog runs ([ec97a5b](https://github.com/UCSD-E4E/fishsense-lite/commit/ec97a5b1765c1939eae0292ca92083e2902ff51b))
+* **api-workflow-worker:** clean up pylint errors in LS-populate code ([2c1a006](https://github.com/UCSD-E4E/fishsense-lite/commit/2c1a006c96e98e2e15caebe2db0e0ac9995c8fcc))
+
 ## [1.22.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.22.0...fishsense-api-workflow-worker-v1.22.1) (2026-05-01)
 
 
