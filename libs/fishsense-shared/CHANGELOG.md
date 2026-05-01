@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.2.0...fishsense-shared-v0.2.1) (2026-05-01)
+
+
+### Documentation
+
+* refresh CLAUDE.md, diagrams, and READMEs for new collaborators ([e45db82](https://github.com/UCSD-E4E/fishsense-lite/commit/e45db82467b3b92300c9af767cab7f4331e4d4d6))
+
 ## [0.2.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.1.0...fishsense-shared-v0.2.0) (2026-04-29)
 
 

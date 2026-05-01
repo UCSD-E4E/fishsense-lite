@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.23.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.23.0...fishsense-api-workflow-worker-v1.23.1) (2026-05-01)
+
+
+### Bug Fixes
+
+* **api-workflow-worker:** heartbeat during slow LS-task listing ([62a2a91](https://github.com/UCSD-E4E/fishsense-lite/commit/62a2a910940ed35bad94f32ab161161dc886e060))
+
 ## [1.23.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.22.1...fishsense-api-workflow-worker-v1.23.0) (2026-05-01)
 
 
