@@ -6,7 +6,9 @@ species label with `content_of_image == 'Slate, Laser on slate'` whose
 dive_slate_label is missing or not yet completed (matches
 `populate_dive_slate_label_studio_project_activity`'s predicate).
 
-Returns the lowest dive_id in the cohort, or None.
+Returns the lowest dive_id in the cohort, or None. Ordering by `id`
+is FIFO-ish; if dives ever get backfilled out of order, swap the
+sort key to `dive_datetime`.
 """
 
 from __future__ import annotations

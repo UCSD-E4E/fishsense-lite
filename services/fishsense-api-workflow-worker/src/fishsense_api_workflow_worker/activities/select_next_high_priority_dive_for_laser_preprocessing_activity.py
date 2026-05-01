@@ -9,7 +9,9 @@ calibration.
 
 Lives on the api-worker so the SDK call runs on the orchestrator's
 docker network (no authentik / cross-host hop). Returns the lowest
-dive_id in the cohort, or None when the cohort is empty.
+dive_id in the cohort, or None when the cohort is empty. Ordering by
+`id` is FIFO-ish; if dives ever get backfilled out of order, swap
+the sort key to `dive_datetime`.
 """
 
 from __future__ import annotations
