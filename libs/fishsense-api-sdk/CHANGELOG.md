@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.31.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.30.0...fishsense-api-sdk-v1.31.0) (2026-05-01)
+
+
+### Features
+
+* **api-sdk:** generate wire-format models from OpenAPI schema ([d951aad](https://github.com/UCSD-E4E/fishsense-lite/commit/d951aad1731144e973ee70bf306ecd90b32330eb))
+* **api,sdk:** incremental Label Studio sync via LabelStudioSyncCursor ([726a147](https://github.com/UCSD-E4E/fishsense-lite/commit/726a1477e436c8ca0235e60e2354e4154b1dac22))
+
 ## [1.30.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.29.1...fishsense-api-sdk-v1.30.0) (2026-04-29)
 
 
