@@ -43,7 +43,7 @@ DB (negligible). To add or remove, override
 | 4.2 | sync_species_labels | api-worker | partial (sync runs as `SyncLabelStudio*LabelsWorkflow`; species-specific sync TBD) |
 | 5.1 | preprocess_headtail_images | data-worker | ported |
 | 5.3 | populate_label_studio_project | api-worker | ported |
-| 6.1 | update_dive_image_groups | api-worker | not started |
+| 6.1 | update_dive_image_groups | api-worker | ported (on-demand) |
 | 9   | preprocess_slate_images | data-worker | ported |
 | 11  | populate_label_studio_project | api-worker | ported |
 | 12  | sync_slate_label | api-worker | ported (hourly) |
@@ -74,6 +74,16 @@ Both are registered but not scheduled — they're on-demand
 (`temporal workflow start` with a `dive_id` for populate, no args for
 create). The eight workflows are: Create/Populate × Laser/Species/
 HeadTail/DiveSlate.
+
+`UpdateDiveImageGroupsWorkflow(dive_id)` is the stage-6.1 on-demand
+workflow: it walks the dive's PREDICTION clusters, looks up each
+entry's `SpeciesLabel.grouping`, and POSTs LABEL_STUDIO clusters
+according to the labelers' "Part of previous group" / "Not part of
+current group" choices. Stage 14 measurement reads those clusters.
+The activity refuses to re-run when LABEL_STUDIO clusters already
+exist — the cluster API has no DELETE, so a re-POST would silently
+double-count. To re-group after labels change, an operator must
+manually drop the existing LABEL_STUDIO clusters first.
 
 ## Data-worker activity pattern
 

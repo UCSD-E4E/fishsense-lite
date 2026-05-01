@@ -75,6 +75,9 @@ from fishsense_api_workflow_worker.activities.sync_laser_labels_for_label_studio
 from fishsense_api_workflow_worker.activities.sync_users_label_studio_activity import (
     sync_users_label_studio_activity,
 )
+from fishsense_api_workflow_worker.activities.update_dive_image_groups_activity import (
+    update_dive_image_groups_activity,
+)
 from fishsense_api_workflow_worker.activities.write_dashboard_config_activity import (
     write_dashboard_config_activity,
 )
@@ -114,6 +117,9 @@ from fishsense_api_workflow_worker.workflows.sync_label_studio_laser_labels_work
 )
 from fishsense_api_workflow_worker.workflows.update_dashboard_config_workflow import (
     UpdateDashboardConfigWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.update_dive_image_groups_workflow import (
+    UpdateDiveImageGroupsWorkflow,
 )
 
 TASK_QUEUE_NAME = "fishsense_api_queue"
@@ -215,6 +221,7 @@ async def main():
                 PopulateSpeciesLabelStudioProjectWorkflow,
                 PopulateHeadTailLabelStudioProjectWorkflow,
                 PopulateDiveSlateLabelStudioProjectWorkflow,
+                UpdateDiveImageGroupsWorkflow,
             ],
             activity_executor=executor,
             activities=[
@@ -239,6 +246,7 @@ async def main():
                 populate_species_label_studio_project_activity,
                 populate_headtail_label_studio_project_activity,
                 populate_dive_slate_label_studio_project_activity,
+                update_dive_image_groups_activity,
             ],
         )
 
