@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-backup-worker-v0.2.1...fishsense-backup-worker-v0.2.2) (2026-05-01)
+
+
+### Bug Fixes
+
+* **backup-worker:** create NAS dest dir before upload + surface FileStation errors ([3b8f717](https://github.com/UCSD-E4E/fishsense-lite/commit/3b8f717ea6ad3769c4c4a4adb3d0a714fca56b61))
+* **backup-worker:** silence pylint W0613 in pg_dump stderr-capture test ([51a5097](https://github.com/UCSD-E4E/fishsense-lite/commit/51a5097bb24f59eda82449983d87f5aa42ff4aca))
+* update config so that postgress can now connect ([abb47c3](https://github.com/UCSD-E4E/fishsense-lite/commit/abb47c36facec910423a16caf86db381e5785b36))
+
 ## [0.2.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-backup-worker-v0.2.0...fishsense-backup-worker-v0.2.1) (2026-04-30)
 
 
