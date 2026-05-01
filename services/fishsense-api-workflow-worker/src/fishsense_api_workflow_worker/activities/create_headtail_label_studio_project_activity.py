@@ -8,9 +8,19 @@ from fishsense_api_workflow_worker.activities.populate_utils import (
 
 HEADTAIL_PROJECT_TITLE = "FishSense — HeadTail Labeling (Stage 5.3)"
 
-# Paste the labeling-config XML from your existing prod LS project
-# (Project Settings -> Labeling Interface -> Code) here.
-HEADTAIL_LABELING_CONFIG_XML = ""
+# Labeling-config XML from the prod headtail project. The keypoint
+# `from_name` is "kp-1" — must match the literal in
+# `sync_headtail_labels_for_label_studio_project_activity.py` which
+# filters annotations on `r["from_name"] == "kp-1"`.
+HEADTAIL_LABELING_CONFIG_XML = """\
+<View>
+  <KeyPointLabels name="kp-1" toName="image">
+    <Label value="Snout" background="#FFA39E"/>
+    <Label value="Fork" background="#26a269"/>
+  </KeyPointLabels>
+  <Image name="image" value="$image" zoom="true" zoomControl="true"/>
+</View>
+"""
 
 
 @activity.defn

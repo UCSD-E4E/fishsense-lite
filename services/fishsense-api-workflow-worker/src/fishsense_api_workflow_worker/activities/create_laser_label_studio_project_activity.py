@@ -8,10 +8,20 @@ from fishsense_api_workflow_worker.activities.populate_utils import (
 
 LASER_PROJECT_TITLE = "FishSense — Laser Calibration Labeling (Stage 0.3)"
 
-# Paste the labeling-config XML from your existing prod LS project
-# (Project Settings -> Labeling Interface -> Code) here. Without it
-# the activity raises rather than creating an unlabel-able project.
-LASER_LABELING_CONFIG_XML = ""
+# Labeling-config XML from the prod laser project. The keypoint
+# `from_name` is "laser" — must stay aligned with
+# `LASER_LABEL_KEY_NAMES` in `sync_laser_labels_for_label_studio_project_activity.py`
+# (currently `["kp-1", "laser"]`) so the sync side picks up
+# annotations off the same control element this XML defines.
+LASER_LABELING_CONFIG_XML = """\
+<View>
+  <KeyPointLabels name="laser" toName="img">
+    <Label value="Red Laser" background="#FFDF20"/>
+    <Label value="Green Laser" background="#A684FF"/>
+  </KeyPointLabels>
+  <Image name="img" value="$image" zoom="true" zoomControl="true"/>
+</View>
+"""
 
 
 @activity.defn
