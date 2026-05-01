@@ -84,7 +84,7 @@ flowchart TB
         end
         subgraph C_WORKERS["compose.workers.yml"]
             P_APIWW["fishsense-api-workflow-worker"]
-            P_BUW["fishsense-backup-worker planned"]
+            P_BUW["fishsense-backup-worker"]
         end
         subgraph C_SUPERSET["compose.superset.yml"]
             P_SUP["Superset"]
@@ -100,6 +100,7 @@ flowchart TB
         L_TEMPORAL["temporal auto-setup"]
         L_API["fishsense-api pinned image"]
         L_FX["nginx static_file_server"]
+        L_LS["label-studio (with hard-coded admin token)"]
         L_DEV["dev workspace bind-mount"]
     end
 
@@ -469,7 +470,66 @@ sequenceDiagram
     W-->>T: WorkflowResult
 ```
 
-## 7. CI/CD pipeline (build → release → promote → deploy)
+## 7. Sequence — Label Studio project create + populate
+
+The eight on-demand workflows in the api-worker — Create + Populate
+× {Laser, Species, HeadTail, DiveSlate}. Same shape per stage; laser
+shown.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as Operator
+    participant T as Temporal
+    participant CW as CreateLaserLabelStudioProjectWorkflow
+    participant CA as create_laser_label_studio_project_activity
+    participant LS as label_studio
+    participant PW as PopulateLaserLabelStudioProjectWorkflow
+    participant GA as get_active_laser_label_studio_project_ids_activity
+    participant API as fishsense_api
+    participant PA as populate_laser_label_studio_project_activity
+
+    Note over U,LS: Create — once per deployment, idempotent
+    U->>T: workflow start CreateLaserLabelStudioProjectWorkflow
+    T->>CW: run()
+    CW->>CA: execute_activity()
+    CA->>LS: list projects, find by title
+    alt title exists
+        LS-->>CA: project_id
+    else not found
+        CA->>LS: create from <STAGE>_LABELING_CONFIG_XML
+        LS-->>CA: project_id
+    end
+    CA-->>CW: project_id
+    CW-->>T: project_id
+
+    Note over U,API: Populate — per dive, on demand
+    U->>T: workflow start PopulateLaserLabelStudioProjectWorkflow(dive_id)
+    T->>PW: run(dive_id)
+    PW->>GA: execute_activity()
+    GA->>API: SDK get_laser_label_studio_project_ids(incomplete=True)
+    API-->>GA: List[int]
+    GA-->>PW: project_ids
+
+    par Semaphore(4) — bounded fan-out
+        loop per project_id
+            PW->>PA: execute_activity(dive_id, project_id)
+            PA->>API: list images for dive
+            API-->>PA: images
+            PA->>LS: import tasks
+            LS-->>PA: ok
+            PA-->>PW: count
+        end
+    end
+    PW-->>T: total tasks imported
+```
+
+Bootstrap caveat: `incomplete=True` returns nothing for a brand-new
+project (zero labels), so Populate is a no-op until something seeds
+at least one label. Existing prod projects already have labels;
+fresh deployments need a seed step that doesn't exist yet.
+
+## 8. CI/CD pipeline (build → release → promote → deploy)
 
 State of an image as it moves from a commit to prod.
 

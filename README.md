@@ -92,9 +92,23 @@ Consumed via released wheels / git refs, not part of this monorepo:
 - [fishsense-core](https://github.com/UCSD-E4E/fishsense-core) — Rust + PyO3
   compute library (rectification, world-point projection, laser calibration)
 
-## In-repo conventions
+## Where to read next
 
-[CLAUDE.md](CLAUDE.md) at the repo root captures non-obvious conventions:
-notebook-port status, the data-worker activity pattern, file-exchange URL
-contract, Dynaconf eager-validation gotcha, the build/promote/deploy split,
-and other landmines worth knowing about before editing.
+- **[CLAUDE.md](CLAUDE.md)** — the operating manual. Service map,
+  notebook-port status, data-worker activity pattern, file-exchange
+  URL contract, Dynaconf eager-validation gotcha, build → release →
+  promote → deploy pipeline, service Dockerfile pattern, **and the
+  operational ground truth** (no staging tier, authentik in front of
+  the API, `E4EFS_` env prefix, SDK ↔ API drift policing) plus the
+  open follow-ups (migration finding #1, phase-6 polyrepo cutover,
+  stage14 real-frame regression, Label Studio bootstrap chicken-and-egg).
+  **Read this before editing.**
+- **[docs/diagrams.md](docs/diagrams.md)** — Mermaid diagrams: system
+  context, deploy topology, domain model, SDK class diagram, per-stage
+  sequence flows, CI/CD state machine. Useful as a high-level
+  orientation.
+- **Per-package READMEs** in [services/*/README.md](services/) and
+  [libs/*/README.md](libs/) — required env vars, local run command,
+  test invocations.
+- **[deploy/README.md](deploy/README.md)** — compose-file layout,
+  devcontainer setup, prod host bootstrap.

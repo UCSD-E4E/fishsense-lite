@@ -1,39 +1,143 @@
-# fishsense-web-services
-FishSense Web Services - Deploy
+# deploy/
 
-# Local development (devcontainer)
+Docker-compose stack for FishSense Lite — both the local devcontainer
+and the prod orchestrator host. The prod data-processing-worker host
+runs a separate compose file that lives elsewhere (held off auto-deploy).
 
-The repo ships a devcontainer that brings up a self-contained local stack
-(postgres + temporal + fishsense-api + nginx) so you can iterate on
-workflows + activities without touching prod.
+## Compose layout
 
-1. `cp deploy/.env.local.example deploy/.env`
-2. Edit `FISHSENSE_DUMP_PATH` to point at your prod backup (`pg_dump -Fc`).
-3. Open the repo in VSCode and "Reopen in Container".
+| File | Purpose |
+|---|---|
+| `compose.yml` | Top-level prod stack. `include:`s the four siblings below + defines `postgres`, `qcomm-static-file-server`, `mafl`. Pulls `prometheus_network` and `traefik_proxy` as external networks. |
+| `compose.orchestrator.yml` | `fishsense-api` + nginx `static_file_server` (file-exchange DAV). Behind Traefik + `authentik@docker` middleware. |
+| `compose.temporal.yml` | Temporal cluster (history, frontend, matching, worker, UI). |
+| `compose.workers.yml` | `fishsense-*` workers running on the orchestrator host: `fishsense-api-workflow-worker`, `fishsense-backup-worker`. (Workers consume Temporal but aren't part of the cluster.) |
+| `compose.superset.yml` | Superset + redis + worker / beat. |
+| `compose.local.yml` | Self-contained local devcontainer stack — postgres, temporal, fishsense-api (pinned image), nginx static_file_server, label-studio, dev container. **Not** layered on `compose.yml`; prod's authentik / mTLS / letsencrypt coupling is intentionally absent. |
+| `compose.dev.yml` | Dev-only compose extras (used inside the devcontainer for tooling). |
 
-The first boot of the postgres service runs
-`deploy/pg_volumes/scripts.local/00_restore.sh`, which `pg_restore`s the dump
-into a named docker volume (NOT under the repo — the data is large). To start
-clean later: `docker volume rm fishsense-local_pg_data`.
+`compose.local.yml` and the prod stack are intentionally separate
+files. Prod is fronted by Traefik + authentik + letsencrypt + mTLS to
+Temporal; trying to make a single set of compose files that boots both
+on a laptop and on the orchestrator was messier than splitting them.
 
-The local stack lives in `deploy/compose.local.yml` and is intentionally
-**not** layered on the prod `compose.yml` — prod's Authentik/mTLS/letsencrypt
-coupling makes that messier than a separate file.
+## Local development (devcontainer)
 
-# Deploy Procedure
-1. Ensure `//e4e-nas.ucsd.edu/fishsense_data/REEF/data` is mounted as a docker volume named `fishsense_data_reef`.
-2. Ensure `//e4e-nas.ucsd.edu/fishsense/Fishsense Lite Calibration Parameters` is mounted as a docker volume named `fishsense_lens_cal`.
-3. Ensure `//e4e-nas.ucsd.edu/fishsense_process_work` is mounted as a docker volume named `fishsense_process_work`.
-4. Ensure `.secrets/postgres_admin_password.txt` is populated
-4. Ensure `.secrets/temporal_database_password.env` is populated with `POSTGRES_PWD`.
-4. Ensure `.secrets/temporal_ui.env` is populated with `TEMPORAL_AUTH_CLIENT_ID` and `TEMPORAL_AUTH_CLIENT_SECRET`.
-5. Ensure `spider_volumes/config/.secrets.toml` is populated with the following:
-- `label_studio.api_key`
-6. Ensure `.env` is populated.  Example:
+The repo ships a VS Code devcontainer that boots the local stack and
+gives you a shell inside it.
+
+1. `cp deploy/.env.local.example deploy/.env` and fill in:
+   - `HOST_REPO_PATH` — output of `realpath ..` from this directory.
+     Required so the repo path is the same inside and outside the
+     container (Claude Code's project memory keys off this).
+   - `DOCKER_GID` — output of `getent group docker | cut -d: -f3`.
+   - `FISHSENSE_DUMP_PATH` — optional path to a `pg_dump -Fc` of prod.
+     Leave commented to boot with empty DBs (fine for shape work).
+2. Open the repo in VS Code → "Reopen in Container".
+
+The first boot of `postgres` runs `pg_volumes/scripts.local/00_restore.sh`,
+which `pg_restore`s the dump into a named docker volume (NOT under the
+repo — the data is large). To start clean later:
+`docker volume rm fishsense-local_pg_data`.
+
+`label-studio` boots with a hard-coded admin token
+(`fishsense_local_test_token_42`) so workflow integration tests can
+authenticate without going through the LS UI. The `dev` container
+exports the same token as `E4EFS_LABEL_STUDIO__API_KEY`.
+
+The `dev` container must be recreated the first time you pull new env
+vars from upstream:
+
 ```
-USER_ID=1001
-GROUP_ID=1001
+docker compose -f deploy/compose.local.yml up -d --force-recreate dev
 ```
-7. Ensure `spider_volumes/data`, `spider_volumes/logs`, `spider_volumes/cache` exist
-8. Ensure `label_studio_reporter/config/config.toml` and `label_studio_reporter/config/gcloud_credentials.json` exist
-9. Ensure `label_studio_reporter/cache` and `label_studio_reporter/logs` exist
+
+Bare `docker compose up -d` won't pick up env changes on already-running
+containers.
+
+## Production deploy
+
+Prod runs `compose.yml` (which `include:`s the four sibling files) on
+the orchestrator host. **Bringing it up by hand is not the path** —
+the auto-deploy pipeline handles version bumps via reviewable PRs.
+See [.github/workflows/deploy.yml](../.github/workflows/deploy.yml)
+and the "CI pipeline" section of [CLAUDE.md](../CLAUDE.md).
+
+### Host bootstrap (one-time, ops)
+
+The deploy workflow does **not** check the repo out into the runner's
+default `_work` directory. It operates on a persistent ops-managed
+directory on the host. This matters because the compose files use
+relative bind mounts (`./pg_volumes/`, `./worker_volumes/`, `./.secrets/`,
+etc.) for postgres data, worker config, secrets, and Temporal env
+files — none of which are tracked in git. Running compose against a
+fresh `_work` checkout would silently start postgres with an empty
+data dir.
+
+1. Register a self-hosted GitHub runner with `--labels fishsense-prod`,
+   co-located with the docker engine that will run the stack.
+2. `git clone` this repo to a persistent path (e.g. `/srv/fishsense`).
+3. Set repo variable `DEPLOY_DIR` (Settings → Secrets and variables →
+   Actions → Variables) to that absolute path.
+4. Restore the untracked sibling directories from existing prod state:
+   - `pg_volumes/data/` — postgres data dir.
+   - `pg_volumes/config/` — `postgres.conf`, etc.
+   - `pg_volumes/scripts/` — init scripts.
+   - `temporal_volumes/certs/` — mTLS certs (read by workers too).
+   - `worker_volumes/config/` — `settings.toml` + `.secrets.toml` for
+     `fishsense-api-workflow-worker`.
+   - `worker_volumes/backup_config/` — same for `fishsense-backup-worker`.
+   - `worker_volumes/backup_worker/logs/` — log volume.
+   - `mafl_volumes/data/` — mafl config + dashboard config.
+   - `superset_volumes/`, `qcomm_static_file_server_volumes/`,
+     `static_file_server_volumes/`, `fishsense_api_volumes/` — see the
+     respective compose files for the bind-mount paths.
+   - `.secrets/postgres_admin_password.txt`
+   - `.secrets/temporal_database_password.env` (sets `POSTGRES_PWD`)
+   - `.secrets/temporal_ui.env` (sets `TEMPORAL_AUTH_CLIENT_ID` /
+     `_SECRET`)
+   - `.secrets/superset-env` (optional Superset overrides)
+5. Ensure the external networks `traefik_proxy` and `prometheus_network`
+   exist on the host.
+6. Set `USER_ID` / `GROUP_ID` in `.env` so the postgres container runs
+   as the host owner of `pg_volumes/data/`.
+
+### Manual rollout (workers off auto-deploy)
+
+`fishsense-data-processing-workflow-worker` runs on a different host
+whose compose file isn't in this repo. `promote.yml` still publishes
+`:v<version>` tags for it, so manual rollout on that host is just:
+
+```
+docker compose pull fishsense-data-processing-workflow-worker
+docker compose up -d fishsense-data-processing-workflow-worker
+```
+
+If the host is upgrading from the polyrepo worker, **rename
+`DYNACONF_*` env vars to `E4EFS_*`** before redeploying. Dynaconf will
+silently ignore the old prefix.
+
+## Where things live in `compose.yml`
+
+```
+compose.yml
+├── postgres (PG 16, password file via docker secret)
+├── qcomm-static-file-server (Traefik + authentik)
+├── mafl (homepage at fishsense.e4e.ucsd.edu)
+├── include: compose.orchestrator.yml
+│     ├── fishsense-api
+│     └── static_file_server (nginx DAV — the /api/v1/exchange/ routes)
+├── include: compose.superset.yml
+├── include: compose.temporal.yml
+└── include: compose.workers.yml
+      ├── fishsense-api-workflow-worker (× 2 replicas)
+      └── fishsense-backup-worker
+```
+
+## Related docs
+
+- [CLAUDE.md](../CLAUDE.md) — file-exchange URL contract, build →
+  release → promote → deploy pipeline, service Dockerfile pattern,
+  worker config-validation gotcha, repo-root settings.toml warning.
+- [docs/diagrams.md](../docs/diagrams.md) — system context, deploy
+  topology, and per-stage sequence diagrams.
