@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.22.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.22.0...fishsense-api-workflow-worker-v1.22.1) (2026-05-01)
+
+
+### Bug Fixes
+
+* **api,sdk,api-workflow-worker:** single-call distinct-project-ids endpoint ([cef2d4d](https://github.com/UCSD-E4E/fishsense-lite/commit/cef2d4d1386d3d544680a9f49b6e78c75b596d7d))
+
 ## [1.22.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.21.0...fishsense-api-workflow-worker-v1.22.0) (2026-05-01)
 
 
