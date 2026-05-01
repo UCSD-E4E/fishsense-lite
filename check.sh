@@ -67,13 +67,21 @@ run_pytests() {
             continue
         fi
         heading "$label tests: $pkg"
+        # Pytest exit 5 = "no tests collected." For marker-filtered runs that
+        # just means the package has no tests tagged with this marker (e.g.
+        # fishsense-shared has unit tests but no integration tests). Don't
+        # count exit 5 as failure — only real test failures (1) and harness
+        # errors (2,3,4) should fail the package.
+        local rc=0
         if [ -n "$marker" ]; then
             uv run --package "$pkg" python -m pytest "$path/tests/" -m "$marker" \
-                || failed=$((failed + 1))
+                || rc=$?
+            [ "$rc" -eq 5 ] && rc=0
         else
             uv run --package "$pkg" python -m pytest "$path/tests/" \
-                || failed=$((failed + 1))
+                || rc=$?
         fi
+        [ "$rc" -ne 0 ] && failed=$((failed + 1))
     done
     if [ "$missing" -gt 0 ]; then
         echo "(skipped $missing package(s) with no tests/ dir)"
