@@ -5,6 +5,7 @@ from typing import List
 from fishsense_api_sdk.clients.client_base import ClientBase
 from fishsense_api_sdk.models.dive_slate_label import DiveSlateLabel
 from fishsense_api_sdk.models.headtail_label import HeadTailLabel
+from fishsense_api_sdk.models.label_studio_sync_cursor import LabelStudioSyncCursor
 from fishsense_api_sdk.models.laser_label import LaserLabel
 from fishsense_api_sdk.models.species_label import SpeciesLabel
 
@@ -293,6 +294,41 @@ class LabelClient(ClientBase):
         response = await self._put(
             f"/api/v1/labels/species/{image_id}",
             json=species_label.model_dump(exclude_unset=True, mode="json"),
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def get_sync_cursor(
+        self, kind: str, label_studio_project_id: int
+    ) -> LabelStudioSyncCursor | None:
+        """Get the incremental-sync cursor for a (kind, project) pair.
+
+        Returns None when the API has no cursor recorded yet — the
+        api-workflow-worker treats that as "first run, sync everything."
+        """
+        response = await self._get(
+            f"/api/v1/labels/sync-cursor/{kind}/{label_studio_project_id}"
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+
+        json = response.json()
+        if json is None:
+            return None
+
+        return LabelStudioSyncCursor.model_validate(json)
+
+    async def put_sync_cursor(
+        self,
+        kind: str,
+        label_studio_project_id: int,
+        cursor: LabelStudioSyncCursor,
+    ) -> int:
+        """Upsert the incremental-sync cursor for a (kind, project) pair."""
+        response = await self._put(
+            f"/api/v1/labels/sync-cursor/{kind}/{label_studio_project_id}",
+            json=cursor.model_dump(exclude_unset=True, mode="json"),
         )
         response.raise_for_status()
         return response.json()

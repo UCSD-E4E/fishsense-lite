@@ -56,9 +56,10 @@ def _make_task(task_id: int, *, with_annotation: bool = True) -> Any:
     )
 
 
-def _make_fs_client(label_lookup):
+def _make_fs_client(label_lookup, *, cursor=None):
     """Build a mock SDK client whose `labels` sub-client honors a
-    per-test mapping of label_studio_id -> stored laser_label."""
+    per-test mapping of label_studio_id -> stored laser_label and an
+    optional starting sync cursor."""
     fs = MagicMock()
     fs.__aenter__ = AsyncMock(return_value=fs)
     fs.__aexit__ = AsyncMock(return_value=None)
@@ -66,9 +67,14 @@ def _make_fs_client(label_lookup):
     async def _get(label_studio_id):
         return label_lookup.get(label_studio_id)
 
+    async def _get_cursor(kind, project_id):
+        return cursor
+
     fs.labels = MagicMock()
     fs.labels.get_laser_label = AsyncMock(side_effect=_get)
     fs.labels.put_laser_label = AsyncMock()
+    fs.labels.get_sync_cursor = AsyncMock(side_effect=_get_cursor)
+    fs.labels.put_sync_cursor = AsyncMock()
     return fs
 
 

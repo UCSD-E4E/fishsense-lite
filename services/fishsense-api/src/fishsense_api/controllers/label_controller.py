@@ -14,6 +14,7 @@ from fishsense_api.models.dive import Dive
 from fishsense_api.models.dive_slate_label import DiveSlateLabel
 from fishsense_api.models.head_tail_label import HeadTailLabel
 from fishsense_api.models.image import Image
+from fishsense_api.models.label_studio_sync_cursor import LabelStudioSyncCursor
 from fishsense_api.models.laser_label import LaserLabel
 from fishsense_api.models.species_label import SpeciesLabel
 from fishsense_api.server import app
@@ -289,3 +290,52 @@ async def put_species_label(
     label_id = label.id
 
     return label_id
+
+
+@app.get("/api/v1/labels/sync-cursor/{kind}/{label_studio_project_id}")
+async def get_label_studio_sync_cursor(
+    kind: str,
+    label_studio_project_id: int,
+    session: AsyncSession = Depends(get_async_session),
+) -> LabelStudioSyncCursor | None:
+    """Retrieve the sync cursor for a given (kind, project) pair.
+
+    Returns None when no cursor exists yet — the api-workflow-worker
+    treats that as "first run, sync everything."
+    """
+    query = (
+        select(LabelStudioSyncCursor)
+        .where(LabelStudioSyncCursor.kind == kind)
+        .where(LabelStudioSyncCursor.label_studio_project_id == label_studio_project_id)
+    )
+    return (await session.exec(query)).first()
+
+
+@app.put("/api/v1/labels/sync-cursor/{kind}/{label_studio_project_id}", status_code=201)
+async def put_label_studio_sync_cursor(
+    kind: str,
+    label_studio_project_id: int,
+    cursor: LabelStudioSyncCursor,
+    session: AsyncSession = Depends(get_async_session),
+) -> int:
+    """Upsert the sync cursor for a given (kind, project) pair."""
+    cursor = LabelStudioSyncCursor.model_validate(jsonable_encoder(cursor))
+    cursor.kind = kind
+    cursor.label_studio_project_id = label_studio_project_id
+
+    if cursor.id is None:
+        existing_query = (
+            select(LabelStudioSyncCursor)
+            .where(LabelStudioSyncCursor.kind == kind)
+            .where(
+                LabelStudioSyncCursor.label_studio_project_id == label_studio_project_id
+            )
+        )
+        existing = (await session.exec(existing_query)).first()
+        if existing is not None:
+            cursor.id = existing.id
+
+    cursor = await session.merge(cursor)
+    await session.flush()
+
+    return cursor.id

@@ -51,6 +51,12 @@ MODEL_PAIRS: list[Pair] = [
     Pair("fish", "Fish", "fish", "Fish"),
     Pair("headtail_label", "HeadTailLabel", "head_tail_label", "HeadTailLabel"),
     Pair("image", "Image", "image", "Image"),
+    Pair(
+        "label_studio_sync_cursor",
+        "LabelStudioSyncCursor",
+        "label_studio_sync_cursor",
+        "LabelStudioSyncCursor",
+    ),
     Pair("laser_extrinsics", "_LaserExtrinsics", "laser_extrinsics", "LaserExtrinsics"),
     Pair("laser_label", "LaserLabel", "laser_label", "LaserLabel"),
     Pair("measurement", "Measurement", "measurement", "Measurement"),

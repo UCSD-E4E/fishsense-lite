@@ -24,6 +24,7 @@ from fishsense_api.models.dive_slate_label import DiveSlateLabel
 from fishsense_api.models.fish import Fish
 from fishsense_api.models.head_tail_label import HeadTailLabel
 from fishsense_api.models.image import Image
+from fishsense_api.models.label_studio_sync_cursor import LabelStudioSyncCursor
 from fishsense_api.models.laser_extrinsics import LaserExtrinsics
 from fishsense_api.models.laser_label import LaserLabel
 from fishsense_api.models.measurement import Measurement
@@ -56,7 +57,7 @@ class Database:
         await self.engine.dispose()
 
 
-_session_factory: sessionmaker | None = None
+_session_factory: sessionmaker | None = None  # pylint: disable=invalid-name
 
 
 def setup_database() -> Database:
@@ -65,7 +66,7 @@ def setup_database() -> Database:
     Call once at application startup (e.g., FastAPI lifespan) before any
     request handler invokes ``get_async_session``.
     """
-    global _session_factory
+    global _session_factory  # pylint: disable=global-statement
     database = Database(pg_connection_string())
     _session_factory = sessionmaker(
         database.engine, class_=AsyncSession, expire_on_commit=False

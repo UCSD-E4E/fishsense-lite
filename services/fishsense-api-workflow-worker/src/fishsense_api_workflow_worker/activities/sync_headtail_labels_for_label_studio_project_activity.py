@@ -73,4 +73,4 @@ async def __update_headtail_label(fs: Client, task: Any) -> None:
 @activity.defn
 async def sync_headtail_labels_for_label_studio_project_activity(project_id: int):
     """Activity to sync headtail labels for a Label Studio project."""
-    await sync_label_studio_project(project_id, __update_headtail_label)
+    await sync_label_studio_project(project_id, __update_headtail_label, kind="headtail")
