@@ -57,11 +57,20 @@ jobs:
 
       - name: Install postgresql-client-17
         # The backup-worker pg_dump integration test shells out to the
-        # host's pg_dump against the postgres:17 service in
-        # compose.local.yml. ubuntu-24.04 ships postgresql-client-16 by
-        # default, which refuses to dump a PG17 server ("aborting
-        # because of server version mismatch"). Pull pg17 from PGDG.
-        # Bump if compose.local.yml's postgres image moves past 17.
+        # host's pg_dump / pg_restore against the postgres:17 service
+        # in compose.local.yml. ubuntu-24.04 runners come with
+        # postgresql-client-16 preinstalled, whose pg_dump refuses to
+        # dump a PG17 server ("aborting because of server version
+        # mismatch") and whose pg_restore can't read a PG17-format
+        # archive ("unsupported version (1.16) in file header").
+        #
+        # Pulling pg17 from PGDG lands binaries at
+        # /usr/lib/postgresql/17/bin/, but /usr/bin/pg_dump still
+        # resolves to v16 (pg_wrapper picks the alphabetically-first
+        # match, not the highest). Prepend the v17 bindir to PATH for
+        # the rest of the job so both pg_dump and pg_restore resolve
+        # to v17. Bump if compose.local.yml's postgres image moves
+        # past 17.
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
           sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
@@ -71,7 +80,9 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
           sudo apt-get install -y postgresql-client-17
-          pg_dump --version
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/17/bin/pg_dump --version
+          /usr/lib/postgresql/17/bin/pg_restore --version
 
       - uses: actions/setup-python@v5
         with:
