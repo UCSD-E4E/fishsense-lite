@@ -53,9 +53,6 @@ def raw_orf_bytes() -> bytes:
 def configure_worker_settings(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("E4EFS_FILE_EXCHANGE__URL", _exchange_url())
     monkeypatch.setenv("E4EFS_TEMPORAL__HOST", "temporal")
-    monkeypatch.setenv("E4EFS_E4E_NAS__URL", "http://nas.invalid")
-    monkeypatch.setenv("E4EFS_E4E_NAS__USERNAME", "unused")
-    monkeypatch.setenv("E4EFS_E4E_NAS__PASSWORD", "unused")
     monkeypatch.setenv("E4EFS_FISHSENSE_API__URL", "http://fishsense-api.invalid")
     yield
 
