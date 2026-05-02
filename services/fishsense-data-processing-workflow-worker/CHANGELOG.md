@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v0.4.0...fishsense-data-processing-workflow-worker-v2.0.0) (2026-05-02)
+
+
+### Miscellaneous Chores
+
+* **data-worker:** cut 2.0.0 release ([9782505](https://github.com/UCSD-E4E/fishsense-lite/commit/978250542757d0d86ce2c9c07a5a54c91464eeb1))
+
 ## [0.4.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v0.3.0...fishsense-data-processing-workflow-worker-v0.4.0) (2026-05-02)
 
 
