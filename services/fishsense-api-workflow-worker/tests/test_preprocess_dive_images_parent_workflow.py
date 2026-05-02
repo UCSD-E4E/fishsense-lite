@@ -36,6 +36,19 @@ class _StubChildWorkflow:
         )
 
 
+@workflow.defn(name="PopulateSpeciesLabelStudioProjectWorkflow")
+class _StubPopulateWorkflow:
+    # pylint: disable=too-few-public-methods
+    @workflow.run
+    async def run(self, dive_id: int) -> int:
+        await workflow.execute_activity(
+            "_record_populate_dispatch",
+            args=(workflow.info().workflow_id, dive_id),
+            schedule_to_close_timeout=timedelta(seconds=5),
+        )
+        return 0
+
+
 def _make_recording_activity(captures: List[tuple]):
     @activity.defn(name="_record_child_dispatch")
     async def record_child_dispatch(
@@ -44,6 +57,14 @@ def _make_recording_activity(captures: List[tuple]):
         captures.append((workflow_id, dive_id, checksums))
 
     return record_child_dispatch
+
+
+def _make_populate_recording_activity(captures: List[tuple]):
+    @activity.defn(name="_record_populate_dispatch")
+    async def record_populate_dispatch(workflow_id: str, dive_id: int) -> None:
+        captures.append((workflow_id, dive_id))
+
+    return record_populate_dispatch
 
 
 def _make_stubs(
@@ -101,13 +122,20 @@ async def test_dispatches_child_with_deterministic_id_and_clusters():
     )
     activities, selector_calls, resolver_calls = _make_stubs(440, inputs)
     child_runs: List[tuple] = []
+    populate_runs: List[tuple] = []
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
             env.client,
             task_queue="test-stage2-parent",
-            workflows=[PreprocessDiveImagesParentWorkflow],
-            activities=activities,
+            workflows=[
+                PreprocessDiveImagesParentWorkflow,
+                _StubPopulateWorkflow,
+            ],
+            activities=[
+                *activities,
+                _make_populate_recording_activity(populate_runs),
+            ],
         ), Worker(
             env.client,
             task_queue=DATA_PROCESSING_TASK_QUEUE,
@@ -128,19 +156,27 @@ async def test_dispatches_child_with_deterministic_id_and_clusters():
     assert child_id == "preprocess-dive-images-440"
     assert child_dive_id == 440
     assert flat == ["a", "b", "c"]
+    assert populate_runs == [("populate-species-440", 440)]
 
 
 @pytest.mark.asyncio
 async def test_returns_none_when_selector_finds_no_dive():
     activities, _, resolver_calls = _make_stubs(None, None)
     child_runs: List[tuple] = []
+    populate_runs: List[tuple] = []
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
             env.client,
             task_queue="test-stage2-parent-empty",
-            workflows=[PreprocessDiveImagesParentWorkflow],
-            activities=activities,
+            workflows=[
+                PreprocessDiveImagesParentWorkflow,
+                _StubPopulateWorkflow,
+            ],
+            activities=[
+                *activities,
+                _make_populate_recording_activity(populate_runs),
+            ],
         ), Worker(
             env.client,
             task_queue=DATA_PROCESSING_TASK_QUEUE,
@@ -156,6 +192,7 @@ async def test_returns_none_when_selector_finds_no_dive():
     assert result is None
     assert not resolver_calls
     assert not child_runs
+    assert not populate_runs
 
 
 @pytest.mark.asyncio
@@ -168,13 +205,20 @@ async def test_skips_child_dispatch_when_no_clusters():
     )
     activities, _, _ = _make_stubs(440, inputs)
     child_runs: List[tuple] = []
+    populate_runs: List[tuple] = []
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
             env.client,
             task_queue="test-stage2-parent-empty-clusters",
-            workflows=[PreprocessDiveImagesParentWorkflow],
-            activities=activities,
+            workflows=[
+                PreprocessDiveImagesParentWorkflow,
+                _StubPopulateWorkflow,
+            ],
+            activities=[
+                *activities,
+                _make_populate_recording_activity(populate_runs),
+            ],
         ), Worker(
             env.client,
             task_queue=DATA_PROCESSING_TASK_QUEUE,
@@ -189,3 +233,4 @@ async def test_skips_child_dispatch_when_no_clusters():
 
     assert result == 440
     assert not child_runs
+    assert not populate_runs

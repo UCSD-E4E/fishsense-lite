@@ -39,6 +39,19 @@ class _StubChildWorkflow:
         )
 
 
+@workflow.defn(name="PopulateDiveSlateLabelStudioProjectWorkflow")
+class _StubPopulateWorkflow:
+    # pylint: disable=too-few-public-methods
+    @workflow.run
+    async def run(self, dive_id: int) -> int:
+        await workflow.execute_activity(
+            "_record_populate_dispatch",
+            args=(workflow.info().workflow_id, dive_id),
+            schedule_to_close_timeout=timedelta(seconds=5),
+        )
+        return 0
+
+
 def _make_recording_activity(captures: List[tuple]):
     @activity.defn(name="_record_child_dispatch")
     async def record_child_dispatch(
@@ -47,6 +60,14 @@ def _make_recording_activity(captures: List[tuple]):
         captures.append((workflow_id, dive_id, summary))
 
     return record_child_dispatch
+
+
+def _make_populate_recording_activity(captures: List[tuple]):
+    @activity.defn(name="_record_populate_dispatch")
+    async def record_populate_dispatch(workflow_id: str, dive_id: int) -> None:
+        captures.append((workflow_id, dive_id))
+
+    return record_populate_dispatch
 
 
 def _make_stubs(
@@ -103,13 +124,20 @@ async def test_dispatches_child_with_deterministic_id():
     )
     activities = _make_stubs(440, inputs)
     child_runs: List[tuple] = []
+    populate_runs: List[tuple] = []
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
             env.client,
             task_queue="test-stage9-parent",
-            workflows=[PreprocessSlateImagesParentWorkflow],
-            activities=activities,
+            workflows=[
+                PreprocessSlateImagesParentWorkflow,
+                _StubPopulateWorkflow,
+            ],
+            activities=[
+                *activities,
+                _make_populate_recording_activity(populate_runs),
+            ],
         ), Worker(
             env.client,
             task_queue=DATA_PROCESSING_TASK_QUEUE,
@@ -129,19 +157,27 @@ async def test_dispatches_child_with_deterministic_id():
     assert child_dive_id == 440
     assert checksums == ["a"]
     assert slate_id == 7
+    assert populate_runs == [("populate-dive-slate-440", 440)]
 
 
 @pytest.mark.asyncio
 async def test_returns_none_when_no_dive():
     activities = _make_stubs(None, None)
     child_runs: List[tuple] = []
+    populate_runs: List[tuple] = []
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
             env.client,
             task_queue="test-stage9-parent-none",
-            workflows=[PreprocessSlateImagesParentWorkflow],
-            activities=activities,
+            workflows=[
+                PreprocessSlateImagesParentWorkflow,
+                _StubPopulateWorkflow,
+            ],
+            activities=[
+                *activities,
+                _make_populate_recording_activity(populate_runs),
+            ],
         ), Worker(
             env.client,
             task_queue=DATA_PROCESSING_TASK_QUEUE,
@@ -156,6 +192,7 @@ async def test_returns_none_when_no_dive():
 
     assert result is None
     assert not child_runs
+    assert not populate_runs
 
 
 @pytest.mark.asyncio
@@ -171,13 +208,20 @@ async def test_skips_child_when_no_image_checksums():
     )
     activities = _make_stubs(440, inputs)
     child_runs: List[tuple] = []
+    populate_runs: List[tuple] = []
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
             env.client,
             task_queue="test-stage9-parent-empty",
-            workflows=[PreprocessSlateImagesParentWorkflow],
-            activities=activities,
+            workflows=[
+                PreprocessSlateImagesParentWorkflow,
+                _StubPopulateWorkflow,
+            ],
+            activities=[
+                *activities,
+                _make_populate_recording_activity(populate_runs),
+            ],
         ), Worker(
             env.client,
             task_queue=DATA_PROCESSING_TASK_QUEUE,
@@ -192,3 +236,4 @@ async def test_skips_child_when_no_image_checksums():
 
     assert result == 440
     assert not child_runs
+    assert not populate_runs

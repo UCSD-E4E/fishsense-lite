@@ -3,17 +3,25 @@
 Picks the next HIGH-priority dive needing dive-image preprocessing,
 resolves its PREDICTION clusters + camera intrinsics via SDK, and
 dispatches `PreprocessDiveImagesWorkflow` as a child on the
-data-worker (`fishsense_data_processing_queue`).
+data-worker (`fishsense_data_processing_queue`). After archive+cleanup,
+chains into `PopulateSpeciesLabelStudioProjectWorkflow` so the
+group-preprocessed JPEGs land in the species LS project in the same
+hourly run that produced them.
 
 Same cluster-correctness invariants as
 `PreprocessLaserImagesParentWorkflow` — see CLAUDE.md's "Cross-worker
-orchestration pattern" section.
+orchestration pattern" section. The populate child uses a
+deterministic id (`populate-species-{dive_id}`) so subsequent
+re-firings on the same cohort dive no-op via WorkflowAlreadyStarted
+rather than re-importing duplicate LS tasks.
 """
 
 from datetime import timedelta
 
 from fishsense_shared import PreprocessDiveImagesInput
 from temporalio import workflow
+from temporalio.common import WorkflowIDReusePolicy
+from temporalio.exceptions import WorkflowAlreadyStartedError
 
 with workflow.unsafe.imports_passed_through():
     from fishsense_api_workflow_worker.workflows._retry_policies import (
@@ -74,13 +82,22 @@ class PreprocessDiveImagesParentWorkflow:
             heartbeat_timeout=timedelta(minutes=5),
         )
 
-        await workflow.execute_child_workflow(
-            "PreprocessDiveImagesWorkflow",
-            inputs,
-            id=f"preprocess-dive-images-{dive_id}",
-            task_queue=DATA_PROCESSING_TASK_QUEUE,
-            execution_timeout=timedelta(hours=2),
-        )
+        try:
+            await workflow.execute_child_workflow(
+                "PreprocessDiveImagesWorkflow",
+                inputs,
+                id=f"preprocess-dive-images-{dive_id}",
+                task_queue=DATA_PROCESSING_TASK_QUEUE,
+                execution_timeout=timedelta(hours=2),
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+            )
+        except WorkflowAlreadyStartedError:
+            workflow.logger.info(
+                "preprocess-dive-images-%d already ran successfully in a "
+                "prior firing; skipping data-worker dispatch and continuing "
+                "to archive + cleanup + populate",
+                dive_id,
+            )
 
         await workflow.execute_activity(
             "archive_processed_jpegs_to_nas_activity",
@@ -94,5 +111,20 @@ class PreprocessDiveImagesParentWorkflow:
             schedule_to_close_timeout=timedelta(minutes=15),
             heartbeat_timeout=timedelta(minutes=5),
         )
+
+        try:
+            await workflow.execute_child_workflow(
+                "PopulateSpeciesLabelStudioProjectWorkflow",
+                dive_id,
+                id=f"populate-species-{dive_id}",
+                execution_timeout=timedelta(minutes=30),
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+            )
+        except WorkflowAlreadyStartedError:
+            workflow.logger.info(
+                "populate-species-%d already ran in a prior hourly firing; "
+                "skipping LS task import",
+                dive_id,
+            )
 
         return inputs.dive_id
