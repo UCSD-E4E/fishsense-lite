@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.33.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.33.0...fishsense-api-sdk-v1.33.1) (2026-05-02)
+
+
+### Performance Improvements
+
+* **api-worker:** collapse dive cohort selectors to single SDK call ([62b6d13](https://github.com/UCSD-E4E/fishsense-lite/commit/62b6d1358a33a71ba6d15505d7ab05a4880e0b1a))
+* **api-worker:** collapse dive cohort selectors to single SDK call ([fab3157](https://github.com/UCSD-E4E/fishsense-lite/commit/fab3157acf840f91b7a5ac7f73664ae178b64f4c))
+
 ## [1.33.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.32.0...fishsense-api-sdk-v1.33.0) (2026-05-01)
 
 

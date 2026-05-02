@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## [1.22.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.22.1...fishsense-api-v1.22.2) (2026-05-02)
+
+
+### Bug Fixes
+
+* **lint:** silence pylint not-callable on func.count, drop unused import ([934f2a9](https://github.com/UCSD-E4E/fishsense-lite/commit/934f2a91c77a9666148ef86a787111fa11bb70c6))
+
+
+### Performance Improvements
+
+* **api-worker:** collapse dive cohort selectors to single SDK call ([62b6d13](https://github.com/UCSD-E4E/fishsense-lite/commit/62b6d1358a33a71ba6d15505d7ab05a4880e0b1a))
+* **api-worker:** collapse dive cohort selectors to single SDK call ([fab3157](https://github.com/UCSD-E4E/fishsense-lite/commit/fab3157acf840f91b7a5ac7f73664ae178b64f4c))
+
 ## [1.22.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.22.0...fishsense-api-v1.22.1) (2026-05-02)
 
 

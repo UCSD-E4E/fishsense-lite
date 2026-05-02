@@ -2,6 +2,21 @@
 
 <!-- version list -->
 
+## [1.27.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.26.0...fishsense-api-workflow-worker-v1.27.0) (2026-05-02)
+
+
+### Features
+
+* **api-worker:** add stage 13 laser-calibration parent workflow ([5f9a44a](https://github.com/UCSD-E4E/fishsense-lite/commit/5f9a44a39ca77a5f1da30de94935fda7bf077afb))
+* **api-worker:** add stage 14 measure-fish parent workflow (on-demand) ([01d9364](https://github.com/UCSD-E4E/fishsense-lite/commit/01d936435b379245a6992c2f2edb3981e6fb10b6))
+* **api-worker:** wire stage 13 + 14 parents to data-worker ([01c4809](https://github.com/UCSD-E4E/fishsense-lite/commit/01c480986e04385425ac4db4686864bac964b19f))
+
+
+### Performance Improvements
+
+* **api-worker:** collapse dive cohort selectors to single SDK call ([62b6d13](https://github.com/UCSD-E4E/fishsense-lite/commit/62b6d1358a33a71ba6d15505d7ab05a4880e0b1a))
+* **api-worker:** collapse dive cohort selectors to single SDK call ([fab3157](https://github.com/UCSD-E4E/fishsense-lite/commit/fab3157acf840f91b7a5ac7f73664ae178b64f4c))
+
 ## [1.26.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.25.0...fishsense-api-workflow-worker-v1.26.0) (2026-05-02)
 
 
