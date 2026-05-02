@@ -1,12 +1,21 @@
 """Stage 0.1 parent workflow (api-worker side).
 
 Picks the next HIGH-priority dive needing laser preprocessing, resolves
-its incomplete-image-set + camera intrinsics via SDK, and dispatches
+its unlabeled-image-set + camera intrinsics via SDK, and dispatches
 the resolved inputs to the data-worker's `PreprocessLaserImagesWorkflow`
 on `fishsense_data_processing_queue`. After archive+cleanup, chains
 into `PopulateLaserLabelStudioProjectWorkflow` on the api-worker so a
 fresh dive lands in Label Studio in the same hourly run that produced
 its JPEGs — no operator-triggered populate needed.
+
+Cohort: HIGH-priority + at least one image with no completed
+`LaserLabel` in any project. Mirrors the work-state shape of the
+other three preprocess parents (dive-image / headtail / slate). The
+earlier "no `LaserExtrinsics`" cohort tied stage 0.1 to a downstream
+gate it doesn't actually advance, so dives whose laser side was done
+but slate-side blocked stage-13 calibration kept getting re-selected
+hourly with no work for the resolver to return — see
+`select_next_for_laser_preprocessing` in the api's `dive_controller`.
 
 Cluster-correctness invariants — relevant once the data-worker scales
 beyond a single replica:
@@ -29,12 +38,12 @@ beyond a single replica:
   failure self-heals on the next firing rather than redoing
   per-image work.
 * The populate child uses the same deterministic-id trick
-  (`populate-laser-{dive_id}`). Stage 0.1's cohort keeps a dive in the
-  selector pool until stage 13 writes its `LaserExtrinsics`, so this
-  parent re-runs hourly on the same dive_id — without dedup, every
-  re-run would re-import LS tasks for already-incomplete labels and
-  pile up duplicate tasks. WorkflowAlreadyStarted on the second+
-  attempt is the expected steady state.
+  (`populate-laser-{dive_id}`). With the work-state cohort, dives
+  drop out as labels complete, so re-firings on the same dive_id are
+  the exception (resurrected re-incomplete labels, manual triggers)
+  rather than the steady state — but the dedup still matters when
+  they happen, since populate's task-import would otherwise create
+  duplicate LS tasks for any image still flagged incomplete.
 """
 
 from datetime import timedelta

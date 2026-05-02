@@ -28,17 +28,22 @@ from fishsense_api_workflow_worker.activities.utils import get_fs_client
 SPECIES_FOLDER = "groups_jpeg"
 
 
-def _select_incomplete_images(
+def _select_unlabeled_images(
     images: List[Image], existing_labels: List[SpeciesLabel]
 ) -> List[Image]:
-    """Return only images that need a fresh LS task — no species
-    label yet, or one whose `completed` is not True."""
-    by_image_id = {label.image_id: label for label in existing_labels}
-    return [
-        image
-        for image in images
-        if (label := by_image_id.get(image.id)) is None or not label.completed
-    ]
+    """Return only images that need a fresh LS task — no completed
+    SpeciesLabel exists for them in any project.
+
+    Multi-row-aware: the previous shape collapsed labels into a
+    `{image_id: label}` dict and let SDK iteration order pick which
+    row won, which silently leaked already-labeled images into the
+    task-import set when the incomplete row happened to land last.
+    Mirrors `populate_laser_label_studio_project_activity._select_unlabeled_images`.
+    """
+    completed_image_ids = {
+        label.image_id for label in existing_labels if label.completed
+    }
+    return [image for image in images if image.id not in completed_image_ids]
 
 
 def _build_task(image: Image) -> dict:
@@ -61,15 +66,16 @@ async def populate_species_label_studio_project_activity(
         images = await fs.images.get(dive_id=dive_id) or []
         existing_labels = await fs.labels.get_species_labels(dive_id) or []
 
-        incomplete = _select_incomplete_images(images, existing_labels)
-        if not incomplete:
+        unlabeled = _select_unlabeled_images(images, existing_labels)
+        if not unlabeled:
             activity.logger.info(
-                "Dive %d has no incomplete species images; nothing to import",
+                "Dive %d has a completed species label for every image; "
+                "nothing to import",
                 dive_id,
             )
             return 0
 
-        tasks = [_build_task(image) for image in incomplete]
+        tasks = [_build_task(image) for image in unlabeled]
 
         async def _record(image: Image, task_id: int) -> None:
             label = SpeciesLabel(
@@ -99,5 +105,5 @@ async def populate_species_label_studio_project_activity(
             project_id=project_id,
             tasks=tasks,
             record_label=_record,
-            items=incomplete,
+            items=unlabeled,
         )

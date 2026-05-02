@@ -1,10 +1,14 @@
 """Activity to resolve the per-image inputs stage 0.1 needs for a dive.
 
 Returns a fully-populated `PreprocessLaserImagesInput` ready to hand
-to the data-worker's child workflow. Image checksum filter matches
-stage 0.3's populate predicate (laser label missing or
-`completed=False`), so a re-run after some labels complete naturally
-narrows the work.
+to the data-worker's child workflow. Image filter mirrors the
+selector's "image with no completed LaserLabel in any project"
+predicate — multi-row-aware (a single image can carry rows for
+multiple LS projects, and any one completed row counts as
+"labeled"). The previous shape collapsed labels into a
+`{image_id: label}` dict and let iteration order pick which row won,
+which silently dropped "incomplete" images whenever a completed row
+happened to be returned last by the SDK.
 
 Default bbox is the original notebook constant — kept here rather
 than baked into the data-worker so the api-worker can swap to a
@@ -26,15 +30,14 @@ from fishsense_api_workflow_worker.activities.utils import get_fs_client
 DEFAULT_LASER_BBOX: List[int] = [1800, 700, 2400, 1600]
 
 
-def _select_incomplete_images(
+def _select_unlabeled_images(
     images: List[Image], existing_labels: List[LaserLabel]
 ) -> List[Image]:
-    by_image_id = {label.image_id: label for label in existing_labels}
-    return [
-        image
-        for image in images
-        if (label := by_image_id.get(image.id)) is None or not label.completed
-    ]
+    """Return images that have no completed LaserLabel in any project."""
+    completed_image_ids = {
+        label.image_id for label in existing_labels if label.completed
+    }
+    return [image for image in images if image.id not in completed_image_ids]
 
 
 @activity.defn
@@ -56,11 +59,11 @@ async def resolve_laser_preprocess_inputs_activity(
 
         images = await fs.images.get(dive_id=dive_id) or []
         existing_labels = await fs.labels.get_laser_labels(dive_id) or []
-        incomplete = _select_incomplete_images(images, existing_labels)
+        unlabeled = _select_unlabeled_images(images, existing_labels)
 
         return PreprocessLaserImagesInput(
             dive_id=dive_id,
-            image_checksums=[image.checksum for image in incomplete],
+            image_checksums=[image.checksum for image in unlabeled],
             camera_matrix=intrinsics.camera_matrix.tolist(),
             distortion_coefficients=intrinsics.distortion_coefficients.tolist(),
             bbox=list(DEFAULT_LASER_BBOX),

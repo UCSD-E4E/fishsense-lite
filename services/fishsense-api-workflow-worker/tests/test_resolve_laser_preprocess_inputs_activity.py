@@ -2,8 +2,12 @@
 """Unit tests for resolve_laser_preprocess_inputs_activity.
 
 Pins down:
-  1. Returns only checksums of images whose laser label is missing or
-     not completed (matches stage-0.3 populate semantics).
+  1. Returns only checksums of images that have no completed
+     LaserLabel in any project — multi-row state from prod (one
+     completed row in project 43, one incomplete sentinel in project
+     NULL) correctly resolves to "image is labeled". The earlier
+     dict-collapse filter could resolve either way depending on SDK
+     iteration order.
   2. Camera intrinsics are flattened from numpy to lists.
   3. Default bbox lands in the resolved input.
   4. Missing dive / camera_id / intrinsics raise ValueError so the
@@ -59,12 +63,14 @@ def _image(image_id: int, checksum: str) -> Image:
     )
 
 
-def _label(image_id: int, *, completed: bool) -> LaserLabel:
+def _label(
+    image_id: int, *, completed: bool, project_id: Optional[int] = 73
+) -> LaserLabel:
     return LaserLabel(
         id=None,
         image_id=image_id,
         label_studio_task_id=image_id * 10,
-        label_studio_project_id=73,
+        label_studio_project_id=project_id,
         updated_at=None,
         completed=completed,
         label_studio_json={},
@@ -110,7 +116,7 @@ def _make_fs(
 
 
 @pytest.mark.asyncio
-async def test_returns_only_incomplete_image_checksums(monkeypatch):
+async def test_returns_only_unlabeled_image_checksums(monkeypatch):
     images = [_image(1, "aaa"), _image(2, "bbb"), _image(3, "ccc")]
     labels = [_label(1, completed=True), _label(2, completed=False)]
     fs = _make_fs(
@@ -125,8 +131,8 @@ async def test_returns_only_incomplete_image_checksums(monkeypatch):
         sut.resolve_laser_preprocess_inputs_activity, 42
     )
 
-    # Image 1 is completed -> excluded. Image 2 is incomplete, image 3
-    # has no label at all -> both included.
+    # Image 1 has a completed label -> excluded. Image 2 has only an
+    # incomplete label, image 3 has no label at all -> both included.
     assert result.dive_id == 42
     assert set(result.image_checksums) == {"bbb", "ccc"}
     assert result.camera_matrix == _K.tolist()
@@ -154,6 +160,40 @@ async def test_returns_empty_checksums_when_all_labels_completed(monkeypatch):
     )
 
     assert result.image_checksums == []
+
+
+@pytest.mark.asyncio
+async def test_image_with_completed_and_incomplete_rows_treated_as_labeled(
+    monkeypatch,
+):
+    """Mirrors the prod state on dive 393: each image carries a
+    completed row in project 43 plus an incomplete sentinel row in
+    project NULL. Any one completed row is enough to count the image
+    as labeled, regardless of SDK iteration order."""
+    images = [_image(1, "aaa"), _image(2, "bbb")]
+    labels = [
+        # Image 1: completed in 43, also has an incomplete sentinel.
+        # Order: completed first, sentinel second — would have lost in
+        # the previous dict-collapse filter and leaked image 1 into
+        # the work set.
+        _label(1, completed=True, project_id=43),
+        _label(1, completed=False, project_id=None),
+        # Image 2: only an incomplete row -> still needs work.
+        _label(2, completed=False, project_id=43),
+    ]
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_intrinsics(),
+        images=images,
+        laser_labels=labels,
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(
+        sut.resolve_laser_preprocess_inputs_activity, 42
+    )
+
+    assert result.image_checksums == ["bbb"]
 
 
 @pytest.mark.asyncio
