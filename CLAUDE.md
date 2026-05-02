@@ -47,8 +47,8 @@ DB (negligible). To add or remove, override
 | 9   | preprocess_slate_images | api-worker (parent) + data-worker (child) | ported (hourly, +45min offset) |
 | 11  | populate_label_studio_project | api-worker | ported |
 | 12  | sync_slate_label | api-worker | ported (hourly) |
-| 13  | perform_laser_calibration | data-worker | ported (kernel in fishsense-core) |
-| 14  | measure_fish | data-worker | ported (kernel in fishsense-core) |
+| 13  | perform_laser_calibration | api-worker (parent) + data-worker (child) | ported (hourly, +50min offset) |
+| 14  | measure_fish | api-worker (parent) + data-worker (child) | ported (on-demand; idempotency caveat — see notes) |
 
 Create and populate are split into separate workflows per stage:
 
@@ -85,7 +85,7 @@ exist — the cluster API has no DELETE, so a re-POST would silently
 double-count. To re-group after labels change, an operator must
 manually drop the existing LABEL_STUDIO clusters first.
 
-## Cross-worker orchestration pattern (stages 0.1, 2, 5.1, 9)
+## Cross-worker orchestration pattern (stages 0.1, 2, 5.1, 9, 13, 14)
 
 The api-worker is the brains; the data-worker is the executor. Stages
 that need both SDK-side decision-making *and* CPU-heavy per-image
@@ -138,11 +138,11 @@ one replica):
 * Per-image activities are idempotent: nginx DAV PUT overwrites,
   SDK upserts.
 
-Applied to stages 0.1, 2, 5.1, 9 — each parent runs hourly with a
-15-minute offset between them
-(`preprocess-{laser,dive-images,headtail,slate}-images-workflow-schedule`)
-so their selectors don't all hit `dives.get()` at the top of the
-hour. Per-stage cohort:
+Applied to stages 0.1, 2, 5.1, 9, 13 — each parent runs hourly. The
+four preprocess parents are slotted at +0/+15/+30/+45 min so their
+selectors don't all hit `dives.get()` at the top of the hour; stage
+13 calibration sits at +50 min. Stage 14 measurement is registered
+but not scheduled (see notes below). Per-stage cohort:
 
 | Stage | Parent cohort definition |
 |---|---|
@@ -150,6 +150,8 @@ hour. Per-stage cohort:
 | 2   | HIGH-priority + has PREDICTION clusters + at least one image without a completed `SpeciesLabel` |
 | 5.1 | HIGH-priority + at least one `SpeciesLabel.top_three_photos_of_group=True` whose `HeadTailLabel` is incomplete |
 | 9   | HIGH-priority + `dive_slate_id` set + at least one `SpeciesLabel.content_of_image='Slate, Laser on slate'` whose `DiveSlateLabel` is incomplete |
+| 13  | HIGH-priority + `dive_slate_id` set + no `LaserExtrinsics` + ≥2 completed `DiveSlateLabel` rows (matches the data-worker activity's `MIN_LASER_POINTS=2` precondition) |
+| 14  | HIGH-priority + has `LaserExtrinsics` + has LABEL_STUDIO clusters with at least one `fish_id is None` |
 
 Stage 1 (clustering) does NOT yet have a parent — its data-worker
 workflow returns clusters but doesn't write them back to the DB, so
@@ -157,9 +159,31 @@ adding a parent requires deciding whether the parent persists the
 output (via `images.post_cluster`) or whether the workflow itself
 gains a write step. Defer until a real consumer needs it.
 
-Stages 13 and 14 deliberately keep their SDK fetches inline (the
-math kernels need opencv + fishsense-core, so splitting fetch/math
-across workers would add 5+ activity handoffs per dive for no gain).
+Stages 13 and 14 are structurally lighter than the four preprocess
+parents: pure SDK math, no NAS staging, no file-exchange JPEGs, no
+per-image fan-out. Their selector + child-dispatch parents have only
+two activity calls (selector → `start_child_workflow`); the data-worker
+keeps SDK fetches inline because the math kernels need opencv +
+fishsense-core, so splitting fetch/math across workers would add 5+
+activity handoffs per dive for no gain.
+
+**Stage 14 deliberately is not scheduled.** `measure_fish_activity` is
+non-idempotent (`post_measurement` is a POST and the SDK has no
+per-image measurement query), so a re-run on a partially-failed dive
+would duplicate measurements on already-bound clusters. Until that's
+resolved (likely by adding a `get_measurements` SDK method and
+per-image filtering in the activity), `MeasureFishParentWorkflow` is
+operator-triggered:
+
+```
+temporal workflow start \
+    --task-queue fishsense_api_queue \
+    --type MeasureFishParentWorkflow \
+    --workflow-id measure-fish-parent-<run-tag>
+```
+
+Each invocation drains exactly one dive — call it repeatedly to clear
+a backlog.
 
 ## Data-worker activity pattern
 
