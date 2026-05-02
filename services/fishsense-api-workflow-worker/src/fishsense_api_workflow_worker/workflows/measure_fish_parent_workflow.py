@@ -34,9 +34,12 @@ Cluster-correctness invariants — relevant once the data-worker scales
 beyond a single replica:
 
 * The child workflow is started with a deterministic id
-  (`measure-fish-{dive_id}`); a duplicate parent run targeting the
-  same dive hits `WorkflowAlreadyStarted` and is a no-op while the
-  first child is still running.
+  (`measure-fish-{dive_id}`) and
+  `id_reuse_policy=ALLOW_DUPLICATE_FAILED_ONLY`; a duplicate parent
+  run targeting the same dive hits `WorkflowAlreadyStarted` (whether
+  the prior child is still running or completed successfully) and
+  the parent catches it — duplicate dispatch can't double-write
+  measurements.
 * Per-cluster `fish_id` rebinds via `put_cluster` on the activity side
   are idempotent under retry within a single child run.
 """
@@ -44,6 +47,8 @@ beyond a single replica:
 from datetime import timedelta
 
 from temporalio import workflow
+from temporalio.common import WorkflowIDReusePolicy
+from temporalio.exceptions import WorkflowAlreadyStartedError
 
 with workflow.unsafe.imports_passed_through():
     from fishsense_api_workflow_worker.workflows._retry_policies import (
@@ -77,12 +82,21 @@ class MeasureFishParentWorkflow:
             "dispatching fish measurement to data-worker dive_id=%d", dive_id
         )
 
-        await workflow.execute_child_workflow(
-            "MeasureFishWorkflow",
-            dive_id,
-            id=f"measure-fish-{dive_id}",
-            task_queue=DATA_PROCESSING_TASK_QUEUE,
-            execution_timeout=timedelta(hours=1),
-        )
+        try:
+            await workflow.execute_child_workflow(
+                "MeasureFishWorkflow",
+                dive_id,
+                id=f"measure-fish-{dive_id}",
+                task_queue=DATA_PROCESSING_TASK_QUEUE,
+                execution_timeout=timedelta(hours=1),
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+            )
+        except WorkflowAlreadyStartedError:
+            workflow.logger.info(
+                "measure-fish-%d already ran successfully; skipping "
+                "duplicate dispatch (re-run requires manual cleanup of "
+                "existing measurements per the stage-14 idempotency note)",
+                dive_id,
+            )
 
         return dive_id
