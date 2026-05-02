@@ -25,7 +25,7 @@
 max_workers = 8
 
 [temporal]
-host = "fishsense-temporal"
+host = "workflows.fishsense.e4e.ucsd.edu"
 port = "7233"
 tls = true
 client_cert = "/certs/client/fishsense-api-workflow-worker.pem"
