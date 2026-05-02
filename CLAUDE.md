@@ -75,6 +75,22 @@ Both are registered but not scheduled — they're on-demand
 create). The eight workflows are: Create/Populate × Laser/Species/
 HeadTail/DiveSlate.
 
+The four populate workflows are also dispatched automatically as
+child workflows from the matching preprocess parent (stages 0.1 →
+laser, 2 → species, 5.1 → headtail, 9 → dive-slate). After
+`archive_processed_jpegs_to_nas_activity` and
+`cleanup_raw_bytes_for_dive_activity`, the parent runs
+`execute_child_workflow("Populate<Stage>LabelStudioProjectWorkflow",
+dive_id, id="populate-<stage>-{dive_id}",
+id_reuse_policy=ALLOW_DUPLICATE_FAILED_ONLY)`. Steady-state behavior
+on the same cohort dive: hour 1 imports tasks; hours 2+ catch
+`WorkflowAlreadyStartedError` and no-op rather than re-importing
+duplicate LS tasks. On-demand invocation is still supported for
+backfill or operator intervention; if you trigger it manually, use a
+non-colliding workflow id (e.g. `populate-laser-393-manual`) so the
+auto-chain's deterministic id stays available for future hourly
+firings.
+
 `UpdateDiveImageGroupsWorkflow(dive_id)` is the stage-6.1 on-demand
 workflow: it walks the dive's PREDICTION clusters, looks up each
 entry's `SpeciesLabel.grouping`, and POSTs LABEL_STUDIO clusters
@@ -92,7 +108,8 @@ that need both SDK-side decision-making *and* CPU-heavy per-image
 work split into two workflows:
 
 * **Parent** on api-worker (`fishsense_api_queue`). Hourly schedule.
-  Five activity calls per dive bracketing the child:
+  Activity calls per dive, bracketing the data-worker child plus the
+  in-process LS-populate child:
   1. Selector — returns next dive_id in cohort, or None.
   2. Resolver — returns a fully-populated workflow-input DTO.
   3. `stage_raw_bytes_for_dive_activity` — NAS → file-exchange.
@@ -102,6 +119,17 @@ work split into two workflows:
      → NAS (`processed_jpegs/<workflow>/<dive_id>/<checksum>.JPG`).
      Then `cleanup_raw_bytes_for_dive_activity` deletes the dive's
      raw `.ORF`s from the file-exchange.
+  6. `execute_child_workflow("Populate<Stage>LabelStudioProjectWorkflow",
+     dive_id, id="populate-<stage>-{dive_id}",
+     id_reuse_policy=ALLOW_DUPLICATE_FAILED_ONLY)` — on-demand
+     populate child runs against the same task queue. The reuse
+     policy + deterministic id deduplicate against subsequent hourly
+     re-firings of the parent on the same cohort dive (stage 0.1's
+     cohort, in particular, retains a dive until stage 13 writes
+     LaserExtrinsics, so the parent re-fires on the same dive_id
+     hour after hour). The parent catches the resulting
+     `WorkflowAlreadyStartedError` so the post-archive run still
+     completes successfully.
 * **Child** on data-worker (`fishsense_data_processing_queue`). Thin
   pre-input workflow that fans out per-image activities. No SDK
   calls and no NAS calls; all bytes already on the file-exchange,
@@ -130,11 +158,17 @@ one replica):
   `overlap=ScheduleOverlapPolicy.SKIP` — a previous run still in
   flight blocks the next firing, so two selectors can't race past
   the same `dives.get()` and pick the same dive.
-* Child workflow id is deterministic (`preprocess-laser-{dive_id}`).
-  If a parent run *does* race past the schedule guard (e.g. manual
-  trigger overlapping a scheduled one), the second
-  `start_child_workflow` hits `WorkflowAlreadyStarted` and is a
-  no-op rather than redoing the dive.
+* Child workflow id is deterministic (`preprocess-laser-{dive_id}`)
+  and dispatched with
+  `id_reuse_policy=ALLOW_DUPLICATE_FAILED_ONLY`. If a parent run
+  *does* race past the schedule guard (e.g. manual trigger
+  overlapping a scheduled one), the second `start_child_workflow`
+  raises `WorkflowAlreadyStartedError` which the parent catches —
+  archive + cleanup + populate then still run, so a child-then-parent
+  split failure self-heals on the next firing without redoing
+  per-image work. **Note:** temporalio's default child
+  `id_reuse_policy` is `ALLOW_DUPLICATE`, which lets duplicates
+  through silently — the explicit setting is required.
 * Per-image activities are idempotent: nginx DAV PUT overwrites,
   SDK upserts.
 
@@ -577,6 +611,15 @@ Eight workflows: Create + Populate × {Laser, Species, HeadTail,
 DiveSlate}. Populate's target set is queried via SDK
 `get_<stage>_label_studio_project_ids(incomplete=True)` — projects
 with at least one not-yet-completed label.
+
+The populate workflows are dispatched automatically by the four
+preprocess parents (see "Cross-worker orchestration pattern"); manual
+`temporal workflow start` is only needed for backfill of dives the
+auto-chain has already cleared, or to recover from a populate that
+previously errored out. Use a non-colliding workflow id for manual
+runs (e.g. `populate-laser-393-manual`) so the auto-chain's
+deterministic id (`populate-laser-393`) stays available for future
+hourly firings.
 
 **Bootstrap chicken-and-egg:** a freshly-created project from the
 Create workflow has zero labels and won't be returned by the populate

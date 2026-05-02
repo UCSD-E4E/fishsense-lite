@@ -18,9 +18,11 @@ beyond a single replica:
   `overlap_policy=ScheduleOverlapPolicy.SKIP`, so a run still in
   flight when the next firing arrives is dropped at the schedule level.
 * The child workflow is started with a deterministic id
-  (`perform-laser-calibration-{dive_id}`); if a parent run somehow
-  races past the schedule guard, the second child-workflow start hits
-  `WorkflowAlreadyStarted` and is a no-op rather than redoing the dive.
+  (`perform-laser-calibration-{dive_id}`) and
+  `id_reuse_policy=ALLOW_DUPLICATE_FAILED_ONLY`; if a parent run
+  somehow races past the schedule guard, the second child-workflow
+  start hits `WorkflowAlreadyStarted` and is caught — the parent
+  treats the prior success as authoritative.
 * `put_laser_extrinsics` on the activity side is an upsert — even
   outright re-runs of a successful call land on the same row.
 """
@@ -28,6 +30,8 @@ beyond a single replica:
 from datetime import timedelta
 
 from temporalio import workflow
+from temporalio.common import WorkflowIDReusePolicy
+from temporalio.exceptions import WorkflowAlreadyStartedError
 
 with workflow.unsafe.imports_passed_through():
     from fishsense_api_workflow_worker.workflows._retry_policies import (
@@ -63,12 +67,20 @@ class PerformLaserCalibrationParentWorkflow:
             "dispatching laser calibration to data-worker dive_id=%d", dive_id
         )
 
-        await workflow.execute_child_workflow(
-            "PerformLaserCalibrationWorkflow",
-            dive_id,
-            id=f"perform-laser-calibration-{dive_id}",
-            task_queue=DATA_PROCESSING_TASK_QUEUE,
-            execution_timeout=timedelta(minutes=15),
-        )
+        try:
+            await workflow.execute_child_workflow(
+                "PerformLaserCalibrationWorkflow",
+                dive_id,
+                id=f"perform-laser-calibration-{dive_id}",
+                task_queue=DATA_PROCESSING_TASK_QUEUE,
+                execution_timeout=timedelta(minutes=15),
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+            )
+        except WorkflowAlreadyStartedError:
+            workflow.logger.info(
+                "perform-laser-calibration-%d already ran successfully; "
+                "skipping duplicate dispatch",
+                dive_id,
+            )
 
         return dive_id

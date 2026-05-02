@@ -3,7 +3,10 @@
 Picks the next HIGH-priority dive needing laser preprocessing, resolves
 its incomplete-image-set + camera intrinsics via SDK, and dispatches
 the resolved inputs to the data-worker's `PreprocessLaserImagesWorkflow`
-on `fishsense_data_processing_queue`.
+on `fishsense_data_processing_queue`. After archive+cleanup, chains
+into `PopulateLaserLabelStudioProjectWorkflow` on the api-worker so a
+fresh dive lands in Label Studio in the same hourly run that produced
+its JPEGs — no operator-triggered populate needed.
 
 Cluster-correctness invariants — relevant once the data-worker scales
 beyond a single replica:
@@ -14,17 +17,32 @@ beyond a single replica:
 * The schedule that fires this workflow uses
   `overlap_policy=ScheduleOverlapPolicy.SKIP`, so a run still in
   flight when the next firing arrives is dropped at the schedule level.
-* The child workflow is started with a deterministic id
-  (`preprocess-laser-{dive_id}`); if a parent run somehow races past
-  the schedule guard (manual + scheduled trigger overlap), the second
-  child-workflow start hits `WorkflowAlreadyStarted` and is a no-op
-  rather than redoing the dive.
+* The data-worker child workflow is started with a deterministic id
+  (`preprocess-laser-{dive_id}`) and
+  `id_reuse_policy=ALLOW_DUPLICATE_FAILED_ONLY`; if a parent run
+  somehow races past the schedule guard (manual + scheduled trigger
+  overlap), or if a previous parent run failed *after* the child
+  succeeded but *before* archive completed and the next firing
+  re-targets the same dive, the second child dispatch hits
+  `WorkflowAlreadyStarted` and the parent catches it. Archive +
+  cleanup + populate then still run, so a child-then-parent split
+  failure self-heals on the next firing rather than redoing
+  per-image work.
+* The populate child uses the same deterministic-id trick
+  (`populate-laser-{dive_id}`). Stage 0.1's cohort keeps a dive in the
+  selector pool until stage 13 writes its `LaserExtrinsics`, so this
+  parent re-runs hourly on the same dive_id — without dedup, every
+  re-run would re-import LS tasks for already-incomplete labels and
+  pile up duplicate tasks. WorkflowAlreadyStarted on the second+
+  attempt is the expected steady state.
 """
 
 from datetime import timedelta
 
 from fishsense_shared import PreprocessLaserImagesInput
 from temporalio import workflow
+from temporalio.common import WorkflowIDReusePolicy
+from temporalio.exceptions import WorkflowAlreadyStartedError
 
 with workflow.unsafe.imports_passed_through():
     from fishsense_api_workflow_worker.workflows._retry_policies import (
@@ -88,13 +106,22 @@ class PreprocessLaserImagesParentWorkflow:
             heartbeat_timeout=timedelta(minutes=5),
         )
 
-        await workflow.execute_child_workflow(
-            "PreprocessLaserImagesWorkflow",
-            inputs,
-            id=f"preprocess-laser-{dive_id}",
-            task_queue=DATA_PROCESSING_TASK_QUEUE,
-            execution_timeout=timedelta(hours=1),
-        )
+        try:
+            await workflow.execute_child_workflow(
+                "PreprocessLaserImagesWorkflow",
+                inputs,
+                id=f"preprocess-laser-{dive_id}",
+                task_queue=DATA_PROCESSING_TASK_QUEUE,
+                execution_timeout=timedelta(hours=1),
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+            )
+        except WorkflowAlreadyStartedError:
+            workflow.logger.info(
+                "preprocess-laser-%d already ran successfully in a prior "
+                "firing; skipping data-worker dispatch and continuing to "
+                "archive + cleanup + populate",
+                dive_id,
+            )
 
         # Phase 3b: archive processed JPEGs to NAS, then drop the raw
         # `.ORF` bytes from the file-exchange. JPEGs intentionally stay
@@ -112,5 +139,20 @@ class PreprocessLaserImagesParentWorkflow:
             schedule_to_close_timeout=timedelta(minutes=15),
             heartbeat_timeout=timedelta(minutes=5),
         )
+
+        try:
+            await workflow.execute_child_workflow(
+                "PopulateLaserLabelStudioProjectWorkflow",
+                dive_id,
+                id=f"populate-laser-{dive_id}",
+                execution_timeout=timedelta(minutes=30),
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+            )
+        except WorkflowAlreadyStartedError:
+            workflow.logger.info(
+                "populate-laser-%d already ran in a prior hourly firing; "
+                "skipping LS task import",
+                dive_id,
+            )
 
         return inputs.dive_id
