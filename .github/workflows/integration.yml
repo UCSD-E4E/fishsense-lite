@@ -10,6 +10,11 @@ name: Integration
 # `integration-tests` label. Promote to required-status after a few
 # weeks if the flake rate is acceptable.
 #
+# Always runs on release-please PRs (branch prefix
+# `release-please--`) — the next merge cuts a tagged release and
+# triggers the promote -> auto-deploy chain, so integration coverage
+# is the last gate before a version pin lands in compose.
+#
 # What's NOT brought up: the `dev` container (heavyweight build, only
 # useful for interactive shells) and `temporal-ui` (not exercised by
 # tests). Pytest runs on the runner host; tests reach services through
@@ -26,7 +31,8 @@ jobs:
   integration:
     if: |
       github.event_name == 'workflow_dispatch' ||
-      contains(github.event.pull_request.labels.*.name, 'integration-tests')
+      contains(github.event.pull_request.labels.*.name, 'integration-tests') ||
+      startsWith(github.event.pull_request.head.ref, 'release-please--')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
