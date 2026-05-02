@@ -194,7 +194,7 @@ async def select_next_for_laser_calibration(
     """Stage 13: HIGH-priority + dive_slate_id set + no LaserExtrinsics +
     at least MIN_COMPLETED_SLATE_LABELS completed DiveSlateLabel rows."""
     completed_slate_label_count = (
-        select(func.count(DiveSlateLabel.id))
+        select(func.count(DiveSlateLabel.id))  # pylint: disable=not-callable
         .join(Image, Image.id == DiveSlateLabel.image_id)
         .where(Image.dive_id == Dive.id)
         .where(DiveSlateLabel.completed == True)

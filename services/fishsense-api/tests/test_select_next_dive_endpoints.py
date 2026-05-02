@@ -67,9 +67,6 @@ async def test_laser_preprocessing_picks_lowest_high_priority_without_extrinsics
     from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_laser_preprocessing,
     )
-    from fishsense_api.models.laser_extrinsics import (  # pylint: disable=import-outside-toplevel
-        LaserExtrinsics,
-    )
 
     session.add_all(
         [
