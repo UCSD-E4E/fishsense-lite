@@ -30,11 +30,13 @@ def _image(image_id: int, checksum: str) -> Image:
     )
 
 
-def _label(image_id: int, *, completed: bool) -> SpeciesLabel:
+def _label(
+    image_id: int, *, completed: bool, project_id: int | None = 70
+) -> SpeciesLabel:
     return SpeciesLabel(
         id=None,
         label_studio_task_id=image_id * 10,
-        label_studio_project_id=70,
+        label_studio_project_id=project_id,
         image_url=None,
         updated_at=None,
         completed=completed,
@@ -54,13 +56,30 @@ def _label(image_id: int, *, completed: bool) -> SpeciesLabel:
     )
 
 
-def test_select_incomplete_filters_completed():
+def test_select_unlabeled_excludes_images_with_any_completed_label():
     images = [_image(1, "a"), _image(2, "b"), _image(3, "c")]
     existing = [_label(1, completed=True), _label(2, completed=False)]
 
-    result = sut._select_incomplete_images(images, existing)  # pylint: disable=protected-access
+    result = sut._select_unlabeled_images(images, existing)  # pylint: disable=protected-access
 
     assert [img.id for img in result] == [2, 3]
+
+
+def test_select_unlabeled_handles_multi_row_state():
+    """Same multi-row hardening as the laser populate. An image with
+    a completed row in one project plus an incomplete sentinel in
+    another is treated as labeled — the previous dict-collapse filter
+    could go either way depending on iteration order."""
+    images = [_image(1, "a"), _image(2, "b")]
+    existing = [
+        _label(1, completed=True, project_id=70),
+        _label(1, completed=False, project_id=None),
+        _label(2, completed=False, project_id=70),
+    ]
+
+    result = sut._select_unlabeled_images(images, existing)  # pylint: disable=protected-access
+
+    assert [img.id for img in result] == [2]
 
 
 def test_build_task_uses_groups_jpeg_folder(monkeypatch):

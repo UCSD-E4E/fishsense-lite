@@ -18,6 +18,7 @@ from fishsense_api.models.dive_slate_label import DiveSlateLabel
 from fishsense_api.models.head_tail_label import HeadTailLabel
 from fishsense_api.models.image import Image
 from fishsense_api.models.laser_extrinsics import LaserExtrinsics
+from fishsense_api.models.laser_label import LaserLabel
 from fishsense_api.models.priority import Priority
 from fishsense_api.models.species_label import SpeciesLabel
 from fishsense_api.server import app
@@ -77,15 +78,33 @@ async def get_canonical_dives(
 async def select_next_for_laser_preprocessing(
     session: AsyncSession = Depends(get_async_session),
 ) -> int | None:
-    """Stage 0.1: HIGH-priority + no LaserExtrinsics row yet."""
+    """Stage 0.1: HIGH-priority + at least one image without a completed
+    LaserLabel (in any project).
+
+    Mirrors the work-state shape of the other three preprocess cohorts
+    (dive-image / headtail / slate). Earlier this was tied to
+    `no LaserExtrinsics`, which kept dives in the cohort indefinitely
+    after their laser labels were complete but stage-13 calibration was
+    blocked elsewhere (e.g. missing `dive_slate_id` or unfilled slate
+    labels) — wasted hourly firings on a dive 0.1 had no remaining
+    work for. Stage 13 keeps its own "no LaserExtrinsics" cohort and
+    advances independently.
+    """
+    has_image_without_completed_laser_label = (
+        select(Image.id)
+        .where(Image.dive_id == Dive.id)
+        .where(
+            ~select(LaserLabel.id)
+            .where(LaserLabel.image_id == Image.id)
+            .where(LaserLabel.completed == True)
+            .exists()
+        )
+        .exists()
+    )
     query = (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
-        .where(
-            ~select(LaserExtrinsics.id)
-            .where(LaserExtrinsics.dive_id == Dive.id)
-            .exists()
-        )
+        .where(has_image_without_completed_laser_label)
         .order_by(Dive.id)
         .limit(1)
     )

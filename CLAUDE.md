@@ -123,13 +123,12 @@ work split into two workflows:
      dive_id, id="populate-<stage>-{dive_id}",
      id_reuse_policy=ALLOW_DUPLICATE_FAILED_ONLY)` — on-demand
      populate child runs against the same task queue. The reuse
-     policy + deterministic id deduplicate against subsequent hourly
-     re-firings of the parent on the same cohort dive (stage 0.1's
-     cohort, in particular, retains a dive until stage 13 writes
-     LaserExtrinsics, so the parent re-fires on the same dive_id
-     hour after hour). The parent catches the resulting
-     `WorkflowAlreadyStartedError` so the post-archive run still
-     completes successfully.
+     policy + deterministic id deduplicate against re-firings of the
+     parent on the same cohort dive — once labels start completing,
+     the dive drops out of the cohort, but if the parent fires twice
+     on the same dive_id (for whatever reason) the second populate
+     hits `WorkflowAlreadyStartedError` and the parent catches it so
+     the post-archive run still completes successfully.
 * **Child** on data-worker (`fishsense_data_processing_queue`). Thin
   pre-input workflow that fans out per-image activities. No SDK
   calls and no NAS calls; all bytes already on the file-exchange,
@@ -180,7 +179,7 @@ but not scheduled (see notes below). Per-stage cohort:
 
 | Stage | Parent cohort definition |
 |---|---|
-| 0.1 | HIGH-priority + no `LaserExtrinsics` (matches `dry_run_stage13.py`) |
+| 0.1 | HIGH-priority + at least one image without a completed `LaserLabel` (in any project) |
 | 2   | HIGH-priority + has PREDICTION clusters + at least one image without a completed `SpeciesLabel` |
 | 5.1 | HIGH-priority + at least one `SpeciesLabel.top_three_photos_of_group=True` whose `HeadTailLabel` is incomplete |
 | 9   | HIGH-priority + `dive_slate_id` set + at least one `SpeciesLabel.content_of_image='Slate, Laser on slate'` whose `DiveSlateLabel` is incomplete |

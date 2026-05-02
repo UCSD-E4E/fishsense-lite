@@ -38,11 +38,13 @@ def _image(image_id: int, checksum: str) -> Image:
     )
 
 
-def _label(image_id: int, *, completed: bool) -> LaserLabel:
+def _label(
+    image_id: int, *, completed: bool, project_id: int | None = 73
+) -> LaserLabel:
     return LaserLabel(
         id=None,
         label_studio_task_id=image_id * 10,
-        label_studio_project_id=73,
+        label_studio_project_id=project_id,
         x=None,
         y=None,
         label=None,
@@ -55,13 +57,36 @@ def _label(image_id: int, *, completed: bool) -> LaserLabel:
     )
 
 
-def test_select_incomplete_filters_completed():
+def test_select_unlabeled_excludes_images_with_any_completed_label():
     images = [_image(1, "a"), _image(2, "b"), _image(3, "c")]
     existing = [_label(1, completed=True), _label(2, completed=False)]
 
-    result = sut._select_incomplete_images(images, existing)  # pylint: disable=protected-access
+    result = sut._select_unlabeled_images(images, existing)  # pylint: disable=protected-access
 
+    # Image 1 has a completed label -> excluded.
+    # Image 2's only label is incomplete -> included.
+    # Image 3 has no label at all -> included.
     assert [img.id for img in result] == [2, 3]
+
+
+def test_select_unlabeled_handles_multi_row_state():
+    """Mirrors the prod state on dive 393: each image carries a
+    completed row in project 43 plus an incomplete sentinel row in
+    project NULL. The dict-collapse filter would resolve to either
+    row depending on iteration order — the set-based filter doesn't.
+    """
+    images = [_image(1, "a"), _image(2, "b")]
+    existing = [
+        # Image 1: completed in 43 + incomplete sentinel.
+        _label(1, completed=True, project_id=43),
+        _label(1, completed=False, project_id=None),
+        # Image 2: only an incomplete row.
+        _label(2, completed=False, project_id=43),
+    ]
+
+    result = sut._select_unlabeled_images(images, existing)  # pylint: disable=protected-access
+
+    assert [img.id for img in result] == [2]
 
 
 def test_build_task_uses_configured_url_base(monkeypatch):

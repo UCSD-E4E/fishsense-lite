@@ -59,15 +59,24 @@ def _image(image_id: int, dive_id: int):
 
 
 # ---------- stage 0.1: laser-preprocessing ----------
+#
+# Cohort is "HIGH + has at least one image without a completed
+# LaserLabel (in any project)" — work-state, not the downstream
+# `no LaserExtrinsics` proxy. See dive_controller.py docstring for
+# the why. A dive with zero images is excluded by the same
+# `EXISTS (image without ...)` predicate, which matches the
+# behavior at the resolver level (no images → no work).
 
 
-async def test_laser_preprocessing_picks_lowest_high_priority_without_extrinsics(
+async def test_laser_preprocessing_picks_lowest_high_priority_with_unlabeled_images(
     session,
 ):
     from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_laser_preprocessing,
     )
 
+    # dives 1 and 2 both have an unlabeled image; lowest id wins.
+    # dive 3 is LOW priority -> excluded.
     session.add_all(
         [
             _dive(2, priority="HIGH"),
@@ -76,43 +85,100 @@ async def test_laser_preprocessing_picks_lowest_high_priority_without_extrinsics
         ]
     )
     await session.flush()
+    session.add_all([_image(11, 1), _image(21, 2), _image(31, 3)])
+    await session.flush()
 
     assert await select_next_for_laser_preprocessing(session=session) == 1
 
 
-async def test_laser_preprocessing_skips_dives_with_extrinsics(session):
+async def test_laser_preprocessing_skips_dives_with_all_labels_completed(session):
     from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_laser_preprocessing,
     )
-    from fishsense_api.models.laser_extrinsics import (  # pylint: disable=import-outside-toplevel
-        LaserExtrinsics,
+    from fishsense_api.models.laser_label import (  # pylint: disable=import-outside-toplevel
+        LaserLabel,
     )
 
+    # dive 1: every image has a completed laser label -> excluded.
+    # dive 2: one image still unlabeled -> picked.
+    # dive 3: every image has a completed label, in different projects -> excluded.
     session.add_all([_dive(1), _dive(2), _dive(3)])
     await session.flush()
     session.add_all(
         [
-            LaserExtrinsics(dive_id=1, camera_id=1),
-            LaserExtrinsics(dive_id=2, camera_id=1),
+            _image(11, 1),
+            _image(12, 1),
+            _image(21, 2),
+            _image(22, 2),
+            _image(31, 3),
+        ]
+    )
+    await session.flush()
+    session.add_all(
+        [
+            LaserLabel(image_id=11, completed=True, label_studio_project_id=43),
+            LaserLabel(image_id=12, completed=True, label_studio_project_id=72),
+            LaserLabel(image_id=21, completed=True, label_studio_project_id=43),
+            # image 22 has no laser_label -> dive 2 stays in cohort.
+            LaserLabel(image_id=31, completed=True, label_studio_project_id=43),
         ]
     )
     await session.flush()
 
-    assert await select_next_for_laser_preprocessing(session=session) == 3
+    assert await select_next_for_laser_preprocessing(session=session) == 2
 
 
-async def test_laser_preprocessing_returns_none_when_all_calibrated(session):
+async def test_laser_preprocessing_treats_incomplete_label_as_unlabeled(session):
+    """Multi-row state: one project's label completed, another's incomplete.
+
+    Mirrors the prod situation that motivated the cohort change — a
+    dict-collapsing `{image_id: label}` filter would race on iteration
+    order; the SQL `EXISTS (no completed label)` form is unambiguous.
+    """
     from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_laser_preprocessing,
     )
-    from fishsense_api.models.laser_extrinsics import (  # pylint: disable=import-outside-toplevel
-        LaserExtrinsics,
+    from fishsense_api.models.laser_label import (  # pylint: disable=import-outside-toplevel
+        LaserLabel,
+    )
+
+    # dive 1: one image has a completed label in project 43 AND an
+    # incomplete sentinel in project NULL -> the completed one
+    # qualifies, dive is excluded.
+    # dive 2: one image has only an incomplete label -> dive included.
+    session.add_all([_dive(1), _dive(2)])
+    await session.flush()
+    session.add_all([_image(11, 1), _image(21, 2)])
+    await session.flush()
+    session.add_all(
+        [
+            LaserLabel(image_id=11, completed=True, label_studio_project_id=43),
+            LaserLabel(image_id=11, completed=False, label_studio_project_id=None),
+            LaserLabel(image_id=21, completed=False, label_studio_project_id=43),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_preprocessing(session=session) == 2
+
+
+async def test_laser_preprocessing_returns_none_when_no_unlabeled_images(session):
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_laser_preprocessing,
+    )
+    from fishsense_api.models.laser_label import (  # pylint: disable=import-outside-toplevel
+        LaserLabel,
     )
 
     session.add_all([_dive(1), _dive(2)])
     await session.flush()
+    session.add_all([_image(11, 1), _image(21, 2)])
+    await session.flush()
     session.add_all(
-        [LaserExtrinsics(dive_id=1, camera_id=1), LaserExtrinsics(dive_id=2, camera_id=1)]
+        [
+            LaserLabel(image_id=11, completed=True, label_studio_project_id=43),
+            LaserLabel(image_id=21, completed=True, label_studio_project_id=43),
+        ]
     )
     await session.flush()
 
@@ -124,7 +190,23 @@ async def test_laser_preprocessing_returns_none_with_no_high_priority(session):
         select_next_for_laser_preprocessing,
     )
 
+    # LOW dives with unlabeled images are still excluded by the
+    # priority filter.
     session.add_all([_dive(1, priority="LOW"), _dive(2, priority="LOW")])
+    await session.flush()
+    session.add_all([_image(11, 1), _image(21, 2)])
+    await session.flush()
+
+    assert await select_next_for_laser_preprocessing(session=session) is None
+
+
+async def test_laser_preprocessing_excludes_dive_with_no_images(session):
+    """A dive with no images has no work for stage 0.1 — excluded."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_laser_preprocessing,
+    )
+
+    session.add(_dive(1))
     await session.flush()
 
     assert await select_next_for_laser_preprocessing(session=session) is None
