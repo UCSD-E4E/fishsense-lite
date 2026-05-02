@@ -23,8 +23,15 @@ image_url_base = "https://orchestrator.fishsense.e4e.ucsd.edu"
 [e4e_nas]
 url = "https://e4e-nas.ucsd.edu:6021"
 
+# Internal docker URL the api-worker uses for SDK calls into
+# fishsense-api. The api-worker runs on the orchestrator host alongside
+# fishsense-api on the same docker network (traefik_proxy, declared
+# explicitly on both services in compose), so this bypasses Traefik
+# and the authentik middleware in front of the public hostname. The
+# port matches `traefik.http.services.fishsense_api_server.loadbalancer.server.port`
+# in compose.orchestrator.yml.
 [fishsense_api]
-url = "https://orchestrator.fishsense.e4e.ucsd.edu"
+url = "http://fishsense-api:8000"
 
 # Internal docker URL the api-worker uses to GET slate PDFs / PUT
 # processed JPEGs / DELETE raw .ORF entries on the file-exchange

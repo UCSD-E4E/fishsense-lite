@@ -26,6 +26,11 @@ from datetime import timedelta
 from fishsense_shared import PreprocessLaserImagesInput
 from temporalio import workflow
 
+with workflow.unsafe.imports_passed_through():
+    from fishsense_api_workflow_worker.workflows._retry_policies import (
+        SDK_FAIL_FAST_RETRY_POLICY,
+    )
+
 DATA_PROCESSING_TASK_QUEUE = "fishsense_data_processing_queue"
 EXCHANGE_FOLDER = "preprocess_jpeg"
 NAS_WORKFLOW = "laser"
@@ -48,6 +53,7 @@ class PreprocessLaserImagesParentWorkflow:
             "select_next_high_priority_dive_for_laser_preprocessing_activity",
             args=(),
             schedule_to_close_timeout=timedelta(minutes=5),
+            retry_policy=SDK_FAIL_FAST_RETRY_POLICY,
         )
         if dive_id is None:
             return None
@@ -56,6 +62,7 @@ class PreprocessLaserImagesParentWorkflow:
             "resolve_laser_preprocess_inputs_activity",
             args=(dive_id,),
             schedule_to_close_timeout=timedelta(minutes=5),
+            retry_policy=SDK_FAIL_FAST_RETRY_POLICY,
             result_type=PreprocessLaserImagesInput,
         )
 

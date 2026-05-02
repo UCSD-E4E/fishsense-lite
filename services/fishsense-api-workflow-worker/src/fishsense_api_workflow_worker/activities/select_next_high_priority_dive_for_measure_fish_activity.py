@@ -19,13 +19,12 @@ not scheduled** — operators trigger it on-demand per dive once the
 upstream context is ready. This selector exists so on-demand callers
 can ask "which dive is next?" without re-implementing the predicate.
 
-Returns the lowest dive_id in the cohort, or None.
+The selector is a single SDK call; the SQL predicate lives in the
+api's `select-next/measure-fish` endpoint.
 """
 
 from __future__ import annotations
 
-from fishsense_api_sdk.models.data_source import DataSource
-from fishsense_api_sdk.models.priority import Priority
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
@@ -34,34 +33,13 @@ from fishsense_api_workflow_worker.activities.utils import get_fs_client
 @activity.defn
 async def select_next_high_priority_dive_for_measure_fish_activity() -> int | None:
     async with get_fs_client() as fs:
-        dives = await fs.dives.get() or []
-        candidates = [
-            d
-            for d in dives
-            if d.priority == Priority.HIGH and d.id is not None
-        ]
-        candidates.sort(key=lambda d: d.id)
+        dive_id = await fs.dives.select_next_for_measure_fish()
 
-        for dive in candidates:
-            extrinsics = await fs.dives.get_laser_extrinsics(dive.id)
-            if extrinsics is None:
-                continue
-
-            clusters = (
-                await fs.images.get_clusters(
-                    dive.id, DataSource.LABEL_STUDIO.value
-                )
-                or []
-            )
-            unbound = [c for c in clusters if c.fish_id is None]
-            if unbound:
-                activity.logger.info(
-                    "next HIGH-priority dive needing measurement: dive_id=%d "
-                    "(unbound_clusters=%d)",
-                    dive.id,
-                    len(unbound),
-                )
-                return dive.id
-
+    if dive_id is None:
         activity.logger.info("no HIGH-priority dives needing measurement")
-        return None
+    else:
+        activity.logger.info(
+            "next HIGH-priority dive needing measurement: dive_id=%d",
+            dive_id,
+        )
+    return dive_id
