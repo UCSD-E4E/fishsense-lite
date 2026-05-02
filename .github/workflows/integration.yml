@@ -1,0 +1,102 @@
+name: Integration
+
+# Spins up deploy/compose.local.yml on a GitHub-hosted runner (postgres,
+# temporal, fishsense-api, static_file_server, label-studio) and runs
+# `./check.sh integration` against it. Doubles the per-PR feedback loop
+# vs. unit-only — flaky tests will reveal themselves here, not in prod.
+#
+# Gated on a label + workflow_dispatch (NOT every PR) to avoid burning
+# runner minutes on doc-only changes. To run on a PR, add the
+# `integration-tests` label. Promote to required-status after a few
+# weeks if the flake rate is acceptable.
+#
+# What's NOT brought up: the `dev` container (heavyweight build, only
+# useful for interactive shells) and `temporal-ui` (not exercised by
+# tests). Pytest runs on the runner host; tests reach services through
+# the published ports (5432, 7233, 8000, 8080, 8082) with the
+# FISHSENSE_*_HOST / FISHSENSE_*_URL env-var overrides each test
+# fixture already supports for exactly this reason.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+jobs:
+  integration:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'integration-tests')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stub deploy/.env
+        # compose.local.yml uses ${VAR:?...} interpolation for the dev
+        # service's HOST_REPO_PATH and DOCKER_GID — compose parses the
+        # whole file even when we only `up` a subset of services, so
+        # both must be set or compose bails before the stack starts.
+        run: |
+          cat > deploy/.env <<EOF
+          HOST_REPO_PATH=${{ github.workspace }}
+          DOCKER_GID=999
+          POSTGRES_PASSWORD=fishsense_local
+          TEMPORAL_DB_PWD=temporal_local
+          FISHSENSE_DB_NAME=fishsense
+          EOF
+
+      - name: Bring up local stack
+        working-directory: deploy
+        run: |
+          docker compose -f compose.local.yml up -d --wait \
+            postgres temporal fishsense-api static_file_server label-studio
+        # --wait blocks on each service's healthcheck. label-studio's
+        # start_period is 60s on a cold image; first run after a cache
+        # miss can take ~90s before --wait returns.
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Sync workspace (all packages, all groups)
+        run: uv sync --all-packages --all-groups
+
+      - name: Run integration suite
+        env:
+          # Map the docker-internal hostnames the test fixtures fall
+          # back to (`temporal`, `static_file_server`, etc.) onto
+          # localhost-published ports. Each integration-test module's
+          # `_temporal_target` / `_exchange_url` etc. helpers read these
+          # before defaulting to the in-cluster name.
+          FISHSENSE_TEMPORAL_HOST: localhost
+          FISHSENSE_TEMPORAL_PORT: "7233"
+          FISHSENSE_STATIC_FILE_SERVER_URL: http://localhost:8080
+          FISHSENSE_API_URL: http://localhost:8000
+          FISHSENSE_POSTGRES_HOST: localhost
+          FISHSENSE_POSTGRES_PORT: "5432"
+          FISHSENSE_POSTGRES_USER: postgres
+          FISHSENSE_POSTGRES_PASSWORD: fishsense_local
+          FISHSENSE_POSTGRES_DB: fishsense
+          # E4EFS_-prefixed equivalents for any test that imports a
+          # worker activity module (Dynaconf eager-validates every
+          # required setting on first attribute access — see
+          # CLAUDE.md "Worker config validation gotcha").
+          E4EFS_FILE_EXCHANGE__URL: http://localhost:8080
+          E4EFS_LABEL_STUDIO__URL: http://localhost:8082
+          E4EFS_LABEL_STUDIO__API_KEY: fishsense_local_test_token_42
+          E4EFS_LABEL_STUDIO__IMAGE_URL_BASE: http://localhost:8080
+        run: ./check.sh integration
+
+      - name: Compose logs on failure
+        if: failure()
+        working-directory: deploy
+        run: docker compose -f compose.local.yml logs --tail=300
+
+      - name: Tear down
+        if: always()
+        working-directory: deploy
+        run: docker compose -f compose.local.yml down -v
