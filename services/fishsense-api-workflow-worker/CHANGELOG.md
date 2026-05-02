@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.28.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.27.0...fishsense-api-workflow-worker-v1.28.0) (2026-05-02)
+
+
+### Features
+
+* **api-workflow-worker:** chain populate from preprocess parents + dedup child dispatches ([c4b0f3f](https://github.com/UCSD-E4E/fishsense-lite/commit/c4b0f3f49d5d6abd38f491cad3fd63528a280290))
+* **api-workflow-worker:** chain populate from preprocess parents + dedup child dispatches ([17fa7c5](https://github.com/UCSD-E4E/fishsense-lite/commit/17fa7c5ecff555976fc2834fd718b5d813e7e84b))
+
 ## [1.27.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.26.0...fishsense-api-workflow-worker-v1.27.0) (2026-05-02)
 
 
