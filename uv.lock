@@ -711,7 +711,7 @@ dev = [
 
 [[package]]
 name = "fishsense-api-workflow-worker"
-version = "1.25.0"
+version = "1.26.0"
 source = { editable = "services/fishsense-api-workflow-worker" }
 dependencies = [
     { name = "dynaconf" },
@@ -867,7 +867,7 @@ requires-dist = [
 
 [[package]]
 name = "fishsense-data-processing-workflow-worker"
-version = "0.3.0"
+version = "0.4.0"
 source = { editable = "services/fishsense-data-processing-workflow-worker" }
 dependencies = [
     { name = "dynaconf" },
@@ -984,7 +984,7 @@ dev = [
 
 [[package]]
 name = "fishsense-shared"
-version = "0.2.1"
+version = "0.3.0"
 source = { editable = "libs/fishsense-shared" }
 dependencies = [
     { name = "dynaconf" },
