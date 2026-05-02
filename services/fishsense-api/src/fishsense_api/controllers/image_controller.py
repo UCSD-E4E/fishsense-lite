@@ -79,7 +79,11 @@ async def get_clusters(
         dive_id,
         data_source,
     )
-    query = select(DiveFrameCluster).where(DiveFrameCluster.dive_id == dive_id)
+    query = (
+        select(DiveFrameCluster)
+        .where(DiveFrameCluster.dive_id == dive_id)
+        .where(DiveFrameCluster.data_source == data_source)
+    )
 
     clusters = (await session.exec(query)).all()
     cluster_mapping_query = (
@@ -103,7 +107,7 @@ async def get_clusters(
     return [
         DiveFrameClusterJson(
             id=c.id,
-            image_ids=[m.image_id for m in cluster_mappings_dict[c.id]],
+            image_ids=[m.image_id for m in cluster_mappings_dict.get(c.id, [])],
             data_source=c.data_source,
             updated_at=c.updated_at,
             dive_id=c.dive_id,
