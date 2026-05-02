@@ -98,6 +98,9 @@ from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_laser_preprocessing_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_laser_preprocessing_activity,
 )
+from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_measure_fish_activity import (  # pylint: disable=line-too-long
+    select_next_high_priority_dive_for_measure_fish_activity,
+)
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_slate_preprocessing_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_slate_preprocessing_activity,
 )
@@ -152,6 +155,9 @@ from fishsense_api_workflow_worker.workflows.populate_laser_label_studio_project
 )
 from fishsense_api_workflow_worker.workflows.populate_species_label_studio_project_workflow import (  # pylint: disable=line-too-long
     PopulateSpeciesLabelStudioProjectWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.measure_fish_parent_workflow import (  # pylint: disable=line-too-long
+    MeasureFishParentWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.perform_laser_calibration_parent_workflow import (  # pylint: disable=line-too-long
     PerformLaserCalibrationParentWorkflow,
@@ -389,6 +395,7 @@ async def main():
                 PreprocessHeadtailImagesParentWorkflow,
                 PreprocessSlateImagesParentWorkflow,
                 PerformLaserCalibrationParentWorkflow,
+                MeasureFishParentWorkflow,
             ],
             activity_executor=executor,
             activities=[
@@ -425,6 +432,7 @@ async def main():
                 select_next_high_priority_dive_for_headtail_preprocessing_activity,
                 select_next_high_priority_dive_for_slate_preprocessing_activity,
                 select_next_high_priority_dive_for_laser_calibration_activity,
+                select_next_high_priority_dive_for_measure_fish_activity,
                 stage_raw_bytes_for_dive_activity,
                 stage_slate_pdf_activity,
                 archive_processed_jpegs_to_nas_activity,
