@@ -9,13 +9,11 @@ name: Promote
 #
 # 2. Opens a PR on `deploy/compose*.yml` bumping the package's image
 #    pin to `:v<version>`. Merging that PR triggers deploy.yml, which
-#    runs `docker compose pull && up -d` on the prod self-hosted
-#    runner. The deploy is intentional — humans review the diff
-#    before prod restarts.
-#
-# Skipped for fishsense-data-processing-workflow-worker: it lives on a
-# separate host and is held off auto-deploy for now (image promotion
-# still happens so the version is available; just no compose-pin PR).
+#    runs `docker compose pull && up -d` on the appropriate self-hosted
+#    runner — `fishsense-prod` for the orchestrator stack,
+#    `fishsense-data-worker` for the data-processing worker (separate
+#    host, separate compose file, separate runner). The deploy is
+#    intentional — humans review the diff before prod restarts.
 
 on:
   release:
@@ -50,16 +48,9 @@ jobs:
           # `promotable` controls the GHCR image retag step.
           # `deployable` controls whether we open a compose-pin PR.
           case "$package" in
-            fishsense-api|fishsense-api-workflow-worker|fishsense-backup-worker)
+            fishsense-api|fishsense-api-workflow-worker|fishsense-backup-worker|fishsense-data-processing-workflow-worker)
               promotable=true
               deployable=true
-              ;;
-            fishsense-data-processing-workflow-worker)
-              # Held — separate host, no auto-deploy yet. Image
-              # promotion still happens so the version tag is available
-              # for manual rollout.
-              promotable=true
-              deployable=false
               ;;
             *)
               # Pure-library packages (fishsense-shared, fishsense-api-sdk):
@@ -170,8 +161,10 @@ jobs:
             - **Source SHA**: `${{ steps.parse.outputs.short_sha }}`
 
             Merging this PR triggers `.github/workflows/deploy.yml`,
-            which runs `docker compose pull && up -d` on the
-            `fishsense-prod` self-hosted runner.
+            which runs `docker compose pull && up -d` on the matching
+            self-hosted runner (`fishsense-prod` for the orchestrator
+            stack, `fishsense-data-worker` for the data-processing
+            worker host).
           commit-message: "chore(deploy): bump ${{ steps.parse.outputs.package }} to ${{ steps.parse.outputs.version }}"
           labels: |
             deploy

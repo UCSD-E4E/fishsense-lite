@@ -6,8 +6,9 @@
 # `image: ghcr.io/ucsd-e4e/<package>:v*` and bump it via PR on release.
 #
 # fishsense-data-processing-workflow-worker is intentionally NOT here:
-# it runs on a separate host (held off auto-deploy for now) — see the
-# corresponding compose file on that host once it exists.
+# it runs on a separate host with its own compose file
+# (compose.data-worker.yml). Auto-deploy still applies — deploy.yml
+# routes its bumps to the `fishsense-data-worker` runner.
 
 services:
   fishsense-api-workflow-worker:
@@ -16,8 +17,8 @@ services:
       - temporal
     volumes:
       - ./temporal_volumes/certs:/certs:ro
-      - ./worker_volumes/config:/e4efs/config:ro
-      - ./worker_volumes/logs:/e4efs/logs:rw
+      - ./worker_volumes/api_worker/config:/e4efs/config:ro
+      - ./worker_volumes/api_worker/logs:/e4efs/logs:rw
       - ./mafl_volumes/data/config.yml:/config/dashboard_config.yaml:rw
     restart: on-failure:15
     deploy:
@@ -29,6 +30,6 @@ services:
       - temporal
     volumes:
       - ./temporal_volumes/certs:/certs:ro
-      - ./worker_volumes/backup_config:/e4efs/config:ro
+      - ./worker_volumes/backup_worker/config:/e4efs/config:ro
       - ./worker_volumes/backup_worker/logs:/e4efs/logs:rw
     restart: on-failure:15

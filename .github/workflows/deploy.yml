@@ -1,36 +1,45 @@
 name: Deploy
 
-# Runs `docker compose pull && up -d` on the prod orchestrator host
+# Runs `docker compose pull && up -d` on the appropriate prod host
 # after a promote.yml-generated PR is merged. Intentional gate: a human
 # reviews the version-pin diff and merges, then this fires.
 #
-# CRITICAL: this workflow runs against a **persistent ops-managed
-# deploy directory** on the host (path provided via repo variable
-# `DEPLOY_DIR`), NOT the runner's default `_work` checkout.
+# Two routes, picked by branch name:
+#   - auto-deploy/fishsense-data-processing-workflow-worker-* ->
+#     `fishsense-data-worker` runner, $DATA_WORKER_DEPLOY_DIR,
+#     `compose.data-worker.yml`.
+#   - any other auto-deploy/*                                 ->
+#     `fishsense-prod` runner, $DEPLOY_DIR, `compose.yml`
+#     (which include:s the four orchestrator-stack siblings).
+#
+# CRITICAL: each job runs against a **persistent ops-managed deploy
+# directory** on its host (paths in repo variables `DEPLOY_DIR` /
+# `DATA_WORKER_DEPLOY_DIR`), NOT the runner's default `_work` checkout.
 # `deploy/compose*.yml` uses relative bind mounts — `./pg_volumes`,
-# `./worker_volumes`, `./.secrets/...` — for postgres data, worker
-# config, postgres admin password, temporal env files, etc. None of
-# those siblings are tracked in git. The persistent dir holds them,
-# managed manually by ops; running compose against the runner's
-# fresh `_work` checkout would silently start postgres with an empty
-# data dir and the secrets-required services would fail outright.
+# `./worker_volumes`, `./.secrets/...`, `./temporal_volumes/certs` —
+# for postgres data, worker config, secrets, certs. None of those
+# siblings are tracked in git. The persistent dir holds them, managed
+# manually by ops; running compose against the runner's fresh `_work`
+# checkout would silently start postgres with an empty data dir or the
+# data-worker without its Temporal mTLS certs.
 #
-# Prereqs on the host (one-time):
-#   1. A self-hosted runner registered with the `fishsense-prod`
-#      label, running as a user that can write to DEPLOY_DIR and
-#      use the docker socket.
-#   2. Repo variable `DEPLOY_DIR` set to the absolute path of the
-#      deploy checkout (Settings -> Secrets and variables -> Actions
-#      -> Variables tab). e.g. `/srv/fishsense`.
-#   3. `$DEPLOY_DIR` is a git checkout of this repo with auth
-#      configured (SSH key or git credentials helper) for the
-#      runner user to `git pull origin main` non-interactively.
-#   4. `$DEPLOY_DIR/deploy/{pg_volumes,worker_volumes,
-#      temporal_volumes,mafl_volumes,.secrets}` already populated
-#      and owned by ops. They survive `git pull` because they're
-#      untracked.
+# Prereqs (one-time, per host):
+#   1. A self-hosted runner registered with the matching label
+#      (`fishsense-prod` or `fishsense-data-worker`), running as a
+#      user that can write to the deploy dir and use the docker socket.
+#   2. Repo variable set (Settings -> Secrets and variables ->
+#      Actions -> Variables): `DEPLOY_DIR` for the orchestrator host,
+#      `DATA_WORKER_DEPLOY_DIR` for the data-worker host. Each is the
+#      absolute path of that host's deploy checkout.
+#   3. The deploy dir is a git checkout of this repo with auth
+#      configured (SSH key or git credentials helper) so the runner
+#      user can `git pull origin main` non-interactively.
+#   4. The host's untracked sibling directories under `deploy/` are
+#      already populated and owned by ops. They survive `git pull`
+#      because they're untracked. See deploy/README.md for the per-host
+#      file list.
 #
-# Until the runner exists, jobs sit in queue (visible in Actions UI).
+# Until each runner exists, jobs sit in queue (visible in Actions UI).
 
 on:
   pull_request:
@@ -39,19 +48,30 @@ on:
   # Manual re-pull (re-pull + recreate without bumping a pin). Useful
   # when a service crash-loops and you just want a clean restart.
   workflow_dispatch:
+    inputs:
+      target:
+        description: "Which host to redeploy"
+        required: true
+        type: choice
+        default: orchestrator
+        options:
+          - orchestrator
+          - data-worker
 
 permissions:
   contents: read
   packages: read
 
 jobs:
-  deploy:
-    # Only fire on actual merges of auto-deploy/* branches; manual edits
-    # to compose files merging via a non-auto-deploy PR shouldn't trigger
-    # an automatic prod recreate.
+  deploy-orchestrator:
+    # Fires on:
+    #   - merge of an auto-deploy/* PR that is NOT the data-worker
+    #   - manual workflow_dispatch with target=orchestrator
     if: |
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.pull_request.merged == true && startsWith(github.head_ref, 'auto-deploy/'))
+      (github.event_name == 'workflow_dispatch' && inputs.target == 'orchestrator') ||
+      (github.event.pull_request.merged == true &&
+       startsWith(github.head_ref, 'auto-deploy/') &&
+       !startsWith(github.head_ref, 'auto-deploy/fishsense-data-processing-workflow-worker-'))
     runs-on: [self-hosted, fishsense-prod]
     steps:
       - name: Validate DEPLOY_DIR is configured + bootstrapped
@@ -95,3 +115,55 @@ jobs:
       - name: Recreate services with changed images
         working-directory: ${{ vars.DEPLOY_DIR }}/deploy
         run: docker compose up -d --remove-orphans
+
+  deploy-data-worker:
+    # Fires on:
+    #   - merge of an auto-deploy/fishsense-data-processing-workflow-worker-* PR
+    #   - manual workflow_dispatch with target=data-worker
+    if: |
+      (github.event_name == 'workflow_dispatch' && inputs.target == 'data-worker') ||
+      (github.event.pull_request.merged == true &&
+       startsWith(github.head_ref, 'auto-deploy/fishsense-data-processing-workflow-worker-'))
+    runs-on: [self-hosted, fishsense-data-worker]
+    steps:
+      - name: Validate DATA_WORKER_DEPLOY_DIR is configured + bootstrapped
+        env:
+          DATA_WORKER_DEPLOY_DIR: ${{ vars.DATA_WORKER_DEPLOY_DIR }}
+        run: |
+          if [ -z "$DATA_WORKER_DEPLOY_DIR" ]; then
+            echo "::error::repo variable DATA_WORKER_DEPLOY_DIR is not set."
+            echo "Set it under Settings -> Secrets and variables -> Actions -> Variables"
+            echo "to the absolute path of the persistent deploy checkout on this host"
+            echo "(e.g. /srv/fishsense-data-worker). See .github/workflows/deploy.yml header."
+            exit 1
+          fi
+          if [ ! -d "$DATA_WORKER_DEPLOY_DIR/.git" ]; then
+            echo "::error::$DATA_WORKER_DEPLOY_DIR is not a git checkout. Bootstrap the host first:"
+            echo "  git clone https://github.com/${{ github.repository }} $DATA_WORKER_DEPLOY_DIR"
+            exit 1
+          fi
+          if [ ! -f "$DATA_WORKER_DEPLOY_DIR/deploy/compose.data-worker.yml" ]; then
+            echo "::error::$DATA_WORKER_DEPLOY_DIR/deploy/compose.data-worker.yml not found. DATA_WORKER_DEPLOY_DIR may be wrong."
+            exit 1
+          fi
+
+      - name: Sync deploy checkout to latest main
+        working-directory: ${{ vars.DATA_WORKER_DEPLOY_DIR }}
+        run: |
+          git fetch --quiet origin main
+          git checkout --quiet main
+          git pull --ff-only origin main
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull updated image
+        working-directory: ${{ vars.DATA_WORKER_DEPLOY_DIR }}/deploy
+        run: docker compose -f compose.data-worker.yml pull
+
+      - name: Recreate service with changed image
+        working-directory: ${{ vars.DATA_WORKER_DEPLOY_DIR }}/deploy
+        run: docker compose -f compose.data-worker.yml up -d --remove-orphans

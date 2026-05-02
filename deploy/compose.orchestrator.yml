@@ -5,9 +5,32 @@ services:
       - fishsense-api
     labels:
       - "traefik.enable=true"
+      # Labeler-facing read-only routes. CORS is set in nginx.conf; no
+      # auth middleware here because labelers' browsers fetch images
+      # directly using their existing labeler.e4e.ucsd.edu session.
       - "traefik.http.routers.fishsense_static_file_server.rule=Host(`orchestrator.fishsense.e4e.ucsd.edu`) && PathPrefix(`/api/v1/data`)"
       - "traefik.http.routers.fishsense_static_file_server.entrypoints=websecure"
       - "traefik.http.routers.fishsense_static_file_server.tls.certresolver=letsencrypt"
+      # Worker-to-worker file-exchange — separate router so the
+      # `/api/v1/data` path stays CORS-only and the exchange path can
+      # have its own auth middleware. Lets the data-worker (separate
+      # host, can't reach the internal `static_file_server` docker
+      # hostname) GET/PUT/DELETE on `/api/v1/exchange/*`.
+      #
+      # Auth: IP allowlist scoped to the data-worker host's public IP.
+      # PUT/DELETE on the exchange surface stays inaccessible to the
+      # internet at large. Update the sourcerange when the data-worker
+      # host moves.
+      #
+      # TODO: migrate to authentik basic-auth-passthrough so we can
+      # drop the IP-pinning and consolidate auth on the same provider
+      # the rest of the orchestrator routes use. Tracked in project
+      # memory `project_data_worker_authentik_todo.md`.
+      - "traefik.http.routers.fishsense_static_file_server_exchange.rule=Host(`orchestrator.fishsense.e4e.ucsd.edu`) && PathPrefix(`/api/v1/exchange`)"
+      - "traefik.http.routers.fishsense_static_file_server_exchange.entrypoints=websecure"
+      - "traefik.http.routers.fishsense_static_file_server_exchange.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.fishsense_static_file_server_exchange.middlewares=fishsense_exchange_ip_allowlist"
+      - "traefik.http.middlewares.fishsense_exchange_ip_allowlist.ipallowlist.sourcerange=132.239.95.67/32"
     volumes:
       - ./static_file_server/nginx.conf:/etc/nginx/conf.d/default.conf
       - ./static_file_server_volumes/data:/data
