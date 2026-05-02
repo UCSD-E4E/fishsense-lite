@@ -1,6 +1,6 @@
 [project]
 name = "fishsense-shared"
-version = "0.2.1"
+version = "0.3.0"
 description = "Shared Dynaconf, logging, and Temporal helpers for FishSense Lite services."
 requires-python = ">=3.13"
 dependencies = [

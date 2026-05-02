@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.2.1...fishsense-shared-v0.3.0) (2026-05-02)
+
+
+### Features
+
+* **api-worker:** apply parent/child pattern to stages 2, 5.1, 9 ([a22c5c5](https://github.com/UCSD-E4E/fishsense-lite/commit/a22c5c5988c8d2c2cf9e7fe0f57d3b466ca25500))
+* **api-worker:** stage 0.1 parent + cluster-safe schedule ([504b05f](https://github.com/UCSD-E4E/fishsense-lite/commit/504b05f03e489abda424aabf0fdef5043c669346))
+
 ## [0.2.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.2.0...fishsense-shared-v0.2.1) (2026-05-01)
 
 
