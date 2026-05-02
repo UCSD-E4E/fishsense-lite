@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.29.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.28.0...fishsense-api-workflow-worker-v1.29.0) (2026-05-02)
+
+
+### Features
+
+* **api-workflow-worker:** re-cohort stage 0.1 by labeling state + fix multi-row predicate ([aeed529](https://github.com/UCSD-E4E/fishsense-lite/commit/aeed529ab340168be644561e8c374ee1dadaeeeb))
+* **api-workflow-worker:** re-cohort stage 0.1 by labeling state + fix multi-row predicate ([91a81c7](https://github.com/UCSD-E4E/fishsense-lite/commit/91a81c79386b2661470e2aad71585639824975f6))
+
 ## [1.28.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.27.0...fishsense-api-workflow-worker-v1.28.0) (2026-05-02)
 
 
