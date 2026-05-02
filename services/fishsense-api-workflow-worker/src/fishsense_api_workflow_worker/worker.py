@@ -92,6 +92,9 @@ from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_headtail_preprocessing_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_headtail_preprocessing_activity,
 )
+from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_laser_calibration_activity import (  # pylint: disable=line-too-long
+    select_next_high_priority_dive_for_laser_calibration_activity,
+)
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_laser_preprocessing_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_laser_preprocessing_activity,
 )
@@ -149,6 +152,9 @@ from fishsense_api_workflow_worker.workflows.populate_laser_label_studio_project
 )
 from fishsense_api_workflow_worker.workflows.populate_species_label_studio_project_workflow import (  # pylint: disable=line-too-long
     PopulateSpeciesLabelStudioProjectWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.perform_laser_calibration_parent_workflow import (  # pylint: disable=line-too-long
+    PerformLaserCalibrationParentWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.preprocess_dive_images_parent_workflow import (  # pylint: disable=line-too-long
     PreprocessDiveImagesParentWorkflow,
@@ -329,6 +335,22 @@ async def schedule_workflows(client: Client):
                     overlap=ScheduleOverlapPolicy.SKIP,
                 )
             )
+            # Stage 13 calibration parent: hourly, slotted at +50 min so
+            # its selector doesn't collide with the four preprocess
+            # parents at +0/+15/+30/+45. Calibration is pure math (no
+            # NAS/exchange) so a 15-minute child execution_timeout is
+            # plenty.
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "perform-laser-calibration-workflow-schedule",
+                    PerformLaserCalibrationParentWorkflow,
+                    timedelta(hours=1),
+                    offset=timedelta(minutes=50),
+                    run_timeout=timedelta(minutes=30),
+                    overlap=ScheduleOverlapPolicy.SKIP,
+                )
+            )
 
 
 async def main():
@@ -366,6 +388,7 @@ async def main():
                 PreprocessDiveImagesParentWorkflow,
                 PreprocessHeadtailImagesParentWorkflow,
                 PreprocessSlateImagesParentWorkflow,
+                PerformLaserCalibrationParentWorkflow,
             ],
             activity_executor=executor,
             activities=[
@@ -401,6 +424,7 @@ async def main():
                 select_next_high_priority_dive_for_dive_image_preprocessing_activity,
                 select_next_high_priority_dive_for_headtail_preprocessing_activity,
                 select_next_high_priority_dive_for_slate_preprocessing_activity,
+                select_next_high_priority_dive_for_laser_calibration_activity,
                 stage_raw_bytes_for_dive_activity,
                 stage_slate_pdf_activity,
                 archive_processed_jpegs_to_nas_activity,
