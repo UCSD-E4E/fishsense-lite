@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.22.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.22.0...fishsense-api-v1.22.1) (2026-05-02)
+
+
+### Bug Fixes
+
+* **api:** scope GET /dives/{id}/images/clusters/{ds} to data_source ([e311bc9](https://github.com/UCSD-E4E/fishsense-lite/commit/e311bc9511da61fe386130c8618cd7a26691eed7))
+* **api:** scope GET /dives/{id}/images/clusters/{ds} to data_source ([85c4748](https://github.com/UCSD-E4E/fishsense-lite/commit/85c474853d0c328d381339e6f070df45630b349d))
+
 ## [1.22.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.21.0...fishsense-api-v1.22.0) (2026-05-01)
 
 
