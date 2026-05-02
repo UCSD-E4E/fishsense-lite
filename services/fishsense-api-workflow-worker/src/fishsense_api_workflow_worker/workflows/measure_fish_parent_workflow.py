@@ -45,6 +45,11 @@ from datetime import timedelta
 
 from temporalio import workflow
 
+with workflow.unsafe.imports_passed_through():
+    from fishsense_api_workflow_worker.workflows._retry_policies import (
+        SDK_FAIL_FAST_RETRY_POLICY,
+    )
+
 DATA_PROCESSING_TASK_QUEUE = "fishsense_data_processing_queue"
 
 
@@ -63,6 +68,7 @@ class MeasureFishParentWorkflow:
             "select_next_high_priority_dive_for_measure_fish_activity",
             args=(),
             schedule_to_close_timeout=timedelta(minutes=5),
+            retry_policy=SDK_FAIL_FAST_RETRY_POLICY,
         )
         if dive_id is None:
             return None
