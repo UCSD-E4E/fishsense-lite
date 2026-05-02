@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## [1.26.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.25.0...fishsense-api-workflow-worker-v1.26.0) (2026-05-02)
+
+
+### Features
+
+* **api-worker:** apply parent/child pattern to stages 2, 5.1, 9 ([a22c5c5](https://github.com/UCSD-E4E/fishsense-lite/commit/a22c5c5988c8d2c2cf9e7fe0f57d3b466ca25500))
+* **api-worker:** Phase 3a — stage NAS bytes to file-exchange before dispatch ([42c7b0a](https://github.com/UCSD-E4E/fishsense-lite/commit/42c7b0a510a5701ebfd0eebcf2fb9bbffaea6a07))
+* **api-worker:** Phase 3b — archive JPEGs to NAS + raw cleanup ([4079e39](https://github.com/UCSD-E4E/fishsense-lite/commit/4079e398f8045a07714eadb302140ef9803224ec))
+* **api-worker:** stage 0.1 parent + cluster-safe schedule ([504b05f](https://github.com/UCSD-E4E/fishsense-lite/commit/504b05f03e489abda424aabf0fdef5043c669346))
+
+
+### Documentation
+
+* **api-worker:** pull FIFO-ordering note into selector docstrings ([9ecdd58](https://github.com/UCSD-E4E/fishsense-lite/commit/9ecdd5817b8ba2debabacb4a70bbe0b0d8c9db3f))
+* CLAUDE.md, deploy/README.md, api-worker README. ([4079e39](https://github.com/UCSD-E4E/fishsense-lite/commit/4079e398f8045a07714eadb302140ef9803224ec))
+
 ## [1.25.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.24.0...fishsense-api-workflow-worker-v1.25.0) (2026-05-01)
 
 

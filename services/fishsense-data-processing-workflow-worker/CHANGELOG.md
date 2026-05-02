@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v0.3.0...fishsense-data-processing-workflow-worker-v0.4.0) (2026-05-02)
+
+
+### Features
+
+* **api-worker:** apply parent/child pattern to stages 2, 5.1, 9 ([a22c5c5](https://github.com/UCSD-E4E/fishsense-lite/commit/a22c5c5988c8d2c2cf9e7fe0f57d3b466ca25500))
+* **api-worker:** stage 0.1 parent + cluster-safe schedule ([504b05f](https://github.com/UCSD-E4E/fishsense-lite/commit/504b05f03e489abda424aabf0fdef5043c669346))
+* **data-worker:** self-pacing hourly stage 0.1 with HIGH-priority selector ([2a1b0f5](https://github.com/UCSD-E4E/fishsense-lite/commit/2a1b0f5b3efe301e86c0ca628f097644519068c1))
+
+
+### Bug Fixes
+
+* **deploy:** drop orphan laser_jpeg nginx rewrite + clarify file-exchange folder names ([f039232](https://github.com/UCSD-E4E/fishsense-lite/commit/f03923237f66b7f0bf4606902611031ae9002b45))
+
 ## [0.3.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v0.2.0...fishsense-data-processing-workflow-worker-v0.3.0) (2026-05-01)
 
 
