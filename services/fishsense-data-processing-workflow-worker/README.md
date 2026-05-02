@@ -92,8 +92,11 @@ uv run --package fishsense-data-processing-workflow-worker \
     fishsense_data_processing_workflow_worker
 ```
 
-The image is **not** auto-deployed by the
-[deploy.yml](../../.github/workflows/deploy.yml) workflow — its host
-isn't in this repo's compose files. `:v<version>` tags are still
-published by `promote.yml`, so manual rollout on the data-worker host
-is `docker compose pull && up -d`.
+Auto-deployed by the
+[deploy.yml](../../.github/workflows/deploy.yml) data-worker job: a
+merge of an `auto-deploy/fishsense-data-processing-workflow-worker-*`
+PR (opened by `promote.yml` against
+[deploy/compose.data-worker.yml](../../deploy/compose.data-worker.yml))
+routes to the `fishsense-data-worker` self-hosted runner, which runs
+`docker compose -f compose.data-worker.yml pull && up -d` in
+`$DATA_WORKER_DEPLOY_DIR` on the data-worker host.
