@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.2.0...fishsense-data-processing-workflow-worker-v2.2.1) (2026-05-03)
+
+
+### Bug Fixes
+
+* **laser:** supersede PUTs run concurrently, capped at 8 ([4bfaed0](https://github.com/UCSD-E4E/fishsense-lite/commit/4bfaed095bdd56bcf37fff0932125e5cb5c57e52))
+* **laser:** supersede PUTs run concurrently, capped at 8 ([4ba4716](https://github.com/UCSD-E4E/fishsense-lite/commit/4ba47165a573387d1196867eb86139bab2a4089a))
+
 ## [2.2.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.1.1...fishsense-data-processing-workflow-worker-v2.2.0) (2026-05-03)
 
 
