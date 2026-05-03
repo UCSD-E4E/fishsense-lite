@@ -13,16 +13,36 @@ from __future__ import annotations
 import asyncio
 import uuid
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import List
 
 import pytest
-from temporalio import activity
+from temporalio import activity, workflow
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
 from fishsense_api_workflow_worker.workflows.sync_label_studio_laser_labels_workflow import (
     SyncLabelStudioLaserLabelsWorkflow,
 )
+
+
+# Stand-in for the data-worker child workflow. Lives on a separate task
+# queue so the sync workflow's `task_queue=DATA_PROCESSING_TASK_QUEUE`
+# dispatch is exercised end-to-end (instead of silently degrading to
+# "child runs on the same queue").
+DATA_PROCESSING_TASK_QUEUE = "fishsense_data_processing_queue"
+
+
+@workflow.defn(name="ValidateLaserLabelsForDiveWorkflow")
+class _StubValidateChildWorkflow:
+    # pylint: disable=too-few-public-methods
+    @workflow.run
+    async def run(self, dive_id: int) -> int:
+        return await workflow.execute_activity(
+            "validate_laser_labels_for_dive_activity",
+            args=(dive_id,),
+            schedule_to_close_timeout=timedelta(minutes=5),
+        )
 
 
 @dataclass
@@ -50,12 +70,22 @@ async def test_workflow_invokes_users_then_project_ids_then_one_sync_per_project
             _Call("sync_laser_labels_for_label_studio_project_activity", (project_id,))
         )
 
+    @activity.defn(name="get_dives_with_complete_laser_labeling_activity")
+    async def stub_get_complete_dives() -> List[int]:
+        calls.append(_Call("get_dives_with_complete_laser_labeling_activity", ()))
+        return []
+
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
             env.client,
             task_queue="test-laser-sync",
             workflows=[SyncLabelStudioLaserLabelsWorkflow],
-            activities=[stub_sync_users, stub_get_ids, stub_sync_project],
+            activities=[
+                stub_sync_users,
+                stub_get_ids,
+                stub_sync_project,
+                stub_get_complete_dives,
+            ],
         ):
             await env.client.execute_workflow(
                 SyncLabelStudioLaserLabelsWorkflow.run,
@@ -71,6 +101,12 @@ async def test_workflow_invokes_users_then_project_ids_then_one_sync_per_project
     ]
     assert len(project_calls) == 3
     assert {c.args[0] for c in project_calls} == {101, 202, 303}
+
+    # Validation step runs after the sync — confirm it's invoked even
+    # when no dives are complete.
+    assert any(
+        c.name == "get_dives_with_complete_laser_labeling_activity" for c in calls
+    )
 
 
 @pytest.mark.asyncio
@@ -89,12 +125,21 @@ async def test_workflow_with_no_projects_does_not_invoke_per_project_sync():
     async def stub_sync_project(project_id: int) -> None:
         sync_calls.append(project_id)
 
+    @activity.defn(name="get_dives_with_complete_laser_labeling_activity")
+    async def stub_get_complete_dives() -> List[int]:
+        return []
+
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
             env.client,
             task_queue="test-laser-sync-empty",
             workflows=[SyncLabelStudioLaserLabelsWorkflow],
-            activities=[stub_sync_users, stub_get_ids, stub_sync_project],
+            activities=[
+                stub_sync_users,
+                stub_get_ids,
+                stub_sync_project,
+                stub_get_complete_dives,
+            ],
         ):
             await env.client.execute_workflow(
                 SyncLabelStudioLaserLabelsWorkflow.run,
@@ -103,6 +148,62 @@ async def test_workflow_with_no_projects_does_not_invoke_per_project_sync():
             )
 
     assert not sync_calls
+
+
+@pytest.mark.asyncio
+async def test_workflow_dispatches_validation_child_per_complete_dive():
+    """Each dive returned by get_dives_with_complete_laser_labeling_activity
+    must be dispatched to ValidateLaserLabelsForDiveWorkflow on the
+    data-worker task queue."""
+    validated: List[int] = []
+
+    @activity.defn(name="sync_users_label_studio_activity")
+    async def stub_sync_users() -> None:
+        return None
+
+    @activity.defn(name="get_laser_label_studio_project_ids_activity")
+    async def stub_get_ids() -> List[int]:
+        return []
+
+    @activity.defn(name="sync_laser_labels_for_label_studio_project_activity")
+    async def stub_sync_project(_: int) -> None:
+        return None
+
+    @activity.defn(name="get_dives_with_complete_laser_labeling_activity")
+    async def stub_get_complete_dives() -> List[int]:
+        return [10, 20, 30]
+
+    @activity.defn(name="validate_laser_labels_for_dive_activity")
+    async def stub_validate(dive_id: int) -> int:
+        validated.append(dive_id)
+        return 0
+
+    queue_parent = "test-laser-sync-validate-parent"
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
+            task_queue=queue_parent,
+            workflows=[SyncLabelStudioLaserLabelsWorkflow],
+            activities=[
+                stub_sync_users,
+                stub_get_ids,
+                stub_sync_project,
+                stub_get_complete_dives,
+            ],
+        ):
+            async with Worker(
+                env.client,
+                task_queue=DATA_PROCESSING_TASK_QUEUE,
+                workflows=[_StubValidateChildWorkflow],
+                activities=[stub_validate],
+            ):
+                await env.client.execute_workflow(
+                    SyncLabelStudioLaserLabelsWorkflow.run,
+                    id=f"test-laser-sync-validate-{uuid.uuid4()}",
+                    task_queue=queue_parent,
+                )
+
+    assert sorted(validated) == [10, 20, 30]
 
 
 @pytest.mark.asyncio
@@ -135,12 +236,21 @@ async def test_per_project_activity_caps_concurrency_at_workflow_level():
         finally:
             in_flight -= 1
 
+    @activity.defn(name="get_dives_with_complete_laser_labeling_activity")
+    async def stub_get_complete_dives() -> List[int]:
+        return []
+
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
             env.client,
             task_queue="test-laser-sync-conc",
             workflows=[SyncLabelStudioLaserLabelsWorkflow],
-            activities=[stub_sync_users, stub_get_ids, stub_sync_project],
+            activities=[
+                stub_sync_users,
+                stub_get_ids,
+                stub_sync_project,
+                stub_get_complete_dives,
+            ],
             max_concurrent_activities=50,
         ):
             wf_task = asyncio.create_task(

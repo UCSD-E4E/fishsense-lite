@@ -6,6 +6,7 @@ from typing import List
 
 from fastapi import Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
+from sqlalchemy import alias
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -279,6 +280,61 @@ async def get_laser_label_studio_project_ids(
             | (LaserLabel.completed.is_(None))  # pylint: disable=no-member
         )
     return list((await session.exec(query.distinct())).all())
+
+
+@app.get("/api/v1/labels/laser/dives-with-complete-labeling")
+async def get_dives_with_complete_laser_labeling(
+    session: AsyncSession = Depends(get_async_session),
+) -> List[int]:
+    """Dive IDs whose laser labeling is fully complete.
+
+    A dive qualifies iff every non-superseded `LaserLabel` for one of
+    its images has `completed=True` AND at least one such label exists.
+    Dives with zero non-superseded laser labels (no labeling activity at
+    all) are excluded — there's nothing to validate.
+
+    Backs the laser label-validation pass that runs after each laser
+    sync: validating against an in-progress dive's labels is wasted
+    effort because the line fit changes as more positives arrive.
+
+    Implemented as `(dive has at least one completed non-superseded
+    laser label) AND NOT (dive has any incomplete non-superseded laser
+    label)` — `NOT EXISTS` is portable across the prod Postgres and
+    the in-memory sqlite the integration tests use; `bool_and` would
+    work on Postgres only.
+
+    NOTE: must precede the `/api/v1/labels/laser/{image_id}` route —
+    Starlette's default path converter treats `{image_id}` as `[^/]+`,
+    so registration order is what disambiguates the literal segment.
+    """
+    logger.debug("Retrieving dive IDs with complete laser labeling")
+    incomplete = alias(LaserLabel.__table__, name="incomplete_laser_label")
+    incomplete_image = alias(Image.__table__, name="incomplete_image")
+    has_incomplete = (
+        select(incomplete.c.id)
+        .select_from(
+            incomplete.join(
+                incomplete_image, incomplete.c.image_id == incomplete_image.c.id
+            )
+        )
+        .where(incomplete_image.c.dive_id == Image.dive_id)
+        .where(incomplete.c.superseded == False)
+        .where(
+            (incomplete.c.completed == False)
+            | (incomplete.c.completed.is_(None))  # pylint: disable=no-member
+        )
+        .exists()
+    )
+    query = (
+        select(Image.dive_id)
+        .join(LaserLabel, LaserLabel.image_id == Image.id)
+        .where(LaserLabel.superseded == False)
+        .where(LaserLabel.completed == True)
+        .where(Image.dive_id != None)
+        .where(~has_incomplete)
+        .distinct()
+    )
+    return list((await session.exec(query)).all())
 
 
 @app.get("/api/v1/labels/laser/{image_id}")

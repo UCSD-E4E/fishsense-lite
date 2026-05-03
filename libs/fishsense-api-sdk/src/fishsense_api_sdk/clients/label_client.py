@@ -330,6 +330,18 @@ class LabelClient(ClientBase):
         response.raise_for_status()
         return list(response.json() or [])
 
+    async def get_dives_with_complete_laser_labeling(self) -> List[int]:
+        """Get dive IDs whose laser labeling is fully complete.
+
+        A dive qualifies iff every non-superseded `LaserLabel` on its
+        images has `completed=True` and at least one such label exists.
+        """
+        response = await self._get(
+            "/api/v1/labels/laser/dives-with-complete-labeling"
+        )
+        response.raise_for_status()
+        return list(response.json() or [])
+
     async def put_laser_label(self, image_id: int, laser_label: LaserLabel) -> int:
         """Put a laser label to an image .
 
