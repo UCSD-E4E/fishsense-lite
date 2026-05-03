@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.1.1...fishsense-data-processing-workflow-worker-v2.2.0) (2026-05-03)
+
+
+### Features
+
+* **laser:** supersede flagged laser labels (Phase 2) ([e6064f1](https://github.com/UCSD-E4E/fishsense-lite/commit/e6064f15e7f553cb6970b30d4d0a5566c2fc35ff))
+* **laser:** supersede flagged laser labels (Phase 2) ([e5c44e6](https://github.com/UCSD-E4E/fishsense-lite/commit/e5c44e6b09cbd01189add1f53341530d18282e7c))
+
 ## [2.1.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.1.0...fishsense-data-processing-workflow-worker-v2.1.1) (2026-05-03)
 
 
