@@ -27,8 +27,20 @@ class ValidateLaserLabelsForDiveWorkflow:
 
     @workflow.run
     async def run(self, dive_id: int) -> int:
+        # Three-axis timeout shape:
+        #   * `start_to_close` caps a single attempt — `get_laser_labels`
+        #     on a large dive can return tens of MB of `label_studio_json`
+        #     through Traefik, so 10m gives the SDK 10s-timeout × 3-retry
+        #     ladder room to ride out a slow link without bailing early.
+        #   * `heartbeat_timeout` (1m) fires if the activity stops
+        #     heartbeating mid-fetch — converts a silent hang into a
+        #     diagnosable timeout faster than waiting for start_to_close.
+        #   * `schedule_to_close` (15m) bounds the whole thing including
+        #     any retry the workflow might trigger.
         return await workflow.execute_activity(
             "validate_laser_labels_for_dive_activity",
             args=(dive_id,),
-            schedule_to_close_timeout=timedelta(minutes=5),
+            schedule_to_close_timeout=timedelta(minutes=15),
+            start_to_close_timeout=timedelta(minutes=10),
+            heartbeat_timeout=timedelta(minutes=1),
         )

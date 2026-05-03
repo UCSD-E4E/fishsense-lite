@@ -88,7 +88,10 @@ class SyncLabelStudioLaserLabelsWorkflow:
                         # blocked by the prior firing's success.
                         id=f"validate-laser-labels-{dive_id}",
                         task_queue=DATA_PROCESSING_TASK_QUEUE,
-                        execution_timeout=timedelta(minutes=10),
+                        # Must be ≥ the child activity's
+                        # schedule_to_close (15m); see
+                        # validate_laser_labels_for_dive_workflow.py.
+                        execution_timeout=timedelta(minutes=20),
                         id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
                     )
                 except WorkflowAlreadyStartedError:
