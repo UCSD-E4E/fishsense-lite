@@ -56,24 +56,35 @@ Create and populate are split into separate workflows per stage:
   `create_<stage>_label_studio_project_activity` which idempotently
   finds the LS project by title (`FishSense — <Stage> Labeling`) or
   creates it from a stored labeling-config XML constant. Returns
-  `project_id`. The XML constants in
-  `activities/create_*_label_studio_project_activity.py` are empty
-  placeholders by default — paste from the existing prod LS project
-  (Project Settings -> Labeling Interface -> Code) before relying on
-  the create branch. With existing prod projects already in place,
-  re-running the create workflow just returns their IDs.
+  `project_id`. The four `<STAGE>_LABELING_CONFIG_XML` constants in
+  `activities/create_*_label_studio_project_activity.py` are real
+  pasted-from-prod XML (laser, species, headtail, dive-slate) — re-
+  running create against an existing prod LS project just returns
+  the existing ID via title match. The Create workflow can be invoked
+  on-demand, but `Populate<Stage>LabelStudioProjectWorkflow` also
+  calls the Create activity internally (see below) so a manual
+  Create run is rarely needed.
 * **`Populate<Stage>LabelStudioProjectWorkflow(dive_id)`** — calls
+  `create_<stage>_label_studio_project_activity` first to ensure the
+  canonical project exists (idempotent), then
   `get_active_<stage>_label_studio_project_ids_activity` (SDK query
   for projects with at least one incomplete label of this kind), then
   fans out `populate_<stage>_label_studio_project_activity(dive_id,
-  project_id)` across the returned set with a workflow-level
-  `Semaphore(4)`. No config IDs — populate's target set is computed
-  from SQL. Empty result is a no-op.
+  project_id)` across the **union** of the canonical project ID and
+  the discovery result, deduplicated, with a workflow-level
+  `Semaphore(4)`. The Create-then-discovery union closes the
+  bootstrap chicken-and-egg: a freshly-created project has zero
+  incomplete labels, so the discovery query alone wouldn't pick it
+  up — including its ID in the fan-out set seeds the first round of
+  `LaserLabel` / `SpeciesLabel` / `HeadTailLabel` / `DiveSlateLabel`
+  rows. Steady-state: discovery still picks up legacy/additional
+  projects (e.g. the prod laser project from before Create's XML
+  was checked in).
 
-Both are registered but not scheduled — they're on-demand
-(`temporal workflow start` with a `dive_id` for populate, no args for
-create). The eight workflows are: Create/Populate × Laser/Species/
-HeadTail/DiveSlate.
+Both Create and Populate are registered but not scheduled — they're
+on-demand (`temporal workflow start` with a `dive_id` for populate,
+no args for create). The eight workflows are: Create/Populate ×
+Laser/Species/HeadTail/DiveSlate.
 
 The four populate workflows are also dispatched automatically as
 child workflows from the matching preprocess parent (stages 0.1 →
@@ -179,12 +190,25 @@ but not scheduled (see notes below). Per-stage cohort:
 
 | Stage | Parent cohort definition |
 |---|---|
-| 0.1 | HIGH-priority + at least one image without a completed `LaserLabel` (in any project) |
-| 2   | HIGH-priority + has PREDICTION clusters + at least one image without a completed `SpeciesLabel` |
-| 5.1 | HIGH-priority + at least one `SpeciesLabel.top_three_photos_of_group=True` whose `HeadTailLabel` is incomplete |
-| 9   | HIGH-priority + `dive_slate_id` set + at least one `SpeciesLabel.content_of_image='Slate, Laser on slate'` whose `DiveSlateLabel` is incomplete |
+| 0.1 | HIGH-priority + at least one image without ANY `LaserLabel` row (in any project) |
+| 2   | HIGH-priority + has PREDICTION clusters + at least one image without ANY `SpeciesLabel` row |
+| 5.1 | HIGH-priority + at least one `SpeciesLabel.top_three_photos_of_group=True` whose image carries no `HeadTailLabel` row at all |
+| 9   | HIGH-priority + `dive_slate_id` set + at least one `SpeciesLabel.content_of_image='Slate, Laser on slate'` whose image carries no `DiveSlateLabel` row at all |
 | 13  | HIGH-priority + `dive_slate_id` set + no `LaserExtrinsics` + ≥2 completed `DiveSlateLabel` rows (matches the data-worker activity's `MIN_LASER_POINTS=2` precondition) |
 | 14  | HIGH-priority + has `LaserExtrinsics` + has LABEL_STUDIO clusters with at least one `fish_id is None` |
+
+The four preprocess cohorts (0.1, 2, 5.1, 9) check "no row at all"
+rather than "no completed row" so a dive drops out the moment
+populate seeds even-incomplete sentinel rows for every image. The
+earlier `completed`-only predicate kept dives in the cohort
+indefinitely between populate and labelers finishing — every hourly
+firing re-staged raw `.ORF`s from NAS, re-rectified, and re-archived
+(child-workflow `ALLOW_DUPLICATE_FAILED_ONLY` made the per-image
+work a no-op, but the NAS staging activity ran unconditionally on
+every parent firing). Resolver activities mirror the same predicate:
+`resolve_laser/headtail/slate_preprocess_inputs_activity` filter
+images on "no label row" so the dispatched per-image work matches
+what the cohort selector promised.
 
 Stage 1 (clustering) does NOT yet have a parent — its data-worker
 workflow returns clusters but doesn't write them back to the DB, so
@@ -604,12 +628,17 @@ once available, a few-pixel comparison vs old measurements is the
 gold-standard verification. Don't claim "fully verified" until that
 runs.
 
-### Label Studio create-then-populate bootstrap
+### Label Studio create-then-populate
 
 Eight workflows: Create + Populate × {Laser, Species, HeadTail,
-DiveSlate}. Populate's target set is queried via SDK
-`get_<stage>_label_studio_project_ids(incomplete=True)` — projects
-with at least one not-yet-completed label.
+DiveSlate}. Populate now self-bootstraps: it calls the matching
+Create activity inside the workflow body, then unions the canonical
+project ID with the SDK
+`get_<stage>_label_studio_project_ids(incomplete=True)` discovery
+result, deduplicates, and fans out per-project populate activities
+across the union. The four `<STAGE>_LABELING_CONFIG_XML` constants
+are real pasted-from-prod XML, so Create-on-fresh-deploy stands up a
+usable project immediately.
 
 The populate workflows are dispatched automatically by the four
 preprocess parents (see "Cross-worker orchestration pattern"); manual
@@ -620,17 +649,13 @@ runs (e.g. `populate-laser-393-manual`) so the auto-chain's
 deterministic id (`populate-laser-393`) stays available for future
 hourly firings.
 
-**Bootstrap chicken-and-egg:** a freshly-created project from the
-Create workflow has zero labels and won't be returned by the populate
-query until something seeds it. Existing prod projects (laser=73,
-species=70, headtail=71, dive_slate=66 as of 2026-01-26) already
-have labels, so populate finds them. For brand-new deployments this
-gap will need to be closed — likely by Create pushing a sentinel
-initial label, or by composing Create + Populate into a parent
-workflow. Surface this when rolling out a fresh stage.
-
-The four `<STAGE>_LABELING_CONFIG_XML` constants in
-`activities/create_*_label_studio_project_activity.py` are empty
-placeholders — paste from the existing prod LS project (Project
-Settings → Labeling Interface → Code) before relying on the create
-branch in a fresh deployment.
+Existing prod projects (laser=73, species=70, headtail=71,
+dive_slate=66 as of 2026-01-26) keep being picked up by the
+discovery query as long as they hold incomplete labels. The Create
+title-match returns the canonical project's ID; if a deployment
+ever ends up with the canonical title pointing at a different
+project than the one prod is using, both IDs flow through the
+union and populate fans out across both — which is the right
+behavior during a migration window but not the desired steady
+state. Resolve by aligning `<STAGE>_PROJECT_TITLE` in the Create
+activity with whatever the operator wants as canonical.

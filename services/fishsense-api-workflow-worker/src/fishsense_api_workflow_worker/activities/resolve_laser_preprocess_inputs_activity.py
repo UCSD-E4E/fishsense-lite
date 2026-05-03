@@ -1,14 +1,13 @@
 """Activity to resolve the per-image inputs stage 0.1 needs for a dive.
 
 Returns a fully-populated `PreprocessLaserImagesInput` ready to hand
-to the data-worker's child workflow. Image filter mirrors the
-selector's "image with no completed LaserLabel in any project"
-predicate — multi-row-aware (a single image can carry rows for
-multiple LS projects, and any one completed row counts as
-"labeled"). The previous shape collapsed labels into a
-`{image_id: label}` dict and let iteration order pick which row won,
-which silently dropped "incomplete" images whenever a completed row
-happened to be returned last by the SDK.
+to the data-worker's child workflow. Image filter mirrors the API
+selector's "image with no LaserLabel row at all" predicate — once
+any row exists for an image (even an incomplete one seeded by
+populate), the image's preprocessed JPEG is on the file-exchange and
+shouldn't be regenerated. Without this matching filter the parent
+selector would drop the dive but the resolver would still return
+fresh per-image work for any partially-seeded dive — wasted CPU.
 
 Default bbox is the original notebook constant — kept here rather
 than baked into the data-worker so the api-worker can swap to a
@@ -33,11 +32,15 @@ DEFAULT_LASER_BBOX: List[int] = [1800, 700, 2400, 1600]
 def _select_unlabeled_images(
     images: List[Image], existing_labels: List[LaserLabel]
 ) -> List[Image]:
-    """Return images that have no completed LaserLabel in any project."""
-    completed_image_ids = {
-        label.image_id for label in existing_labels if label.completed
-    }
-    return [image for image in images if image.id not in completed_image_ids]
+    """Return images that have no LaserLabel row at all (in any project).
+
+    Once populate seeds a row for an image (even an incomplete one),
+    the image's preprocessed JPEG is on the file-exchange and the
+    image drops out of the preprocess work set. Matches the API
+    selector predicate.
+    """
+    labeled_image_ids = {label.image_id for label in existing_labels}
+    return [image for image in images if image.id not in labeled_image_ids]
 
 
 @activity.defn

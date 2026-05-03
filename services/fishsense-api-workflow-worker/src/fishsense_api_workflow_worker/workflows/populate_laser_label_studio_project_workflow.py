@@ -15,10 +15,19 @@ class PopulateLaserLabelStudioProjectWorkflow:
     # pylint: disable=too-few-public-methods
     """Workflow to populate every active laser-labeling LS project for one dive.
 
-    Active = "currently has at least one incomplete laser label" — so
-    legacy/retired projects are excluded. The set is computed at run
-    time rather than carried in config; project creation happens in a
-    separate workflow.
+    Target set is the union of:
+      * The canonical project ID returned by
+        `create_laser_label_studio_project_activity` (idempotent
+        title-lookup-or-create, see `LASER_PROJECT_TITLE`).
+      * Every project ID returned by the discovery query (LS projects
+        currently holding at least one incomplete laser label).
+
+    Bootstrap: a freshly-created project has zero LaserLabel rows, so
+    the discovery query alone wouldn't pick it up — calling Create
+    first and unioning its return solves the chicken-and-egg.
+    Steady-state: the discovery query continues to cover legacy/
+    additional projects (e.g. the prod laser project from before the
+    Create XML was first checked in).
     """
 
     @workflow.run
@@ -27,17 +36,18 @@ class PopulateLaserLabelStudioProjectWorkflow:
 
         Returns the total number of tasks imported across all projects.
         """
-        project_ids = await workflow.execute_activity(
+        canonical_project_id = await workflow.execute_activity(
+            "create_laser_label_studio_project_activity",
+            args=(),
+            schedule_to_close_timeout=timedelta(minutes=5),
+        )
+        discovered = await workflow.execute_activity(
             "get_active_laser_label_studio_project_ids_activity",
             args=(),
             schedule_to_close_timeout=timedelta(minutes=5),
         )
 
-        if not project_ids:
-            workflow.logger.info(
-                "No active laser LS projects found; nothing to populate"
-            )
-            return 0
+        project_ids = sorted({canonical_project_id, *discovered})
 
         sem = asyncio.Semaphore(PROJECT_CONCURRENCY)
         results: list[int] = []
