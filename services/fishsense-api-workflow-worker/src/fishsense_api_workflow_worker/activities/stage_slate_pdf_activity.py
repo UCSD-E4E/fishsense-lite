@@ -5,6 +5,10 @@ Stage 9 (slate preprocess) reads the slate PDF off
 each rectified frame. This activity hydrates that endpoint from the
 NAS path stored in `DiveSlate.path`.
 
+Path resolution: same shape as `stage_raw_bytes_for_dive_activity` —
+`DiveSlate.path` in the DB is share-relative; this activity prepends
+`e4e_nas.raw_root_path` before calling FileStation.
+
 Idempotent: HEAD-checks the file-exchange first and skips if the
 PDF is already present.
 """
@@ -31,6 +35,20 @@ def _build_nas_client() -> NasDownloadClient:
         username=settings.e4e_nas.username,
         password=settings.e4e_nas.password,
     )
+
+
+def _resolve_nas_path(relative_path: str) -> str:
+    """Prepend `e4e_nas.raw_root_path` to a share-relative DB path.
+
+    Mirrors the helper in `stage_raw_bytes_for_dive_activity` —
+    duplicated rather than shared because both activities are tiny and
+    a shared util would be the only consumer. Refactor when a third
+    consumer appears.
+    """
+    if relative_path.startswith("/"):
+        return relative_path
+    root = settings.e4e_nas.raw_root_path.rstrip("/")
+    return f"{root}/{relative_path.lstrip('/')}"
 
 
 @activity.defn
@@ -64,12 +82,13 @@ async def stage_slate_pdf_activity(slate_id: int) -> bool:
 
         nas = _build_nas_client()
         with tempfile.TemporaryDirectory() as tmpdir:
+            src_path = _resolve_nas_path(slate.path)
             await asyncio.to_thread(
                 nas.download_to,
-                src_path=slate.path,
+                src_path=src_path,
                 dest_dir=tmpdir,
             )
-            local_path = Path(tmpdir) / os.path.basename(slate.path)
+            local_path = Path(tmpdir) / os.path.basename(src_path)
             data = await asyncio.to_thread(local_path.read_bytes)
             await exchange.upload_slate_pdf(slate_id, data)
 

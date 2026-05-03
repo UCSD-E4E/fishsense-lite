@@ -6,6 +6,13 @@ data-worker child workflow that consumes
 `/api/v1/exchange/raw/{checksum}.ORF`. Idempotent: HEAD-checks the
 file-exchange first and skips checksums already staged.
 
+Path resolution: `image.path` in the DB is stored relative to the
+lab's data-root share (e.g. `2024.06.20.REEF/08_2023/.../P8290052.ORF`);
+this activity prepends `e4e_nas.raw_root_path` (default
+`/fishsense_data/REEF/data`) before calling FileStation. Without the
+prefix, FileStation's download endpoint fails with a 502 (it surfaces
+unresolved paths as Bad Gateway on the download API specifically).
+
 Failure semantics: any per-image failure (NAS missing, HTTP error)
 raises and aborts the whole activity. The schedule's `overlap=SKIP`
 will not retry within the firing, but the next firing of the parent
@@ -57,6 +64,20 @@ def _build_nas_client() -> NasDownloadClient:
     )
 
 
+def _resolve_nas_path(relative_path: str) -> str:
+    """Join `e4e_nas.raw_root_path` with the DB's relative `image.path`.
+
+    The DB convention is share-relative (no leading slash); FileStation
+    requires absolute paths. If the DB path is already absolute, return
+    it unchanged so an operator override (or a future path migration)
+    isn't double-prefixed.
+    """
+    if relative_path.startswith("/"):
+        return relative_path
+    root = settings.e4e_nas.raw_root_path.rstrip("/")
+    return f"{root}/{relative_path.lstrip('/')}"
+
+
 @activity.defn
 async def stage_raw_bytes_for_dive_activity(
     dive_id: int,
@@ -101,12 +122,13 @@ async def stage_raw_bytes_for_dive_activity(
                     return "skipped"
 
                 with tempfile.TemporaryDirectory() as tmpdir:
+                    src_path = _resolve_nas_path(image.path)
                     await asyncio.to_thread(
                         nas.download_to,
-                        src_path=image.path,
+                        src_path=src_path,
                         dest_dir=tmpdir,
                     )
-                    local_path = Path(tmpdir) / os.path.basename(image.path)
+                    local_path = Path(tmpdir) / os.path.basename(src_path)
                     data = await asyncio.to_thread(local_path.read_bytes)
                     await exchange.upload_raw(image.checksum, data)
                     staged += 1
