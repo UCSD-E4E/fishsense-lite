@@ -56,9 +56,22 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
 
     Observe-only: results are logged via `activity.logger`; no
     `superseded` writes happen.
+
+    Heartbeats around the SDK fetch + each compute milestone so a
+    stalled fetch (large dive's `label_studio_json` payload over
+    Traefik) trips `heartbeat_timeout` instead of grinding all the way
+    to `schedule_to_close_timeout` with no signal of where it hung.
     """
+    activity.logger.info(
+        "dive_id=%d validation starting; fetching laser labels", dive_id
+    )
+    activity.heartbeat()
     async with get_fs_client() as fs:
         labels = await fs.labels.get_laser_labels(dive_id) or []
+    activity.logger.info(
+        "dive_id=%d fetched %d laser label rows", dive_id, len(labels)
+    )
+    activity.heartbeat()
 
     if not labels:
         activity.logger.info(
