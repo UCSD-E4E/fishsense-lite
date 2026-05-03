@@ -28,6 +28,7 @@ had; reviving a superseded label requires an explicit operator action
 
 from __future__ import annotations
 
+import asyncio
 from typing import List
 
 import numpy as np
@@ -41,7 +42,16 @@ from fishsense_data_processing_workflow_worker.laser_label_validation.line_fit i
     flag_outliers,
 )
 
-__all__ = ["validate_laser_labels_for_dive_activity"]
+__all__ = ["validate_laser_labels_for_dive_activity", "SUPERSEDE_CONCURRENCY"]
+
+# Bound on concurrent supersede PUTs per dive. A dive with many flagged
+# outliers was blowing `start_to_close` (10m) on sequential PUTs because
+# the SDK's 10s-timeout × 3-retry ladder per PUT compounds linearly. With
+# a cap of 8, the budget is N/8 × per-PUT cost — comfortable for any
+# realistic outlier count. The cap also keeps a single dive from hogging
+# every outbound HTTP slot when multiple validate workflows run in
+# parallel against different dives.
+SUPERSEDE_CONCURRENCY = 8
 
 
 def _positive_xy(labels: List[LaserLabel]) -> tuple[np.ndarray, List[LaserLabel]]:
@@ -139,6 +149,7 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
             return 0
 
         perp = fit.perpendicular_distance(xy[:, 0], xy[:, 1])
+        flagged: list[LaserLabel] = []
         for i, is_outlier in enumerate(outlier_mask):
             if not is_outlier:
                 continue
@@ -157,8 +168,23 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
                 label.label_studio_project_id,
             )
             label.superseded = True
-            await fs.labels.put_laser_label(label.image_id, label)
-            activity.heartbeat()
+            flagged.append(label)
+
+        # Concurrent supersede PUTs, capped by SUPERSEDE_CONCURRENCY.
+        # `asyncio.gather` (return_exceptions=False) raises the first
+        # exception bare — matches the existing failure-propagation
+        # contract (TaskGroup would wrap in ExceptionGroup) — and lets
+        # already-in-flight tasks run to completion, so partial
+        # supersede progress survives a single failed PUT and the
+        # next retry of the activity sees the cleaned subset.
+        sem = asyncio.Semaphore(SUPERSEDE_CONCURRENCY)
+
+        async def _supersede(label: LaserLabel) -> None:
+            async with sem:
+                await fs.labels.put_laser_label(label.image_id, label)
+                activity.heartbeat()
+
+        await asyncio.gather(*(_supersede(label) for label in flagged))
 
     activity.logger.info(
         "dive_id=%d superseded %d/%d positive laser labels",
