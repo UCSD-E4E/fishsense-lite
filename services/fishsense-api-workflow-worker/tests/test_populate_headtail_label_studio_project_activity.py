@@ -118,8 +118,8 @@ def test_build_task_emits_dual_image_and_img_keys(monkeypatch):
     task = sut._build_task(_image(7, "abc123"))  # pylint: disable=protected-access
 
     assert task["data"] == {"image": expected_url, "img": expected_url}
-    assert task["annotations"] == []
-    assert task["predictions"] == []
+    assert not task["annotations"]
+    assert not task["predictions"]
 
 
 def _make_fs_client(
