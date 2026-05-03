@@ -17,6 +17,7 @@ import logging
 from contextlib import contextmanager
 from urllib.parse import urlparse
 
+from synology_api.base_api import BaseApi
 from synology_api.exceptions import FileStationError
 from synology_api.filestation import FileStation
 
@@ -52,6 +53,16 @@ class NasClient:
             raise ValueError(
                 f"NAS url must include hostname + port; got {nas_url!r}"
             )
+        # synology-api 0.8.x caches `Authentication` on a class-level
+        # attribute (`BaseApi.shared_session`) and every subsequent
+        # `FileStation()` constructor reuses it instead of logging in
+        # fresh. After DSM's idle session timeout (default ~30 min)
+        # the SID server-side is gone but the worker keeps sending
+        # it, surfacing as "Invalid session / SID not found" on the
+        # very next FileStation call. Reset before construction so
+        # each client gets a real login. See the 2026-05-03 backup
+        # worker incident.
+        BaseApi.shared_session = None
         self._fs = FileStation(
             parsed.hostname,
             parsed.port,
