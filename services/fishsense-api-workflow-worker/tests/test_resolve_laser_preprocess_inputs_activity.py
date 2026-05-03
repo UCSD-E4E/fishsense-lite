@@ -189,15 +189,17 @@ async def test_returns_empty_checksums_when_only_incomplete_labels(monkeypatch):
 async def test_image_with_completed_and_incomplete_rows_treated_as_labeled(
     monkeypatch,
 ):
-    """Multi-row state: one image carries both a completed row in
-    project 43 and an incomplete sentinel in project NULL. Either
-    row is sufficient under the new "any row excludes" predicate."""
+    """Multi-row state: one image carries a completed row in project
+    43, an incomplete sentinel in project NULL, plus an incomplete
+    real-project row. Sentinels are ignored but the real-project
+    rows are sufficient to exclude.
+    """
     images = [_image(1, "aaa"), _image(2, "bbb")]
     labels = [
-        # Image 1: completed in 43 + incomplete sentinel.
+        # Image 1: completed real-project row + sentinel (sentinel ignored).
         _label(1, completed=True, project_id=43),
         _label(1, completed=False, project_id=None),
-        # Image 2: only an incomplete row.
+        # Image 2: incomplete real-project row.
         _label(2, completed=False, project_id=43),
     ]
     fs = _make_fs(
@@ -212,8 +214,40 @@ async def test_image_with_completed_and_incomplete_rows_treated_as_labeled(
         sut.resolve_laser_preprocess_inputs_activity, 42
     )
 
-    # Both images carry at least one row -> both excluded.
+    # Both images carry at least one non-sentinel row -> both excluded.
     assert result.image_checksums == []
+
+
+@pytest.mark.asyncio
+async def test_image_with_only_null_project_sentinel_treated_as_unlabeled(
+    monkeypatch,
+):
+    """NULL-`project_id` rows are legacy sentinels (~2000 of them in
+    prod). The resolver must ignore them when deciding whether an
+    image needs preprocessing — otherwise prod's existing sentinel
+    population would permanently drain the work set. Mirrors the
+    API selector predicate.
+    """
+    images = [_image(1, "aaa"), _image(2, "bbb")]
+    labels = [
+        # Image 1: only a sentinel row -> needs work.
+        _label(1, completed=False, project_id=None),
+        # Image 2: real-project incomplete row -> excluded.
+        _label(2, completed=False, project_id=99),
+    ]
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_intrinsics(),
+        images=images,
+        laser_labels=labels,
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(
+        sut.resolve_laser_preprocess_inputs_activity, 42
+    )
+
+    assert result.image_checksums == ["aaa"]
 
 
 @pytest.mark.asyncio

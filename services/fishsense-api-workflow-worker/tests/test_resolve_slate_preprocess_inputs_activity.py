@@ -87,12 +87,17 @@ def _species(image_id: int, *, content: str | None) -> SpeciesLabel:
     )
 
 
-def _slate_label(image_id: int, *, completed: bool) -> DiveSlateLabel:
+def _slate_label(
+    image_id: int,
+    *,
+    completed: bool,
+    project_id: Optional[int] = 66,
+) -> DiveSlateLabel:
     return DiveSlateLabel(
         id=None,
         image_id=image_id,
         label_studio_task_id=image_id * 10,
-        label_studio_project_id=66,
+        label_studio_project_id=project_id,
         image_url=None,
         updated_at=None,
         completed=completed,
@@ -181,6 +186,37 @@ async def test_returns_only_slate_marked_without_any_slate_label(monkeypatch):
     assert result.reference_points == [(0.0, 0.0), (1.0, 1.0)]
     assert result.camera_matrix == _K.tolist()
     assert result.distortion_coefficients == _D.tolist()
+
+
+@pytest.mark.asyncio
+async def test_image_with_only_null_project_sentinel_treated_as_unlabeled(
+    monkeypatch,
+):
+    """NULL-`project_id` DiveSlateLabel rows are legacy sentinels — the
+    resolver must ignore them when deciding whether a slate-marked
+    image needs preprocessing. Matches the API selector predicate."""
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_intrinsics(),
+        slates=[_slate(7)],
+        images=[_image(1, "aaa"), _image(2, "bbb")],
+        species=[
+            _species(1, content=SLATE),
+            _species(2, content=SLATE),
+        ],
+        slate_labels=[
+            _slate_label(1, completed=False, project_id=None),
+            _slate_label(2, completed=False, project_id=66),
+        ],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    result = await ActivityEnvironment().run(
+        sut.resolve_slate_preprocess_inputs_activity, 42
+    )
+
+    # Image 1: only a sentinel -> still needs work.
+    # Image 2: real-project row -> excluded.
+    assert result.image_checksums == ["aaa"]
 
 
 @pytest.mark.asyncio

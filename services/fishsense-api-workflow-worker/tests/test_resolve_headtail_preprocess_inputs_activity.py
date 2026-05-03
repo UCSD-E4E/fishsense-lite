@@ -74,12 +74,17 @@ def _species(image_id: int, *, top_three: bool) -> SpeciesLabel:
     )
 
 
-def _headtail(image_id: int, *, completed: bool) -> HeadTailLabel:
+def _headtail(
+    image_id: int,
+    *,
+    completed: bool,
+    project_id: Optional[int] = 71,
+) -> HeadTailLabel:
     return HeadTailLabel(
         id=None,
         image_id=image_id,
         label_studio_task_id=image_id * 10,
-        label_studio_project_id=71,
+        label_studio_project_id=project_id,
         image_url=None,
         updated_at=None,
         completed=completed,
@@ -163,6 +168,37 @@ async def test_returns_only_top_three_without_any_headtail(monkeypatch):
     assert result.dive_id == 42
     assert result.camera_matrix == _K.tolist()
     assert result.distortion_coefficients == _D.tolist()
+
+
+@pytest.mark.asyncio
+async def test_image_with_only_null_project_sentinel_treated_as_unlabeled(
+    monkeypatch,
+):
+    """NULL-`project_id` HeadTailLabel rows are legacy sentinels — the
+    resolver must ignore them when deciding whether a top-three image
+    needs preprocessing. Matches the API selector predicate."""
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_intrinsics(),
+        images=[_image(1, "aaa"), _image(2, "bbb")],
+        species=[
+            _species(1, top_three=True),
+            _species(2, top_three=True),
+        ],
+        headtail=[
+            _headtail(1, completed=False, project_id=None),
+            _headtail(2, completed=False, project_id=71),
+        ],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(
+        sut.resolve_headtail_preprocess_inputs_activity, 42
+    )
+
+    # Image 1: only a sentinel -> still needs work.
+    # Image 2: real-project row -> excluded.
+    assert result.image_checksums == ["aaa"]
 
 
 @pytest.mark.asyncio

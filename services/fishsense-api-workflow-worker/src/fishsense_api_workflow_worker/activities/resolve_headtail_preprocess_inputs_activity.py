@@ -35,7 +35,13 @@ async def resolve_headtail_preprocess_inputs_activity(
 
         species_labels = await fs.labels.get_species_labels(dive_id) or []
         existing_headtail = await fs.labels.get_headtail_labels(dive_id) or []
-        labeled_ids = {label.image_id for label in existing_headtail}
+        # Skip sentinel rows (project_id IS NULL) — see API selector
+        # docstring for rationale.
+        labeled_ids = {
+            label.image_id
+            for label in existing_headtail
+            if label.label_studio_project_id is not None
+        }
 
         target_image_ids = [
             label.image_id
