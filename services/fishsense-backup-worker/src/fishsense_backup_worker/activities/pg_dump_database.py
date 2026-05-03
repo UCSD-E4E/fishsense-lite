@@ -5,6 +5,14 @@ The dump-and-upload are intentionally one activity. If we split them,
 the tmpfile lives only on the worker pod that ran pg_dump — a retry
 on a different pod wouldn't see it. Keeping them together also means
 a partial dump never reaches the NAS.
+
+Each invocation gets its own `TemporaryDirectory`, so concurrent
+per-DB activities (the workflow fans out across `fishsense`,
+`superset`, `temporal_db` in parallel) can't collide on a shared
+`/tmp/<timestamp>.dump` filename. The 2026-05-03 incident traced to
+the prior shape: all three activities' rename targets resolved to
+the same path, the fastest-finishing one's `finally` deleted it,
+and the others raised `FileNotFoundError` on upload.
 """
 
 import asyncio
@@ -38,15 +46,13 @@ def _dump_and_upload(*, db_name: str, nas_root_path: str) -> str:
     filename = backup_filename(datetime.now(tz=timezone.utc))
     nas_dir = f"{nas_root_path.rstrip('/')}/{db_name}"
 
-    # tempfile.NamedTemporaryFile with delete=False so we can pass the
-    # path to pg_dump (which won't reuse our open handle); we delete
-    # in finally.
-    with tempfile.NamedTemporaryFile(
-        prefix=f"{db_name}-", suffix=".dump", delete=False
-    ) as tmp:
-        local_path = tmp.name
+    with tempfile.TemporaryDirectory(prefix=f"backup-{db_name}-") as tmpdir:
+        # The local path's basename is what `synology-api`'s
+        # `upload_file` preserves on the NAS, so write directly to
+        # the canonical filename inside our isolated tempdir — no
+        # rename, no shared `/tmp` path collision possible.
+        local_path = os.path.join(tmpdir, filename)
 
-    try:
         run_pg_dump(
             db_name=db_name,
             host=settings.postgres.host,
@@ -56,13 +62,6 @@ def _dump_and_upload(*, db_name: str, nas_root_path: str) -> str:
             output_path=local_path,
         )
 
-        # Rename the tmpfile to the final filename so the NAS upload
-        # carries the canonical name (synology-api's upload preserves
-        # the local file's basename).
-        renamed = os.path.join(os.path.dirname(local_path), filename)
-        os.replace(local_path, renamed)
-        local_path = renamed
-
         nas = NasBackupClient(
             nas_url=settings.e4e_nas.url,
             username=settings.e4e_nas.username,
@@ -70,11 +69,6 @@ def _dump_and_upload(*, db_name: str, nas_root_path: str) -> str:
         )
         nas.upload(dest_dir=nas_dir, src_file_path=local_path)
         return nas_dir
-    finally:
-        try:
-            os.remove(local_path)
-        except FileNotFoundError:
-            pass
 
 
 @activity.defn
