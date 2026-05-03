@@ -44,8 +44,12 @@ def _select_target_image_ids(
 
 
 def _build_task(image: Image) -> dict:
+    """Build an LS task. Emits both `image` and `img` keys to satisfy
+    legacy LS labeling-config XML across prod projects — see
+    `populate_laser_label_studio_project_activity._build_task`."""
+    url = build_image_url(DIVE_SLATE_FOLDER, image.checksum)
     return {
-        "data": {"image": build_image_url(DIVE_SLATE_FOLDER, image.checksum)},
+        "data": {"image": url, "img": url},
         "predictions": [],
         "annotations": [],
     }

@@ -89,19 +89,26 @@ def test_select_unlabeled_handles_multi_row_state():
     assert [img.id for img in result] == [2]
 
 
-def test_build_task_uses_configured_url_base(monkeypatch):
+def test_build_task_uses_configured_url_base_and_dual_keys(monkeypatch):
+    """Pinned: the LS task `data` must carry BOTH `image` and `img`
+    keys with identical URLs. Legacy prod LS projects' labeling-config
+    XML uses different conventions across stages and across project
+    generations — emitting only one key gets `import_tasks` rejected
+    with HTTP 400 ('img key is expected in task data') against the
+    older projects. Reverting either key would re-introduce the
+    populate regression observed on 2026-05-03.
+    """
     monkeypatch.setenv(
         "E4EFS_LABEL_STUDIO__IMAGE_URL_BASE", "https://orchestrator.example.com"
     )
     from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
     cfg.settings.reload()
 
+    expected_url = "https://orchestrator.example.com/api/v1/data/preprocess_jpeg/abc123"
     task = sut._build_task(_image(7, "abc123"))  # pylint: disable=protected-access
 
     assert task == {
-        "data": {
-            "image": "https://orchestrator.example.com/api/v1/data/preprocess_jpeg/abc123"
-        },
+        "data": {"image": expected_url, "img": expected_url},
         "annotations": [],
     }
 

@@ -47,8 +47,13 @@ def _select_unlabeled_images(
 
 
 def _build_task(image: Image) -> dict:
+    """Build an LS task. Emits both `image` and `img` keys to satisfy
+    legacy LS labeling-config XML across prod projects — see the
+    docstring on `populate_laser_label_studio_project_activity._build_task`
+    for the rationale. Extra keys are inert in LS."""
+    url = build_image_url(SPECIES_FOLDER, image.checksum)
     return {
-        "data": {"image": build_image_url(SPECIES_FOLDER, image.checksum)},
+        "data": {"image": url, "img": url},
         "predictions": [],
         "annotations": [],
     }

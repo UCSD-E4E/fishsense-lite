@@ -103,6 +103,25 @@ def test_select_targets_filters_by_top_three_and_drops_completed():
     assert [img.id for img in selected] == [3]
 
 
+def test_build_task_emits_dual_image_and_img_keys(monkeypatch):
+    """Pinned: dual-key `image` + `img` shape for legacy LS project
+    XML compatibility — see laser populate test of the same name.
+    Reverting either key would re-introduce the populate regression
+    observed on 2026-05-03."""
+    monkeypatch.setenv(
+        "E4EFS_LABEL_STUDIO__IMAGE_URL_BASE", "https://orchestrator.example.com"
+    )
+    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    cfg.settings.reload()
+
+    expected_url = "https://orchestrator.example.com/api/v1/data/headtail_jpeg/abc123"
+    task = sut._build_task(_image(7, "abc123"))  # pylint: disable=protected-access
+
+    assert task["data"] == {"image": expected_url, "img": expected_url}
+    assert task["annotations"] == []
+    assert task["predictions"] == []
+
+
 def _make_fs_client(
     species_labels: List[SpeciesLabel],
     existing_headtail: List[HeadTailLabel],
