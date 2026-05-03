@@ -7,6 +7,7 @@ emits a structured OUTLIER log line for each, and calls
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import List
 from unittest.mock import AsyncMock, MagicMock
@@ -310,6 +311,68 @@ async def test_inlier_fraction_strictly_improves_after_supersede(
     # point is an inlier).
     assert second_fraction > first_fraction
     assert second_fraction == pytest.approx(1.0)
+
+
+@pytest.mark.asyncio
+async def test_supersede_writes_run_concurrently(monkeypatch):
+    """Phase 2 PUTs must run concurrently (not sequentially). A dive
+    with many flagged outliers was blowing `start_to_close` on
+    sequential PUTs through Traefik — the supersede loop has to
+    parallelize, capped at `SUPERSEDE_CONCURRENCY` so we don't
+    saturate the data-worker's outbound HTTP slots or hammer the API.
+
+    Side_effect is gated on an `asyncio.Event` so the test can
+    observe `peak_in_flight`: with sequential it would be 1; with
+    unbounded it would be `n_outliers`; with the cap it should equal
+    `SUPERSEDE_CONCURRENCY`."""
+    # 16 outliers, twice the cap, so we can observe saturation rather
+    # than just "more than one in flight."
+    n_outliers = 2 * sut.SUPERSEDE_CONCURRENCY
+    labels = _colinear_labels(60)
+    outlier_idxs = list(range(0, n_outliers * 2, 2))[:n_outliers]
+    for idx in outlier_idxs:
+        labels[idx].y = labels[idx].y + 50.0  # type: ignore[operator]
+
+    in_flight = 0
+    peak_in_flight = 0
+    release = asyncio.Event()
+
+    async def gated_put(_image_id: int, label: LaserLabel) -> int:
+        nonlocal in_flight, peak_in_flight
+        in_flight += 1
+        peak_in_flight = max(peak_in_flight, in_flight)
+        try:
+            await release.wait()
+        finally:
+            in_flight -= 1
+        return label.id or 0
+
+    fs = MagicMock()
+    fs.__aenter__ = AsyncMock(return_value=fs)
+    fs.__aexit__ = AsyncMock(return_value=None)
+    fs.labels = MagicMock()
+    fs.labels.get_laser_labels = AsyncMock(return_value=labels)
+    fs.labels.put_laser_label = AsyncMock(side_effect=gated_put)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    env = ActivityEnvironment()
+    activity_task = asyncio.create_task(
+        env.run(sut.validate_laser_labels_for_dive_activity, 99)
+    )
+    # Let the activity get going and saturate the cap. The PUT
+    # side_effect blocks on `release`, so this sleep is bounded by
+    # how long the line-fit + log-emission takes (sub-second on this
+    # fixture size).
+    await asyncio.sleep(0.5)
+    assert peak_in_flight == sut.SUPERSEDE_CONCURRENCY, (
+        f"peak in flight was {peak_in_flight}, "
+        f"expected exactly {sut.SUPERSEDE_CONCURRENCY}"
+    )
+    release.set()
+    result = await activity_task
+
+    assert result == n_outliers
+    assert fs.labels.put_laser_label.await_count == n_outliers
 
 
 @pytest.mark.asyncio
