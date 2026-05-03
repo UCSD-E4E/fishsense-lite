@@ -1,8 +1,8 @@
-"""Unit tests for validate_laser_labels_for_dive_activity (observe-only).
+"""Unit tests for validate_laser_labels_for_dive_activity.
 
 Pins the activity's contract: returns the count of flagged outliers,
-emits structured log lines for each, and never mutates the SDK side
-(no `put_laser_label` calls — Phase 1 is observe-only).
+emits a structured OUTLIER log line for each, and calls
+`put_laser_label` with `superseded=True` once per flagged label.
 """
 
 from __future__ import annotations
@@ -51,10 +51,10 @@ def _make_fs(labels: List[LaserLabel]):
     fs.__aexit__ = AsyncMock(return_value=None)
     fs.labels = MagicMock()
     fs.labels.get_laser_labels = AsyncMock(return_value=labels)
+    # put_laser_label echoes the row id back like the real endpoint
+    # (status_code=201, body is the persisted row id).
     fs.labels.put_laser_label = AsyncMock(
-        side_effect=AssertionError(
-            "Phase 1 must not write back to fishsense-api"
-        )
+        side_effect=lambda image_id, label: label.id or 0
     )
     return fs
 
@@ -96,13 +96,16 @@ async def test_returns_zero_below_minimum_positives(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_clean_dive_flags_no_outliers(monkeypatch):
+async def test_clean_dive_flags_no_outliers_and_does_not_write(monkeypatch):
     fs = _make_fs(labels=_colinear_labels(40))
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
 
     env = ActivityEnvironment()
     result = await env.run(sut.validate_laser_labels_for_dive_activity, 99)
     assert result == 0
+    # No outliers → no writes. Pins that the activity doesn't ever
+    # supersede a clean dive's labels.
+    fs.labels.put_laser_label.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -127,16 +130,45 @@ async def test_outlier_label_is_flagged_and_reported(monkeypatch, caplog):
 
 
 @pytest.mark.asyncio
-async def test_does_not_call_put_laser_label(monkeypatch):
-    """Phase 1 invariant: observe-only. The mocked put_laser_label
-    raises AssertionError if invoked, so getting through this test
-    proves the activity didn't try to write."""
-    labels = _colinear_labels(30)
-    labels[2].y = labels[2].y + 80.0  # type: ignore[operator]
+async def test_supersedes_each_flagged_outlier(monkeypatch):
+    """Phase 2 invariant: every flagged outlier gets `superseded=True`
+    written back via `put_laser_label`. Two outliers in this fixture so
+    the assertion catches both an off-by-one and a "wrote only the
+    first" regression."""
+    labels = _colinear_labels(40)
+    labels[3].y = labels[3].y + 60.0  # type: ignore[operator]
+    labels[17].y = labels[17].y - 70.0  # type: ignore[operator]
     fs = _make_fs(labels)
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
 
     env = ActivityEnvironment()
-    await env.run(sut.validate_laser_labels_for_dive_activity, 99)
+    result = await env.run(sut.validate_laser_labels_for_dive_activity, 99)
 
-    fs.labels.put_laser_label.assert_not_called()
+    assert result == 2
+    # One PUT per flagged outlier, each carrying the matching image_id
+    # and a `superseded=True` body.
+    assert fs.labels.put_laser_label.await_count == 2
+    written_image_ids = {
+        call.args[0] for call in fs.labels.put_laser_label.call_args_list
+    }
+    assert written_image_ids == {labels[3].image_id, labels[17].image_id}
+    for call in fs.labels.put_laser_label.call_args_list:
+        _, written_label = call.args
+        assert written_label.superseded is True
+
+
+@pytest.mark.asyncio
+async def test_supersede_failure_propagates(monkeypatch):
+    """If the writeback raises, the activity raises so Temporal retries
+    the whole run rather than silently leaving outliers in place."""
+    labels = _colinear_labels(30)
+    labels[2].y = labels[2].y + 80.0  # type: ignore[operator]
+    fs = _make_fs(labels)
+    fs.labels.put_laser_label = AsyncMock(
+        side_effect=RuntimeError("simulated PUT failure")
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    env = ActivityEnvironment()
+    with pytest.raises(RuntimeError, match="simulated PUT failure"):
+        await env.run(sut.validate_laser_labels_for_dive_activity, 99)

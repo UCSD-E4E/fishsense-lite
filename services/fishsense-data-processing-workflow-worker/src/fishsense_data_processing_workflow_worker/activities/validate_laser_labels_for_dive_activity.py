@@ -1,15 +1,29 @@
-"""Per-dive laser-label validation (observe-only).
+"""Per-dive laser-label validation.
 
 Fetches the dive's non-superseded `LaserLabel`s from fishsense-api,
-fits a RANSAC line through the positives, and logs any labels whose
-perpendicular distance exceeds the per-dive outlier threshold. The
-laser rig is fixed across a dive, so all positive laser observations
-should be colinear in image space — outliers are likely mislabeled.
+fits a RANSAC line through the positives, and supersedes any label
+whose perpendicular distance exceeds the per-dive outlier threshold.
+The laser rig is fixed across a dive, so all positive laser
+observations should be colinear in image space — outliers are
+mislabeled and shouldn't feed downstream stage 13 calibration / stage
+14 measurement.
 
-Phase 1 (this commit): structured logging only. No `superseded`
-writes. Once the threshold is calibrated against real prod label
-distributions, a follow-up commit flips the writeback on. See the
-"Open follow-ups" entry in the repo-root CLAUDE.md.
+Phase 2 (writeback enabled): each flagged label is updated with
+`superseded=True` via `put_laser_label`. The endpoint is an upsert by
+primary key, so re-runs on a dive whose outliers have already been
+superseded are no-ops at the SDK level — `get_laser_labels` filters
+on `superseded=False` server-side, so the second run sees a smaller
+population, refits the line, and may flag additional borderline
+labels that are now visible as outliers relative to the cleaned
+inlier set. That iterative tightening is intentional.
+
+Note on labeler corrections: once a `LaserLabel` row is superseded,
+`get_laser_label_by_label_studio_id` filters it out, so a labeler
+re-opening the same Label Studio task and saving a corrected position
+will NOT propagate back to the DB through the existing sync path.
+This is the same dead-letter semantic that `superseded` has always
+had; reviving a superseded label requires an explicit operator action
+(or a future workflow that diffs LS state against superseded rows).
 """
 
 from __future__ import annotations
@@ -50,17 +64,21 @@ def _positive_xy(labels: List[LaserLabel]) -> tuple[np.ndarray, List[LaserLabel]
 
 @activity.defn
 async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
-    """Run RANSAC line-fit validation for `dive_id`. Returns the number
-    of labels flagged as outliers (0 when the line isn't confident or
-    there aren't enough positives to fit).
+    """Run RANSAC line-fit validation for `dive_id` and supersede any
+    flagged outliers. Returns the number of labels superseded (0 when
+    the line isn't confident or there aren't enough positives to fit).
 
-    Observe-only: results are logged via `activity.logger`; no
-    `superseded` writes happen.
+    Heartbeats around the SDK fetch + each compute milestone + each
+    supersede write so a stalled call (large dive's `label_studio_json`
+    payload over Traefik, slow PUT, etc.) trips `heartbeat_timeout`
+    instead of grinding to `schedule_to_close_timeout` with no signal
+    of where it hung.
 
-    Heartbeats around the SDK fetch + each compute milestone so a
-    stalled fetch (large dive's `label_studio_json` payload over
-    Traefik) trips `heartbeat_timeout` instead of grinding all the way
-    to `schedule_to_close_timeout` with no signal of where it hung.
+    Failure semantics: if any individual `put_laser_label` raises, the
+    activity raises and Temporal retries the whole activity. The
+    activity is idempotent at the dive level — already-superseded
+    labels are filtered out by `get_laser_labels` server-side, so a
+    retry sees a smaller population and re-runs the line fit cleanly.
     """
     activity.logger.info(
         "dive_id=%d validation starting; fetching laser labels", dive_id
@@ -68,80 +86,82 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
     activity.heartbeat()
     async with get_fs_client() as fs:
         labels = await fs.labels.get_laser_labels(dive_id) or []
-    activity.logger.info(
-        "dive_id=%d fetched %d laser label rows", dive_id, len(labels)
-    )
-    activity.heartbeat()
-
-    if not labels:
         activity.logger.info(
-            "dive_id=%d has no laser labels; skipping validation", dive_id
+            "dive_id=%d fetched %d laser label rows", dive_id, len(labels)
         )
-        return 0
+        activity.heartbeat()
 
-    xy, positives = _positive_xy(labels)
-    if xy.shape[0] < MIN_POINTS_FOR_LINE:
+        if not labels:
+            activity.logger.info(
+                "dive_id=%d has no laser labels; skipping validation", dive_id
+            )
+            return 0
+
+        xy, positives = _positive_xy(labels)
+        if xy.shape[0] < MIN_POINTS_FOR_LINE:
+            activity.logger.info(
+                "dive_id=%d has %d positive laser labels (<%d); "
+                "skipping line fit",
+                dive_id,
+                xy.shape[0],
+                MIN_POINTS_FOR_LINE,
+            )
+            return 0
+
+        fit = fit_dive_line(xy)
+        if fit is None:
+            activity.logger.info(
+                "dive_id=%d: line fit returned None despite %d positives "
+                "(unexpected; check inputs)",
+                dive_id,
+                xy.shape[0],
+            )
+            return 0
+
         activity.logger.info(
-            "dive_id=%d has %d positive laser labels (<%d); "
-            "skipping line fit",
+            "dive_id=%d line fit: n=%d inliers=%d (%.0f%%) "
+            "residual_std=%.2fpx label_noise_mad=%.2fpx "
+            "line_confidence=%.1f confident=%s",
             dive_id,
-            xy.shape[0],
-            MIN_POINTS_FOR_LINE,
+            fit.n_points,
+            fit.inlier_count,
+            100.0 * fit.inlier_fraction,
+            fit.residual_std,
+            fit.label_noise_mad,
+            fit.line_confidence,
+            fit.is_confident,
         )
-        return 0
 
-    fit = fit_dive_line(xy)
-    if fit is None:
-        activity.logger.info(
-            "dive_id=%d: line fit returned None despite %d positives "
-            "(unexpected; check inputs)",
-            dive_id,
-            xy.shape[0],
-        )
-        return 0
+        outlier_mask = flag_outliers(xy, fit)
+        n_outliers = int(outlier_mask.sum())
+        if n_outliers == 0:
+            activity.logger.info("dive_id=%d: no outlier laser labels", dive_id)
+            return 0
+
+        perp = fit.perpendicular_distance(xy[:, 0], xy[:, 1])
+        for i, is_outlier in enumerate(outlier_mask):
+            if not is_outlier:
+                continue
+            label = positives[i]
+            activity.logger.info(
+                "dive_id=%d OUTLIER laser_label_id=%s image_id=%s "
+                "x=%.1f y=%.1f perp=%.2fpx label_studio_task_id=%s "
+                "label_studio_project_id=%s -> superseded=True",
+                dive_id,
+                label.id,
+                label.image_id,
+                float(label.x),
+                float(label.y),
+                float(perp[i]),
+                label.label_studio_task_id,
+                label.label_studio_project_id,
+            )
+            label.superseded = True
+            await fs.labels.put_laser_label(label.image_id, label)
+            activity.heartbeat()
 
     activity.logger.info(
-        "dive_id=%d line fit: n=%d inliers=%d (%.0f%%) "
-        "residual_std=%.2fpx label_noise_mad=%.2fpx "
-        "line_confidence=%.1f confident=%s",
-        dive_id,
-        fit.n_points,
-        fit.inlier_count,
-        100.0 * fit.inlier_fraction,
-        fit.residual_std,
-        fit.label_noise_mad,
-        fit.line_confidence,
-        fit.is_confident,
-    )
-
-    outlier_mask = flag_outliers(xy, fit)
-    n_outliers = int(outlier_mask.sum())
-    if n_outliers == 0:
-        activity.logger.info("dive_id=%d: no outlier laser labels", dive_id)
-        return 0
-
-    perp = fit.perpendicular_distance(xy[:, 0], xy[:, 1])
-    for i, is_outlier in enumerate(outlier_mask):
-        if not is_outlier:
-            continue
-        label = positives[i]
-        activity.logger.info(
-            "dive_id=%d OUTLIER laser_label_id=%s image_id=%s "
-            "x=%.1f y=%.1f perp=%.2fpx label_studio_task_id=%s "
-            "label_studio_project_id=%s "
-            "(would set superseded=True if writeback were enabled)",
-            dive_id,
-            label.id,
-            label.image_id,
-            float(label.x),
-            float(label.y),
-            float(perp[i]),
-            label.label_studio_task_id,
-            label.label_studio_project_id,
-        )
-
-    activity.logger.info(
-        "dive_id=%d flagged %d/%d positive laser labels as outliers",
+        "dive_id=%d superseded %d/%d positive laser labels",
         dive_id,
         n_outliers,
         xy.shape[0],

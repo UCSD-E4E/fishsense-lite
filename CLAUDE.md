@@ -660,19 +660,35 @@ behavior during a migration window but not the desired steady
 state. Resolve by aligning `<STAGE>_PROJECT_TITLE` in the Create
 activity with whatever the operator wants as canonical.
 
-### Laser-label validation (Phase 1: observe-only)
+### Laser-label validation
 
-`SyncLabelStudioLaserLabelsWorkflow` (api-worker) now dispatches a
+`SyncLabelStudioLaserLabelsWorkflow` (api-worker) dispatches a
 `ValidateLaserLabelsForDiveWorkflow` child on the data-worker for
 each dive whose laser labeling is fully complete (every non-superseded
 `LaserLabel` has `completed=True`). The child fits a per-dive RANSAC
 line through the positives, flags labels >3σ off it (with a 1-px MAD
-floor for tight small-N dives), and **logs** outliers. **No
-`superseded` writes happen yet** — Phase 1 is observe-only so the
-threshold can be calibrated against real prod label distributions
-before mass-flagging.
+floor for tight small-N dives), and **supersedes each flagged label**
+by writing `superseded=True` back through `put_laser_label`.
 
-Two open follow-ups before Phase 2 (writeback):
+Iterative-cleanup property: `get_laser_labels` filters
+`superseded=False` server-side, so a re-run on the same dive sees a
+smaller population, refits the line, and may flag additional
+borderline labels that are now visible as outliers relative to the
+cleaned inlier set. The hourly schedule re-runs against complete
+dives, so this naturally tightens over time. Each per-dive run is
+idempotent at the dive level — a partial failure mid-supersede leaves
+the previously-superseded labels in place, and the next run picks up
+where it left off.
+
+Stage 13 + 14 consequences: laser calibration and fish measurement
+both consume `LaserLabel` rows via the `superseded=False` filter, so
+once a label is superseded it disappears from those pipelines too.
+That's the intended behavior — bad labels should not feed
+calibration. If a calibration was already computed using a
+later-superseded label, the calibration row stays as-is until
+something explicitly recomputes it; there's no automatic invalidation.
+
+Open follow-up:
 
 1. **Replace the vendored copy of `line_fit.py` with a real
    dependency.** The kernel was duplicated from
@@ -684,24 +700,21 @@ Two open follow-ups before Phase 2 (writeback):
    data-processing worker's `pyproject.toml`. The vendored file has a
    header comment pointing at the source.
 
-2. **Calibrate the threshold + flip writeback on.** Phase 1 runs every
-   hour with the laser sync. After ~1 week of observe-only logs:
-   - Sample the OUTLIER log lines and confirm flagged labels are
-     genuinely wrong (cross-reference the LS task URL via
-     `label_studio_project_id` + `label_studio_task_id`).
-   - If the false-flag rate is acceptable, modify
-     `validate_laser_labels_for_dive_activity` to set
-     `superseded=True` on each flagged label via
-     `fs.labels.put_laser_label`, and remove the
-     "would set superseded=True" suffix from the OUTLIER log line.
-   - If the false-flag rate is not acceptable, raise the
-     `DEFAULT_OUTLIER_SIGMA` (currently 3.0) or the
-     `LABEL_NOISE_MAD_FLOOR_PX` (currently 1.0) in the vendored
-     `line_fit.py` based on what the logs show.
+Tuning knobs if the writeback turns out too aggressive (false-positive
+rate too high, watch the OUTLIER log lines):
 
-   Note: stage-13 calibration consumes laser labels via the
-   `superseded=False` filter on `get_laser_labels`, so once writeback
-   is enabled an outlier-flagged label will automatically drop out of
-   subsequent calibration runs. That's the intended behavior, but the
-   first writeback run will retroactively change the input set for any
-   re-calibration — coordinate the deploy.
+- Raise `DEFAULT_OUTLIER_SIGMA` (currently 3.0) — straightforward
+  threshold loosening.
+- Raise `LABEL_NOISE_MAD_FLOOR_PX` (currently 1.0) — protects
+  small-N dives where MAD collapses sub-pixel.
+- Raise `LINE_CONFIDENCE_THRESHOLD` (currently 5.0) — refuses to
+  supersede on dives whose line geometry isn't well-determined.
+  `flag_outliers` already returns all-False for non-confident fits,
+  so the practical effect is "skip more dives entirely."
+
+Reviving a superseded label (e.g., after a labeler re-opens the LS
+task and corrects the position) requires an explicit operator action
+— `get_laser_label_by_label_studio_id` filters out superseded rows so
+the existing sync path won't propagate the correction back to the DB.
+That's the same dead-letter semantic `superseded` has had for every
+other label kind; no new tooling here.
