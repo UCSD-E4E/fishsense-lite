@@ -58,7 +58,13 @@ async def resolve_slate_preprocess_inputs_activity(
         existing_slate_labels = (
             await fs.labels.get_dive_slate_labels(dive_id) or []
         )
-        labeled_ids = {label.image_id for label in existing_slate_labels}
+        # Skip sentinel rows (project_id IS NULL) — see API selector
+        # docstring for rationale.
+        labeled_ids = {
+            label.image_id
+            for label in existing_slate_labels
+            if label.label_studio_project_id is not None
+        }
 
         target_image_ids = [
             label.image_id

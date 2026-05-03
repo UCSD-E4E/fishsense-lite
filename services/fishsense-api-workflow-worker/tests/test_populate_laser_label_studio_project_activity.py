@@ -69,6 +69,32 @@ def test_select_unlabeled_excludes_images_with_any_completed_label():
     assert [img.id for img in result] == [2, 3]
 
 
+def test_select_unlabeled_treats_null_project_sentinel_as_unlabeled():
+    """Contract pin: populate's per-image filter is on `completed`, not
+    on `label_studio_project_id`. So an image whose only existing
+    LaserLabel is a NULL-project sentinel (legacy prod state, ~2000
+    such rows as of 2026-05-03) MUST still get a fresh task pushed
+    when populate runs against a real project — otherwise a freshly
+    deployed canonical project couldn't seed labels for any of those
+    images. The cohort selector and resolver intentionally diverge
+    here: they treat sentinels as 'no work needed' (so preprocess
+    doesn't redo JPEGs), but populate treats them as 'no completed
+    label, push a fresh task in this real project'.
+    """
+    images = [_image(1, "a"), _image(2, "b")]
+    existing = [
+        # Image 1: only a sentinel.
+        _label(1, completed=False, project_id=None),
+        # Image 2: completed real-project row -> already labeled.
+        _label(2, completed=True, project_id=43),
+    ]
+
+    result = sut._select_unlabeled_images(images, existing)  # pylint: disable=protected-access
+
+    # Image 1 still needs a task; image 2 doesn't.
+    assert [img.id for img in result] == [1]
+
+
 def test_select_unlabeled_handles_multi_row_state():
     """Mirrors the prod state on dive 393: each image carries a
     completed row in project 43 plus an incomplete sentinel row in

@@ -32,14 +32,20 @@ DEFAULT_LASER_BBOX: List[int] = [1800, 700, 2400, 1600]
 def _select_unlabeled_images(
     images: List[Image], existing_labels: List[LaserLabel]
 ) -> List[Image]:
-    """Return images that have no LaserLabel row at all (in any project).
+    """Return images that have no non-sentinel LaserLabel row.
 
-    Once populate seeds a row for an image (even an incomplete one),
-    the image's preprocessed JPEG is on the file-exchange and the
-    image drops out of the preprocess work set. Matches the API
-    selector predicate.
+    "Non-sentinel" = `label_studio_project_id is not None`. NULL-
+    project rows are legacy sentinels (see API selector docstring).
+    Once populate seeds a real row for an image, the image's
+    preprocessed JPEG is on the file-exchange and the image drops
+    out of the preprocess work set. Matches the API selector
+    predicate.
     """
-    labeled_image_ids = {label.image_id for label in existing_labels}
+    labeled_image_ids = {
+        label.image_id
+        for label in existing_labels
+        if label.label_studio_project_id is not None
+    }
     return [image for image in images if image.id not in labeled_image_ids]
 
 

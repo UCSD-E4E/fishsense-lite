@@ -78,24 +78,32 @@ async def get_canonical_dives(
 async def select_next_for_laser_preprocessing(
     session: AsyncSession = Depends(get_async_session),
 ) -> int | None:
-    """Stage 0.1: HIGH-priority + at least one image without ANY
-    LaserLabel row (in any project).
+    """Stage 0.1: HIGH-priority + at least one image without a
+    non-sentinel LaserLabel row (in any real project).
 
-    The predicate is "row exists?" not "row completed?" so a dive drops
-    out of the cohort the moment populate seeds even-incomplete rows
-    for every image. Without that, every preprocessed dive would stay
-    in the cohort until labelers finished it — an hourly firing of
-    stage 0.1 would re-stage raw `.ORF`s from NAS, re-rectify, and
-    re-archive (the data-worker child workflow's
+    "Non-sentinel" means `label_studio_project_id IS NOT NULL` —
+    NULL-project rows are legacy sentinels (prod has ~2000 of them, one
+    per HIGH-priority canonical image, source unclear but predates the
+    Create-on-populate flow). The convention is established already:
+    every discovery endpoint in `label_controller.py` filters
+    `project_id != None` for the same reason.
+
+    Predicate is "non-sentinel row exists?" not "row completed?" so a
+    dive drops out of the cohort the moment populate seeds even-
+    incomplete rows for every image. Without that, every preprocessed
+    dive would stay in the cohort until labelers finished it — an
+    hourly firing of stage 0.1 would re-stage raw `.ORF`s from NAS,
+    re-rectify, and re-archive (the data-worker child workflow's
     ALLOW_DUPLICATE_FAILED_ONLY policy makes that a no-op, but the NAS
     staging activity runs unconditionally on every parent firing).
     """
-    has_image_without_any_laser_label = (
+    has_image_without_real_laser_label = (
         select(Image.id)
         .where(Image.dive_id == Dive.id)
         .where(
             ~select(LaserLabel.id)
             .where(LaserLabel.image_id == Image.id)
+            .where(LaserLabel.label_studio_project_id != None)
             .exists()
         )
         .exists()
@@ -103,7 +111,7 @@ async def select_next_for_laser_preprocessing(
     query = (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
-        .where(has_image_without_any_laser_label)
+        .where(has_image_without_real_laser_label)
         .order_by(Dive.id)
         .limit(1)
     )
@@ -115,10 +123,11 @@ async def select_next_for_dive_image_preprocessing(
     session: AsyncSession = Depends(get_async_session),
 ) -> int | None:
     """Stage 2: HIGH-priority + has PREDICTION cluster + at least one
-    image without ANY SpeciesLabel row.
+    image without a non-sentinel SpeciesLabel row.
 
-    "Row exists" rather than "row completed" — see the laser cohort
-    docstring for the rationale.
+    "Non-sentinel" = `project_id IS NOT NULL`. See the laser cohort
+    docstring for the rationale (sentinels predate the new flow and
+    every other discovery query already filters them out).
     """
     has_prediction_cluster = (
         select(DiveFrameCluster.id)
@@ -126,12 +135,13 @@ async def select_next_for_dive_image_preprocessing(
         .where(DiveFrameCluster.data_source == DataSource.PREDICTION)
         .exists()
     )
-    has_image_without_any_species_label = (
+    has_image_without_real_species_label = (
         select(Image.id)
         .where(Image.dive_id == Dive.id)
         .where(
             ~select(SpeciesLabel.id)
             .where(SpeciesLabel.image_id == Image.id)
+            .where(SpeciesLabel.label_studio_project_id != None)
             .exists()
         )
         .exists()
@@ -140,7 +150,7 @@ async def select_next_for_dive_image_preprocessing(
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
         .where(has_prediction_cluster)
-        .where(has_image_without_any_species_label)
+        .where(has_image_without_real_species_label)
         .order_by(Dive.id)
         .limit(1)
     )
@@ -153,12 +163,12 @@ async def select_next_for_headtail_preprocessing(
 ) -> int | None:
     """Stage 5.1: HIGH-priority + has at least one
     SpeciesLabel.top_three_photos_of_group=True whose image carries no
-    HeadTailLabel row at all.
+    non-sentinel HeadTailLabel row.
 
-    "Row exists" rather than "row completed" — see the laser cohort
+    "Non-sentinel" = `project_id IS NOT NULL`. See the laser cohort
     docstring for the rationale.
     """
-    has_top_three_image_without_any_headtail = (
+    has_top_three_image_without_real_headtail = (
         select(SpeciesLabel.id)
         .join(Image, Image.id == SpeciesLabel.image_id)
         .where(Image.dive_id == Dive.id)
@@ -166,6 +176,7 @@ async def select_next_for_headtail_preprocessing(
         .where(
             ~select(HeadTailLabel.id)
             .where(HeadTailLabel.image_id == Image.id)
+            .where(HeadTailLabel.label_studio_project_id != None)
             .exists()
         )
         .exists()
@@ -173,7 +184,7 @@ async def select_next_for_headtail_preprocessing(
     query = (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
-        .where(has_top_three_image_without_any_headtail)
+        .where(has_top_three_image_without_real_headtail)
         .order_by(Dive.id)
         .limit(1)
     )
@@ -186,12 +197,12 @@ async def select_next_for_slate_preprocessing(
 ) -> int | None:
     """Stage 9: HIGH-priority + dive_slate_id set + has at least one
     SpeciesLabel.content_of_image='Slate, Laser on slate' whose image
-    carries no DiveSlateLabel row at all.
+    carries no non-sentinel DiveSlateLabel row.
 
-    "Row exists" rather than "row completed" — see the laser cohort
+    "Non-sentinel" = `project_id IS NOT NULL`. See the laser cohort
     docstring for the rationale.
     """
-    has_slate_marked_image_without_any_dive_slate_label = (
+    has_slate_marked_image_without_real_dive_slate_label = (
         select(SpeciesLabel.id)
         .join(Image, Image.id == SpeciesLabel.image_id)
         .where(Image.dive_id == Dive.id)
@@ -199,6 +210,7 @@ async def select_next_for_slate_preprocessing(
         .where(
             ~select(DiveSlateLabel.id)
             .where(DiveSlateLabel.image_id == Image.id)
+            .where(DiveSlateLabel.label_studio_project_id != None)
             .exists()
         )
         .exists()
@@ -207,7 +219,7 @@ async def select_next_for_slate_preprocessing(
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
         .where(Dive.dive_slate_id != None)
-        .where(has_slate_marked_image_without_any_dive_slate_label)
+        .where(has_slate_marked_image_without_real_dive_slate_label)
         .order_by(Dive.id)
         .limit(1)
     )
