@@ -82,18 +82,21 @@ def test_select_unlabeled_handles_multi_row_state():
     assert [img.id for img in result] == [2]
 
 
-def test_build_task_uses_groups_jpeg_folder(monkeypatch):
+def test_build_task_uses_groups_jpeg_folder_and_dual_keys(monkeypatch):
+    """Pinned: dual-key `image` + `img` shape — see the laser populate
+    test of the same name for the rationale (legacy LS project XML
+    uses both conventions; emitting one fails import_tasks)."""
     monkeypatch.setenv(
         "E4EFS_LABEL_STUDIO__IMAGE_URL_BASE", "https://orchestrator.example.com"
     )
     from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
     cfg.settings.reload()
 
+    expected_url = "https://orchestrator.example.com/api/v1/data/groups_jpeg/abc123"
     task = sut._build_task(_image(7, "abc123"))  # pylint: disable=protected-access
 
-    assert task["data"]["image"] == (
-        "https://orchestrator.example.com/api/v1/data/groups_jpeg/abc123"
-    )
+    assert task["data"]["image"] == expected_url
+    assert task["data"]["img"] == expected_url
     assert not task["predictions"]
 
 

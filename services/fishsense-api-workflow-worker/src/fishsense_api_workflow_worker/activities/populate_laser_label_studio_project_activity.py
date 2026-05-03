@@ -42,8 +42,20 @@ def _select_unlabeled_images(
 
 
 def _build_task(image: Image) -> dict:
+    """Build an LS task referencing the preprocessed JPEG.
+
+    Emits BOTH `image` and `img` keys in `data` because legacy prod
+    LS projects' labeling-config XML uses different conventions —
+    older projects bind `<Image value="$img"/>`, newer ones use
+    `value="$image"`. LS's `import_tasks` rejects a payload outright
+    if its labeling config's required key is missing (HTTP 400
+    "img key is expected in task data"), but extra keys are inert.
+    Dual-emission lets `populate` fan out across both shapes without
+    interrogating each project's `label_config` first.
+    """
+    url = build_image_url(PREPROCESS_FOLDER, image.checksum)
     return {
-        "data": {"image": build_image_url(PREPROCESS_FOLDER, image.checksum)},
+        "data": {"image": url, "img": url},
         "annotations": [],
     }
 
