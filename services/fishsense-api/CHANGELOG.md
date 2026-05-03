@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.24.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.23.0...fishsense-api-v1.24.0) (2026-05-03)
+
+
+### Features
+
+* **api-workflow-worker:** self-bootstrap populate + drop dives once labels seeded ([e03b7a6](https://github.com/UCSD-E4E/fishsense-lite/commit/e03b7a6ffd0730d4417f80b5e5b4b7e57f043d2e))
+* **api-workflow-worker:** self-bootstrap populate + drop preprocessed dives ([a3609dd](https://github.com/UCSD-E4E/fishsense-lite/commit/a3609dd135ffce57964a0e0ef58031874f96084a))
+
 ## [1.23.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.22.2...fishsense-api-v1.23.0) (2026-05-02)
 
 
