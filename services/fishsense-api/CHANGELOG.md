@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.24.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.24.0...fishsense-api-v1.24.1) (2026-05-03)
+
+
+### Bug Fixes
+
+* **api,api-workflow-worker:** exclude NULL-project sentinels from cohort predicate ([5e09f1b](https://github.com/UCSD-E4E/fishsense-lite/commit/5e09f1bee9cb8f1512fc32253d5be58322118e08))
+* exclude NULL-project sentinel rows from cohort predicate ([6380460](https://github.com/UCSD-E4E/fishsense-lite/commit/638046003a0ad62fc784bdff42b9588585905868))
+
 ## [1.24.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.23.0...fishsense-api-v1.24.0) (2026-05-03)
 
 
