@@ -1,3 +1,4 @@
+# pylint: disable=too-many-lines
 """Tests for the per-stage `GET /api/v1/dives/select-next/...` endpoints.
 
 These collapse the api-workflow-worker's previously O(N) selector
@@ -166,7 +167,8 @@ async def test_laser_preprocessing_treats_incomplete_label_as_labeled(session):
 
 
 async def test_laser_preprocessing_excludes_dive_with_only_incomplete_labels(session):
-    """All images have only incomplete labels — dive must drop out.
+    """All images have only incomplete labels (with real project_id) —
+    dive must drop out.
 
     This is the steady-state for the populate -> wait-for-labelers
     period. Without the predicate change, the dive would stay in the
@@ -192,6 +194,75 @@ async def test_laser_preprocessing_excludes_dive_with_only_incomplete_labels(ses
     await session.flush()
 
     assert await select_next_for_laser_preprocessing(session=session) is None
+
+
+async def test_laser_preprocessing_excludes_dive_when_sentinel_coexists_with_real_label(
+    session,
+):
+    """Defensive: an image carrying BOTH a NULL-project sentinel AND a
+    real-project row should still drop the dive (the real row counts).
+    Pinned because a future refactor that 'simplifies' the predicate
+    to ignore project_id entirely would silently break this."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_laser_preprocessing,
+    )
+    from fishsense_api.models.laser_label import (  # pylint: disable=import-outside-toplevel
+        LaserLabel,
+    )
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(_image(11, 1))
+    await session.flush()
+    session.add_all(
+        [
+            LaserLabel(
+                image_id=11, completed=False, label_studio_project_id=None
+            ),
+            LaserLabel(
+                image_id=11, completed=False, label_studio_project_id=99
+            ),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_preprocessing(session=session) is None
+
+
+async def test_laser_preprocessing_ignores_null_project_sentinels(session):
+    """NULL-`project_id` LaserLabel rows are legacy sentinels (~2000 in
+    prod, one per HIGH-priority canonical image, source predates the
+    Create-on-populate flow). The cohort selector must treat them as
+    'no real label' so prod's existing sentinel population doesn't
+    permanently drain the cohort. Mirrors the
+    `project_id != None` filter the discovery endpoint at
+    `label_controller.py:274` already has."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_laser_preprocessing,
+    )
+    from fishsense_api.models.laser_label import (  # pylint: disable=import-outside-toplevel
+        LaserLabel,
+    )
+
+    # dive 1: image 11 has only a NULL-project sentinel -> dive INCLUDED.
+    # dive 2: image 21 has a real-project incomplete row -> dive EXCLUDED.
+    session.add_all([_dive(1), _dive(2)])
+    await session.flush()
+    session.add_all([_image(11, 1), _image(21, 2)])
+    await session.flush()
+    session.add_all(
+        [
+            LaserLabel(
+                image_id=11, completed=False, label_studio_project_id=None
+            ),
+            LaserLabel(
+                image_id=21, completed=False, label_studio_project_id=99
+            ),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_preprocessing(session=session) == 1
 
 
 async def test_laser_preprocessing_returns_none_when_no_unlabeled_images(session):
@@ -230,6 +301,104 @@ async def test_laser_preprocessing_returns_none_with_no_high_priority(session):
     await session.flush()
 
     assert await select_next_for_laser_preprocessing(session=session) is None
+
+
+async def test_laser_discovery_and_selector_agree_on_real_label_definition(session):
+    """Cross-controller consistency: the discovery endpoint
+    (`get_laser_label_studio_project_ids`) and the cohort selector
+    (`select_next_for_laser_preprocessing`) must use the same
+    definition of 'real label' — `label_studio_project_id IS NOT
+    NULL`. If a future refactor relaxes one but not the other, the
+    cohort and the populate fan-out would disagree about which images
+    are 'done' and either re-import duplicate LS tasks (selector too
+    permissive) or leak unprocessed images (selector too strict).
+
+    Concretely: a fixture where some images carry only sentinels and
+    others carry real-project rows must produce a discovery list that
+    excludes NULL and a selector pick that includes only the
+    sentinel-only dives.
+    """
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_laser_preprocessing,
+    )
+    from fishsense_api.controllers.label_controller import (  # pylint: disable=import-outside-toplevel
+        get_laser_label_studio_project_ids,
+    )
+    from fishsense_api.models.laser_label import (  # pylint: disable=import-outside-toplevel
+        LaserLabel,
+    )
+
+    session.add_all([_dive(1), _dive(2)])
+    await session.flush()
+    session.add_all([_image(11, 1), _image(21, 2)])
+    await session.flush()
+    session.add_all(
+        [
+            # dive 1 / image 11: only a sentinel -> dive 1 stays in
+            # cohort. Sentinel must NOT show up in discovery.
+            LaserLabel(
+                image_id=11, completed=False, label_studio_project_id=None
+            ),
+            # dive 2 / image 21: real-project incomplete row -> dive 2
+            # drops out of cohort. Project 99 must appear in discovery.
+            LaserLabel(
+                image_id=21, completed=False, label_studio_project_id=99
+            ),
+        ]
+    )
+    await session.flush()
+
+    discovered = await get_laser_label_studio_project_ids(
+        incomplete=True, session=session
+    )
+    selected = await select_next_for_laser_preprocessing(session=session)
+
+    assert None not in discovered
+    assert set(discovered) == {99}
+    # Selector picks the dive whose only label is a sentinel — i.e.
+    # the dive whose images have no real-project rows.
+    assert selected == 1
+
+
+async def test_laser_preprocessing_prod_state_sentinels_dont_drain_cohort(session):
+    """Regression: 2026-05-03 prod incident. ~2000 NULL-`project_id`
+    LaserLabel sentinel rows existed (one per HIGH-priority canonical
+    image, source predates the Create-on-populate flow). The first
+    cut of the new cohort predicate treated those rows as 'image is
+    labeled' and the cohort drained to zero immediately on deploy.
+    Pinning the prod-state shape here so that bug can't come back:
+    multiple HIGH-priority dives, every image carrying ONLY a
+    sentinel row, must still produce the lowest-id dive from the
+    selector.
+    """
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_laser_preprocessing,
+    )
+    from fishsense_api.models.laser_label import (  # pylint: disable=import-outside-toplevel
+        LaserLabel,
+    )
+
+    session.add_all([_dive(1), _dive(2), _dive(3)])
+    await session.flush()
+    image_ids: list[int] = []
+    for dive_id in (1, 2, 3):
+        for img_id in (dive_id * 10 + 1, dive_id * 10 + 2):
+            session.add(_image(img_id, dive_id))
+            image_ids.append(img_id)
+    await session.flush()
+    session.add_all(
+        [
+            LaserLabel(
+                image_id=img_id,
+                completed=False,
+                label_studio_project_id=None,
+            )
+            for img_id in image_ids
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_preprocessing(session=session) == 1
 
 
 async def test_laser_preprocessing_excludes_dive_with_no_images(session):
@@ -292,8 +461,8 @@ async def test_dive_image_preprocessing_skips_when_every_image_labeled(session):
     )
     session.add_all(
         [
-            SpeciesLabel(image_id=11, completed=True),
-            SpeciesLabel(image_id=21, completed=True),
+            SpeciesLabel(image_id=11, completed=True, label_studio_project_id=70),
+            SpeciesLabel(image_id=21, completed=True, label_studio_project_id=70),
             # image 22 has no species_label -> dive 2 stays in cohort.
         ]
     )
@@ -305,9 +474,9 @@ async def test_dive_image_preprocessing_skips_when_every_image_labeled(session):
 async def test_dive_image_preprocessing_excludes_dive_with_only_incomplete_labels(
     session,
 ):
-    """Once populate seeds an incomplete SpeciesLabel for every image,
-    the dive must drop from the cohort even though no labeler has
-    completed it yet."""
+    """Once populate seeds an incomplete SpeciesLabel (with a real
+    project_id) for every image, the dive must drop from the cohort
+    even though no labeler has completed it yet."""
     from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_dive_image_preprocessing,
     )
@@ -324,13 +493,82 @@ async def test_dive_image_preprocessing_excludes_dive_with_only_incomplete_label
     session.add(DiveFrameCluster(dive_id=1, data_source=DataSource.PREDICTION))
     session.add_all(
         [
-            SpeciesLabel(image_id=11, completed=False),
-            SpeciesLabel(image_id=12, completed=False),
+            SpeciesLabel(
+                image_id=11, completed=False, label_studio_project_id=70
+            ),
+            SpeciesLabel(
+                image_id=12, completed=False, label_studio_project_id=70
+            ),
         ]
     )
     await session.flush()
 
     assert await select_next_for_dive_image_preprocessing(session=session) is None
+
+
+async def test_dive_image_preprocessing_excludes_dive_when_sentinel_coexists_with_real_label(
+    session,
+):
+    """Defensive — see laser-stage analogue."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_dive_image_preprocessing,
+    )
+    from fishsense_api.models.data_source import DataSource  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive_frame_cluster import (  # pylint: disable=import-outside-toplevel
+        DiveFrameCluster,
+    )
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(_image(11, 1))
+    await session.flush()
+    session.add(DiveFrameCluster(dive_id=1, data_source=DataSource.PREDICTION))
+    session.add_all(
+        [
+            SpeciesLabel(
+                image_id=11, completed=False, label_studio_project_id=None
+            ),
+            SpeciesLabel(
+                image_id=11, completed=False, label_studio_project_id=70
+            ),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_dive_image_preprocessing(session=session) is None
+
+
+async def test_dive_image_preprocessing_ignores_null_project_sentinels(session):
+    """NULL-`project_id` rows are legacy sentinels (~2000 in prod, one
+    per HIGH-priority canonical image, source predates the
+    Create-on-populate flow). The cohort selector must treat them as
+    'no real label' so prod's existing sentinel population doesn't
+    permanently drain the cohort. Mirrors the
+    `project_id != None` filter every discovery endpoint already has.
+    """
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_dive_image_preprocessing,
+    )
+    from fishsense_api.models.data_source import DataSource  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive_frame_cluster import (  # pylint: disable=import-outside-toplevel
+        DiveFrameCluster,
+    )
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(_image(11, 1))
+    await session.flush()
+    session.add(DiveFrameCluster(dive_id=1, data_source=DataSource.PREDICTION))
+    session.add(
+        SpeciesLabel(
+            image_id=11, completed=False, label_studio_project_id=None
+        ),
+    )
+    await session.flush()
+
+    assert await select_next_for_dive_image_preprocessing(session=session) == 1
 
 
 async def test_dive_image_preprocessing_returns_none_when_only_label_studio_clusters(
@@ -379,7 +617,9 @@ async def test_headtail_preprocessing_requires_top_three_without_any_headtail(
             SpeciesLabel(image_id=31, top_three_photos_of_group=False),
         ]
     )
-    session.add(HeadTailLabel(image_id=11, completed=True))
+    session.add(
+        HeadTailLabel(image_id=11, completed=True, label_studio_project_id=71)
+    )
     await session.flush()
 
     assert await select_next_for_headtail_preprocessing(session=session) == 2
@@ -388,8 +628,9 @@ async def test_headtail_preprocessing_requires_top_three_without_any_headtail(
 async def test_headtail_preprocessing_excludes_dive_with_only_incomplete_headtail(
     session,
 ):
-    """Once populate seeds an incomplete HeadTailLabel for every
-    top-three image, the dive drops out of the cohort."""
+    """Once populate seeds an incomplete HeadTailLabel (with a real
+    project_id) for every top-three image, the dive drops out of the
+    cohort."""
     from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_headtail_preprocessing,
     )
@@ -400,10 +641,67 @@ async def test_headtail_preprocessing_excludes_dive_with_only_incomplete_headtai
     await session.flush()
     session.add(_image(11, 1))
     session.add(SpeciesLabel(image_id=11, top_three_photos_of_group=True))
-    session.add(HeadTailLabel(image_id=11, completed=False))
+    session.add(
+        HeadTailLabel(
+            image_id=11, completed=False, label_studio_project_id=71
+        )
+    )
     await session.flush()
 
     assert await select_next_for_headtail_preprocessing(session=session) is None
+
+
+async def test_headtail_preprocessing_excludes_dive_when_sentinel_coexists_with_real_label(
+    session,
+):
+    """Defensive — see laser-stage analogue."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_headtail_preprocessing,
+    )
+    from fishsense_api.models.head_tail_label import HeadTailLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(_image(11, 1))
+    session.add(SpeciesLabel(image_id=11, top_three_photos_of_group=True))
+    session.add_all(
+        [
+            HeadTailLabel(
+                image_id=11, completed=False, label_studio_project_id=None
+            ),
+            HeadTailLabel(
+                image_id=11, completed=False, label_studio_project_id=71
+            ),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_headtail_preprocessing(session=session) is None
+
+
+async def test_headtail_preprocessing_ignores_null_project_sentinels(session):
+    """NULL-`project_id` HeadTailLabel rows are legacy sentinels — see
+    the dive-image cohort docstring. They must NOT drop a dive from
+    the headtail cohort."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_headtail_preprocessing,
+    )
+    from fishsense_api.models.head_tail_label import HeadTailLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(_image(11, 1))
+    session.add(SpeciesLabel(image_id=11, top_three_photos_of_group=True))
+    session.add(
+        HeadTailLabel(
+            image_id=11, completed=False, label_studio_project_id=None
+        )
+    )
+    await session.flush()
+
+    assert await select_next_for_headtail_preprocessing(session=session) == 1
 
 
 async def test_headtail_preprocessing_returns_none_when_no_top_three(session):
@@ -472,7 +770,9 @@ async def test_slate_preprocessing_skips_when_every_slate_image_labeled(session)
         [
             SpeciesLabel(image_id=11, content_of_image=SLATE_CONTENT_MARKER),
             SpeciesLabel(image_id=21, content_of_image=SLATE_CONTENT_MARKER),
-            DiveSlateLabel(image_id=11, completed=True),
+            DiveSlateLabel(
+                image_id=11, completed=True, label_studio_project_id=66
+            ),
         ]
     )
     await session.flush()
@@ -483,8 +783,9 @@ async def test_slate_preprocessing_skips_when_every_slate_image_labeled(session)
 async def test_slate_preprocessing_excludes_dive_with_only_incomplete_slate_labels(
     session,
 ):
-    """Once populate seeds an incomplete DiveSlateLabel for every
-    slate-marked image, the dive drops out of the cohort."""
+    """Once populate seeds an incomplete DiveSlateLabel (with a real
+    project_id) for every slate-marked image, the dive drops out of
+    the cohort."""
     from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
         SLATE_CONTENT_MARKER,
         select_next_for_slate_preprocessing,
@@ -496,10 +797,69 @@ async def test_slate_preprocessing_excludes_dive_with_only_incomplete_slate_labe
     await session.flush()
     session.add(_image(11, 1))
     session.add(SpeciesLabel(image_id=11, content_of_image=SLATE_CONTENT_MARKER))
-    session.add(DiveSlateLabel(image_id=11, completed=False))
+    session.add(
+        DiveSlateLabel(
+            image_id=11, completed=False, label_studio_project_id=66
+        )
+    )
     await session.flush()
 
     assert await select_next_for_slate_preprocessing(session=session) is None
+
+
+async def test_slate_preprocessing_excludes_dive_when_sentinel_coexists_with_real_label(
+    session,
+):
+    """Defensive — see laser-stage analogue."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        SLATE_CONTENT_MARKER,
+        select_next_for_slate_preprocessing,
+    )
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1, dive_slate_id=99))
+    await session.flush()
+    session.add(_image(11, 1))
+    session.add(SpeciesLabel(image_id=11, content_of_image=SLATE_CONTENT_MARKER))
+    session.add_all(
+        [
+            DiveSlateLabel(
+                image_id=11, completed=False, label_studio_project_id=None
+            ),
+            DiveSlateLabel(
+                image_id=11, completed=False, label_studio_project_id=66
+            ),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_slate_preprocessing(session=session) is None
+
+
+async def test_slate_preprocessing_ignores_null_project_sentinels(session):
+    """NULL-`project_id` DiveSlateLabel rows are legacy sentinels — see
+    the dive-image cohort docstring. They must NOT drop a dive from
+    the slate cohort."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        SLATE_CONTENT_MARKER,
+        select_next_for_slate_preprocessing,
+    )
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1, dive_slate_id=99))
+    await session.flush()
+    session.add(_image(11, 1))
+    session.add(SpeciesLabel(image_id=11, content_of_image=SLATE_CONTENT_MARKER))
+    session.add(
+        DiveSlateLabel(
+            image_id=11, completed=False, label_studio_project_id=None
+        )
+    )
+    await session.flush()
+
+    assert await select_next_for_slate_preprocessing(session=session) == 1
 
 
 # ---------- stage 13: laser-calibration ----------
