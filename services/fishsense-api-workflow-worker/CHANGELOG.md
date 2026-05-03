@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.29.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.29.0...fishsense-api-workflow-worker-v1.29.1) (2026-05-03)
+
+
+### Bug Fixes
+
+* **api-workflow-worker:** prepend e4e_nas.raw_root_path to share-relative DB paths ([f4d0195](https://github.com/UCSD-E4E/fishsense-lite/commit/f4d0195a7d4af30eeaabad0998c67b5afae4b76c))
+* **api-workflow-worker:** prepend e4e_nas.raw_root_path to share-relative DB paths ([a433383](https://github.com/UCSD-E4E/fishsense-lite/commit/a4333833d15fc5b3d8ae16d679c5f1b9af21bb29))
+
 ## [1.29.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.28.0...fishsense-api-workflow-worker-v1.29.0) (2026-05-02)
 
 
