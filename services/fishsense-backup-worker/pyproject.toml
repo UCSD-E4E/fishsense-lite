@@ -1,6 +1,6 @@
 [project]
 name = "fishsense-backup-worker"
-version = "0.2.2"
+version = "0.2.3"
 description = "Scheduled Postgres -> NAS backup worker. Runs pg_dump nightly for the fishsense, superset, and temporal_db databases via Temporal Schedules."
 readme = "README.md"
 # Same Python pin as the rest of the workspace; this worker doesn't need

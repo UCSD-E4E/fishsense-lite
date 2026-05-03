@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-backup-worker-v0.2.2...fishsense-backup-worker-v0.2.3) (2026-05-03)
+
+
+### Bug Fixes
+
+* **api-workflow-worker,backup-worker:** force fresh login per NasClient ([5655bbb](https://github.com/UCSD-E4E/fishsense-lite/commit/5655bbb8c4c8e62fe639e09d45362d9e42ea50e7))
+* force fresh DSM login per NasClient (synology-api class-cache bug) ([458e966](https://github.com/UCSD-E4E/fishsense-lite/commit/458e966138f6cb5bbce6e53d580c7d6da4c963a7))
+
 ## [0.2.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-backup-worker-v0.2.1...fishsense-backup-worker-v0.2.2) (2026-05-01)
 
 
