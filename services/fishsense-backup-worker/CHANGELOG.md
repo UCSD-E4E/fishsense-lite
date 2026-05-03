@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-backup-worker-v0.2.3...fishsense-backup-worker-v0.2.4) (2026-05-03)
+
+
+### Bug Fixes
+
+* **backup-worker:** isolate per-DB tempfile so parallel dumps don't race ([971d32c](https://github.com/UCSD-E4E/fishsense-lite/commit/971d32c1a81af3fdce18e93b48d76011234e9e4c))
+* **backup-worker:** isolate per-DB tempfile so parallel dumps don't race ([364f29d](https://github.com/UCSD-E4E/fishsense-lite/commit/364f29db94a0dd0847598806131dee83afe7a6ff))
+
 ## [0.2.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-backup-worker-v0.2.2...fishsense-backup-worker-v0.2.3) (2026-05-03)
 
 

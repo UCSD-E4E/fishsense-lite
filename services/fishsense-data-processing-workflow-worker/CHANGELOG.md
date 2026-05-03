@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.1.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.0.0...fishsense-data-processing-workflow-worker-v2.1.0) (2026-05-03)
+
+
+### Features
+
+* **laser:** post-sync line-fit validation of laser labels (observe-only) ([9fa0e13](https://github.com/UCSD-E4E/fishsense-lite/commit/9fa0e130b83d14d8098b3758d8f9ab3f58f2460c))
+* **laser:** post-sync line-fit validation of laser labels (observe-only) ([7390903](https://github.com/UCSD-E4E/fishsense-lite/commit/739090389c8a2e85ba99b34c687a98124982f827))
+
+
+### Bug Fixes
+
+* **laser:** satisfy pylint on the validation module + tests ([a21fcd4](https://github.com/UCSD-E4E/fishsense-lite/commit/a21fcd451a5aab43dca3b3f0a84df6afe17dba31))
+
 ## [2.0.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v0.4.0...fishsense-data-processing-workflow-worker-v2.0.0) (2026-05-02)
 
 
