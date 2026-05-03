@@ -8,6 +8,9 @@ Pins down:
      and don't crash.
   4. Returns the per-dive summary so the parent workflow can log
      counts.
+  5. Share-relative `image.path` values (the DB convention) get
+     `e4e_nas.raw_root_path` prepended before being handed to
+     FileStation; absolute paths pass through unchanged.
 """
 
 from __future__ import annotations
@@ -189,3 +192,73 @@ async def test_returns_zeros_when_dive_has_no_images(monkeypatch):
     assert result.skipped_already_present == 0
     assert result.no_path == 0
     nas.download_to.assert_not_called()
+
+
+def test_resolve_nas_path_prepends_root_to_relative_paths(monkeypatch):
+    """Share-relative paths (the DB convention) get the configured root
+    prepended; absolute paths are returned unchanged."""
+    monkeypatch.setenv(
+        "E4EFS_E4E_NAS__RAW_ROOT_PATH", "/fishsense_data/REEF/data"
+    )
+    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    cfg.settings.reload()
+
+    assert (
+        sut._resolve_nas_path(  # pylint: disable=protected-access
+            "2024.06.20.REEF/08_2023/082929_FishModels_FSL04/P8290052.ORF"
+        )
+        == "/fishsense_data/REEF/data/2024.06.20.REEF/08_2023/082929_FishModels_FSL04/P8290052.ORF"
+    )
+    # Absolute path: passthrough so an operator override or a future
+    # path migration isn't double-prefixed.
+    assert (
+        sut._resolve_nas_path("/already/absolute/file.ORF")  # pylint: disable=protected-access
+        == "/already/absolute/file.ORF"
+    )
+    # Trailing slash on root is normalized.
+    monkeypatch.setenv("E4EFS_E4E_NAS__RAW_ROOT_PATH", "/foo/bar/")
+    cfg.settings.reload()
+    assert (
+        sut._resolve_nas_path("rel/path.ORF")  # pylint: disable=protected-access
+        == "/foo/bar/rel/path.ORF"
+    )
+
+
+@pytest.mark.asyncio
+async def test_relative_image_paths_get_prefixed_before_nas_download(monkeypatch):
+    """End-to-end: a share-relative `image.path` is rewritten with the
+    root prefix before reaching the NAS client. Mirrors the prod path
+    shape — DB stores `2024.06.20.REEF/.../P8290052.ORF`, NAS expects
+    `/fishsense_data/REEF/data/2024.06.20.REEF/.../P8290052.ORF`."""
+    monkeypatch.setenv(
+        "E4EFS_E4E_NAS__RAW_ROOT_PATH", "/fishsense_data/REEF/data"
+    )
+    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    cfg.settings.reload()
+
+    images = [
+        _image(
+            1,
+            path="2024.06.20.REEF/08_2023/082929_FishModels_FSL04/P8290052.ORF",
+            checksum="aaa",
+        )
+    ]
+    fs = _make_fs(images)
+    nas = _make_nas()
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+    _patch_tempfile_read(monkeypatch, b"raw-bytes")
+    _, put_calls = _patch_routes(monkeypatch, head_results={})
+
+    result = await ActivityEnvironment().run(
+        sut.stage_raw_bytes_for_dive_activity, 42
+    )
+
+    assert result.staged == 1
+    nas.download_to.assert_called_once()
+    assert nas.download_to.call_args.kwargs["src_path"] == (
+        "/fishsense_data/REEF/data/2024.06.20.REEF/08_2023/082929_FishModels_FSL04/P8290052.ORF"
+    )
+    # File-exchange PUT still keys on checksum, not the rewritten path.
+    assert len(put_calls) == 1
+    assert put_calls[0][0] == "aaa"

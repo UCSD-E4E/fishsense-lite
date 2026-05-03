@@ -126,3 +126,31 @@ async def test_raises_when_slate_path_is_empty(monkeypatch):
 
     with pytest.raises(ValueError, match="no NAS path"):
         await ActivityEnvironment().run(sut.stage_slate_pdf_activity, 7)
+
+
+@pytest.mark.asyncio
+async def test_relative_slate_path_gets_prefixed_before_nas_download(monkeypatch):
+    """Mirrors `stage_raw_bytes_for_dive_activity`: a share-relative
+    `dive_slate.path` gets `e4e_nas.raw_root_path` prepended before
+    reaching FileStation."""
+    monkeypatch.setenv(
+        "E4EFS_E4E_NAS__RAW_ROOT_PATH", "/fishsense_data/REEF/data"
+    )
+    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    cfg.settings.reload()
+
+    fs = _make_fs([_slate(7, path="slates/v1/slate.pdf")])
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    nas = MagicMock()
+    nas.download_to = MagicMock()
+    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+    _patch_tempfile_read(monkeypatch, b"pdf-bytes")
+    _patch_routes(monkeypatch, head_present=False)
+
+    result = await ActivityEnvironment().run(sut.stage_slate_pdf_activity, 7)
+
+    assert result is True
+    nas.download_to.assert_called_once()
+    assert nas.download_to.call_args.kwargs["src_path"] == (
+        "/fishsense_data/REEF/data/slates/v1/slate.pdf"
+    )

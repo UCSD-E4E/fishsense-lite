@@ -56,6 +56,20 @@ _VALIDATORS = [
     Validator("e4e_nas.url", required=True, cast=str, condition=url_condition),
     Validator("e4e_nas.username", required=True, cast=str),
     Validator("e4e_nas.password", required=True, cast=str),
+    # NAS path prefix prepended to relative `image.path` / `dive_slate.path`
+    # values stored in the DB before downloading from FileStation. The DB
+    # stores paths relative to the lab's data-root share (e.g.
+    # `2024.06.20.REEF/08_2023/.../P8290052.ORF`); the actual NAS location
+    # is `/fishsense_data/REEF/data/<that>`. Without this prefix, every
+    # `stage_raw_bytes_for_dive_activity` call lands at a path FileStation
+    # can't resolve and fails with a 502 (Synology's WebAPI surfaces the
+    # missing-path as Bad Gateway on the download endpoint specifically).
+    Validator(
+        "e4e_nas.raw_root_path",
+        required=True,
+        cast=str,
+        default="/fishsense_data/REEF/data",
+    ),
     # NAS path under which Phase 3b's archive activity writes
     # processed JPEGs. Per-stage subfolders + per-dive subfolders
     # are appended at archive time; the final NAS path is
