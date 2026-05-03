@@ -27,6 +27,9 @@ from fishsense_data_processing_workflow_worker.activities.preprocess_laser_image
 from fishsense_data_processing_workflow_worker.activities.preprocess_slate_image import (
     preprocess_slate_image,
 )
+from fishsense_data_processing_workflow_worker.activities.validate_laser_labels_for_dive_activity import (  # noqa: E501  pylint: disable=line-too-long
+    validate_laser_labels_for_dive_activity,
+)
 from fishsense_data_processing_workflow_worker.config import configure_logging, settings
 from fishsense_data_processing_workflow_worker.workflows.dive_frame_clustering_workflow import (
     DiveFrameClusteringWorkflow,
@@ -48,6 +51,9 @@ from fishsense_data_processing_workflow_worker.workflows.preprocess_laser_images
 )
 from fishsense_data_processing_workflow_worker.workflows.preprocess_slate_images_workflow import (
     PreprocessSlateImagesWorkflow,
+)
+from fishsense_data_processing_workflow_worker.workflows.validate_laser_labels_for_dive_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    ValidateLaserLabelsForDiveWorkflow,
 )
 
 TASK_QUEUE_NAME = "fishsense_data_processing_queue"
@@ -81,6 +87,7 @@ async def main():
                 PreprocessHeadtailImagesWorkflow,
                 PreprocessLaserImagesWorkflow,
                 PreprocessSlateImagesWorkflow,
+                ValidateLaserLabelsForDiveWorkflow,
             ],
             activity_executor=executor,
             activities=[
@@ -91,6 +98,7 @@ async def main():
                 preprocess_headtail_image,
                 preprocess_laser_image,
                 preprocess_slate_image,
+                validate_laser_labels_for_dive_activity,
             ],
         )
 

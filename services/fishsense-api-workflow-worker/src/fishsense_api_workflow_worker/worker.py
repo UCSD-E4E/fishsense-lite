@@ -50,6 +50,9 @@ from fishsense_api_workflow_worker.activities.get_active_label_studio_project_id
 from fishsense_api_workflow_worker.activities.get_dive_slate_label_studio_project_ids_activity import (  # pylint: disable=line-too-long
     get_dive_slate_label_studio_project_ids_activity,
 )
+from fishsense_api_workflow_worker.activities.get_dives_with_complete_laser_labeling_activity import (  # pylint: disable=line-too-long
+    get_dives_with_complete_laser_labeling_activity,
+)
 from fishsense_api_workflow_worker.activities.get_headtail_label_studio_project_ids_activity import (  # pylint: disable=line-too-long
     get_headtail_label_studio_project_ids_activity,
 )
@@ -403,6 +406,7 @@ async def main():
                 get_laser_label_studio_project_ids_activity,
                 get_headtail_label_studio_project_ids_activity,
                 get_dive_slate_label_studio_project_ids_activity,
+                get_dives_with_complete_laser_labeling_activity,
                 get_species_label_studio_project_ids_activity,
                 sync_laser_labels_for_label_studio_project_activity,
                 sync_headtail_labels_for_label_studio_project_activity,

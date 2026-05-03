@@ -659,3 +659,49 @@ union and populate fans out across both — which is the right
 behavior during a migration window but not the desired steady
 state. Resolve by aligning `<STAGE>_PROJECT_TITLE` in the Create
 activity with whatever the operator wants as canonical.
+
+### Laser-label validation (Phase 1: observe-only)
+
+`SyncLabelStudioLaserLabelsWorkflow` (api-worker) now dispatches a
+`ValidateLaserLabelsForDiveWorkflow` child on the data-worker for
+each dive whose laser labeling is fully complete (every non-superseded
+`LaserLabel` has `completed=True`). The child fits a per-dive RANSAC
+line through the positives, flags labels >3σ off it (with a 1-px MAD
+floor for tight small-N dives), and **logs** outliers. **No
+`superseded` writes happen yet** — Phase 1 is observe-only so the
+threshold can be calibrated against real prod label distributions
+before mass-flagging.
+
+Two open follow-ups before Phase 2 (writeback):
+
+1. **Replace the vendored copy of `line_fit.py` with a real
+   dependency.** The kernel was duplicated from
+   `UCSD-E4E/2026-05-02_laser_detector` @ commit 3d5d2e8 into
+   `services/fishsense-data-processing-workflow-worker/src/.../laser_label_validation/line_fit.py`
+   because that repo says "early — nothing trained yet" and isn't
+   published. Once the laser-detector cuts a versioned release, drop
+   the vendored module and add it as a workspace / git dep in the
+   data-processing worker's `pyproject.toml`. The vendored file has a
+   header comment pointing at the source.
+
+2. **Calibrate the threshold + flip writeback on.** Phase 1 runs every
+   hour with the laser sync. After ~1 week of observe-only logs:
+   - Sample the OUTLIER log lines and confirm flagged labels are
+     genuinely wrong (cross-reference the LS task URL via
+     `label_studio_project_id` + `label_studio_task_id`).
+   - If the false-flag rate is acceptable, modify
+     `validate_laser_labels_for_dive_activity` to set
+     `superseded=True` on each flagged label via
+     `fs.labels.put_laser_label`, and remove the
+     "would set superseded=True" suffix from the OUTLIER log line.
+   - If the false-flag rate is not acceptable, raise the
+     `DEFAULT_OUTLIER_SIGMA` (currently 3.0) or the
+     `LABEL_NOISE_MAD_FLOOR_PX` (currently 1.0) in the vendored
+     `line_fit.py` based on what the logs show.
+
+   Note: stage-13 calibration consumes laser labels via the
+   `superseded=False` filter on `get_laser_labels`, so once writeback
+   is enabled an outlier-flagged label will automatically drop out of
+   subsequent calibration runs. That's the intended behavior, but the
+   first writeback run will retroactively change the input set for any
+   re-calibration — coordinate the deploy.

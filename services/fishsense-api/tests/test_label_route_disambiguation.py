@@ -66,6 +66,10 @@ def _resolve(app, path: str) -> str | None:
             "/api/v1/labels/dive-slate/label-studio-project-ids",
             "get_dive_slate_label_studio_project_ids",
         ),
+        (
+            "/api/v1/labels/laser/dives-with-complete-labeling",
+            "get_dives_with_complete_laser_labeling",
+        ),
         ("/api/v1/labels/laser/123", "get_laser_label"),
         ("/api/v1/labels/headtail/45", "get_headtail_label"),
         ("/api/v1/labels/species/67", "get_species_label"),
