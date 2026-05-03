@@ -30,7 +30,9 @@ from typing import List
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from temporalio.testing import ActivityEnvironment
+from temporalio import activity
+from temporalio.testing import ActivityEnvironment, WorkflowEnvironment
+from temporalio.worker import Worker
 
 from fishsense_api_sdk.models.image import Image
 from fishsense_api_sdk.models.laser_label import LaserLabel
@@ -39,6 +41,9 @@ from fishsense_api_workflow_worker.activities import (
     populate_laser_label_studio_project_activity as populate_sut,
 )
 from fishsense_api_workflow_worker.activities.utils import get_ls_client
+from fishsense_api_workflow_worker.workflows.populate_laser_label_studio_project_workflow import (  # pylint: disable=line-too-long
+    PopulateLaserLabelStudioProjectWorkflow,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -249,3 +254,83 @@ async def test_populate_skips_completed_against_real_ls(
     # is the correctness gate.)
     ls_tasks = list(ls.tasks.list(project=project_id))
     assert len(ls_tasks) == 8
+
+
+# ---------------------------------------------------------------------------
+# Full workflow: Create -> populate fan-out against real LS.
+# ---------------------------------------------------------------------------
+
+
+async def test_populate_workflow_creates_then_imports_tasks_against_real_ls(
+    monkeypatch,
+):
+    """End-to-end: PopulateLaserLabelStudioProjectWorkflow against real
+    LS. The workflow's internal Create activity must stand up a
+    project, the discovery stub (returning [] for a freshly-named
+    test project) must not interfere, and the populate fan-out must
+    push tasks to the canonical project.
+
+    This is the integration-level proof that wiring Create into
+    Populate solves the bootstrap chicken-and-egg: a brand-new
+    deployment with no legacy LS project gets its first dive's tasks
+    imported on the first invocation, without any pre-seeding.
+    """
+    title = f"fs-int-flow-{uuid.uuid4().hex[:8]}"
+    monkeypatch.setattr(create_sut, "LASER_PROJECT_TITLE", title)
+    monkeypatch.setattr(create_sut, "LASER_LABELING_CONFIG_XML", _MIN_LASER_XML)
+
+    images = [_image(i + 1, f"flow-{i:03d}") for i in range(4)]
+    fs = _make_fs_client(images, existing_labels=[])
+    monkeypatch.setattr(populate_sut, "get_fs_client", lambda: fs)
+
+    # Discovery stub returns [] — no legacy LS project for this
+    # freshly-titled canonical one. Stubbing avoids needing a real
+    # fishsense-api in this test; the populate side already mocks
+    # get_fs_client above.
+    @activity.defn(name="get_active_laser_label_studio_project_ids_activity")
+    async def stub_get_active() -> List[int]:
+        return []
+
+    ls = get_ls_client()
+    project_id_holder: List[int] = []
+
+    queue = f"test-populate-flow-{uuid.uuid4().hex[:8]}"
+    try:
+        async with await WorkflowEnvironment.start_time_skipping() as env:
+            async with Worker(
+                env.client,
+                task_queue=queue,
+                workflows=[PopulateLaserLabelStudioProjectWorkflow],
+                activities=[
+                    create_sut.create_laser_label_studio_project_activity,
+                    stub_get_active,
+                    populate_sut.populate_laser_label_studio_project_activity,
+                ],
+            ):
+                count = await env.client.execute_workflow(
+                    PopulateLaserLabelStudioProjectWorkflow.run,
+                    42,
+                    id=f"{queue}-wf",
+                    task_queue=queue,
+                )
+
+        assert count == 4
+
+        # The created project must exist in LS and carry exactly four tasks.
+        matches = [p for p in ls.projects.list() if p.title == title]
+        assert len(matches) == 1
+        project_id_holder.append(matches[0].id)
+
+        ls_tasks = list(ls.tasks.list(project=matches[0].id))
+        assert len(ls_tasks) == 4
+
+        # Populate also wrote one LaserLabel row per task.
+        assert fs.labels.put_laser_label.await_count == 4
+        written = [c.args[1] for c in fs.labels.put_laser_label.await_args_list]
+        assert all(label.label_studio_project_id == matches[0].id for label in written)
+    finally:
+        for pid in project_id_holder:
+            try:
+                ls.projects.delete(pid)
+            except Exception:  # pylint: disable=broad-except
+                pass

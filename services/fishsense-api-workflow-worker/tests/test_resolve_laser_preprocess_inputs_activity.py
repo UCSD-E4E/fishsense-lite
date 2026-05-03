@@ -2,12 +2,11 @@
 """Unit tests for resolve_laser_preprocess_inputs_activity.
 
 Pins down:
-  1. Returns only checksums of images that have no completed
-     LaserLabel in any project — multi-row state from prod (one
-     completed row in project 43, one incomplete sentinel in project
-     NULL) correctly resolves to "image is labeled". The earlier
-     dict-collapse filter could resolve either way depending on SDK
-     iteration order.
+  1. Returns only checksums of images that have no LaserLabel row at
+     all (in any project). Once populate seeds even an incomplete
+     row, the image's preprocessed JPEG is on the file-exchange and
+     the resolver must not return it. Matches the API selector
+     predicate.
   2. Camera intrinsics are flattened from numpy to lists.
   3. Default bbox lands in the resolved input.
   4. Missing dive / camera_id / intrinsics raise ValueError so the
@@ -131,10 +130,11 @@ async def test_returns_only_unlabeled_image_checksums(monkeypatch):
         sut.resolve_laser_preprocess_inputs_activity, 42
     )
 
-    # Image 1 has a completed label -> excluded. Image 2 has only an
-    # incomplete label, image 3 has no label at all -> both included.
+    # Image 1 has a completed label -> excluded.
+    # Image 2 has an incomplete label -> excluded (any row excludes).
+    # Image 3 has no label at all -> included.
     assert result.dive_id == 42
-    assert set(result.image_checksums) == {"bbb", "ccc"}
+    assert set(result.image_checksums) == {"ccc"}
     assert result.camera_matrix == _K.tolist()
     assert result.distortion_coefficients == _D.tolist()
     assert result.bbox == sut.DEFAULT_LASER_BBOX
@@ -163,22 +163,41 @@ async def test_returns_empty_checksums_when_all_labels_completed(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_returns_empty_checksums_when_only_incomplete_labels(monkeypatch):
+    """Steady-state after populate seeds incomplete sentinel rows: every
+    image has at least one row, so the resolver must return no work
+    even though no label is completed yet. Mirrors the API selector's
+    drop-out predicate."""
+    images = [_image(1, "aaa"), _image(2, "bbb")]
+    labels = [_label(1, completed=False), _label(2, completed=False)]
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_intrinsics(),
+        images=images,
+        laser_labels=labels,
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(
+        sut.resolve_laser_preprocess_inputs_activity, 42
+    )
+
+    assert result.image_checksums == []
+
+
+@pytest.mark.asyncio
 async def test_image_with_completed_and_incomplete_rows_treated_as_labeled(
     monkeypatch,
 ):
-    """Mirrors the prod state on dive 393: each image carries a
-    completed row in project 43 plus an incomplete sentinel row in
-    project NULL. Any one completed row is enough to count the image
-    as labeled, regardless of SDK iteration order."""
+    """Multi-row state: one image carries both a completed row in
+    project 43 and an incomplete sentinel in project NULL. Either
+    row is sufficient under the new "any row excludes" predicate."""
     images = [_image(1, "aaa"), _image(2, "bbb")]
     labels = [
-        # Image 1: completed in 43, also has an incomplete sentinel.
-        # Order: completed first, sentinel second — would have lost in
-        # the previous dict-collapse filter and leaked image 1 into
-        # the work set.
+        # Image 1: completed in 43 + incomplete sentinel.
         _label(1, completed=True, project_id=43),
         _label(1, completed=False, project_id=None),
-        # Image 2: only an incomplete row -> still needs work.
+        # Image 2: only an incomplete row.
         _label(2, completed=False, project_id=43),
     ]
     fs = _make_fs(
@@ -193,7 +212,8 @@ async def test_image_with_completed_and_incomplete_rows_treated_as_labeled(
         sut.resolve_laser_preprocess_inputs_activity, 42
     )
 
-    assert result.image_checksums == ["bbb"]
+    # Both images carry at least one row -> both excluded.
+    assert result.image_checksums == []
 
 
 @pytest.mark.asyncio

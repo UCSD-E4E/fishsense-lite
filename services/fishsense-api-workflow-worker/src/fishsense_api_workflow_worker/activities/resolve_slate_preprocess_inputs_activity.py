@@ -1,10 +1,15 @@
 """Activity to resolve the per-image inputs stage 9 needs for a dive.
 
 Returns a fully-populated `PreprocessSlateImagesInput` ready to hand
-to the data-worker's child workflow. Slate metadata (id, dpi,
-reference_points) travels alongside the image set so the data-worker
-renders the PDF-composite overlay without an extra fishsense-api
-call.
+to the data-worker's child workflow. Image set is filtered to species
+labels with `content_of_image == SLATE_CONTENT_MARKER` whose image
+has no DiveSlateLabel row at all — once populate seeds a (possibly
+incomplete) row, the slate JPEG is on the file-exchange and we don't
+regenerate it. Matches the API selector predicate.
+
+Slate metadata (id, dpi, reference_points) travels alongside the
+image set so the data-worker renders the PDF-composite overlay
+without an extra fishsense-api call.
 """
 
 from __future__ import annotations
@@ -53,15 +58,13 @@ async def resolve_slate_preprocess_inputs_activity(
         existing_slate_labels = (
             await fs.labels.get_dive_slate_labels(dive_id) or []
         )
-        completed_ids = {
-            label.image_id for label in existing_slate_labels if label.completed
-        }
+        labeled_ids = {label.image_id for label in existing_slate_labels}
 
         target_image_ids = [
             label.image_id
             for label in species_labels
             if label.content_of_image == SLATE_CONTENT_MARKER
-            and label.image_id not in completed_ids
+            and label.image_id not in labeled_ids
         ]
 
         images = await fs.images.get(dive_id=dive_id) or []

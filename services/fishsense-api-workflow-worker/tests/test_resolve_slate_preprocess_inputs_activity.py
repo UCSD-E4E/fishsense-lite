@@ -143,26 +143,37 @@ def _make_fs(
 
 
 @pytest.mark.asyncio
-async def test_returns_only_slate_marked_with_incomplete_slate_label(monkeypatch):
+async def test_returns_only_slate_marked_without_any_slate_label(monkeypatch):
     fs = _make_fs(
         dive=_dive(),
         intrinsics=_intrinsics(),
         slates=[_slate(7)],
-        images=[_image(1, "aaa"), _image(2, "bbb"), _image(3, "ccc")],
+        images=[
+            _image(1, "aaa"),
+            _image(2, "bbb"),
+            _image(3, "ccc"),
+            _image(4, "ddd"),
+        ],
         species=[
             _species(1, content=SLATE),
             _species(2, content="Fish"),
             _species(3, content=SLATE),
+            _species(4, content=SLATE),
         ],
-        slate_labels=[_slate_label(1, completed=True)],
+        slate_labels=[
+            _slate_label(1, completed=True),
+            _slate_label(4, completed=False),
+        ],
     )
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
     result = await ActivityEnvironment().run(
         sut.resolve_slate_preprocess_inputs_activity, 42
     )
-    # 1: slate-marked but completed -> dropped.
+    # 1: slate-marked but slate label exists (completed) -> dropped.
     # 2: not slate-marked -> dropped.
-    # 3: slate-marked, no slate label -> kept.
+    # 3: slate-marked, no slate label row -> kept.
+    # 4: slate-marked but slate label exists (incomplete) -> dropped
+    #    (any row excludes — matches API selector predicate).
     assert result.image_checksums == ["ccc"]
     assert result.dive_id == 42
     assert result.slate_id == 7

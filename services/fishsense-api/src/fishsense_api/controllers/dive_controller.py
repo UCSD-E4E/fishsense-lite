@@ -78,25 +78,24 @@ async def get_canonical_dives(
 async def select_next_for_laser_preprocessing(
     session: AsyncSession = Depends(get_async_session),
 ) -> int | None:
-    """Stage 0.1: HIGH-priority + at least one image without a completed
-    LaserLabel (in any project).
+    """Stage 0.1: HIGH-priority + at least one image without ANY
+    LaserLabel row (in any project).
 
-    Mirrors the work-state shape of the other three preprocess cohorts
-    (dive-image / headtail / slate). Earlier this was tied to
-    `no LaserExtrinsics`, which kept dives in the cohort indefinitely
-    after their laser labels were complete but stage-13 calibration was
-    blocked elsewhere (e.g. missing `dive_slate_id` or unfilled slate
-    labels) — wasted hourly firings on a dive 0.1 had no remaining
-    work for. Stage 13 keeps its own "no LaserExtrinsics" cohort and
-    advances independently.
+    The predicate is "row exists?" not "row completed?" so a dive drops
+    out of the cohort the moment populate seeds even-incomplete rows
+    for every image. Without that, every preprocessed dive would stay
+    in the cohort until labelers finished it — an hourly firing of
+    stage 0.1 would re-stage raw `.ORF`s from NAS, re-rectify, and
+    re-archive (the data-worker child workflow's
+    ALLOW_DUPLICATE_FAILED_ONLY policy makes that a no-op, but the NAS
+    staging activity runs unconditionally on every parent firing).
     """
-    has_image_without_completed_laser_label = (
+    has_image_without_any_laser_label = (
         select(Image.id)
         .where(Image.dive_id == Dive.id)
         .where(
             ~select(LaserLabel.id)
             .where(LaserLabel.image_id == Image.id)
-            .where(LaserLabel.completed == True)
             .exists()
         )
         .exists()
@@ -104,7 +103,7 @@ async def select_next_for_laser_preprocessing(
     query = (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
-        .where(has_image_without_completed_laser_label)
+        .where(has_image_without_any_laser_label)
         .order_by(Dive.id)
         .limit(1)
     )
@@ -116,20 +115,23 @@ async def select_next_for_dive_image_preprocessing(
     session: AsyncSession = Depends(get_async_session),
 ) -> int | None:
     """Stage 2: HIGH-priority + has PREDICTION cluster + at least one
-    image without a completed SpeciesLabel."""
+    image without ANY SpeciesLabel row.
+
+    "Row exists" rather than "row completed" — see the laser cohort
+    docstring for the rationale.
+    """
     has_prediction_cluster = (
         select(DiveFrameCluster.id)
         .where(DiveFrameCluster.dive_id == Dive.id)
         .where(DiveFrameCluster.data_source == DataSource.PREDICTION)
         .exists()
     )
-    has_image_without_completed_species_label = (
+    has_image_without_any_species_label = (
         select(Image.id)
         .where(Image.dive_id == Dive.id)
         .where(
             ~select(SpeciesLabel.id)
             .where(SpeciesLabel.image_id == Image.id)
-            .where(SpeciesLabel.completed == True)
             .exists()
         )
         .exists()
@@ -138,7 +140,7 @@ async def select_next_for_dive_image_preprocessing(
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
         .where(has_prediction_cluster)
-        .where(has_image_without_completed_species_label)
+        .where(has_image_without_any_species_label)
         .order_by(Dive.id)
         .limit(1)
     )
@@ -150,9 +152,13 @@ async def select_next_for_headtail_preprocessing(
     session: AsyncSession = Depends(get_async_session),
 ) -> int | None:
     """Stage 5.1: HIGH-priority + has at least one
-    SpeciesLabel.top_three_photos_of_group=True whose HeadTailLabel is
-    missing or incomplete."""
-    has_top_three_image_without_completed_headtail = (
+    SpeciesLabel.top_three_photos_of_group=True whose image carries no
+    HeadTailLabel row at all.
+
+    "Row exists" rather than "row completed" — see the laser cohort
+    docstring for the rationale.
+    """
+    has_top_three_image_without_any_headtail = (
         select(SpeciesLabel.id)
         .join(Image, Image.id == SpeciesLabel.image_id)
         .where(Image.dive_id == Dive.id)
@@ -160,7 +166,6 @@ async def select_next_for_headtail_preprocessing(
         .where(
             ~select(HeadTailLabel.id)
             .where(HeadTailLabel.image_id == Image.id)
-            .where(HeadTailLabel.completed == True)
             .exists()
         )
         .exists()
@@ -168,7 +173,7 @@ async def select_next_for_headtail_preprocessing(
     query = (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
-        .where(has_top_three_image_without_completed_headtail)
+        .where(has_top_three_image_without_any_headtail)
         .order_by(Dive.id)
         .limit(1)
     )
@@ -180,9 +185,13 @@ async def select_next_for_slate_preprocessing(
     session: AsyncSession = Depends(get_async_session),
 ) -> int | None:
     """Stage 9: HIGH-priority + dive_slate_id set + has at least one
-    SpeciesLabel.content_of_image='Slate, Laser on slate' whose
-    DiveSlateLabel is missing or incomplete."""
-    has_slate_marked_image_without_completed_dive_slate_label = (
+    SpeciesLabel.content_of_image='Slate, Laser on slate' whose image
+    carries no DiveSlateLabel row at all.
+
+    "Row exists" rather than "row completed" — see the laser cohort
+    docstring for the rationale.
+    """
+    has_slate_marked_image_without_any_dive_slate_label = (
         select(SpeciesLabel.id)
         .join(Image, Image.id == SpeciesLabel.image_id)
         .where(Image.dive_id == Dive.id)
@@ -190,7 +199,6 @@ async def select_next_for_slate_preprocessing(
         .where(
             ~select(DiveSlateLabel.id)
             .where(DiveSlateLabel.image_id == Image.id)
-            .where(DiveSlateLabel.completed == True)
             .exists()
         )
         .exists()
@@ -199,7 +207,7 @@ async def select_next_for_slate_preprocessing(
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
         .where(Dive.dive_slate_id != None)
-        .where(has_slate_marked_image_without_completed_dive_slate_label)
+        .where(has_slate_marked_image_without_any_dive_slate_label)
         .order_by(Dive.id)
         .limit(1)
     )

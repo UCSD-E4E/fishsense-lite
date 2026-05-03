@@ -2,10 +2,10 @@
 
 Returns a fully-populated `PreprocessHeadtailImagesInput` ready to
 hand to the data-worker's child workflow. Image set is filtered to
-species labels with `top_three_photos_of_group=True` whose head/tail
-label is not yet complete — same predicate
-`populate_headtail_label_studio_project_activity` uses, so populate
-consumes exactly what preprocess produces.
+species labels with `top_three_photos_of_group=True` whose image has
+no HeadTailLabel row at all — once populate seeds a (possibly
+incomplete) row, the headtail JPEG is on the file-exchange and we
+don't regenerate it. Matches the API selector predicate.
 """
 
 from __future__ import annotations
@@ -35,15 +35,13 @@ async def resolve_headtail_preprocess_inputs_activity(
 
         species_labels = await fs.labels.get_species_labels(dive_id) or []
         existing_headtail = await fs.labels.get_headtail_labels(dive_id) or []
-        completed_ids = {
-            label.image_id for label in existing_headtail if label.completed
-        }
+        labeled_ids = {label.image_id for label in existing_headtail}
 
         target_image_ids = [
             label.image_id
             for label in species_labels
             if label.top_three_photos_of_group
-            and label.image_id not in completed_ids
+            and label.image_id not in labeled_ids
         ]
 
         images = await fs.images.get(dive_id=dive_id) or []

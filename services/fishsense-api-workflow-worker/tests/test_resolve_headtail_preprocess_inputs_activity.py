@@ -127,17 +127,26 @@ def _make_fs(
 
 
 @pytest.mark.asyncio
-async def test_returns_only_top_three_with_incomplete_headtail(monkeypatch):
+async def test_returns_only_top_three_without_any_headtail(monkeypatch):
     fs = _make_fs(
         dive=_dive(),
         intrinsics=_intrinsics(),
-        images=[_image(1, "aaa"), _image(2, "bbb"), _image(3, "ccc")],
+        images=[
+            _image(1, "aaa"),
+            _image(2, "bbb"),
+            _image(3, "ccc"),
+            _image(4, "ddd"),
+        ],
         species=[
             _species(1, top_three=True),
             _species(2, top_three=False),
             _species(3, top_three=True),
+            _species(4, top_three=True),
         ],
-        headtail=[_headtail(1, completed=True)],
+        headtail=[
+            _headtail(1, completed=True),
+            _headtail(4, completed=False),
+        ],
     )
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
 
@@ -145,9 +154,11 @@ async def test_returns_only_top_three_with_incomplete_headtail(monkeypatch):
         sut.resolve_headtail_preprocess_inputs_activity, 42
     )
 
-    # 1: top-three but completed -> dropped.
+    # 1: top-three but headtail row exists (completed) -> dropped.
     # 2: not top-three -> dropped.
-    # 3: top-three + no headtail -> kept.
+    # 3: top-three + no headtail row -> kept.
+    # 4: top-three + headtail row exists (incomplete) -> dropped (any
+    #    row excludes — matches API selector predicate).
     assert result.image_checksums == ["ccc"]
     assert result.dive_id == 42
     assert result.camera_matrix == _K.tolist()

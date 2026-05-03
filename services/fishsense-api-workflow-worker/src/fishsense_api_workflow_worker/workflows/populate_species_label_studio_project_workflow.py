@@ -15,8 +15,10 @@ class PopulateSpeciesLabelStudioProjectWorkflow:
     # pylint: disable=too-few-public-methods
     """Workflow to populate every active species-labeling LS project for one dive.
 
-    Active = "currently has at least one incomplete species label."
-    Project creation is a separate workflow's responsibility.
+    Target set is the union of the canonical project (Create) and any
+    additional projects currently holding incomplete species labels.
+    See `PopulateLaserLabelStudioProjectWorkflow` for the bootstrap
+    rationale.
     """
 
     @workflow.run
@@ -25,17 +27,18 @@ class PopulateSpeciesLabelStudioProjectWorkflow:
 
         Returns the total number of tasks imported across all projects.
         """
-        project_ids = await workflow.execute_activity(
+        canonical_project_id = await workflow.execute_activity(
+            "create_species_label_studio_project_activity",
+            args=(),
+            schedule_to_close_timeout=timedelta(minutes=5),
+        )
+        discovered = await workflow.execute_activity(
             "get_active_species_label_studio_project_ids_activity",
             args=(),
             schedule_to_close_timeout=timedelta(minutes=5),
         )
 
-        if not project_ids:
-            workflow.logger.info(
-                "No active species LS projects found; nothing to populate"
-            )
-            return 0
+        project_ids = sorted({canonical_project_id, *discovered})
 
         sem = asyncio.Semaphore(PROJECT_CONCURRENCY)
         results: list[int] = []
