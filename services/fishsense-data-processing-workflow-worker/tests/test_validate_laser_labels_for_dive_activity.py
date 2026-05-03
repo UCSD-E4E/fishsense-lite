@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import List
 from unittest.mock import AsyncMock, MagicMock
 
+import numpy as np
 import pytest
 from temporalio.testing import ActivityEnvironment
 
@@ -60,8 +61,6 @@ def _make_fs(labels: List[LaserLabel]):
 
 def _colinear_labels(n: int, *, image_id_start: int = 1000) -> List[LaserLabel]:
     """n positives on the line y = 0.4*x + 100 with 1px Gaussian noise."""
-    import numpy as np
-
     rng = np.random.default_rng(0)
     xs = np.linspace(50.0, 1500.0, n)
     ys = 0.4 * xs + 100.0 + rng.normal(0.0, 1.0, size=n)

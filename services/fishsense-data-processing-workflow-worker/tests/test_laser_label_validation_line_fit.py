@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from fishsense_data_processing_workflow_worker.laser_label_validation.line_fit import (  # noqa: E501
+from fishsense_data_processing_workflow_worker.laser_label_validation.line_fit import (  # noqa: E501  pylint: disable=line-too-long
     LABEL_NOISE_MAD_FLOOR_PX,
     MIN_POINTS_FOR_LINE,
     fit_dive_line,

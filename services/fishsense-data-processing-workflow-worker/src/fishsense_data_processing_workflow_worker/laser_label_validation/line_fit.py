@@ -61,7 +61,7 @@ DEFAULT_OUTLIER_SIGMA = 3.0
 
 
 @dataclass
-class LineFit:
+class LineFit:  # pylint: disable=too-many-instance-attributes
     """A normalized line ``a*x + b*y + c = 0`` plus quality metrics."""
 
     a: float
