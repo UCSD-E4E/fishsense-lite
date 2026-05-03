@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.29.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.29.1...fishsense-api-workflow-worker-v1.29.2) (2026-05-03)
+
+
+### Bug Fixes
+
+* **api-workflow-worker:** emit both `image` and `img` keys in populate task data ([5bc163b](https://github.com/UCSD-E4E/fishsense-lite/commit/5bc163b955d96c68ea004d5359d26daaa5ca0d56))
+* **api-workflow-worker:** emit both `image` and `img` keys in populate task data ([7a3109e](https://github.com/UCSD-E4E/fishsense-lite/commit/7a3109e7c770794048ab791255566222c0a509f9))
+
 ## [1.29.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.29.0...fishsense-api-workflow-worker-v1.29.1) (2026-05-03)
 
 
