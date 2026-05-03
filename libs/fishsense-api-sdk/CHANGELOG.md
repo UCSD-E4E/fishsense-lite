@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.34.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.33.1...fishsense-api-sdk-v1.34.0) (2026-05-03)
+
+
+### Features
+
+* **laser:** post-sync line-fit validation of laser labels (observe-only) ([9fa0e13](https://github.com/UCSD-E4E/fishsense-lite/commit/9fa0e130b83d14d8098b3758d8f9ab3f58f2460c))
+* **laser:** post-sync line-fit validation of laser labels (observe-only) ([7390903](https://github.com/UCSD-E4E/fishsense-lite/commit/739090389c8a2e85ba99b34c687a98124982f827))
+
 ## [1.33.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.33.0...fishsense-api-sdk-v1.33.1) (2026-05-02)
 
 
