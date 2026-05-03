@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.31.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.31.0...fishsense-api-workflow-worker-v1.31.1) (2026-05-03)
+
+
+### Bug Fixes
+
+* **laser:** instrument + bump timeouts on validate-laser-labels activity ([570d10f](https://github.com/UCSD-E4E/fishsense-lite/commit/570d10f59b090b6d27c3e7a83c1dc6e8fa580c5c))
+* **laser:** timeouts + heartbeats on validate activity; .secrets.toml.example for all workers ([65149fa](https://github.com/UCSD-E4E/fishsense-lite/commit/65149fac706acaf20f8e88e26337e40fcdd9892a))
+
 ## [1.31.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.30.2...fishsense-api-workflow-worker-v1.31.0) (2026-05-03)
 
 
