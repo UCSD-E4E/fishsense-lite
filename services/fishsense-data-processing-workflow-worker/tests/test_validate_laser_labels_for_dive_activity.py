@@ -7,6 +7,7 @@ emits a structured OUTLIER log line for each, and calls
 
 from __future__ import annotations
 
+import re
 from typing import List
 from unittest.mock import AsyncMock, MagicMock
 
@@ -132,12 +133,34 @@ async def test_outlier_label_is_flagged_and_reported(monkeypatch, caplog):
 @pytest.mark.asyncio
 async def test_supersedes_each_flagged_outlier(monkeypatch):
     """Phase 2 invariant: every flagged outlier gets `superseded=True`
-    written back via `put_laser_label`. Two outliers in this fixture so
-    the assertion catches both an off-by-one and a "wrote only the
-    first" regression."""
+    written back via `put_laser_label`, and the rest of the row's
+    fields round-trip unchanged on the merge. Two outliers in this
+    fixture so the assertion catches both an off-by-one and a "wrote
+    only the first" regression. Field-preservation guards against a
+    future refactor that constructs a fresh `LaserLabel(superseded=True)`
+    and clobbers x/y/label/etc on the upsert."""
     labels = _colinear_labels(40)
     labels[3].y = labels[3].y + 60.0  # type: ignore[operator]
     labels[17].y = labels[17].y - 70.0  # type: ignore[operator]
+    # Snapshot the pre-mutation field values so the round-trip
+    # assertions below check what the *labeler* persisted, not what the
+    # activity might accidentally overwrite to.
+    expected_by_image_id = {
+        labels[3].image_id: (
+            labels[3].x,
+            labels[3].y,
+            labels[3].label,
+            labels[3].label_studio_task_id,
+            labels[3].label_studio_project_id,
+        ),
+        labels[17].image_id: (
+            labels[17].x,
+            labels[17].y,
+            labels[17].label,
+            labels[17].label_studio_task_id,
+            labels[17].label_studio_project_id,
+        ),
+    }
     fs = _make_fs(labels)
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
 
@@ -145,16 +168,148 @@ async def test_supersedes_each_flagged_outlier(monkeypatch):
     result = await env.run(sut.validate_laser_labels_for_dive_activity, 99)
 
     assert result == 2
-    # One PUT per flagged outlier, each carrying the matching image_id
-    # and a `superseded=True` body.
     assert fs.labels.put_laser_label.await_count == 2
     written_image_ids = {
         call.args[0] for call in fs.labels.put_laser_label.call_args_list
     }
-    assert written_image_ids == {labels[3].image_id, labels[17].image_id}
+    assert written_image_ids == set(expected_by_image_id)
     for call in fs.labels.put_laser_label.call_args_list:
-        _, written_label = call.args
+        image_id, written_label = call.args
+        # The PUT body's image_id must agree with the URL — the API
+        # endpoint overwrites from the URL but a mismatch here means
+        # the activity is mutating the wrong row.
+        assert written_label.image_id == image_id
+        # The one field the activity is allowed to change.
         assert written_label.superseded is True
+        # Every other field must round-trip unchanged so the merge
+        # doesn't clobber the label on the way back.
+        x, y, label, ls_task_id, ls_project_id = expected_by_image_id[image_id]
+        assert written_label.x == x
+        assert written_label.y == y
+        assert written_label.label == label
+        assert written_label.label_studio_task_id == ls_task_id
+        assert written_label.label_studio_project_id == ls_project_id
+
+
+@pytest.mark.asyncio
+async def test_rerun_after_supersede_is_a_noop(monkeypatch):
+    """Phase 2 idempotency-at-the-dive-level: once an outlier has been
+    superseded, a re-run sees it filtered out by `get_laser_labels`
+    (server-side `superseded=False` filter) and writes nothing.
+
+    Mocked with a stateful fs that mirrors the API filter so this is a
+    real idempotency test, not just a "the activity is pure" claim."""
+    labels = _colinear_labels(40)
+    labels[5].y = labels[5].y + 50.0  # type: ignore[operator]
+    superseded_ids: set[int | None] = set()
+
+    async def fake_get_laser_labels(_dive_id: int):
+        return [label for label in labels if label.id not in superseded_ids]
+
+    async def fake_put_laser_label(_image_id: int, label: LaserLabel) -> int:
+        if label.superseded:
+            superseded_ids.add(label.id)
+        return label.id or 0
+
+    fs = MagicMock()
+    fs.__aenter__ = AsyncMock(return_value=fs)
+    fs.__aexit__ = AsyncMock(return_value=None)
+    fs.labels = MagicMock()
+    fs.labels.get_laser_labels = AsyncMock(side_effect=fake_get_laser_labels)
+    fs.labels.put_laser_label = AsyncMock(side_effect=fake_put_laser_label)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    env = ActivityEnvironment()
+    first = await env.run(sut.validate_laser_labels_for_dive_activity, 99)
+    assert first == 1
+    assert labels[5].id in superseded_ids
+    puts_after_first = fs.labels.put_laser_label.await_count
+    assert puts_after_first == 1
+
+    second = await env.run(sut.validate_laser_labels_for_dive_activity, 99)
+    assert second == 0
+    # Re-run must not write anything new — the server-side filter
+    # makes the now-superseded outlier invisible, so the second run
+    # has nothing to flag.
+    assert fs.labels.put_laser_label.await_count == puts_after_first
+
+
+@pytest.mark.asyncio
+async def test_inlier_fraction_strictly_improves_after_supersede(
+    monkeypatch, caplog
+):
+    """The "iterative tightening" property in a deterministic shape:
+    after supersede, the line fit is computed over a strictly cleaner
+    population and `inlier_fraction` strictly improves toward 1.0.
+
+    Note: in principle the `LABEL_NOISE_MAD_FLOOR_PX` of 1.0 floors
+    the per-dive outlier threshold at 3px regardless of how clean the
+    data is, so on production-clean dives the second run never flags
+    *additional* borderline labels — `may flag additional` in the
+    docstring is the algorithm's behavior in noisier regimes than our
+    prod data, not a deterministic property to assert. What IS
+    deterministic and worth pinning here: removing outliers
+    monotonically improves the fit-quality metric `inlier_fraction`.
+    A regression where supersede doesn't actually take effect (e.g.,
+    the activity logs `OUTLIER` but the stateful mock's filter
+    doesn't drop the row) would surface as identical fractions across
+    runs."""
+    labels = _colinear_labels(40)
+    labels[3].y = labels[3].y + 50.0  # type: ignore[operator]
+    labels[17].y = labels[17].y - 80.0  # type: ignore[operator]
+    labels[25].y = labels[25].y + 30.0  # type: ignore[operator]
+    superseded_ids: set[int | None] = set()
+
+    async def fake_get_laser_labels(_dive_id: int):
+        return [label for label in labels if label.id not in superseded_ids]
+
+    async def fake_put_laser_label(_image_id: int, label: LaserLabel) -> int:
+        if label.superseded:
+            superseded_ids.add(label.id)
+        return label.id or 0
+
+    fs = MagicMock()
+    fs.__aenter__ = AsyncMock(return_value=fs)
+    fs.__aexit__ = AsyncMock(return_value=None)
+    fs.labels = MagicMock()
+    fs.labels.get_laser_labels = AsyncMock(side_effect=fake_get_laser_labels)
+    fs.labels.put_laser_label = AsyncMock(side_effect=fake_put_laser_label)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    def _parse_inlier_fraction(records) -> float:
+        # Pull the most-recent "line fit:" log line and extract the
+        # `(N%)` percentage immediately after the inlier count.
+        match = next(
+            (
+                re.search(r"\((\d+)%\)", rec.message)
+                for rec in reversed(records)
+                if "line fit:" in rec.message
+            ),
+            None,
+        )
+        assert match is not None, "no line-fit log line captured"
+        return float(match.group(1)) / 100.0
+
+    env = ActivityEnvironment()
+
+    with caplog.at_level("INFO"):
+        first = await env.run(sut.validate_laser_labels_for_dive_activity, 99)
+        first_fraction = _parse_inlier_fraction(caplog.records)
+
+    assert first == 3
+    caplog.clear()
+
+    with caplog.at_level("INFO"):
+        second = await env.run(sut.validate_laser_labels_for_dive_activity, 99)
+        second_fraction = _parse_inlier_fraction(caplog.records)
+
+    assert second == 0
+    # Strict improvement: the second run's inlier_fraction is higher
+    # than the first run's because the outliers are gone from the
+    # denominator. 1.0 is the achievable maximum (every remaining
+    # point is an inlier).
+    assert second_fraction > first_fraction
+    assert second_fraction == pytest.approx(1.0)
 
 
 @pytest.mark.asyncio
