@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.2.1...fishsense-data-processing-workflow-worker-v2.2.2) (2026-05-04)
+
+
+### Bug Fixes
+
+* **laser:** pump heartbeats during slow get_laser_labels ([e013c58](https://github.com/UCSD-E4E/fishsense-lite/commit/e013c58cb5aac8cfb5fc175a1b130c039f2235c4))
+* **laser:** pump heartbeats during slow get_laser_labels ([bd04dc0](https://github.com/UCSD-E4E/fishsense-lite/commit/bd04dc04276d796eec9bdee6b33ff09290d18d73))
+
 ## [2.2.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.2.0...fishsense-data-processing-workflow-worker-v2.2.1) (2026-05-03)
 
 
