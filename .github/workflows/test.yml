@@ -42,3 +42,72 @@ jobs:
           flags: ${{ matrix.cov }}
           name: ${{ matrix.cov }}
           fail_ci_if_error: false
+
+  # Runtime import smoke test: catches dev/runtime dependency drift.
+  #
+  # The runtime Dockerfile installs each service with
+  #   uv sync --frozen --no-dev --no-editable --package <name>
+  # so any module that imports something declared only in
+  # `[dependency-groups.dev]` will crash at container startup time
+  # rather than at build time. This job mirrors that install in CI
+  # and tries to import the package's entry-point module, so the
+  # crash surfaces here instead of in prod after auto-deploy.
+  #
+  # Concrete bug this would have caught: fishsense-api v1.27.0 (PR
+  # #103) added `from alembic import command` at module-load time but
+  # left alembic in `[dependency-groups.dev]`. Runtime image had no
+  # alembic; the deployed container crash-looped on `import
+  # fishsense_api`. Hotfixed in PR #107 + this job.
+  #
+  # If this job ever fails: a runtime module is now importing
+  # something only declared as a dev dep. Either add the package to
+  # `[project.dependencies]` (if it's truly runtime — common case) or
+  # move the import to a dev-only code path (if it's dev-only — e.g.,
+  # tooling).
+  runtime-import:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # `import fishsense_api` already chains through controllers
+          # and server.app via __init__.py; that's the same module
+          # graph uvicorn loads at startup.
+          - package: fishsense-api
+            module: fishsense_api
+          # The three workers' __init__.py files only set __version__;
+          # importing the .worker submodule exercises the activities
+          # and runtime-dep-using code paths the entry-point script
+          # would.
+          - package: fishsense-api-workflow-worker
+            module: fishsense_api_workflow_worker.worker
+          - package: fishsense-backup-worker
+            module: fishsense_backup_worker.worker
+          - package: fishsense-data-processing-workflow-worker
+            module: fishsense_data_processing_workflow_worker.worker
+            # opencv-python needs libgl1 + libglib2.0-0 to import cv2,
+            # mirroring this service's Dockerfile system-libs install.
+            apt: libgl1 libglib2.0-0
+    name: runtime import (${{ matrix.package }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install uv
+        run: pip install uv
+      - name: Install system libs (mirror Dockerfile)
+        if: matrix.apt != ''
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ${{ matrix.apt }}
+      - name: Sync runtime-only env (mirrors Dockerfile)
+        # `--frozen --no-dev --no-editable --package <name>` matches
+        # the install line in services/<name>/Dockerfile exactly, so a
+        # runtime/dev dep drift surfaces with the same import error
+        # the container would crash on at startup.
+        run: uv sync --frozen --no-dev --no-editable --package ${{ matrix.package }}
+      - name: Import entry-point module
+        # If a runtime module imports something declared only in
+        # `[dependency-groups.dev]`, this exits non-zero with
+        # `ModuleNotFoundError`. Same crash mode as the deployed
+        # container.
+        run: .venv/bin/python -c "import ${{ matrix.module }}"
