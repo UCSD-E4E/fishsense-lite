@@ -80,6 +80,9 @@ class LabelClient(ClientBase):
             List[DiveSlateLabel] | None: The list of dive slate labels for the specified dive.
         """
         response = await self._get(f"/api/v1/dives/{dive_id}/labels/dive-slate")
+        if response.status_code == 404:
+            self.logger.debug("No dive slate labels found for dive ID %s", dive_id)
+            return None
         response.raise_for_status()
 
         json = response.json()
@@ -164,6 +167,9 @@ class LabelClient(ClientBase):
             List[HeadTailLabel] | None: The list of head-tail labels for the specified dive.
         """
         response = await self._get(f"/api/v1/dives/{dive_id}/labels/headtail")
+        if response.status_code == 404:
+            self.logger.debug("No head-tail labels found for dive ID %s", dive_id)
+            return None
         response.raise_for_status()
 
         json = response.json()
@@ -303,6 +309,9 @@ class LabelClient(ClientBase):
             List[LaserLabel] | None: The list of laser labels for the specified dive.
         """
         response = await self._get(f"/api/v1/dives/{dive_id}/labels/laser")
+        if response.status_code == 404:
+            self.logger.debug("No laser labels found for dive ID %s", dive_id)
+            return None
         response.raise_for_status()
 
         json = response.json()
@@ -422,6 +431,9 @@ class LabelClient(ClientBase):
             List[SpeciesLabel] | None: The list of species labels for the specified dive.
         """
         response = await self._get(f"/api/v1/dives/{dive_id}/labels/species")
+        if response.status_code == 404:
+            self.logger.debug("No species labels found for dive ID %s", dive_id)
+            return None
         response.raise_for_status()
 
         json = response.json()
