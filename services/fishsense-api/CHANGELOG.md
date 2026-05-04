@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.26.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.25.0...fishsense-api-v1.26.0) (2026-05-04)
+
+
+### Features
+
+* **headtail:** cascade stage 5.1 from valid laser labels ([56e46fe](https://github.com/UCSD-E4E/fishsense-lite/commit/56e46fec4598829702f55d8d3743e2aeb4a9a959))
+* **headtail:** cascade stage 5.1 from valid laser labels ([2b73d28](https://github.com/UCSD-E4E/fishsense-lite/commit/2b73d2843e44c3df210b8fe6e71f16da2152610a))
+
 ## [1.25.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.24.1...fishsense-api-v1.25.0) (2026-05-03)
 
 
