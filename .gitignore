@@ -58,3 +58,7 @@ deploy/.env
 # Stage13 refactor validation + dry-run outputs (contain prod data samples)
 services/fishsense-data-processing-workflow-worker/scripts/validate_stage13_refactor_*.json
 services/fishsense-data-processing-workflow-worker/scripts/dry_run_stage13_*.json
+
+# tools/scan_image_path_rollover.py output (per-run prod scan artifact —
+# stale within hours, contains image-path snapshots not worth versioning)
+/rollover_scan*.json
