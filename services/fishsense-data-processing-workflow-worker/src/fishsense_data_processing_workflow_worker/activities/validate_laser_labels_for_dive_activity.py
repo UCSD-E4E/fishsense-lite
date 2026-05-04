@@ -29,7 +29,8 @@ had; reviving a superseded label requires an explicit operator action
 from __future__ import annotations
 
 import asyncio
-from typing import List
+import contextlib
+from typing import AsyncIterator, List
 
 import numpy as np
 from fishsense_api_sdk.models.laser_label import LaserLabel
@@ -42,7 +43,11 @@ from fishsense_data_processing_workflow_worker.laser_label_validation.line_fit i
     flag_outliers,
 )
 
-__all__ = ["validate_laser_labels_for_dive_activity", "SUPERSEDE_CONCURRENCY"]
+__all__ = [
+    "validate_laser_labels_for_dive_activity",
+    "SUPERSEDE_CONCURRENCY",
+    "HEARTBEAT_INTERVAL_SECONDS",
+]
 
 # Bound on concurrent supersede PUTs per dive. A dive with many flagged
 # outliers was blowing `start_to_close` (10m) on sequential PUTs because
@@ -52,6 +57,44 @@ __all__ = ["validate_laser_labels_for_dive_activity", "SUPERSEDE_CONCURRENCY"]
 # every outbound HTTP slot when multiple validate workflows run in
 # parallel against different dives.
 SUPERSEDE_CONCURRENCY = 8
+
+# Background-pump heartbeat cadence. Comfortably under the workflow's
+# `heartbeat_timeout=1m` so a single missed pump tick still leaves a
+# safety margin. The pump is what stops a slow `get_laser_labels`
+# response — httpx applies its `read` timeout per byte-gap rather than
+# to the whole download, so a slowly-streamed multi-MB body can keep
+# reading for minutes without tripping httpx but well past our
+# heartbeat window.
+HEARTBEAT_INTERVAL_SECONDS = 30.0
+
+
+@contextlib.asynccontextmanager
+async def _heartbeat_pump() -> AsyncIterator[None]:
+    """Background task that pumps `activity.heartbeat()` every
+    `HEARTBEAT_INTERVAL_SECONDS` so a single slow await inside the
+    activity body can't trip the workflow's `heartbeat_timeout`.
+
+    The explicit per-call `activity.heartbeat()` lines elsewhere in
+    the activity stay in place — they're cheap and bracket the
+    interesting milestones for diagnostics. The pump exists for the
+    case where one of those awaits is itself slow.
+    """
+
+    async def _pump() -> None:
+        try:
+            while True:
+                await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
+                activity.heartbeat()
+        except asyncio.CancelledError:
+            return
+
+    task = asyncio.create_task(_pump())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
 
 
 def _positive_xy(labels: List[LaserLabel]) -> tuple[np.ndarray, List[LaserLabel]]:
@@ -94,7 +137,7 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
         "dive_id=%d validation starting; fetching laser labels", dive_id
     )
     activity.heartbeat()
-    async with get_fs_client() as fs:
+    async with _heartbeat_pump(), get_fs_client() as fs:
         labels = await fs.labels.get_laser_labels(dive_id) or []
         activity.logger.info(
             "dive_id=%d fetched %d laser label rows", dive_id, len(labels)
