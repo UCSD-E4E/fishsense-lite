@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.34.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.34.0...fishsense-api-sdk-v1.34.1) (2026-05-04)
+
+
+### Bug Fixes
+
+* **sdk:** return None on 404 from per-dive plural label getters ([6a63a85](https://github.com/UCSD-E4E/fishsense-lite/commit/6a63a8511837c4bcf06f1f06b72a2cefd7395812))
+* **sdk:** return None on 404 from per-dive plural label getters ([2719f26](https://github.com/UCSD-E4E/fishsense-lite/commit/2719f2690ff35c3a8dcd6d9ccdc60a376f168977))
+
 ## [1.34.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.33.1...fishsense-api-sdk-v1.34.0) (2026-05-03)
 
 

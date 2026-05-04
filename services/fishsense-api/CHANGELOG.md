@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## [1.27.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.26.0...fishsense-api-v1.27.0) (2026-05-04)
+
+
+### Features
+
+* **api:** auto-apply alembic migrations on FastAPI startup ([36ca0fc](https://github.com/UCSD-E4E/fishsense-lite/commit/36ca0fc4bb8702aba6dd43827120f83b07ab7c80))
+* **api:** dive_pipeline_status view for Superset dashboards ([5ec1ae9](https://github.com/UCSD-E4E/fishsense-lite/commit/5ec1ae99bf0bbd862ccc4cbd04006926ececfd72))
+* **api:** dive_pipeline_status view for Superset dashboards ([f99372d](https://github.com/UCSD-E4E/fishsense-lite/commit/f99372d2122c04afec210a08b21708bd841665dd))
+
 ## [1.26.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.25.0...fishsense-api-v1.26.0) (2026-05-04)
 
 
