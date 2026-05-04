@@ -420,6 +420,28 @@ no layer transfer); (b) opens a PR on `deploy/compose*.yml` bumping
 the package's image pin to the new version. Branch name pattern:
 `auto-deploy/<package>-<version>`.
 
+**SDK consumer cascade (release.yml `auto-bump-sdk-consumers` job).**
+`fishsense-api-sdk` is a workspace dep, not published — workers
+consume it via `fishsense-api-sdk = { workspace = true }`, which is
+path-based. release-please tracks commits per package path, so an
+SDK-only commit doesn't bump the workers, and the workers' compose
+pins keep pointing at images built before the SDK fix. The follow-up
+job in [release.yml](.github/workflows/release.yml) closes that gap:
+when release-please reports `libs/fishsense-api-sdk` in
+`paths_released`, it reads the new SDK version from
+`.release-please-manifest.json`, updates each consumer's
+`"fishsense-api-sdk>=X.Y.Z"` pin in `pyproject.toml`, and opens an
+`auto-bump/fishsense-api-sdk-<version>` PR. Merging that PR causes
+release-please to bump every consuming worker on the next run, which
+then goes through the standard promote → auto-deploy chain.
+
+The list of consumers is hardcoded in the job's `for pkg in ...`
+loop. Adding a new SDK consumer means: (a) declaring the
+`"fishsense-api-sdk>=X.Y.Z"` pin in its `pyproject.toml`, and (b)
+appending its path to the loop. release-please does NOT have a
+built-in Python-workspace-aware plugin (unlike `node-workspace` /
+`cargo-workspace`); this job is the workaround.
+
 `.github/workflows/deploy.yml` runs when an `auto-deploy/*` PR is
 merged (via `pull_request: types:[closed]` + branch-prefix filter, so
 unrelated compose edits don't trigger it). Plus a `workflow_dispatch`
