@@ -30,7 +30,7 @@ def _mock_404() -> Mock:
     return response
 
 
-class TestLabelClient:
+class TestLabelClient:  # pylint: disable=too-many-public-methods
     """Test suite for LabelClient class."""
 
     async def test_get_dive_slate_label_returns_none_on_404(self):
