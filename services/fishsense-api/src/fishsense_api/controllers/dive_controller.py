@@ -161,18 +161,30 @@ async def select_next_for_dive_image_preprocessing(
 async def select_next_for_headtail_preprocessing(
     session: AsyncSession = Depends(get_async_session),
 ) -> int | None:
-    """Stage 5.1: HIGH-priority + has at least one
-    SpeciesLabel.top_three_photos_of_group=True whose image carries no
-    non-sentinel HeadTailLabel row.
+    """Stage 5.1: HIGH-priority + has at least one image carrying a
+    *valid* LaserLabel (completed, not superseded, both x/y populated)
+    whose image carries no non-sentinel HeadTailLabel row.
 
-    "Non-sentinel" = `project_id IS NOT NULL`. See the laser cohort
-    docstring for the rationale.
+    Cascade source flipped from species top-3 → valid laser labels on
+    2026-05-04 so head/tail labeling fans out as soon as laser
+    labelers (and the validator) sign off, without waiting for the
+    species pass. "Valid" matches the predicate already used by
+    `perform_laser_calibration_activity` and
+    `validate_laser_labels_for_dive_activity._positive_xy`:
+    null x/y are sentinel/no-laser rows, superseded comes from
+    validation, completed comes from the labeler.
+
+    "Non-sentinel" headtail = `project_id IS NOT NULL`. See the laser
+    cohort docstring for the rationale.
     """
-    has_top_three_image_without_real_headtail = (
-        select(SpeciesLabel.id)
-        .join(Image, Image.id == SpeciesLabel.image_id)
+    has_valid_laser_image_without_real_headtail = (
+        select(LaserLabel.id)
+        .join(Image, Image.id == LaserLabel.image_id)
         .where(Image.dive_id == Dive.id)
-        .where(SpeciesLabel.top_three_photos_of_group == True)
+        .where(LaserLabel.completed == True)
+        .where(LaserLabel.superseded == False)
+        .where(LaserLabel.x != None)
+        .where(LaserLabel.y != None)
         .where(
             ~select(HeadTailLabel.id)
             .where(HeadTailLabel.image_id == Image.id)
@@ -184,7 +196,7 @@ async def select_next_for_headtail_preprocessing(
     query = (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
-        .where(has_top_three_image_without_real_headtail)
+        .where(has_valid_laser_image_without_real_headtail)
         .order_by(Dive.id)
         .limit(1)
     )
