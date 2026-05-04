@@ -47,6 +47,7 @@ __all__ = [
     "validate_laser_labels_for_dive_activity",
     "SUPERSEDE_CONCURRENCY",
     "HEARTBEAT_INTERVAL_SECONDS",
+    "MAX_OUTLIER_FRACTION",
 ]
 
 # Bound on concurrent supersede PUTs per dive. A dive with many flagged
@@ -57,6 +58,16 @@ __all__ = [
 # every outbound HTTP slot when multiple validate workflows run in
 # parallel against different dives.
 SUPERSEDE_CONCURRENCY = 8
+
+# Safety gate: refuse to supersede when more than this fraction of a
+# dive's positive labels would be flagged. At >50% the line fit is
+# more likely to be degenerate (a small accidentally-aligned cluster
+# being picked over the real majority) than the labelers being wrong
+# at that rate. Empirically prod has ~6 dives at 50%+ supersede rate
+# that are almost certainly degenerate fits — refusing to act on them
+# costs us nothing (the labels stay as-is, available for manual
+# review) and prevents propagating the line-fit error to the DB.
+MAX_OUTLIER_FRACTION = 0.5
 
 # Background-pump heartbeat cadence. Comfortably under the workflow's
 # `heartbeat_timeout=1m` so a single missed pump tick still leaves a
@@ -189,6 +200,20 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
         n_outliers = int(outlier_mask.sum())
         if n_outliers == 0:
             activity.logger.info("dive_id=%d: no outlier laser labels", dive_id)
+            return 0
+
+        outlier_fraction = n_outliers / xy.shape[0]
+        if outlier_fraction > MAX_OUTLIER_FRACTION:
+            activity.logger.warning(
+                "dive_id=%d would supersede %d/%d positive laser labels "
+                "(%.0f%%, gate=%.0f%%); refusing — line fit is likely "
+                "degenerate. Labels left unchanged for manual review.",
+                dive_id,
+                n_outliers,
+                xy.shape[0],
+                100.0 * outlier_fraction,
+                100.0 * MAX_OUTLIER_FRACTION,
+            )
             return 0
 
         perp = fit.perpendicular_distance(xy[:, 0], xy[:, 1])

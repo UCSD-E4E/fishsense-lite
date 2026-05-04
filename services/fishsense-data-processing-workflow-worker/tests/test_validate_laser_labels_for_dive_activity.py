@@ -425,6 +425,49 @@ async def test_supersede_writes_run_concurrently(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_refuses_to_supersede_when_outlier_fraction_exceeds_safety_gate(
+    monkeypatch, caplog
+):
+    """Safety gate: if the algorithm thinks more than
+    `MAX_OUTLIER_FRACTION` of the dive's positive labels are wrong,
+    refuse to supersede — at that point it's more likely the per-dive
+    line fit is degenerate than that >half the labelers are wrong on
+    the same dive.
+
+    Empirically prod prod showed 51 dives at 30-50% supersede rates and
+    6 dives at 50%+ — those are almost certainly degenerate fits, not
+    bad labelers. Without this gate the activity propagates the line
+    fit's mistake to the DB at scale; with it we log a warning, return
+    0, and leave the dive's labels alone for manual review.
+    """
+    # 30 positives total, 18 mutated to be far off the line — 60%
+    # outlier rate, above the 50% gate.
+    labels = _colinear_labels(30)
+    outlier_idxs = list(range(0, 18))
+    for idx in outlier_idxs:
+        # Alternating sign so the points still scatter around the
+        # original line rather than coordinate-shifting to a new one
+        # (which RANSAC could pick up as a parallel fit).
+        offset = 50.0 if idx % 2 == 0 else -50.0
+        labels[idx].y = labels[idx].y + offset  # type: ignore[operator]
+    fs = _make_fs(labels)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    env = ActivityEnvironment()
+    with caplog.at_level("WARNING"):
+        result = await env.run(sut.validate_laser_labels_for_dive_activity, 99)
+
+    # The gate refuses to act — return 0, no PUTs.
+    assert result == 0
+    fs.labels.put_laser_label.assert_not_called()
+    # Operator-facing warning so the dive surfaces in log scans.
+    assert any(
+        "refusing" in rec.message.lower() and "dive_id=99" in rec.message
+        for rec in caplog.records
+    ), f"expected a 'refusing' WARNING for dive_id=99, got {[r.message for r in caplog.records]}"
+
+
+@pytest.mark.asyncio
 async def test_supersede_failure_propagates(monkeypatch):
     """If the writeback raises, the activity raises so Temporal retries
     the whole run rather than silently leaving outliers in place."""
