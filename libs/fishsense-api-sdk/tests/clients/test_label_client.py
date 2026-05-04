@@ -30,7 +30,7 @@ def _mock_404() -> Mock:
     return response
 
 
-class TestLabelClient:
+class TestLabelClient:  # pylint: disable=too-many-public-methods
     """Test suite for LabelClient class."""
 
     async def test_get_dive_slate_label_returns_none_on_404(self):
@@ -85,6 +85,43 @@ class TestLabelClient:
                 assert (
                     await client.get_species_label(label_studio_id=999) is None
                 )
+
+    # 404→None for the per-dive *plural* getters. The API returns 404 with
+    # `Labels not found` when a dive has zero rows of a given label kind
+    # (label_controller.py — `get_*_labels_for_dive`). That is a valid
+    # steady state — e.g. a dive with valid laser labels but no
+    # head/tail rows yet — and must not blow up the workflow that
+    # called the SDK. Regression caught when the stage 5.1 head/tail
+    # cascade fired against dive 58 (no head/tail rows yet) and
+    # `resolve_headtail_preprocess_inputs_activity` 500'd.
+
+    async def test_get_dive_slate_labels_returns_none_on_404(self):
+        client = _make_client()
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = _mock_404()
+            async with client:
+                assert await client.get_dive_slate_labels(999) is None
+
+    async def test_get_headtail_labels_returns_none_on_404(self):
+        client = _make_client()
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = _mock_404()
+            async with client:
+                assert await client.get_headtail_labels(999) is None
+
+    async def test_get_laser_labels_returns_none_on_404(self):
+        client = _make_client()
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = _mock_404()
+            async with client:
+                assert await client.get_laser_labels(999) is None
+
+    async def test_get_species_labels_returns_none_on_404(self):
+        client = _make_client()
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = _mock_404()
+            async with client:
+                assert await client.get_species_labels(999) is None
 
     async def test_get_laser_label_studio_project_ids_hits_collection_endpoint(self):
         client = _make_client()
