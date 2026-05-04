@@ -314,6 +314,55 @@ async def test_inlier_fraction_strictly_improves_after_supersede(
 
 
 @pytest.mark.asyncio
+async def test_heartbeats_fire_during_slow_get_laser_labels(monkeypatch):
+    """A dive with thousands of laser labels can produce a
+    `get_laser_labels` response large enough that the streamed read
+    exceeds `heartbeat_timeout=1m` even though the SDK's per-attempt
+    `httpx` `read` timeout is 10s — httpx applies its read timeout per
+    byte-gap, not to the whole download, so a slowly-streamed multi-MB
+    body just keeps reading until done. The activity must pump
+    heartbeats on a fixed interval independent of the await on the GET
+    so `heartbeat_timeout` doesn't fire mid-fetch.
+
+    Test shape: lower the pump interval to 0.05s, mock the GET to
+    sleep 0.3s, count `activity.heartbeat` calls. With a working pump
+    we get ~6 pump-driven calls plus the explicit before/after calls.
+    Without a pump (the prior implementation) only the 2 explicit
+    calls fire — assert >= 4 to leave headroom."""
+    monkeypatch.setattr(sut, "HEARTBEAT_INTERVAL_SECONDS", 0.05)
+
+    heartbeat_calls = 0
+
+    def count_heartbeat(*_args, **_kwargs):
+        nonlocal heartbeat_calls
+        heartbeat_calls += 1
+
+    monkeypatch.setattr(sut.activity, "heartbeat", count_heartbeat)
+
+    slow_get_duration = 0.3
+
+    async def slow_get_laser_labels(_dive_id: int):
+        await asyncio.sleep(slow_get_duration)
+        return []
+
+    fs = MagicMock()
+    fs.__aenter__ = AsyncMock(return_value=fs)
+    fs.__aexit__ = AsyncMock(return_value=None)
+    fs.labels = MagicMock()
+    fs.labels.get_laser_labels = AsyncMock(side_effect=slow_get_laser_labels)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    env = ActivityEnvironment()
+    await env.run(sut.validate_laser_labels_for_dive_activity, 99)
+
+    assert heartbeat_calls >= 4, (
+        f"expected >= 4 heartbeat calls during a {slow_get_duration}s GET "
+        "with pump interval 0.05s (~6 pump fires + explicit calls); "
+        f"got {heartbeat_calls} — pump is not running"
+    )
+
+
+@pytest.mark.asyncio
 async def test_supersede_writes_run_concurrently(monkeypatch):
     """Phase 2 PUTs must run concurrently (not sequentially). A dive
     with many flagged outliers was blowing `start_to_close` on
