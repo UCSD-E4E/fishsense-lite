@@ -1,0 +1,693 @@
+# pylint: disable=too-many-lines
+"""Tests for the `dive_pipeline_status` view.
+
+Each stage flag has at least one True case and at least one False
+case, including the vacuous-zero-rows edge ("zero labels of a kind"
+must read as not-complete, mirroring the
+`get_dives_with_complete_laser_labeling` semantics). Edge cases that
+historically tripped operators get their own tests:
+
+  * Dive with zero images — every flag should be False (not vacuously
+    True).
+  * Dive without `dive_slate_id` — slate_* flags should all be False
+    regardless of labels.
+  * Sentinel HeadTail/DiveSlate rows (project_id NULL) should not
+    count as "preprocessed" — matches the cohort selectors' filter.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+import pytest
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlmodel import SQLModel
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+from fishsense_api.views import (
+    DIVE_PIPELINE_STATUS_VIEW_NAME,
+    DIVE_PIPELINE_STATUS_VIEW_SQL,
+    DROP_DIVE_PIPELINE_STATUS_VIEW_SQL,
+)
+
+
+@pytest.fixture
+async def session():
+    """In-memory sqlite + the view created on top via raw SQL."""
+    import fishsense_api.database  # noqa: F401  # pylint: disable=import-outside-toplevel,unused-import
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+        await conn.execute(text(DIVE_PIPELINE_STATUS_VIEW_SQL))
+    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as s:
+        yield s
+    async with engine.begin() as conn:
+        await conn.execute(text(DROP_DIVE_PIPELINE_STATUS_VIEW_SQL))
+    await engine.dispose()
+
+
+def _dive(dive_id: int, *, priority: str = "HIGH", dive_slate_id=None):
+    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
+
+    return Dive(
+        id=dive_id,
+        path=f"/dev/null/{dive_id}",
+        dive_datetime=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        priority=Priority[priority],
+        dive_slate_id=dive_slate_id,
+    )
+
+
+def _image(image_id: int, dive_id: int):
+    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
+
+    return Image(
+        id=image_id,
+        path=f"/dev/null/img-{image_id}",
+        taken_datetime=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        checksum=f"img-{image_id:032d}"[:32],
+        dive_id=dive_id,
+    )
+
+
+_BOOL_FLAG_COLUMNS = (
+    "laser_preprocessed",
+    "laser_labeling_complete",
+    "headtail_preprocessed",
+    "headtail_labeling_complete",
+    "has_prediction_clusters",
+    "dive_images_preprocessed",
+    "species_labeling_complete",
+    "slate_applicable",
+    "slate_preprocessed",
+    "slate_labeling_complete",
+    "calibrated",
+    "measured",
+)
+
+
+async def _row(session, dive_id: int) -> dict:
+    """Fetch the view row for a dive as a dict for easy assertion.
+
+    Boolean flags get coerced to `bool` so `is True` / `is False`
+    works against both Postgres (native bool) and sqlite (0/1 int)."""
+    result = await session.exec(
+        text(
+            f"SELECT * FROM {DIVE_PIPELINE_STATUS_VIEW_NAME} "
+            f"WHERE dive_id = :dive_id"
+        ).bindparams(dive_id=dive_id)
+    )
+    row = dict(result.mappings().one())
+    for col in _BOOL_FLAG_COLUMNS:
+        row[col] = bool(row[col])
+    return row
+
+
+# ---------- baseline / identity ----------
+
+
+async def test_empty_dive_emits_a_row_with_every_flag_false(session):
+    """Edge: dive with zero images. Every flag must be False, not
+    vacuously True via empty subqueries."""
+    session.add(_dive(1))
+    await session.flush()
+
+    row = await _row(session, 1)
+    flag_columns = [
+        "laser_preprocessed",
+        "laser_labeling_complete",
+        "headtail_preprocessed",
+        "headtail_labeling_complete",
+        "has_prediction_clusters",
+        "dive_images_preprocessed",
+        "species_labeling_complete",
+        "slate_applicable",
+        "slate_preprocessed",
+        "slate_labeling_complete",
+        "calibrated",
+        "measured",
+    ]
+    for col in flag_columns:
+        assert not row[col], f"{col} should be False for an empty dive"
+
+
+async def test_identity_columns_pass_through(session):
+    session.add(_dive(7, priority="LOW", dive_slate_id=42))
+    await session.flush()
+
+    row = await _row(session, 7)
+    assert row["dive_id"] == 7
+    # priority enum stored as enum-name string by sqlmodel.
+    assert row["priority"] == "LOW"
+    assert row["dive_slate_id"] == 42
+
+
+# ---------- laser_preprocessed (stage 0.1) ----------
+
+
+async def test_laser_preprocessed_true_when_every_image_has_laser_row(session):
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1)])
+    await session.flush()
+    session.add_all(
+        [
+            LaserLabel(image_id=11, completed=False),
+            LaserLabel(image_id=12, completed=False),
+        ]
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["laser_preprocessed"] is True
+
+
+async def test_laser_preprocessed_false_when_one_image_lacks_label(session):
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1)])
+    await session.flush()
+    session.add(LaserLabel(image_id=11, completed=False))
+    await session.flush()
+
+    assert (await _row(session, 1))["laser_preprocessed"] is False
+
+
+# ---------- laser_labeling_complete ----------
+
+
+async def test_laser_labeling_complete_true_when_all_completed_and_none_incomplete(
+    session,
+):
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1)])
+    await session.flush()
+    session.add_all(
+        [
+            LaserLabel(image_id=11, completed=True, superseded=False),
+            LaserLabel(image_id=12, completed=True, superseded=False),
+        ]
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["laser_labeling_complete"] is True
+
+
+async def test_laser_labeling_complete_false_when_zero_labels(session):
+    """Vacuous-truth guard: zero labels must NOT read as complete."""
+    session.add(_dive(1))
+    await session.flush()
+    session.add(_image(11, 1))
+    await session.flush()
+
+    assert (await _row(session, 1))["laser_labeling_complete"] is False
+
+
+async def test_laser_labeling_complete_false_when_any_incomplete(session):
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1)])
+    await session.flush()
+    session.add_all(
+        [
+            LaserLabel(image_id=11, completed=True, superseded=False),
+            LaserLabel(image_id=12, completed=False, superseded=False),
+        ]
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["laser_labeling_complete"] is False
+
+
+async def test_laser_labeling_complete_ignores_superseded_incomplete(session):
+    """Superseded incomplete rows are dead; they must not block
+    completion. Mirrors the laser-validate flow's behavior."""
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(_image(11, 1))
+    await session.flush()
+    session.add_all(
+        [
+            LaserLabel(image_id=11, completed=True, superseded=False),
+            LaserLabel(image_id=11, completed=False, superseded=True),
+        ]
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["laser_labeling_complete"] is True
+
+
+# ---------- headtail_preprocessed (stage 5.1) ----------
+
+
+async def test_headtail_preprocessed_true_when_every_valid_laser_image_has_headtail(
+    session,
+):
+    from fishsense_api.models.head_tail_label import HeadTailLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(_image(11, 1))
+    await session.flush()
+    session.add(
+        LaserLabel(
+            image_id=11, completed=True, superseded=False,
+            x=100.0, y=200.0,
+        )
+    )
+    session.add(
+        HeadTailLabel(image_id=11, completed=False, label_studio_project_id=71)
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["headtail_preprocessed"] is True
+
+
+async def test_headtail_preprocessed_false_when_no_valid_laser_images(session):
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(_image(11, 1))
+    await session.flush()
+    # Laser is incomplete -> no valid lasers in the dive -> nothing to
+    # preprocess yet.
+    session.add(LaserLabel(image_id=11, completed=False, x=100.0, y=200.0))
+    await session.flush()
+
+    assert (await _row(session, 1))["headtail_preprocessed"] is False
+
+
+async def test_headtail_preprocessed_false_when_valid_laser_image_lacks_headtail(
+    session,
+):
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(_image(11, 1))
+    await session.flush()
+    session.add(
+        LaserLabel(
+            image_id=11, completed=True, superseded=False,
+            x=100.0, y=200.0,
+        )
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["headtail_preprocessed"] is False
+
+
+async def test_headtail_preprocessed_ignores_sentinel_headtail_rows(session):
+    """A sentinel HeadTailLabel (label_studio_project_id NULL) does
+    NOT count as preprocessed — matches the cohort selector."""
+    from fishsense_api.models.head_tail_label import HeadTailLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(_image(11, 1))
+    await session.flush()
+    session.add(
+        LaserLabel(
+            image_id=11, completed=True, superseded=False,
+            x=100.0, y=200.0,
+        )
+    )
+    session.add(
+        HeadTailLabel(
+            image_id=11, completed=False, label_studio_project_id=None
+        )
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["headtail_preprocessed"] is False
+
+
+# ---------- headtail_labeling_complete ----------
+
+
+async def test_headtail_labeling_complete_true_when_all_completed_and_none_incomplete(
+    session,
+):
+    from fishsense_api.models.head_tail_label import HeadTailLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(_image(11, 1))
+    await session.flush()
+    session.add(
+        HeadTailLabel(
+            image_id=11, completed=True, superseded=False,
+            label_studio_project_id=71,
+        )
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["headtail_labeling_complete"] is True
+
+
+async def test_headtail_labeling_complete_false_when_any_incomplete(session):
+    from fishsense_api.models.head_tail_label import HeadTailLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1)])
+    await session.flush()
+    session.add_all(
+        [
+            HeadTailLabel(
+                image_id=11, completed=True, superseded=False,
+                label_studio_project_id=71,
+            ),
+            HeadTailLabel(
+                image_id=12, completed=False, superseded=False,
+                label_studio_project_id=71,
+            ),
+        ]
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["headtail_labeling_complete"] is False
+
+
+async def test_headtail_labeling_complete_false_when_zero_labels(session):
+    session.add(_dive(1))
+    await session.flush()
+
+    assert (await _row(session, 1))["headtail_labeling_complete"] is False
+
+
+# ---------- has_prediction_clusters / dive_images_preprocessed (stage 2) ----------
+
+
+async def test_has_prediction_clusters_reflects_data_source(session):
+    from fishsense_api.models.dive_frame_cluster import DiveFrameCluster  # pylint: disable=import-outside-toplevel
+
+    session.add_all([_dive(1), _dive(2)])
+    await session.flush()
+    session.add(
+        DiveFrameCluster(
+            dive_id=1, data_source="PREDICTION", index=0,
+        )
+    )
+    session.add(
+        DiveFrameCluster(
+            dive_id=2, data_source="LABEL_STUDIO", index=0,
+        )
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["has_prediction_clusters"] is True
+    # dive 2 only has LABEL_STUDIO clusters -> stage 1 hasn't run.
+    assert (await _row(session, 2))["has_prediction_clusters"] is False
+
+
+async def test_dive_images_preprocessed_requires_clusters_and_species_rows(session):
+    from fishsense_api.models.dive_frame_cluster import DiveFrameCluster  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1)])
+    await session.flush()
+    session.add(
+        DiveFrameCluster(
+            dive_id=1, data_source="PREDICTION", index=0,
+        )
+    )
+    session.add_all(
+        [
+            SpeciesLabel(image_id=11, label_studio_project_id=70),
+            SpeciesLabel(image_id=12, label_studio_project_id=70),
+        ]
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["dive_images_preprocessed"] is True
+
+
+async def test_dive_images_preprocessed_false_without_prediction_cluster(session):
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(_image(11, 1))
+    await session.flush()
+    session.add(SpeciesLabel(image_id=11, label_studio_project_id=70))
+    await session.flush()
+
+    assert (await _row(session, 1))["dive_images_preprocessed"] is False
+
+
+async def test_dive_images_preprocessed_false_when_image_lacks_species_row(session):
+    from fishsense_api.models.dive_frame_cluster import DiveFrameCluster  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1)])
+    await session.flush()
+    session.add(
+        DiveFrameCluster(
+            dive_id=1, data_source="PREDICTION", index=0,
+        )
+    )
+    session.add(SpeciesLabel(image_id=11, label_studio_project_id=70))
+    await session.flush()
+
+    assert (await _row(session, 1))["dive_images_preprocessed"] is False
+
+
+# ---------- species_labeling_complete ----------
+
+
+async def test_species_labeling_complete_true_when_all_completed(session):
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(_image(11, 1))
+    await session.flush()
+    session.add(
+        SpeciesLabel(
+            image_id=11, completed=True, superseded=False,
+            label_studio_project_id=70,
+        )
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["species_labeling_complete"] is True
+
+
+async def test_species_labeling_complete_false_when_any_incomplete(session):
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1)])
+    await session.flush()
+    session.add_all(
+        [
+            SpeciesLabel(
+                image_id=11, completed=True, superseded=False,
+                label_studio_project_id=70,
+            ),
+            SpeciesLabel(
+                image_id=12, completed=False, superseded=False,
+                label_studio_project_id=70,
+            ),
+        ]
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["species_labeling_complete"] is False
+
+
+# ---------- slate_applicable / slate_preprocessed / slate_labeling_complete ----------
+
+
+async def test_slate_applicable_tracks_dive_slate_id(session):
+    session.add_all([_dive(1, dive_slate_id=42), _dive(2, dive_slate_id=None)])
+    await session.flush()
+
+    assert (await _row(session, 1))["slate_applicable"] is True
+    assert (await _row(session, 2))["slate_applicable"] is False
+
+
+async def test_slate_preprocessed_true_when_marked_images_have_slate_rows(session):
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1, dive_slate_id=42))
+    await session.flush()
+    session.add(_image(11, 1))
+    await session.flush()
+    session.add(
+        SpeciesLabel(
+            image_id=11, label_studio_project_id=70,
+            content_of_image="Slate, Laser on slate",
+        )
+    )
+    session.add(
+        DiveSlateLabel(image_id=11, label_studio_project_id=66)
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["slate_preprocessed"] is True
+
+
+async def test_slate_preprocessed_false_when_no_slate_marked_images(session):
+    """No species label says 'Slate, Laser on slate' -> there's
+    nothing to preprocess yet -> False, not vacuously True."""
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1, dive_slate_id=42))
+    await session.flush()
+    session.add(_image(11, 1))
+    await session.flush()
+    session.add(
+        SpeciesLabel(
+            image_id=11, label_studio_project_id=70,
+            content_of_image="Fish",
+        )
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["slate_preprocessed"] is False
+
+
+async def test_slate_preprocessed_false_when_dive_lacks_slate_id(session):
+    """Even if labels exist, no dive_slate_id means slate path doesn't
+    apply to this dive at all."""
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1, dive_slate_id=None))
+    await session.flush()
+    session.add(_image(11, 1))
+    await session.flush()
+    session.add(
+        SpeciesLabel(
+            image_id=11, label_studio_project_id=70,
+            content_of_image="Slate, Laser on slate",
+        )
+    )
+    session.add(DiveSlateLabel(image_id=11, label_studio_project_id=66))
+    await session.flush()
+
+    assert (await _row(session, 1))["slate_preprocessed"] is False
+
+
+async def test_slate_labeling_complete_true_when_all_completed(session):
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1, dive_slate_id=42))
+    await session.flush()
+    session.add(_image(11, 1))
+    await session.flush()
+    session.add(
+        DiveSlateLabel(
+            image_id=11, completed=True, superseded=False,
+            label_studio_project_id=66,
+        )
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["slate_labeling_complete"] is True
+
+
+# ---------- calibrated (stage 13) ----------
+
+
+async def test_calibrated_true_when_laser_extrinsics_row_exists(session):
+    from fishsense_api.models.laser_extrinsics import LaserExtrinsics  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(LaserExtrinsics(dive_id=1, camera_id=1))
+    await session.flush()
+
+    assert (await _row(session, 1))["calibrated"] is True
+
+
+async def test_calibrated_false_when_no_laser_extrinsics(session):
+    session.add(_dive(1))
+    await session.flush()
+
+    assert (await _row(session, 1))["calibrated"] is False
+
+
+# ---------- measured (stage 14) ----------
+
+
+async def test_measured_true_when_every_label_studio_cluster_has_fish_id(session):
+    from fishsense_api.models.dive_frame_cluster import DiveFrameCluster  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add_all(
+        [
+            DiveFrameCluster(
+                dive_id=1, data_source="LABEL_STUDIO", index=0, fish_id=100,
+            ),
+            DiveFrameCluster(
+                dive_id=1, data_source="LABEL_STUDIO", index=1, fish_id=101,
+            ),
+        ]
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["measured"] is True
+
+
+async def test_measured_false_when_any_label_studio_cluster_unbound(session):
+    from fishsense_api.models.dive_frame_cluster import DiveFrameCluster  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add_all(
+        [
+            DiveFrameCluster(
+                dive_id=1, data_source="LABEL_STUDIO", index=0, fish_id=100,
+            ),
+            DiveFrameCluster(
+                dive_id=1, data_source="LABEL_STUDIO", index=1, fish_id=None,
+            ),
+        ]
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["measured"] is False
+
+
+async def test_measured_false_when_no_label_studio_clusters(session):
+    """Vacuous-truth guard: zero LABEL_STUDIO clusters -> not measured."""
+    from fishsense_api.models.dive_frame_cluster import DiveFrameCluster  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    # PREDICTION-only cluster; no LABEL_STUDIO ones.
+    session.add(
+        DiveFrameCluster(
+            dive_id=1, data_source="PREDICTION", index=0,
+        )
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["measured"] is False

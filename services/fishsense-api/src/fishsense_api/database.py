@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
+from alembic import command as alembic_command
+from alembic.config import Config as AlembicConfig
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
@@ -55,6 +58,32 @@ class Database:
     async def dispose(self) -> None:
         """Dispose of the database engine."""
         await self.engine.dispose()
+
+
+def run_alembic_upgrade() -> None:
+    """Apply pending alembic migrations up to the latest revision.
+
+    Invoked from the FastAPI lifespan so a deploy that ships a new
+    migration (e.g. the `dive_pipeline_status` view) doesn't require
+    a manual operator step.
+
+    The Config is built programmatically because `alembic.ini` does
+    NOT ship inside the wheel — `uv sync --no-editable` only installs
+    the package source under `site-packages/fishsense_api/`. Locating
+    `script_location` relative to this module's path keeps the
+    migration scripts findable regardless of the runtime's CWD.
+
+    Sync API; callers should offload to a worker thread
+    (`asyncio.to_thread`) to avoid blocking the event loop, since
+    `command.upgrade` opens its own engine and runs DDL synchronously
+    via the async-engine bridge in `alembic/env.py`.
+    """
+    cfg = AlembicConfig()
+    cfg.set_main_option(
+        "script_location",
+        str(Path(__file__).resolve().parent / "alembic"),
+    )
+    alembic_command.upgrade(cfg, "head")
 
 
 _session_factory: sessionmaker | None = None  # pylint: disable=invalid-name

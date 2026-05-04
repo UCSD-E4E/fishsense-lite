@@ -224,6 +224,55 @@ run in parallel with stages 1/2/4; head/tail tasks are created for
 *every* laser-valid image, not just the species pass's top-3 per
 group, so the labeler queue is larger.
 
+## `dive_pipeline_status` view
+
+Postgres view that exposes a wide row per dive with one boolean
+column per pipeline stage. Created by alembic migration
+`60e82ad5dac7_add_dive_pipeline_status_view`; SQL canonicalized in
+[fishsense_api.views](services/fishsense-api/src/fishsense_api/views.py).
+Backs Superset dashboards reading the fishsense Postgres connection.
+
+| Column | True iff |
+|---|---|
+| `dive_id`, `priority`, `dive_slate_id` | identity / dimensions |
+| `laser_preprocessed` | every image in the dive has at least one `LaserLabel` row (any project, any state) |
+| `laser_labeling_complete` | ≥1 completed-non-superseded `LaserLabel` AND zero incomplete-non-superseded |
+| `headtail_preprocessed` | every image carrying a *valid* laser label (completed, not superseded, x/y both set) has a non-sentinel `HeadTailLabel` row |
+| `headtail_labeling_complete` | ≥1 completed-non-superseded `HeadTailLabel` AND zero incomplete-non-superseded |
+| `has_prediction_clusters` | dive has at least one PREDICTION `DiveFrameCluster` (stage 1 ran and persisted) |
+| `dive_images_preprocessed` | `has_prediction_clusters` AND every image has a non-sentinel `SpeciesLabel` row |
+| `species_labeling_complete` | ≥1 completed `SpeciesLabel` AND zero incomplete (no `superseded` column on this model) |
+| `slate_applicable` | `dive_slate_id IS NOT NULL` |
+| `slate_preprocessed` | every image with `SpeciesLabel.content_of_image='Slate, Laser on slate'` has a non-sentinel `DiveSlateLabel` row |
+| `slate_labeling_complete` | ≥1 completed `DiveSlateLabel` AND zero incomplete |
+| `calibrated` | dive has a `LaserExtrinsics` row |
+| `measured` | ≥1 LABEL_STUDIO `DiveFrameCluster` AND zero LABEL_STUDIO clusters with `fish_id IS NULL` |
+
+**"Complete" semantics throughout** mirror
+`get_dives_with_complete_laser_labeling`: vacuous truth (zero rows of
+a kind) reads as `False`, not `True`. A dive with no laser labels at
+all is *not* "laser_labeling_complete" — there's nothing to validate.
+Same for the other `*_labeling_complete` and `measured` flags.
+
+**Edits** to predicates: change the SQL in `views.py` (single source
+of truth — both alembic migration and tests use it), then write a new
+alembic revision that drops + recreates the view (Postgres `CREATE OR
+REPLACE VIEW` is restrictive about column-shape changes; the
+drop/recreate pattern is simpler and the view has no dependents). Add
+a test for the new behavior in `test_dive_pipeline_status_view.py`
+before changing the SQL.
+
+**Auto-migrate on startup.** `fishsense_api.server.lifespan` runs
+`SQLModel.metadata.create_all` first (fresh-env bootstrap — the
+alembic baseline is `alter_column`-only and assumes tables already
+exist), then `run_alembic_upgrade` (catches up to head, including
+non-table artifacts like this view). Both are idempotent against an
+existing prod schema; the second is what creates the view on the
+deploy that ships its migration. `alembic.ini` does NOT ship in the
+runtime image (`uv sync --no-editable` only installs the package
+source); `run_alembic_upgrade` builds the Config programmatically with
+`script_location` pointed at `<package>/alembic`.
+
 Stage 1 (clustering) does NOT yet have a parent — its data-worker
 workflow returns clusters but doesn't write them back to the DB, so
 adding a parent requires deciding whether the parent persists the
