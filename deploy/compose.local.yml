@@ -95,7 +95,7 @@ services:
     # local `build:` here also requires fixing services/fishsense-api/Dockerfile
     # (and .github/workflows/docker.yml) to use a workspace-aware build.
     # Tracked as a follow-up; not needed for data-worker TDD work.
-    image: ghcr.io/ucsd-e4e/fishsense-api:v1.26.0
+    image: ghcr.io/ucsd-e4e/fishsense-api:v1.27.0
     restart: on-failure:15
     depends_on:
       postgres:
