@@ -643,6 +643,7 @@ name = "fishsense-api"
 version = "1.27.0"
 source = { editable = "services/fishsense-api" }
 dependencies = [
+    { name = "alembic" },
     { name = "asyncpg" },
     { name = "dynaconf" },
     { name = "fastapi" },
@@ -657,7 +658,6 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "aiosqlite" },
-    { name = "alembic" },
     { name = "black" },
     { name = "datamodel-code-generator" },
     { name = "fishsense-api-sdk" },
@@ -668,6 +668,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "alembic", specifier = ">=1.16.5" },
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "dynaconf", specifier = ">=3.2.11" },
     { name = "fastapi", specifier = ">=0.119.0" },
@@ -682,7 +683,6 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "aiosqlite", specifier = ">=0.20.0" },
-    { name = "alembic", specifier = ">=1.16.5" },
     { name = "black", specifier = ">=25.9.0" },
     { name = "datamodel-code-generator", specifier = "==0.26.1" },
     { name = "fishsense-api-sdk", editable = "libs/fishsense-api-sdk" },

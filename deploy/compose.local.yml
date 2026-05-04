@@ -89,13 +89,24 @@ services:
       - fishsense_local
 
   fishsense-api:
-    # Using the pinned prod image because the in-repo Dockerfile is broken in
-    # the monorepo layout — it COPYs services/fishsense-api/uv.lock, but the
-    # lockfile only exists at the repo root post-migration. Switching to a
-    # local `build:` here also requires fixing services/fishsense-api/Dockerfile
-    # (and .github/workflows/docker.yml) to use a workspace-aware build.
-    # Tracked as a follow-up; not needed for data-worker TDD work.
-    image: ghcr.io/ucsd-e4e/fishsense-api:v1.27.0
+    # Build from source rather than pulling a pinned prod image. This
+    # is the local stack — used by integration.yml + dev — and we want
+    # it to exercise whatever fishsense-api source is currently on the
+    # branch, not a previously-published image that may be broken.
+    #
+    # Concrete failure mode this avoids: integration tests on a PR that
+    # depends on a fishsense-api source change would otherwise pull the
+    # last-released image, which doesn't have the change. v1.27.0 made
+    # this acute — the published image crash-loops on `import alembic`
+    # because alembic was misclassified as a dev dep, so every PR's
+    # backup-worker pg_dump integration test fails on an empty DB.
+    #
+    # The Dockerfile is monorepo-aware (build context = repo root,
+    # `-f services/fishsense-api/Dockerfile`), so the `context: ..` +
+    # `dockerfile: services/fishsense-api/Dockerfile` shape works.
+    build:
+      context: ..
+      dockerfile: services/fishsense-api/Dockerfile
     restart: on-failure:15
     depends_on:
       postgres:
