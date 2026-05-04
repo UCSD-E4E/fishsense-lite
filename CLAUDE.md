@@ -192,7 +192,7 @@ but not scheduled (see notes below). Per-stage cohort:
 |---|---|
 | 0.1 | HIGH-priority + at least one image without ANY `LaserLabel` row (in any project) |
 | 2   | HIGH-priority + has PREDICTION clusters + at least one image without ANY `SpeciesLabel` row |
-| 5.1 | HIGH-priority + at least one `SpeciesLabel.top_three_photos_of_group=True` whose image carries no `HeadTailLabel` row at all |
+| 5.1 | HIGH-priority + at least one image with a *valid* `LaserLabel` (`completed=True`, `superseded=False`, `x`/`y` both set) whose image carries no non-sentinel `HeadTailLabel` row |
 | 9   | HIGH-priority + `dive_slate_id` set + at least one `SpeciesLabel.content_of_image='Slate, Laser on slate'` whose image carries no `DiveSlateLabel` row at all |
 | 13  | HIGH-priority + `dive_slate_id` set + no `LaserExtrinsics` + ≥2 completed `DiveSlateLabel` rows (matches the data-worker activity's `MIN_LASER_POINTS=2` precondition) |
 | 14  | HIGH-priority + has `LaserExtrinsics` + has LABEL_STUDIO clusters with at least one `fish_id is None` |
@@ -209,6 +209,20 @@ every parent firing). Resolver activities mirror the same predicate:
 `resolve_laser/headtail/slate_preprocess_inputs_activity` filter
 images on "no label row" so the dispatched per-image work matches
 what the cohort selector promised.
+
+**Stage 5.1 source flip (2026-05-04).** Head/tail used to cascade
+from `SpeciesLabel.top_three_photos_of_group=True`, which forced
+labelers through stages 1 → 2 → 4 (cluster → preprocess dive →
+species top-3 selection) before any head/tail work could start. As
+of 2026-05-04 it cascades from valid laser labels instead: head/tail
+preprocess + populate fire as soon as laser labelers + the
+validator have signed off on an image (`completed=True`,
+`superseded=False`, `x`/`y` both populated — same gate
+`perform_laser_calibration_activity` and the validator's
+`_positive_xy` already use). Practical consequences: head/tail can
+run in parallel with stages 1/2/4; head/tail tasks are created for
+*every* laser-valid image, not just the species pass's top-3 per
+group, so the labeler queue is larger.
 
 Stage 1 (clustering) does NOT yet have a parent — its data-worker
 workflow returns clusters but doesn't write them back to the DB, so

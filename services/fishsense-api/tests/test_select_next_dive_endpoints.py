@@ -592,29 +592,45 @@ async def test_dive_image_preprocessing_returns_none_when_only_label_studio_clus
 
 
 # ---------- stage 5.1: headtail-preprocessing ----------
+#
+# Cohort cascades from valid laser labels: any image with a "valid"
+# laser label (completed=True, superseded=False, x/y both set —
+# matches what perform_laser_calibration and validate_laser_labels
+# treat as usable) drops into the headtail pipeline as soon as it
+# lacks a non-sentinel HeadTailLabel row. Species labeling is no
+# longer in the path; head/tail can run in parallel with stages 1/2/4.
 
 
-async def test_headtail_preprocessing_requires_top_three_without_any_headtail(
+async def test_headtail_preprocessing_requires_valid_laser_without_any_headtail(
     session,
 ):
     from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_headtail_preprocessing,
     )
     from fishsense_api.models.head_tail_label import HeadTailLabel  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
 
-    # dive 1: top_three=True but headtail row exists -> excluded.
-    # dive 2: top_three=True, no headtail row -> picked.
-    # dive 3: only top_three=False -> excluded.
+    # dive 1: valid laser + headtail row exists -> excluded.
+    # dive 2: valid laser, no headtail row -> picked.
+    # dive 3: laser row is null x/y (no-laser sentinel) -> excluded.
     session.add_all([_dive(1), _dive(2), _dive(3)])
     await session.flush()
     session.add_all([_image(11, 1), _image(21, 2), _image(31, 3)])
     await session.flush()
     session.add_all(
         [
-            SpeciesLabel(image_id=11, top_three_photos_of_group=True),
-            SpeciesLabel(image_id=21, top_three_photos_of_group=True),
-            SpeciesLabel(image_id=31, top_three_photos_of_group=False),
+            LaserLabel(
+                image_id=11, completed=True, superseded=False,
+                x=100.0, y=200.0, label_studio_project_id=43,
+            ),
+            LaserLabel(
+                image_id=21, completed=True, superseded=False,
+                x=110.0, y=210.0, label_studio_project_id=43,
+            ),
+            LaserLabel(
+                image_id=31, completed=True, superseded=False,
+                x=None, y=None, label_studio_project_id=43,
+            ),
         ]
     )
     session.add(
@@ -629,18 +645,23 @@ async def test_headtail_preprocessing_excludes_dive_with_only_incomplete_headtai
     session,
 ):
     """Once populate seeds an incomplete HeadTailLabel (with a real
-    project_id) for every top-three image, the dive drops out of the
-    cohort."""
+    project_id) for every laser-cascaded image, the dive drops out of
+    the cohort."""
     from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_headtail_preprocessing,
     )
     from fishsense_api.models.head_tail_label import HeadTailLabel  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
 
     session.add(_dive(1))
     await session.flush()
     session.add(_image(11, 1))
-    session.add(SpeciesLabel(image_id=11, top_three_photos_of_group=True))
+    session.add(
+        LaserLabel(
+            image_id=11, completed=True, superseded=False,
+            x=100.0, y=200.0, label_studio_project_id=43,
+        )
+    )
     session.add(
         HeadTailLabel(
             image_id=11, completed=False, label_studio_project_id=71
@@ -659,12 +680,17 @@ async def test_headtail_preprocessing_excludes_dive_when_sentinel_coexists_with_
         select_next_for_headtail_preprocessing,
     )
     from fishsense_api.models.head_tail_label import HeadTailLabel  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
 
     session.add(_dive(1))
     await session.flush()
     session.add(_image(11, 1))
-    session.add(SpeciesLabel(image_id=11, top_three_photos_of_group=True))
+    session.add(
+        LaserLabel(
+            image_id=11, completed=True, superseded=False,
+            x=100.0, y=200.0, label_studio_project_id=43,
+        )
+    )
     session.add_all(
         [
             HeadTailLabel(
@@ -688,12 +714,17 @@ async def test_headtail_preprocessing_ignores_null_project_sentinels(session):
         select_next_for_headtail_preprocessing,
     )
     from fishsense_api.models.head_tail_label import HeadTailLabel  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
 
     session.add(_dive(1))
     await session.flush()
     session.add(_image(11, 1))
-    session.add(SpeciesLabel(image_id=11, top_three_photos_of_group=True))
+    session.add(
+        LaserLabel(
+            image_id=11, completed=True, superseded=False,
+            x=100.0, y=200.0, label_studio_project_id=43,
+        )
+    )
     session.add(
         HeadTailLabel(
             image_id=11, completed=False, label_studio_project_id=None
@@ -704,16 +735,60 @@ async def test_headtail_preprocessing_ignores_null_project_sentinels(session):
     assert await select_next_for_headtail_preprocessing(session=session) == 1
 
 
-async def test_headtail_preprocessing_returns_none_when_no_top_three(session):
+async def test_headtail_preprocessing_excludes_incomplete_or_superseded_or_null_xy_lasers(
+    session,
+):
+    """A laser label only counts if completed AND not superseded AND
+    has both x and y populated. Anything weaker is not a "valid
+    label" per the gate."""
     from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_headtail_preprocessing,
     )
-    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+
+    # dive 1: laser is not completed.
+    # dive 2: laser is superseded.
+    # dive 3: laser is missing x.
+    # dive 4: laser is missing y.
+    session.add_all([_dive(1), _dive(2), _dive(3), _dive(4)])
+    await session.flush()
+    session.add_all(
+        [_image(11, 1), _image(21, 2), _image(31, 3), _image(41, 4)]
+    )
+    await session.flush()
+    session.add_all(
+        [
+            LaserLabel(
+                image_id=11, completed=False, superseded=False,
+                x=100.0, y=200.0, label_studio_project_id=43,
+            ),
+            LaserLabel(
+                image_id=21, completed=True, superseded=True,
+                x=100.0, y=200.0, label_studio_project_id=43,
+            ),
+            LaserLabel(
+                image_id=31, completed=True, superseded=False,
+                x=None, y=200.0, label_studio_project_id=43,
+            ),
+            LaserLabel(
+                image_id=41, completed=True, superseded=False,
+                x=100.0, y=None, label_studio_project_id=43,
+            ),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_headtail_preprocessing(session=session) is None
+
+
+async def test_headtail_preprocessing_returns_none_when_no_laser_labels(session):
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_headtail_preprocessing,
+    )
 
     session.add(_dive(1))
     await session.flush()
     session.add(_image(11, 1))
-    session.add(SpeciesLabel(image_id=11, top_three_photos_of_group=False))
     await session.flush()
 
     assert await select_next_for_headtail_preprocessing(session=session) is None

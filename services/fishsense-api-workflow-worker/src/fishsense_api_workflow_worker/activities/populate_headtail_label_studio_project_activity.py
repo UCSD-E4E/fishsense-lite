@@ -1,19 +1,21 @@
 """Activity to populate the headtail-labeling LS project for a dive.
 
-Ports stage 5.3 of `populate_label_studio_project.ipynb`. The notebook
-swept all HIGH-priority canonical dives in one pass; this version
-takes a single `dive_id` to match how the operator labels day-to-day
-(dive 0.3 -> 4 -> 5.3 -> 11 sequentially per dive). The all-dive
-sweep can be added as a higher-level workflow that fans out across
-canonical dives if/when batch operation is needed.
+Source flipped on 2026-05-04 from species top-3 → valid laser labels.
+A laser label is "valid" when `completed=True`, `superseded=False`,
+and both `x` and `y` are populated — same gate
+`perform_laser_calibration_activity` and the validator's
+`_positive_xy` already use as "usable laser." Cascading from lasers
+lets head/tail labeling kick off as soon as laser labelers (and the
+validator) sign off, instead of waiting for the species pass to flag
+top-3 measurable angles.
 
-Per the notebook, this stage filters source images two ways:
-  1. Only species labels with `top_three_photos_of_group == True` are
-     candidates — that flag is set by the species labeler in stage 4
-     and selects the best three angles per fish-grouping for
-     length measurement.
-  2. Of those, only images without a *completed* headtail label get
-     a fresh LS task.
+Per-image filter:
+  1. Image must carry a valid laser label (gate above).
+  2. Image must NOT have a non-sentinel HeadTailLabel row already —
+     the existing `id is None or project_id is None` distinction is
+     handled implicitly by `_select_target_images` (drops rows with
+     `completed=True` only; the "no row at all" idempotency comes
+     from the cohort selector).
 
 After importing tasks the activity also marks any pre-existing
 incomplete headtail labels for the dive as `superseded=True`, so the
@@ -25,7 +27,7 @@ from typing import List
 
 from fishsense_api_sdk.models.headtail_label import HeadTailLabel
 from fishsense_api_sdk.models.image import Image
-from fishsense_api_sdk.models.species_label import SpeciesLabel
+from fishsense_api_sdk.models.laser_label import LaserLabel
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.populate_utils import (
@@ -37,14 +39,24 @@ from fishsense_api_workflow_worker.activities.utils import get_fs_client
 HEADTAIL_FOLDER = "headtail_jpeg"
 
 
+def _is_valid_laser(label: LaserLabel) -> bool:
+    """Same predicate the API SQL uses for the cohort gate."""
+    return bool(
+        label.completed
+        and not label.superseded
+        and label.x is not None
+        and label.y is not None
+    )
+
+
 def _select_target_images(
-    species_labels: List[SpeciesLabel],
+    laser_labels: List[LaserLabel],
     images_by_id: dict[int, Image],
     existing_headtail_labels: List[HeadTailLabel],
 ) -> List[Image]:
     """Pick the images that need a fresh headtail LS task.
 
-    Source: species labels marked `top_three_photos_of_group=True`.
+    Source: laser labels passing `_is_valid_laser`.
     Filter: drop any image whose existing headtail label is already
     completed (so re-running is a no-op for finished work).
     """
@@ -52,8 +64,8 @@ def _select_target_images(
         label.image_id for label in existing_headtail_labels if label.completed
     }
     selected: List[Image] = []
-    for label in species_labels:
-        if not label.top_three_photos_of_group:
+    for label in laser_labels:
+        if not _is_valid_laser(label):
             continue
         if label.image_id in completed_ids:
             continue
@@ -84,14 +96,12 @@ async def populate_headtail_label_studio_project_activity(
     Returns the number of tasks imported.
     """
     async with get_fs_client() as fs:
-        species_labels = await fs.labels.get_species_labels(dive_id) or []
+        laser_labels = await fs.labels.get_laser_labels(dive_id) or []
         existing_headtail = await fs.labels.get_headtail_labels(dive_id) or []
 
-        # Hydrate Image rows by id for the species labels we care about.
+        # Hydrate Image rows by id for the laser-valid candidates.
         target_image_ids = {
-            label.image_id
-            for label in species_labels
-            if label.top_three_photos_of_group
+            label.image_id for label in laser_labels if _is_valid_laser(label)
         }
         images_by_id: dict[int, Image] = {}
         for image_id in target_image_ids:
@@ -100,7 +110,7 @@ async def populate_headtail_label_studio_project_activity(
                 images_by_id[image.id] = image
 
         targets = _select_target_images(
-            species_labels, images_by_id, existing_headtail
+            laser_labels, images_by_id, existing_headtail
         )
 
         new_count = 0
@@ -133,7 +143,7 @@ async def populate_headtail_label_studio_project_activity(
             )
         else:
             activity.logger.info(
-                "Dive %d has no top-three species images needing headtail "
+                "Dive %d has no laser-valid images needing headtail "
                 "labels; skipping task import",
                 dive_id,
             )

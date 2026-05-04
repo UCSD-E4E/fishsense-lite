@@ -1,10 +1,10 @@
 """Unit tests for populate_headtail_label_studio_project_activity.
 
 Two correctness invariants particular to stage 5.3:
-  * Only species labels with `top_three_photos_of_group=True` are
-    candidates — that flag is the species labeler's hand-pick of
-    measurable angles. Pushing every species-labeled image would
-    flood the headtail project.
+  * Only images carrying a *valid* LaserLabel (completed=True,
+    superseded=False, both x/y populated) are candidates — laser
+    labeling + the validator have signed off on these. Anything
+    weaker isn't usable downstream.
   * The `superseded` cleanup pass marks pre-existing incomplete
     headtail rows as obsolete after a re-import, so downstream
     measurement reads only the freshest row per image.
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from typing import List
+from typing import List, Optional
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -22,7 +22,7 @@ from temporalio.testing import ActivityEnvironment
 
 from fishsense_api_sdk.models.headtail_label import HeadTailLabel
 from fishsense_api_sdk.models.image import Image
-from fishsense_api_sdk.models.species_label import SpeciesLabel
+from fishsense_api_sdk.models.laser_label import LaserLabel
 from fishsense_api_workflow_worker.activities import (
     populate_headtail_label_studio_project_activity as sut,
     populate_utils as sut_utils,
@@ -41,24 +41,24 @@ def _image(image_id: int, checksum: str) -> Image:
     )
 
 
-def _species_label(image_id: int, *, top_three: bool) -> SpeciesLabel:
-    return SpeciesLabel(
-        id=image_id * 100,
+def _laser(
+    image_id: int,
+    *,
+    completed: bool = True,
+    superseded: bool = False,
+    x: Optional[float] = 100.0,
+    y: Optional[float] = 200.0,
+) -> LaserLabel:
+    return LaserLabel(
+        id=image_id * 7,
         label_studio_task_id=image_id * 10,
-        label_studio_project_id=70,
-        image_url=None,
+        label_studio_project_id=43,
+        x=x,
+        y=y,
+        label="laser",
         updated_at=None,
-        completed=True,
-        grouping=None,
-        top_three_photos_of_group=top_three,
-        slate_upside_down=None,
-        laser_x=None,
-        laser_y=None,
-        laser_label=None,
-        content_of_image=None,
-        fish_measurable_category=None,
-        fish_angle_category=None,
-        fish_curved_category=None,
+        superseded=superseded,
+        completed=completed,
         label_studio_json={},
         image_id=image_id,
         user_id=None,
@@ -89,16 +89,26 @@ def _headtail_label(
     )
 
 
-def test_select_targets_filters_by_top_three_and_drops_completed():
-    species = [
-        _species_label(1, top_three=True),
-        _species_label(2, top_three=False),
-        _species_label(3, top_three=True),
+def test_select_targets_filters_by_valid_laser_and_drops_completed():
+    laser = [
+        _laser(1),                             # valid + completed headtail -> drop
+        _laser(2, completed=False),            # incomplete laser -> drop
+        _laser(3),                             # valid + no headtail -> keep
+        _laser(4, superseded=True),            # superseded laser -> drop
+        _laser(5, x=None),                     # null x -> drop
+        _laser(6, y=None),                     # null y -> drop
     ]
-    images_by_id = {1: _image(1, "a"), 3: _image(3, "c")}
+    images_by_id = {
+        1: _image(1, "a"),
+        2: _image(2, "b"),
+        3: _image(3, "c"),
+        4: _image(4, "d"),
+        5: _image(5, "e"),
+        6: _image(6, "f"),
+    }
     existing = [_headtail_label(1, completed=True)]
 
-    selected = sut._select_target_images(species, images_by_id, existing)  # pylint: disable=protected-access
+    selected = sut._select_target_images(laser, images_by_id, existing)  # pylint: disable=protected-access
 
     assert [img.id for img in selected] == [3]
 
@@ -123,7 +133,7 @@ def test_build_task_emits_dual_image_and_img_keys(monkeypatch):
 
 
 def _make_fs_client(
-    species_labels: List[SpeciesLabel],
+    laser_labels: List[LaserLabel],
     existing_headtail: List[HeadTailLabel],
     images_by_id: dict,
 ):
@@ -138,7 +148,7 @@ def _make_fs_client(
     fs.images.get = AsyncMock(side_effect=_get_image)
 
     fs.labels = MagicMock()
-    fs.labels.get_species_labels = AsyncMock(return_value=species_labels)
+    fs.labels.get_laser_labels = AsyncMock(return_value=laser_labels)
     fs.labels.get_headtail_labels = AsyncMock(return_value=existing_headtail)
     fs.labels.put_headtail_label = AsyncMock()
     return fs
@@ -160,11 +170,11 @@ async def test_imports_targets_and_supersedes_incomplete_old_rows(monkeypatch):
     superseded. Image 3 is fresh -> get a new task. Image 4 has an
     incomplete old row but no `id` -> superseded skipped (can't
     update without an id) but the new task still goes through."""
-    species = [
-        _species_label(1, top_three=True),
-        _species_label(2, top_three=True),
-        _species_label(3, top_three=True),
-        _species_label(4, top_three=True),
+    laser = [
+        _laser(1),
+        _laser(2),
+        _laser(3),
+        _laser(4),
     ]
     images_by_id = {
         1: _image(1, "a"),
@@ -178,7 +188,7 @@ async def test_imports_targets_and_supersedes_incomplete_old_rows(monkeypatch):
         _headtail_label(4, completed=False, has_id=False),
     ]
 
-    fs = _make_fs_client(species, existing, images_by_id)
+    fs = _make_fs_client(laser, existing, images_by_id)
     ls = _make_ls_client(returned_task_ids=[3001, 3002, 3003])
 
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
@@ -199,15 +209,15 @@ async def test_imports_targets_and_supersedes_incomplete_old_rows(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_no_top_three_targets_skips_import_but_still_supersedes(monkeypatch):
-    """Edge: dive has incomplete old rows but no top_three species
-    flagged. Don't push tasks, but DO supersede the stale rows so
-    they don't linger as canonical."""
-    species = [_species_label(1, top_three=False)]
+async def test_no_valid_laser_targets_skips_import_but_still_supersedes(monkeypatch):
+    """Edge: dive has incomplete old rows but no laser-valid images.
+    Don't push tasks, but DO supersede the stale rows so they don't
+    linger as canonical."""
+    laser = [_laser(1, completed=False)]
     images_by_id = {1: _image(1, "a")}
     existing = [_headtail_label(1, completed=False, has_id=True)]
 
-    fs = _make_fs_client(species, existing, images_by_id)
+    fs = _make_fs_client(laser, existing, images_by_id)
     ls = _make_ls_client(returned_task_ids=[])
 
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)

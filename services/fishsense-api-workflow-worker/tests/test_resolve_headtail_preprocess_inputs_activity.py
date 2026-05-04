@@ -1,5 +1,11 @@
 # pylint: disable=unused-argument
-"""Unit tests for resolve_headtail_preprocess_inputs_activity."""
+"""Unit tests for resolve_headtail_preprocess_inputs_activity.
+
+The headtail cohort cascades from valid laser labels (completed, not
+superseded, both x/y populated). This resolver mirrors the API SQL
+predicate so the per-image work matches what the cohort selector
+promised.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +21,7 @@ from fishsense_api_sdk.models.camera_intrinsics import CameraIntrinsics
 from fishsense_api_sdk.models.dive import Dive
 from fishsense_api_sdk.models.headtail_label import HeadTailLabel
 from fishsense_api_sdk.models.image import Image
-from fishsense_api_sdk.models.species_label import SpeciesLabel
+from fishsense_api_sdk.models.laser_label import LaserLabel
 from fishsense_api_workflow_worker.activities import (
     resolve_headtail_preprocess_inputs_activity as sut,
 )
@@ -50,24 +56,24 @@ def _image(image_id: int, checksum: str) -> Image:
     )
 
 
-def _species(image_id: int, *, top_three: bool) -> SpeciesLabel:
-    return SpeciesLabel(
-        id=None,
+def _laser(
+    image_id: int,
+    *,
+    completed: bool = True,
+    superseded: bool = False,
+    x: Optional[float] = 100.0,
+    y: Optional[float] = 200.0,
+) -> LaserLabel:
+    return LaserLabel(
+        id=image_id * 7,
         label_studio_task_id=image_id * 10,
-        label_studio_project_id=70,
-        image_url=None,
+        label_studio_project_id=43,
+        x=x,
+        y=y,
+        label="laser",
         updated_at=None,
-        completed=True,
-        grouping=None,
-        top_three_photos_of_group=top_three,
-        slate_upside_down=None,
-        laser_x=None,
-        laser_y=None,
-        laser_label=None,
-        content_of_image=None,
-        fish_measurable_category=None,
-        fish_angle_category=None,
-        fish_curved_category=None,
+        superseded=superseded,
+        completed=completed,
         label_studio_json={},
         image_id=image_id,
         user_id=None,
@@ -109,7 +115,7 @@ def _make_fs(
     dive: Optional[Dive],
     intrinsics: Optional[CameraIntrinsics],
     images: List[Image],
-    species: List[SpeciesLabel],
+    laser: List[LaserLabel],
     headtail: List[HeadTailLabel],
 ):
     fs = MagicMock()
@@ -126,13 +132,13 @@ def _make_fs(
     fs.images.get = AsyncMock(return_value=images)
 
     fs.labels = MagicMock()
-    fs.labels.get_species_labels = AsyncMock(return_value=species)
+    fs.labels.get_laser_labels = AsyncMock(return_value=laser)
     fs.labels.get_headtail_labels = AsyncMock(return_value=headtail)
     return fs
 
 
 @pytest.mark.asyncio
-async def test_returns_only_top_three_without_any_headtail(monkeypatch):
+async def test_returns_only_valid_laser_without_any_real_headtail(monkeypatch):
     fs = _make_fs(
         dive=_dive(),
         intrinsics=_intrinsics(),
@@ -142,11 +148,11 @@ async def test_returns_only_top_three_without_any_headtail(monkeypatch):
             _image(3, "ccc"),
             _image(4, "ddd"),
         ],
-        species=[
-            _species(1, top_three=True),
-            _species(2, top_three=False),
-            _species(3, top_three=True),
-            _species(4, top_three=True),
+        laser=[
+            _laser(1),  # valid + has completed headtail -> dropped
+            _laser(2, completed=False),  # incomplete laser -> dropped
+            _laser(3),  # valid + no headtail -> kept
+            _laser(4),  # valid + incomplete real headtail -> dropped
         ],
         headtail=[
             _headtail(1, completed=True),
@@ -159,11 +165,6 @@ async def test_returns_only_top_three_without_any_headtail(monkeypatch):
         sut.resolve_headtail_preprocess_inputs_activity, 42
     )
 
-    # 1: top-three but headtail row exists (completed) -> dropped.
-    # 2: not top-three -> dropped.
-    # 3: top-three + no headtail row -> kept.
-    # 4: top-three + headtail row exists (incomplete) -> dropped (any
-    #    row excludes — matches API selector predicate).
     assert result.image_checksums == ["ccc"]
     assert result.dive_id == 42
     assert result.camera_matrix == _K.tolist()
@@ -174,17 +175,14 @@ async def test_returns_only_top_three_without_any_headtail(monkeypatch):
 async def test_image_with_only_null_project_sentinel_treated_as_unlabeled(
     monkeypatch,
 ):
-    """NULL-`project_id` HeadTailLabel rows are legacy sentinels — the
-    resolver must ignore them when deciding whether a top-three image
-    needs preprocessing. Matches the API selector predicate."""
+    """NULL-`project_id` HeadTailLabel rows are legacy sentinels —
+    they must NOT exclude a laser-cascaded image. Matches the API
+    selector predicate."""
     fs = _make_fs(
         dive=_dive(),
         intrinsics=_intrinsics(),
         images=[_image(1, "aaa"), _image(2, "bbb")],
-        species=[
-            _species(1, top_three=True),
-            _species(2, top_three=True),
-        ],
+        laser=[_laser(1), _laser(2)],
         headtail=[
             _headtail(1, completed=False, project_id=None),
             _headtail(2, completed=False, project_id=71),
@@ -202,12 +200,41 @@ async def test_image_with_only_null_project_sentinel_treated_as_unlabeled(
 
 
 @pytest.mark.asyncio
-async def test_empty_when_no_top_three(monkeypatch):
+async def test_drops_lasers_that_are_incomplete_superseded_or_null_xy(
+    monkeypatch,
+):
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_intrinsics(),
+        images=[
+            _image(1, "aaa"),
+            _image(2, "bbb"),
+            _image(3, "ccc"),
+            _image(4, "ddd"),
+        ],
+        laser=[
+            _laser(1, completed=False),
+            _laser(2, superseded=True),
+            _laser(3, x=None),
+            _laser(4, y=None),
+        ],
+        headtail=[],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(
+        sut.resolve_headtail_preprocess_inputs_activity, 42
+    )
+    assert result.image_checksums == []
+
+
+@pytest.mark.asyncio
+async def test_empty_when_no_laser_labels(monkeypatch):
     fs = _make_fs(
         dive=_dive(),
         intrinsics=_intrinsics(),
         images=[_image(1, "aaa")],
-        species=[_species(1, top_three=False)],
+        laser=[],
         headtail=[],
     )
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
@@ -224,15 +251,15 @@ async def test_raises_when_dive_missing_or_camera_missing_or_intrinsics_missing(
     cases = [
         (_make_fs(
             dive=None, intrinsics=_intrinsics(),
-            images=[], species=[], headtail=[],
+            images=[], laser=[], headtail=[],
         ), "not found"),
         (_make_fs(
             dive=_dive(camera_id=None), intrinsics=_intrinsics(),
-            images=[], species=[], headtail=[],
+            images=[], laser=[], headtail=[],
         ), "no camera_id"),
         (_make_fs(
             dive=_dive(), intrinsics=None,
-            images=[], species=[], headtail=[],
+            images=[], laser=[], headtail=[],
         ), "no intrinsics"),
     ]
     for fs, match in cases:

@@ -2,10 +2,10 @@
 
 Returns a fully-populated `PreprocessHeadtailImagesInput` ready to
 hand to the data-worker's child workflow. Image set is filtered to
-species labels with `top_three_photos_of_group=True` whose image has
-no HeadTailLabel row at all — once populate seeds a (possibly
-incomplete) row, the headtail JPEG is on the file-exchange and we
-don't regenerate it. Matches the API selector predicate.
+images carrying a *valid* LaserLabel (completed=True, superseded=False,
+both x/y populated) whose image has no non-sentinel HeadTailLabel
+row. Matches the API selector predicate (cohort flipped from species
+top-3 → valid lasers on 2026-05-04).
 """
 
 from __future__ import annotations
@@ -14,6 +14,16 @@ from fishsense_shared import PreprocessHeadtailImagesInput
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
+
+
+def _is_valid_laser(label) -> bool:
+    """Same predicate the API SQL uses for the cohort gate."""
+    return bool(
+        label.completed
+        and not label.superseded
+        and label.x is not None
+        and label.y is not None
+    )
 
 
 @activity.defn
@@ -33,7 +43,7 @@ async def resolve_headtail_preprocess_inputs_activity(
                 f"camera_id={dive.camera_id} has no intrinsics"
             )
 
-        species_labels = await fs.labels.get_species_labels(dive_id) or []
+        laser_labels = await fs.labels.get_laser_labels(dive_id) or []
         existing_headtail = await fs.labels.get_headtail_labels(dive_id) or []
         # Skip sentinel rows (project_id IS NULL) — see API selector
         # docstring for rationale.
@@ -45,9 +55,8 @@ async def resolve_headtail_preprocess_inputs_activity(
 
         target_image_ids = [
             label.image_id
-            for label in species_labels
-            if label.top_three_photos_of_group
-            and label.image_id not in labeled_ids
+            for label in laser_labels
+            if _is_valid_laser(label) and label.image_id not in labeled_ids
         ]
 
         images = await fs.images.get(dive_id=dive_id) or []

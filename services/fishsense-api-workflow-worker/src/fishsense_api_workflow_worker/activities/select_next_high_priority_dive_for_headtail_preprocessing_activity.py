@@ -1,9 +1,9 @@
 """Activity to pick the next HIGH-priority dive that needs stage 5.1
 head/tail preprocessing.
 
-Cohort: HIGH priority + has at least one species label with
-`top_three_photos_of_group=True` whose head/tail label is missing or
-not yet completed (matches
+Cohort: HIGH priority + has at least one image carrying a *valid*
+LaserLabel (completed=True, superseded=False, both x/y populated)
+whose head/tail label is missing (matches
 `populate_headtail_label_studio_project_activity`'s predicate).
 
 The selector is a single SDK call; the SQL predicate lives in the
