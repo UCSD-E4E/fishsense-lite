@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.2.2...fishsense-data-processing-workflow-worker-v2.2.3) (2026-05-04)
+
+
+### Bug Fixes
+
+* **laser:** refuse to supersede when outlier fraction &gt; 50% ([5e7ade3](https://github.com/UCSD-E4E/fishsense-lite/commit/5e7ade3cfc2e0973dcbf92aeb0171b588931f8d1))
+* **laser:** refuse to supersede when outlier fraction &gt; 50% ([6af9ea5](https://github.com/UCSD-E4E/fishsense-lite/commit/6af9ea5069f0c453413d7b89775678876f96b81d))
+
 ## [2.2.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.2.1...fishsense-data-processing-workflow-worker-v2.2.2) (2026-05-04)
 
 
