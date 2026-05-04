@@ -5,6 +5,13 @@ description = "This is the FishSense API server."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    # alembic is a *runtime* dep — the FastAPI lifespan calls
+    # `run_alembic_upgrade` on startup so deploys auto-apply pending
+    # migrations. Kept in dev too (developers run alembic CLI), but
+    # the runtime image is built with `uv sync --no-dev`, so it must
+    # appear here or `from alembic import command` blows up at import
+    # time and the container crashes before serving traffic.
+    "alembic>=1.16.5",
     "asyncpg>=0.30.0",
     "dynaconf>=3.2.11",
     "fastapi>=0.119.0",
@@ -23,7 +30,6 @@ fishsense-api-sdk = { workspace = true }
 [dependency-groups]
 dev = [
     "aiosqlite>=0.20.0",
-    "alembic>=1.16.5",
     "black>=25.9.0",
     "pylint>=4.0.2",
     "pytest>=8.3.0",
