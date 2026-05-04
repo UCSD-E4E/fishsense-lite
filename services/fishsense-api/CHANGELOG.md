@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.27.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.27.0...fishsense-api-v1.27.1) (2026-05-04)
+
+
+### Bug Fixes
+
+* **api:** move alembic to runtime deps (HOTFIX for v1.27.0 startup crash) ([76bb8e6](https://github.com/UCSD-E4E/fishsense-lite/commit/76bb8e65b96c6189db7a685be53710c8b0ab8e2a))
+* **api:** move alembic to runtime deps so the auto-migrate import works ([f0c81cd](https://github.com/UCSD-E4E/fishsense-lite/commit/f0c81cdc1ad61f2d3e458502a9b0543d39fb68e5))
+
 ## [1.27.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.26.0...fishsense-api-v1.27.0) (2026-05-04)
 
 
