@@ -262,6 +262,17 @@ drop/recreate pattern is simpler and the view has no dependents). Add
 a test for the new behavior in `test_dive_pipeline_status_view.py`
 before changing the SQL.
 
+**Auto-migrate on startup.** `fishsense_api.server.lifespan` runs
+`SQLModel.metadata.create_all` first (fresh-env bootstrap — the
+alembic baseline is `alter_column`-only and assumes tables already
+exist), then `run_alembic_upgrade` (catches up to head, including
+non-table artifacts like this view). Both are idempotent against an
+existing prod schema; the second is what creates the view on the
+deploy that ships its migration. `alembic.ini` does NOT ship in the
+runtime image (`uv sync --no-editable` only installs the package
+source); `run_alembic_upgrade` builds the Config programmatically with
+`script_location` pointed at `<package>/alembic`.
+
 Stage 1 (clustering) does NOT yet have a parent — its data-worker
 workflow returns clusters but doesn't write them back to the DB, so
 adding a parent requires deciding whether the parent persists the
