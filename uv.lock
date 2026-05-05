@@ -640,7 +640,7 @@ wheels = [
 
 [[package]]
 name = "fishsense-api"
-version = "1.27.0"
+version = "1.27.1"
 source = { editable = "services/fishsense-api" }
 dependencies = [
     { name = "alembic" },
@@ -722,7 +722,7 @@ dev = [
 
 [[package]]
 name = "fishsense-api-workflow-worker"
-version = "1.32.0"
+version = "1.32.1"
 source = { editable = "services/fishsense-api-workflow-worker" }
 dependencies = [
     { name = "dynaconf" },
@@ -878,7 +878,7 @@ requires-dist = [
 
 [[package]]
 name = "fishsense-data-processing-workflow-worker"
-version = "2.2.3"
+version = "2.2.4"
 source = { editable = "services/fishsense-data-processing-workflow-worker" }
 dependencies = [
     { name = "dynaconf" },
