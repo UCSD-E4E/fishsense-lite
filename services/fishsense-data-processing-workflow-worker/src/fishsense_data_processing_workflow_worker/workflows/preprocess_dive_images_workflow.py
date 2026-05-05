@@ -58,7 +58,7 @@ class PreprocessDiveImagesWorkflow:
                             camera_matrix=payload.camera_matrix,
                             distortion_coefficients=payload.distortion_coefficients,
                         ),
-                        schedule_to_close_timeout=timedelta(minutes=5),
+                        start_to_close_timeout=timedelta(minutes=5),
                     )
                     for i, checksum in enumerate(cluster)
                 ]
