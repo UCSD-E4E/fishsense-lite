@@ -31,9 +31,9 @@ async def get_dive_slate_label_studio_project_ids(
     """Distinct Label Studio project IDs that have at least one dive-slate label.
 
     `incomplete=true` narrows to projects that have at least one label
-    where `completed` is NULL or false — matching the Python predicate
-    `not label.completed` the dashboard-config activity used to apply
-    after pulling every label across the wire.
+    where `completed` is NULL or false. Backs the `apps/web/` SSR
+    landing page, which surfaces only LS projects with outstanding
+    labeling work.
 
     NOTE: must precede the `/api/v1/labels/dive-slate/{image_id}` route —
     Starlette's default path converter treats `{image_id}` as `[^/]+`,
@@ -135,9 +135,9 @@ async def get_headtail_label_studio_project_ids(
     """Distinct Label Studio project IDs that have at least one head-tail label.
 
     `incomplete=true` narrows to projects that have at least one label
-    where `completed` is NULL or false — matching the Python predicate
-    `not label.completed` the dashboard-config activity used to apply
-    after pulling every label across the wire.
+    where `completed` is NULL or false. Backs the `apps/web/` SSR
+    landing page, which surfaces only LS projects with outstanding
+    labeling work.
 
     Replaces a per-dive fan-out the api-workflow-worker used to do (one
     HTTP round trip per canonical dive) — that approach blew past the
@@ -254,9 +254,9 @@ async def get_laser_label_studio_project_ids(
     """Distinct Label Studio project IDs that have at least one laser label.
 
     `incomplete=true` narrows to projects that have at least one label
-    where `completed` is NULL or false — matching the Python predicate
-    `not label.completed` the dashboard-config activity used to apply
-    after pulling every label across the wire.
+    where `completed` is NULL or false. Backs the `apps/web/` SSR
+    landing page, which surfaces only LS projects with outstanding
+    labeling work.
 
     Replaces a per-dive fan-out the api-workflow-worker used to do (one
     HTTP round trip per canonical dive) — that approach blew past the
@@ -447,9 +447,9 @@ async def get_species_label_studio_project_ids(
     """Distinct Label Studio project IDs that have at least one species label.
 
     `incomplete=true` narrows to projects that have at least one label
-    where `completed` is NULL or false — matching the Python predicate
-    `not label.completed` the dashboard-config activity used to apply
-    after pulling every label across the wire.
+    where `completed` is NULL or false. Backs the `apps/web/` SSR
+    landing page, which surfaces only LS projects with outstanding
+    labeling work.
 
     NOTE: must precede the `/api/v1/labels/species/{image_id}` route —
     Starlette's default path converter treats `{image_id}` as `[^/]+`,

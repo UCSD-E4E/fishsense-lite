@@ -7,7 +7,7 @@ orchestrator host, and prod data-worker host.
 
 | File | Purpose |
 |---|---|
-| `compose.yml` | Top-level prod orchestrator stack. `include:`s the four siblings below + defines `postgres`, `qcomm-static-file-server`, `mafl`. Pulls `prometheus_network` and `traefik_proxy` as external networks. |
+| `compose.yml` | Top-level prod orchestrator stack. `include:`s the four siblings below + defines `postgres`, `qcomm-static-file-server`, `fishsense-web`. Pulls `prometheus_network` and `traefik_proxy` as external networks. |
 | `compose.orchestrator.yml` | `fishsense-api` + nginx `static_file_server` (file-exchange DAV). Behind Traefik + `authentik@docker` middleware. |
 | `compose.temporal.yml` | Temporal cluster (history, frontend, matching, worker, UI). |
 | `compose.workers.yml` | `fishsense-*` workers running on the orchestrator host: `fishsense-api-workflow-worker`, `fishsense-backup-worker`. (Workers consume Temporal but aren't part of the cluster.) |
@@ -94,7 +94,8 @@ without its mTLS certs.
    - `worker_volumes/backup_worker/config/.secrets.toml` — same shape
      for `fishsense-backup-worker` (paired `settings.toml` tracked).
    - `worker_volumes/backup_worker/logs/` — log volume.
-   - `mafl_volumes/data/` — mafl config + dashboard config.
+   - `web_volumes/.env` — `fishsense-web` runtime env file (5
+     required keys; see `web_volumes/.env.example` for the shape).
    - `superset_volumes/`, `qcomm_static_file_server_volumes/`,
      `static_file_server_volumes/`, `fishsense_api_volumes/` — see the
      respective compose files for the bind-mount paths.
@@ -320,7 +321,7 @@ Orchestrator host (one runner: `fishsense-prod`):
 compose.yml
 ├── postgres (PG 16, password file via docker secret)
 ├── qcomm-static-file-server (Traefik + authentik)
-├── mafl (homepage at fishsense.e4e.ucsd.edu)
+├── fishsense-web (homepage at fishsense.e4e.ucsd.edu)
 ├── include: compose.orchestrator.yml
 │     ├── fishsense-api
 │     └── static_file_server (nginx DAV — the /api/v1/exchange/ routes)

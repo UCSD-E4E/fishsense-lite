@@ -2,12 +2,27 @@
 
 Loose ends and architectural conventions that aren't otherwise tracked.
 
+## Working conventions
+
+**TDD is mandatory** for any non-trivial code change. Write a failing
+test first, then the minimum implementation to pass, then refactor.
+Applies to: API endpoints, SDK methods, activities, workflows, web app
+data/utility modules, and any new business logic. UI rendering is the
+narrow exception — manual browser verification is acceptable for
+purely visual components, but any logic worth testing should be
+extracted into a unit and covered. The data-worker activity ports'
+"4-test TDD structure" (pure-logic unit + workflow contract +
+integration + parity, see the data-worker activity pattern section)
+is the gold standard; smaller modules don't need all four legs but do
+need a failing test before the implementation lands.
+
 ## Service map
 
 | Service | Purpose | Task queue |
 |---|---|---|
 | `services/fishsense-api/` | FastAPI app (DB CRUD, label endpoints) | — |
-| `services/fishsense-api-workflow-worker/` | api-side Temporal worker: hourly Label Studio sync (laser/headtail/dive-slate/species), Superset dashboard-config writer, on-demand Create/Populate × {Laser,Species,HeadTail,DiveSlate} LS project workflows, hourly preprocess parents for stages 0.1 / 2 / 5.1 / 9 (select + resolve; dispatch child to data-worker) | `fishsense_api_queue` |
+| `services/fishsense-api-workflow-worker/` | api-side Temporal worker: hourly Label Studio sync (laser/headtail/dive-slate/species), on-demand Create/Populate × {Laser,Species,HeadTail,DiveSlate} LS project workflows, hourly preprocess parents for stages 0.1 / 2 / 5.1 / 9 (select + resolve; dispatch child to data-worker) | `fishsense_api_queue` |
+| `apps/web/` | Next.js 15 (App Router) + React + TS landing page at `fishsense.e4e.ucsd.edu`. SSR fetches LS project IDs from fishsense-api, resolves names from Label Studio, renders categorized link cards. Replaces the prior mafl dashboard + its hourly config-writer workflow. Will grow into a full web app. | — |
 | `services/fishsense-data-processing-workflow-worker/` | image preprocessing (rectify/overlay/JPEG), laser calibration, fish measurement | `fishsense_data_processing_queue` |
 | `services/fishsense-backup-worker/` | nightly Postgres → NAS backups + retention | `fishsense_backup_queue` |
 
@@ -412,6 +427,16 @@ On push to main it pushes to GHCR tagged by the commit SHA
 (`:sha-<short>`) and the branch (`:main`). PR runs build only — no
 push — as a Dockerfile-validity check.
 
+The matrix uses `include:` with explicit `dockerfile` paths per entry
+(not derived from the package name) because services live under
+`services/` while the web app lives under `apps/`. Adding a new
+buildable image means appending one entry to that matrix in build.yml
+**and** in `rebuild-from-main.yml` (the recovery counterpart). Adding
+a non-Python package additionally needs `release-type: node` (or
+similar) on its `release-please-config.json` entry — `apps/web` is
+the first such consumer; default top-level `release-type: python`
+applies to all the rest.
+
 `.github/workflows/promote.yml` runs on `release: published` (fired by
 release-please after the release PR is merged). It does **not**
 rebuild — (a) retags the SHA-tagged image to `:v<version>` and
@@ -476,8 +501,11 @@ Orchestrator:
 3. Set repo variable `DEPLOY_DIR` to that path under Settings ->
    Secrets and variables -> Actions -> Variables.
 4. Restore `pg_volumes/`, `worker_volumes/`, `temporal_volumes/`,
-   `mafl_volumes/`, and `.secrets/` (untracked siblings of the
-   compose files) from existing prod state.
+   and `.secrets/` (untracked siblings of the compose files) from
+   existing prod state. Populate `web_volumes/.env` (untracked) per
+   the canonical shape in `deploy/web_volumes/.env.example` —
+   fishsense-web reads it via `env_file:` and throws on first request
+   if any of the five keys are missing.
 
 Data-worker:
 1. Register a runner with `--labels fishsense-data-worker`.
