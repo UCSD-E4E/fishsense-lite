@@ -144,3 +144,33 @@ async def test_falls_back_to_dive_id_when_name_missing(monkeypatch):
         title=expected_title,
         label_config="<View/>",
     )
+
+
+@pytest.mark.asyncio
+async def test_falls_back_to_dive_id_when_name_too_long(monkeypatch):
+    """LS caps `Project.title` at 50 chars. When a real dive's name
+    plus the stage suffix would exceed the cap, `build_per_dive_title`
+    must fall back to the `f"Dive {dive_id}"` form rather than
+    truncating — truncation could collide two long-named dives."""
+    long_name = "2024-08-21 Florida Keys reef survey dive 03 (cohort A)"
+    assert len(long_name) > sut_utils.LS_PROJECT_TITLE_MAX
+    _patch_dive_lookup(monkeypatch, dive_name=long_name)
+    expected_title = "Dive 393 - Laser Calibration Labeling"
+    monkeypatch.setattr(sut, "LASER_LABELING_CONFIG_XML", "<View/>")
+
+    ls = _make_ls(
+        list_result=[],
+        create_result=SimpleNamespace(id=303, title=expected_title),
+    )
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    result = await ActivityEnvironment().run(
+        sut.create_laser_label_studio_project_activity, 393
+    )
+
+    assert result == 303
+    assert len(expected_title) <= sut_utils.LS_PROJECT_TITLE_MAX
+    ls.projects.create.assert_called_once_with(
+        title=expected_title,
+        label_config="<View/>",
+    )
