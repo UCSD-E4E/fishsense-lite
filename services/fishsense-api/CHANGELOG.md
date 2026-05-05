@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.27.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.27.1...fishsense-api-v1.27.2) (2026-05-05)
+
+
+### Bug Fixes
+
+* **api:** make labelstudiosynccursor migration idempotent vs create_all ([dbce3eb](https://github.com/UCSD-E4E/fishsense-lite/commit/dbce3ebce847531316e2c36258aee00ca13b02a8))
+* **api:** unblock auto-migrate on prod (alembic runtime dep + idempotent migration) ([aed1f65](https://github.com/UCSD-E4E/fishsense-lite/commit/aed1f65148b42f99f922bd0d9d3d7291c378f42d))
+
 ## [1.27.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.27.0...fishsense-api-v1.27.1) (2026-05-04)
 
 
