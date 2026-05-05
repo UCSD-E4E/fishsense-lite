@@ -21,7 +21,17 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Upgrade schema."""
+    """Upgrade schema.
+
+    Idempotent against `SQLModel.metadata.create_all`: the FastAPI
+    lifespan runs `create_all` before alembic upgrade, so on a
+    fresh-bootstrap deploy this table already exists by the time the
+    migration runs. Skip the DDL when the table is present.
+    """
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if inspector.has_table('labelstudiosynccursor'):
+        return
     op.create_table(
         'labelstudiosynccursor',
         sa.Column('id', sa.Integer(), nullable=False),
