@@ -16,7 +16,7 @@
 
 services:
   fishsense-data-processing-workflow-worker:
-    image: ghcr.io/ucsd-e4e/fishsense-data-processing-workflow-worker:v2.3.0
+    image: ghcr.io/ucsd-e4e/fishsense-data-processing-workflow-worker:v2.3.1
     volumes:
       - ./temporal_volumes/certs:/certs:ro
       - ./worker_volumes/data_worker/config:/e4efs/config:ro
