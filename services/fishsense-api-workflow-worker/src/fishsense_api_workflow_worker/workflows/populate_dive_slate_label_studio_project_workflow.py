@@ -1,61 +1,34 @@
-"""Workflow to populate every active dive-slate-labeling LS project for one dive."""
+"""Workflow to populate the per-dive slate-labeling LS project."""
 
-import asyncio
 from datetime import timedelta
 
 from temporalio import workflow
-
-from fishsense_shared import ExceptionGroupErrorLogging
-
-PROJECT_CONCURRENCY = 4
 
 
 @workflow.defn
 class PopulateDiveSlateLabelStudioProjectWorkflow:
     # pylint: disable=too-few-public-methods
-    """Workflow to populate every active dive-slate-labeling LS project for one dive.
+    """Populate the per-dive slate-labeling LS project for `dive_id`.
 
-    Target set is the union of the canonical project (Create) and any
-    additional projects currently holding incomplete dive-slate labels.
-    See `PopulateLaserLabelStudioProjectWorkflow` for the bootstrap
-    rationale.
+    Creates the per-dive project (idempotent title-match-or-create
+    against `"{dive.name} - Dive Slate Labeling"`) and pushes one LS
+    task per still-unlabeled slate image in the dive.
     """
 
     @workflow.run
     async def run(self, dive_id: int) -> int:
-        """Push slate tasks for `dive_id` into every active LS project.
+        """Push slate tasks for `dive_id` into the per-dive LS project.
 
-        Returns the total number of tasks imported across all projects.
+        Returns the number of tasks imported.
         """
-        canonical_project_id = await workflow.execute_activity(
+        project_id = await workflow.execute_activity(
             "create_dive_slate_label_studio_project_activity",
-            args=(),
+            args=(dive_id,),
             schedule_to_close_timeout=timedelta(minutes=5),
         )
-        discovered = await workflow.execute_activity(
-            "get_active_dive_slate_label_studio_project_ids_activity",
-            args=(),
-            schedule_to_close_timeout=timedelta(minutes=5),
+        return await workflow.execute_activity(
+            "populate_dive_slate_label_studio_project_activity",
+            args=(dive_id, project_id),
+            schedule_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=timedelta(minutes=2),
         )
-
-        project_ids = sorted({canonical_project_id, *discovered})
-
-        sem = asyncio.Semaphore(PROJECT_CONCURRENCY)
-        results: list[int] = []
-
-        async def _populate(project_id: int) -> None:
-            async with sem:
-                count = await workflow.execute_activity(
-                    "populate_dive_slate_label_studio_project_activity",
-                    args=(dive_id, project_id),
-                    schedule_to_close_timeout=timedelta(minutes=30),
-                    heartbeat_timeout=timedelta(minutes=2),
-                )
-                results.append(count)
-
-        async with ExceptionGroupErrorLogging(workflow.logger):
-            async with asyncio.TaskGroup() as tg:
-                for project_id in project_ids:
-                    tg.create_task(_populate(project_id))
-
-        return sum(results)

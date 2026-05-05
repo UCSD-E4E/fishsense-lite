@@ -1,12 +1,13 @@
-"""Activity to idempotently create the species-labeling LS project."""
+"""Activity to idempotently create a per-dive species-labeling LS project."""
 
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.populate_utils import (
+    build_per_dive_title,
     create_or_get_label_studio_project,
 )
 
-SPECIES_PROJECT_TITLE = "FishSense — Species Labeling (Stage 4)"
+SPECIES_PROJECT_TITLE_SUFFIX = "Species Labeling"
 
 # Labeling-config XML from the prod species project. Several control
 # names are load-bearing for downstream code:
@@ -98,13 +99,15 @@ SPECIES_LABELING_CONFIG_XML = """\
 
 
 @activity.defn
-async def create_species_label_studio_project_activity() -> int:
-    """Create the species-labeling LS project if it doesn't exist; return its ID.
+async def create_species_label_studio_project_activity(dive_id: int) -> int:
+    """Create a per-dive species-labeling LS project; return its ID.
 
-    Idempotent — re-running returns the existing project's ID rather
-    than creating a duplicate. Match is by title.
+    Title is `"{dive.name} - Species Labeling"`. Idempotent —
+    re-running for the same dive returns the existing project's ID
+    rather than creating a duplicate. Match is by title.
     """
+    title = await build_per_dive_title(dive_id, SPECIES_PROJECT_TITLE_SUFFIX)
     return await create_or_get_label_studio_project(
-        project_title=SPECIES_PROJECT_TITLE,
+        project_title=title,
         labeling_config_xml=SPECIES_LABELING_CONFIG_XML,
     )

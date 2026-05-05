@@ -1,12 +1,13 @@
-"""Activity to idempotently create the dive-slate-labeling LS project."""
+"""Activity to idempotently create a per-dive dive-slate-labeling LS project."""
 
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.populate_utils import (
+    build_per_dive_title,
     create_or_get_label_studio_project,
 )
 
-DIVE_SLATE_PROJECT_TITLE = "FishSense — Dive Slate Labeling (Stage 11)"
+DIVE_SLATE_PROJECT_TITLE_SUFFIX = "Dive Slate Labeling"
 
 # Labeling-config XML from the prod dive-slate project. Control names
 # map 1:1 to fields on `DiveSlateLabel`:
@@ -41,13 +42,17 @@ DIVE_SLATE_LABELING_CONFIG_XML = """\
 
 
 @activity.defn
-async def create_dive_slate_label_studio_project_activity() -> int:
-    """Create the slate-labeling LS project if it doesn't exist; return its ID.
+async def create_dive_slate_label_studio_project_activity(dive_id: int) -> int:
+    """Create a per-dive slate-labeling LS project; return its ID.
 
-    Idempotent — re-running returns the existing project's ID rather
-    than creating a duplicate. Match is by title.
+    Title is `"{dive.name} - Dive Slate Labeling"`. Idempotent —
+    re-running for the same dive returns the existing project's ID
+    rather than creating a duplicate. Match is by title.
     """
+    title = await build_per_dive_title(
+        dive_id, DIVE_SLATE_PROJECT_TITLE_SUFFIX
+    )
     return await create_or_get_label_studio_project(
-        project_title=DIVE_SLATE_PROJECT_TITLE,
+        project_title=title,
         labeling_config_xml=DIVE_SLATE_LABELING_CONFIG_XML,
     )
