@@ -25,12 +25,13 @@ or directly:
 from __future__ import annotations
 
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import List
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from temporalio import activity
 from temporalio.testing import ActivityEnvironment, WorkflowEnvironment
 from temporalio.worker import Worker
 
@@ -39,6 +40,7 @@ from fishsense_api_sdk.models.laser_label import LaserLabel
 from fishsense_api_workflow_worker.activities import (
     create_laser_label_studio_project_activity as create_sut,
     populate_laser_label_studio_project_activity as populate_sut,
+    populate_utils as populate_utils_sut,
 )
 from fishsense_api_workflow_worker.activities.utils import get_ls_client
 from fishsense_api_workflow_worker.workflows.populate_laser_label_studio_project_workflow import (  # pylint: disable=line-too-long
@@ -72,6 +74,30 @@ def _image(image_id: int, checksum: str) -> Image:
     )
 
 
+def _patch_dive_lookup(monkeypatch, *, dive_id: int, dive_name: str):
+    """Stub `populate_utils.get_fs_client` so `build_per_dive_title`
+    sees a deterministic dive name. The integration tests pin the dive
+    name with a uuid so each run gets a unique LS project title."""
+
+    fake_dive = SimpleNamespace(id=dive_id, name=dive_name)
+    fake_fs = MagicMock()
+
+    async def _get(**_kwargs):
+        return fake_dive
+
+    fake_fs.dives.get = _get
+
+    @asynccontextmanager
+    async def _client():
+        yield fake_fs
+
+    monkeypatch.setattr(populate_utils_sut, "get_fs_client", _client)
+
+
+def _expected_title(dive_name: str) -> str:
+    return f"{dive_name} - {create_sut.LASER_PROJECT_TITLE_SUFFIX}"
+
+
 # ---------------------------------------------------------------------------
 # Create-side: idempotent title-lookup against real LS.
 # ---------------------------------------------------------------------------
@@ -81,17 +107,19 @@ async def test_create_activity_creates_then_returns_existing_on_rerun(monkeypatc
     """First run creates the project; second run finds it by title and
     returns the same ID. This is the contract that lets us re-run the
     Create workflow without accumulating duplicate projects."""
-    title = f"fs-create-rerun-{uuid.uuid4().hex[:8]}"
-    monkeypatch.setattr(create_sut, "LASER_PROJECT_TITLE", title)
+    dive_id = 393
+    dive_name = f"fs-create-rerun-{uuid.uuid4().hex[:8]}"
+    _patch_dive_lookup(monkeypatch, dive_id=dive_id, dive_name=dive_name)
     monkeypatch.setattr(create_sut, "LASER_LABELING_CONFIG_XML", _MIN_LASER_XML)
+    title = _expected_title(dive_name)
 
     ls = get_ls_client()
     try:
         first_id = await ActivityEnvironment().run(
-            create_sut.create_laser_label_studio_project_activity
+            create_sut.create_laser_label_studio_project_activity, dive_id
         )
         second_id = await ActivityEnvironment().run(
-            create_sut.create_laser_label_studio_project_activity
+            create_sut.create_laser_label_studio_project_activity, dive_id
         )
 
         assert first_id == second_id
@@ -110,13 +138,14 @@ async def test_create_activity_creates_then_returns_existing_on_rerun(monkeypatc
 async def test_create_activity_raises_when_xml_constant_empty(monkeypatch):
     """Empty XML must raise rather than silently make an unlabel-able
     project, even when LS is reachable."""
-    title = f"fs-empty-xml-{uuid.uuid4().hex[:8]}"
-    monkeypatch.setattr(create_sut, "LASER_PROJECT_TITLE", title)
+    dive_id = 393
+    dive_name = f"fs-empty-xml-{uuid.uuid4().hex[:8]}"
+    _patch_dive_lookup(monkeypatch, dive_id=dive_id, dive_name=dive_name)
     monkeypatch.setattr(create_sut, "LASER_LABELING_CONFIG_XML", "")
 
     with pytest.raises(Exception) as exc_info:
         await ActivityEnvironment().run(
-            create_sut.create_laser_label_studio_project_activity
+            create_sut.create_laser_label_studio_project_activity, dive_id
         )
 
     assert "labeling-config XML" in str(exc_info.value)
@@ -257,7 +286,7 @@ async def test_populate_skips_completed_against_real_ls(
 
 
 # ---------------------------------------------------------------------------
-# Full workflow: Create -> populate fan-out against real LS.
+# Full workflow: Create -> populate against real LS.
 # ---------------------------------------------------------------------------
 
 
@@ -266,30 +295,23 @@ async def test_populate_workflow_creates_then_imports_tasks_against_real_ls(
 ):
     """End-to-end: PopulateLaserLabelStudioProjectWorkflow against real
     LS. The workflow's internal Create activity must stand up a
-    project, the discovery stub (returning [] for a freshly-named
-    test project) must not interfere, and the populate fan-out must
-    push tasks to the canonical project.
+    per-dive project (named `"{dive.name} - Laser Calibration Labeling"`)
+    and the populate activity must push tasks into it.
 
     This is the integration-level proof that wiring Create into
     Populate solves the bootstrap chicken-and-egg: a brand-new
     deployment with no legacy LS project gets its first dive's tasks
     imported on the first invocation, without any pre-seeding.
     """
-    title = f"fs-int-flow-{uuid.uuid4().hex[:8]}"
-    monkeypatch.setattr(create_sut, "LASER_PROJECT_TITLE", title)
+    dive_id = 42
+    dive_name = f"fs-int-flow-{uuid.uuid4().hex[:8]}"
+    _patch_dive_lookup(monkeypatch, dive_id=dive_id, dive_name=dive_name)
     monkeypatch.setattr(create_sut, "LASER_LABELING_CONFIG_XML", _MIN_LASER_XML)
+    title = _expected_title(dive_name)
 
     images = [_image(i + 1, f"flow-{i:03d}") for i in range(4)]
     fs = _make_fs_client(images, existing_labels=[])
     monkeypatch.setattr(populate_sut, "get_fs_client", lambda: fs)
-
-    # Discovery stub returns [] — no legacy LS project for this
-    # freshly-titled canonical one. Stubbing avoids needing a real
-    # fishsense-api in this test; the populate side already mocks
-    # get_fs_client above.
-    @activity.defn(name="get_active_laser_label_studio_project_ids_activity")
-    async def stub_get_active() -> List[int]:
-        return []
 
     ls = get_ls_client()
     project_id_holder: List[int] = []
@@ -303,13 +325,12 @@ async def test_populate_workflow_creates_then_imports_tasks_against_real_ls(
                 workflows=[PopulateLaserLabelStudioProjectWorkflow],
                 activities=[
                     create_sut.create_laser_label_studio_project_activity,
-                    stub_get_active,
                     populate_sut.populate_laser_label_studio_project_activity,
                 ],
             ):
                 count = await env.client.execute_workflow(
                     PopulateLaserLabelStudioProjectWorkflow.run,
-                    42,
+                    dive_id,
                     id=f"{queue}-wf",
                     task_queue=queue,
                 )

@@ -50,36 +50,31 @@ DB (negligible). To add or remove, override
 | 13  | perform_laser_calibration | api-worker (parent) + data-worker (child) | ported (hourly, +50min offset) |
 | 14  | measure_fish | api-worker (parent) + data-worker (child) | ported (on-demand; idempotency caveat — see notes) |
 
-Create and populate are split into separate workflows per stage:
+Create and populate are split into separate workflows per stage. LS
+projects are now **per-dive**: each dive gets its own LS project
+titled `"{dive.name} - <Stage> Labeling"` (e.g. `"2024-08-21 reef
+dive 3 - HeadTail Labeling"`), with `f"Dive {dive_id}"` as a
+fallback when `Dive.name` is NULL. Per-dive scoping lets labelers
+track per-dive progress and keeps each project's task list focused
+on one cohort.
 
-* **`Create<Stage>LabelStudioProjectWorkflow()`** — calls
-  `create_<stage>_label_studio_project_activity` which idempotently
-  finds the LS project by title (`FishSense — <Stage> Labeling`) or
-  creates it from a stored labeling-config XML constant. Returns
-  `project_id`. The four `<STAGE>_LABELING_CONFIG_XML` constants in
+* **`Create<Stage>LabelStudioProjectWorkflow(dive_id)`** — calls
+  `create_<stage>_label_studio_project_activity(dive_id)` which
+  fetches the dive's name from the API, builds the per-dive title
+  via `populate_utils.build_per_dive_title`, and idempotently finds
+  that title in LS or creates a new project from a stored
+  labeling-config XML constant. Returns `project_id`. The four
+  `<STAGE>_LABELING_CONFIG_XML` constants in
   `activities/create_*_label_studio_project_activity.py` are real
-  pasted-from-prod XML (laser, species, headtail, dive-slate) — re-
-  running create against an existing prod LS project just returns
-  the existing ID via title match. The Create workflow can be invoked
-  on-demand, but `Populate<Stage>LabelStudioProjectWorkflow` also
-  calls the Create activity internally (see below) so a manual
-  Create run is rarely needed.
+  pasted-from-prod XML. The Create workflow can be invoked on-demand,
+  but `Populate<Stage>LabelStudioProjectWorkflow` also calls the
+  Create activity internally so a manual Create run is rarely needed.
 * **`Populate<Stage>LabelStudioProjectWorkflow(dive_id)`** — calls
-  `create_<stage>_label_studio_project_activity` first to ensure the
-  canonical project exists (idempotent), then
-  `get_active_<stage>_label_studio_project_ids_activity` (SDK query
-  for projects with at least one incomplete label of this kind), then
-  fans out `populate_<stage>_label_studio_project_activity(dive_id,
-  project_id)` across the **union** of the canonical project ID and
-  the discovery result, deduplicated, with a workflow-level
-  `Semaphore(4)`. The Create-then-discovery union closes the
-  bootstrap chicken-and-egg: a freshly-created project has zero
-  incomplete labels, so the discovery query alone wouldn't pick it
-  up — including its ID in the fan-out set seeds the first round of
-  `LaserLabel` / `SpeciesLabel` / `HeadTailLabel` / `DiveSlateLabel`
-  rows. Steady-state: discovery still picks up legacy/additional
-  projects (e.g. the prod laser project from before Create's XML
-  was checked in).
+  `create_<stage>_label_studio_project_activity(dive_id)` to
+  materialize the per-dive project (idempotent), then runs
+  `populate_<stage>_label_studio_project_activity(dive_id,
+  project_id)` against that single project. No discovery / fan-out
+  — each dive owns one project per stage.
 
 Both Create and Populate are registered but not scheduled — they're
 on-demand (`temporal workflow start` with a `dive_id` for populate,
@@ -716,14 +711,14 @@ runs.
 ### Label Studio create-then-populate
 
 Eight workflows: Create + Populate × {Laser, Species, HeadTail,
-DiveSlate}. Populate now self-bootstraps: it calls the matching
-Create activity inside the workflow body, then unions the canonical
-project ID with the SDK
-`get_<stage>_label_studio_project_ids(incomplete=True)` discovery
-result, deduplicates, and fans out per-project populate activities
-across the union. The four `<STAGE>_LABELING_CONFIG_XML` constants
-are real pasted-from-prod XML, so Create-on-fresh-deploy stands up a
-usable project immediately.
+DiveSlate}. Populate self-bootstraps: it calls the matching Create
+activity inside the workflow body to materialize the per-dive
+project (titled `"{dive.name} - <Stage> Labeling"`), then runs the
+populate activity against that one project. The four
+`<STAGE>_LABELING_CONFIG_XML` constants are real pasted-from-prod
+XML, so Create-on-fresh-deploy stands up a usable project
+immediately. There is no discovery query or fan-out — each dive
+owns one project per stage.
 
 The populate workflows are dispatched automatically by the four
 preprocess parents (see "Cross-worker orchestration pattern"); manual
@@ -734,16 +729,14 @@ runs (e.g. `populate-laser-393-manual`) so the auto-chain's
 deterministic id (`populate-laser-393`) stays available for future
 hourly firings.
 
-Existing prod projects (laser=73, species=70, headtail=71,
-dive_slate=66 as of 2026-01-26) keep being picked up by the
-discovery query as long as they hold incomplete labels. The Create
-title-match returns the canonical project's ID; if a deployment
-ever ends up with the canonical title pointing at a different
-project than the one prod is using, both IDs flow through the
-union and populate fans out across both — which is the right
-behavior during a migration window but not the desired steady
-state. Resolve by aligning `<STAGE>_PROJECT_TITLE` in the Create
-activity with whatever the operator wants as canonical.
+The legacy single-project-per-stage layout (laser=73, species=70,
+headtail=71, dive_slate=66, headtail-canonical=76) is grandfathered
+in: dives whose images already carry label rows pointing at those
+projects are excluded from the cohort selectors ("at least one image
+without ANY label row"), so they aren't re-populated against the
+per-dive title. New dives flow only to per-dive projects. Operators
+can clean up the old shared projects manually once their incomplete
+labels have all been completed.
 
 ### Laser-label validation
 
