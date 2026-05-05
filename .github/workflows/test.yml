@@ -136,6 +136,8 @@ jobs:
           else
             npm install --no-audit --no-fund
           fi
+      - name: ESLint
+        run: npm run lint
       - name: Typecheck
         run: npm run typecheck
       - name: Run vitest
