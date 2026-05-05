@@ -82,7 +82,7 @@ def _patch_dive_lookup(monkeypatch, *, dive_id: int, dive_name: str):
     fake_dive = SimpleNamespace(id=dive_id, name=dive_name)
     fake_fs = MagicMock()
 
-    async def _get(_: int):
+    async def _get(**_kwargs):
         return fake_dive
 
     fake_fs.dives.get = _get

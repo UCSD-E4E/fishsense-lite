@@ -47,7 +47,7 @@ def _patch_dive_lookup(monkeypatch, *, dive_name: str | None):
 
     fake_fs = MagicMock()
 
-    async def _get(dive_id: int):
+    async def _get(**_kwargs):
         return fake_dive
 
     fake_fs.dives.get = _get
