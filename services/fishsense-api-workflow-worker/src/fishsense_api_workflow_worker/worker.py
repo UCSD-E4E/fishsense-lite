@@ -56,9 +56,6 @@ from fishsense_api_workflow_worker.activities.get_dives_with_complete_laser_labe
 from fishsense_api_workflow_worker.activities.get_headtail_label_studio_project_ids_activity import (  # pylint: disable=line-too-long
     get_headtail_label_studio_project_ids_activity,
 )
-from fishsense_api_workflow_worker.activities.get_label_studio_projects_activity import (
-    get_label_studio_projects_activity,
-)
 from fishsense_api_workflow_worker.activities.get_laser_label_studio_project_ids_activity import (
     get_laser_label_studio_project_ids_activity,
 )
@@ -131,9 +128,6 @@ from fishsense_api_workflow_worker.activities.sync_users_label_studio_activity i
 from fishsense_api_workflow_worker.activities.update_dive_image_groups_activity import (
     update_dive_image_groups_activity,
 )
-from fishsense_api_workflow_worker.activities.write_dashboard_config_activity import (
-    write_dashboard_config_activity,
-)
 from fishsense_api_workflow_worker.config import configure_logging, settings
 from fishsense_api_workflow_worker.workflows.create_dive_slate_label_studio_project_workflow import (  # pylint: disable=line-too-long
     CreateDiveSlateLabelStudioProjectWorkflow,
@@ -188,9 +182,6 @@ from fishsense_api_workflow_worker.workflows.sync_label_studio_laser_labels_work
 )
 from fishsense_api_workflow_worker.workflows.sync_label_studio_species_labels_workflow import (  # pylint: disable=line-too-long
     SyncLabelStudioSpeciesLabelsWorkflow,
-)
-from fishsense_api_workflow_worker.workflows.update_dashboard_config_workflow import (
-    UpdateDashboardConfigWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.update_dive_image_groups_workflow import (
     UpdateDiveImageGroupsWorkflow,
@@ -287,14 +278,6 @@ async def schedule_workflows(client: Client):
                     timedelta(hours=1),
                 )
             )
-            tg.create_task(
-                schedule_workflow(
-                    client,
-                    "update-dashboard-config-workflow-schedule",
-                    UpdateDashboardConfigWorkflow,
-                    timedelta(hours=1),
-                )
-            )
             # The four cross-worker preprocess parents run hourly with
             # SKIP-on-overlap (cluster safety: prevents two selectors
             # picking the same dive_id concurrently). Stagger by 15 min
@@ -383,7 +366,6 @@ async def main():
                 SyncLabelStudioHeadTailLabelsWorkflow,
                 SyncLabelStudioDiveSlateLabelsWorkflow,
                 SyncLabelStudioSpeciesLabelsWorkflow,
-                UpdateDashboardConfigWorkflow,
                 CreateLaserLabelStudioProjectWorkflow,
                 CreateSpeciesLabelStudioProjectWorkflow,
                 CreateHeadTailLabelStudioProjectWorkflow,
@@ -402,7 +384,6 @@ async def main():
             ],
             activity_executor=executor,
             activities=[
-                get_label_studio_projects_activity,
                 get_laser_label_studio_project_ids_activity,
                 get_headtail_label_studio_project_ids_activity,
                 get_dive_slate_label_studio_project_ids_activity,
@@ -413,7 +394,6 @@ async def main():
                 sync_dive_slate_labels_for_label_studio_project_activity,
                 sync_species_labels_for_label_studio_project_activity,
                 sync_users_label_studio_activity,
-                write_dashboard_config_activity,
                 create_laser_label_studio_project_activity,
                 create_species_label_studio_project_activity,
                 create_headtail_label_studio_project_activity,
