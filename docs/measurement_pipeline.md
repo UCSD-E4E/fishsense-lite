@@ -146,7 +146,7 @@ and current status.
   calibration + measurement workflows
   (`PerformLaserCalibrationWorkflow`, `MeasureFishWorkflow` —
   both data-worker, on-demand). The mafl dashboard config writer
-  was removed when the dashboard moved to `apps/web/` (Next.js SSR
+  was removed when the dashboard moved to `apps/fishsense-lite-web/` (Next.js SSR
   reads the same data live, no nightly batch needed).
 * **Still needed before a fresh dive can be measured end-to-end in
   the monorepo:** stage 6.1 (cluster reconciliation), plus the

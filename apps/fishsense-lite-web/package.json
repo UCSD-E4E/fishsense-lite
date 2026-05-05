@@ -1,11 +1,11 @@
 {
-  "name": "@fishsense/web",
+  "name": "@fishsense/lite-web",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "node .next/standalone/apps/web/server.js",
+    "start": "node .next/standalone/apps/fishsense-lite-web/server.js",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

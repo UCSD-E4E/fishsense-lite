@@ -33,9 +33,9 @@
       "version-file": "src/fishsense_api_sdk/__init__.py",
       "bootstrap-sha": "75d2979c384343f87845554588ac114d742a695e"
     },
-    "apps/web": {
+    "apps/fishsense-lite-web": {
       "release-type": "node",
-      "package-name": "fishsense-web",
+      "package-name": "fishsense-lite-web",
       "bootstrap-sha": "75d2979c384343f87845554588ac114d742a695e"
     }
   }

@@ -22,7 +22,7 @@ need a failing test before the implementation lands.
 |---|---|---|
 | `services/fishsense-api/` | FastAPI app (DB CRUD, label endpoints) | — |
 | `services/fishsense-api-workflow-worker/` | api-side Temporal worker: hourly Label Studio sync (laser/headtail/dive-slate/species), on-demand Create/Populate × {Laser,Species,HeadTail,DiveSlate} LS project workflows, hourly preprocess parents for stages 0.1 / 2 / 5.1 / 9 (select + resolve; dispatch child to data-worker) | `fishsense_api_queue` |
-| `apps/web/` | Next.js 15 (App Router) + React + TS landing page at `fishsense.e4e.ucsd.edu`. SSR fetches LS project IDs from fishsense-api, resolves names from Label Studio, renders categorized link cards. Replaces the prior mafl dashboard + its hourly config-writer workflow. Will grow into a full web app. | — |
+| `apps/fishsense-lite-web/` | Next.js 15 (App Router) + React + TS landing page at `fishsense.e4e.ucsd.edu`. SSR fetches LS project IDs from fishsense-api, resolves names from Label Studio, renders categorized link cards. Replaces the prior mafl dashboard + its hourly config-writer workflow. Will grow into a full web app. | — |
 | `services/fishsense-data-processing-workflow-worker/` | image preprocessing (rectify/overlay/JPEG), laser calibration, fish measurement | `fishsense_data_processing_queue` |
 | `services/fishsense-backup-worker/` | nightly Postgres → NAS backups + retention | `fishsense_backup_queue` |
 
@@ -433,7 +433,7 @@ The matrix uses `include:` with explicit `dockerfile` paths per entry
 buildable image means appending one entry to that matrix in build.yml
 **and** in `rebuild-from-main.yml` (the recovery counterpart). Adding
 a non-Python package additionally needs `release-type: node` (or
-similar) on its `release-please-config.json` entry — `apps/web` is
+similar) on its `release-please-config.json` entry — `apps/fishsense-lite-web` is
 the first such consumer; default top-level `release-type: python`
 applies to all the rest.
 
@@ -504,7 +504,7 @@ Orchestrator:
    and `.secrets/` (untracked siblings of the compose files) from
    existing prod state. Populate `web_volumes/.env` (untracked) per
    the canonical shape in `deploy/web_volumes/.env.example` —
-   fishsense-web reads it via `env_file:` and throws on first request
+   fishsense-lite-web reads it via `env_file:` and throws on first request
    if any of the five keys are missing.
 
 Data-worker:
@@ -695,7 +695,7 @@ path to win over fishsense-core's transitive git source for the SDK.
 ### Phase 6 polyrepo cutover leftovers
 
 The four old polyrepos — `fishsense-api`, `fishsense-api-workflow-worker`,
-`fishsense-data-processing-workflow-worker`, `fishsense-web-services` —
+`fishsense-data-processing-workflow-worker`, `fishsense-lite-web-services` —
 are still **not archived** on GitHub as of 2026-05-01. Pending:
 
 - Add a `MIGRATED_TO_MONOREPO.md` notice to each, push, then archive.

@@ -22,7 +22,7 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Node 24 (current LTS) for apps/web. Trixie's default `nodejs` apt is v18 —
+# Node 24 (current LTS) for apps/fishsense-lite-web. Trixie's default `nodejs` apt is v18 —
 # too old for Next.js 15 + React 19. Pull from NodeSource to track Node 24.x.
 # npm ships in the same package.
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \

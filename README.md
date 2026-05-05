@@ -25,7 +25,7 @@ Libraries (workspace members, not published separately):
 Deploy:
 
 - `deploy/compose.yml` + `compose.{orchestrator,superset,temporal,workers}.yml`
-  — prod docker-compose stack (formerly the `fishsense-web-services` repo)
+  — prod docker-compose stack (formerly the `fishsense-lite-web-services` repo)
 - `deploy/compose.local.yml` — self-contained local devcontainer stack
   (postgres + temporal + fishsense-api + nginx static_file_server)
 

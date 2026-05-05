@@ -6,18 +6,18 @@
 # future shared-TS lib under libs/ would not require changing this
 # build invocation.
 #
-#   docker build -t fishsense-web \
-#     -f apps/web/Dockerfile .
+#   docker build -t fishsense-lite-web \
+#     -f apps/fishsense-lite-web/Dockerfile .
 
 FROM node:24-alpine AS deps
 WORKDIR /app
-COPY apps/web/package.json apps/web/package-lock.json* ./
+COPY apps/fishsense-lite-web/package.json apps/fishsense-lite-web/package-lock.json* ./
 RUN npm install --no-audit --no-fund --loglevel=error
 
 FROM node:24-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY apps/web/ ./
+COPY apps/fishsense-lite-web/ ./
 RUN npm run build
 
 FROM node:24-alpine AS runner

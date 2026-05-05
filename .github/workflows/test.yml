@@ -112,21 +112,21 @@ jobs:
         # container.
         run: .venv/bin/python -c "import ${{ matrix.module }}"
 
-  # Node test suite for apps/web. CLAUDE.md mandates TDD project-wide;
-  # without this job, broken tests in apps/web/lib could land on main.
+  # Node test suite for apps/fishsense-lite-web. CLAUDE.md mandates TDD project-wide;
+  # without this job, broken tests in apps/fishsense-lite-web/lib could land on main.
   vitest:
     runs-on: ubuntu-latest
-    name: vitest (apps/web)
+    name: vitest (apps/fishsense-lite-web)
     defaults:
       run:
-        working-directory: apps/web
+        working-directory: apps/fishsense-lite-web
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
           cache: "npm"
-          cache-dependency-path: apps/web/package-lock.json
+          cache-dependency-path: apps/fishsense-lite-web/package-lock.json
       - name: Install deps
         # `npm ci` requires a lockfile; fall back to `npm install` until
         # one is checked in (first run will commit one via the next push).

@@ -191,12 +191,12 @@ services:
   # `uv run` from the dev container, or refactor those activities to skip
   # cleanly when their backends are unset.
 
-  fishsense-web:
+  fishsense-lite-web:
     # Mirrors the fishsense-api pattern: build from source so PR changes
     # are exercised, not a previously-published image.
     build:
       context: ..
-      dockerfile: apps/web/Dockerfile
+      dockerfile: apps/fishsense-lite-web/Dockerfile
     restart: on-failure:15
     depends_on:
       - fishsense-api
@@ -217,7 +217,7 @@ services:
       - fishsense_local
 
   # `npm run dev` from inside the dev container is the iteration loop for
-  # apps/web (hot reload, source maps). The fishsense-web service above is
+  # apps/fishsense-lite-web (hot reload, source maps). The fishsense-lite-web service above is
   # the production-shape image — exercised by integration.yml's smoke
   # check and available for end-to-end validation.
 

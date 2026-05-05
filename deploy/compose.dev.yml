@@ -23,10 +23,10 @@ services:
     build:
       context: ../services/fishsense-api-workflow-worker
 
-  fishsense-web:
+  fishsense-lite-web:
     image: !reset null
     build:
       # Build context = repo root (matches the Dockerfile's monorepo
-      # layout — see apps/web/Dockerfile header).
+      # layout — see apps/fishsense-lite-web/Dockerfile header).
       context: ..
-      dockerfile: apps/web/Dockerfile
+      dockerfile: apps/fishsense-lite-web/Dockerfile

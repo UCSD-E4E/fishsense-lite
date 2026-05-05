@@ -24,21 +24,21 @@ services:
       - traefik_proxy
     restart: on-failure:15
 
-  fishsense-web:
-    image: ghcr.io/ucsd-e4e/fishsense-web:main
+  fishsense-lite-web:
+    image: ghcr.io/ucsd-e4e/fishsense-lite-web:main
     restart: on-failure:15
     env_file:
       # Untracked, populated on the host. Required keys:
       #   FISHSENSE_API_URL, FISHSENSE_API_USERNAME, FISHSENSE_API_PASSWORD,
       #   LABEL_STUDIO_URL, LABEL_STUDIO_API_KEY
-      # See apps/web/.env.example for the canonical shape.
+      # See apps/fishsense-lite-web/.env.example for the canonical shape.
       - ./web_volumes/.env
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.fishsense_web.rule=Host(`fishsense.e4e.ucsd.edu`)"
-      - "traefik.http.routers.fishsense_web.entrypoints=websecure"
-      - "traefik.http.routers.fishsense_web.tls.certresolver=letsencrypt"
-      - "traefik.http.services.fishsense_web.loadbalancer.server.port=3000"
+      - "traefik.http.routers.fishsense_lite_web.rule=Host(`fishsense.e4e.ucsd.edu`)"
+      - "traefik.http.routers.fishsense_lite_web.entrypoints=websecure"
+      - "traefik.http.routers.fishsense_lite_web.tls.certresolver=letsencrypt"
+      - "traefik.http.services.fishsense_lite_web.loadbalancer.server.port=3000"
     networks:
       # `default` so SSR can reach fishsense-api on the internal docker network
       # (bypassing the public Traefik route + authentik middleware).

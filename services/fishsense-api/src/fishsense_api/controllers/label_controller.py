@@ -31,7 +31,7 @@ async def get_dive_slate_label_studio_project_ids(
     """Distinct Label Studio project IDs that have at least one dive-slate label.
 
     `incomplete=true` narrows to projects that have at least one label
-    where `completed` is NULL or false. Backs the `apps/web/` SSR
+    where `completed` is NULL or false. Backs the `apps/fishsense-lite-web/` SSR
     landing page, which surfaces only LS projects with outstanding
     labeling work.
 
@@ -135,7 +135,7 @@ async def get_headtail_label_studio_project_ids(
     """Distinct Label Studio project IDs that have at least one head-tail label.
 
     `incomplete=true` narrows to projects that have at least one label
-    where `completed` is NULL or false. Backs the `apps/web/` SSR
+    where `completed` is NULL or false. Backs the `apps/fishsense-lite-web/` SSR
     landing page, which surfaces only LS projects with outstanding
     labeling work.
 
@@ -254,7 +254,7 @@ async def get_laser_label_studio_project_ids(
     """Distinct Label Studio project IDs that have at least one laser label.
 
     `incomplete=true` narrows to projects that have at least one label
-    where `completed` is NULL or false. Backs the `apps/web/` SSR
+    where `completed` is NULL or false. Backs the `apps/fishsense-lite-web/` SSR
     landing page, which surfaces only LS projects with outstanding
     labeling work.
 
@@ -447,7 +447,7 @@ async def get_species_label_studio_project_ids(
     """Distinct Label Studio project IDs that have at least one species label.
 
     `incomplete=true` narrows to projects that have at least one label
-    where `completed` is NULL or false. Backs the `apps/web/` SSR
+    where `completed` is NULL or false. Backs the `apps/fishsense-lite-web/` SSR
     landing page, which surfaces only LS projects with outstanding
     labeling work.
 

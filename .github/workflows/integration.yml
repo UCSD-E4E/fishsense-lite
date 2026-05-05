@@ -57,11 +57,11 @@ jobs:
         run: |
           docker compose -f compose.local.yml up -d --wait \
             postgres temporal fishsense-api static_file_server label-studio
-          # fishsense-web has no healthcheck (SSR renders depend on
+          # fishsense-lite-web has no healthcheck (SSR renders depend on
           # fishsense-api + label-studio being warm), so bring it up
           # without --wait. The smoke step at the end of this job
           # retry-loops until / returns the dashboard title.
-          docker compose -f compose.local.yml up -d fishsense-web
+          docker compose -f compose.local.yml up -d fishsense-lite-web
         # --wait blocks on each service's healthcheck. label-studio's
         # start_period is 60s on a cold image; first run after a cache
         # miss can take ~90s before --wait returns.
@@ -131,7 +131,7 @@ jobs:
           E4EFS_LABEL_STUDIO__IMAGE_URL_BASE: http://localhost:8080
         run: ./check.sh integration
 
-      - name: Smoke-test fishsense-web SSR
+      - name: Smoke-test fishsense-lite-web SSR
         # The empty postgres in the local stack means the dashboard's
         # Laser/Species/HeadTail/Slate sections are empty — buildSections
         # collapses them, so only "Results" + "Administration" render.
@@ -142,14 +142,14 @@ jobs:
           for i in $(seq 1 30); do
             body="$(curl -fsS http://localhost:3000/ 2>/dev/null || true)"
             if printf '%s' "$body" | grep -q "E4E FishSense"; then
-              echo "fishsense-web SSR reachable on attempt $i"
+              echo "fishsense-lite-web SSR reachable on attempt $i"
               exit 0
             fi
-            echo "[$i/30] waiting for fishsense-web..."
+            echo "[$i/30] waiting for fishsense-lite-web..."
             sleep 2
           done
-          echo "::error::fishsense-web never returned the dashboard title"
-          docker compose -f deploy/compose.local.yml logs fishsense-web --tail=200
+          echo "::error::fishsense-lite-web never returned the dashboard title"
+          docker compose -f deploy/compose.local.yml logs fishsense-lite-web --tail=200
           exit 1
 
       - name: Compose logs on failure

@@ -3,13 +3,13 @@
 #
 # Usage:
 #   ./check.sh lint         # pylint on Python files changed since origin/main
-#                            + ESLint on apps/web if any TS/JS changed
+#                            + ESLint on apps/fishsense-lite-web if any TS/JS changed
 #                            (matches .github/workflows/lint.yml + the lint
-#                             step in the apps/web vitest CI job).
+#                             step in the apps/fishsense-lite-web vitest CI job).
 #   ./check.sh unit         # pytest with default markers per Python package
-#                            + apps/web typecheck + vitest (CI mode).
+#                            + apps/fishsense-lite-web typecheck + vitest (CI mode).
 #   ./check.sh integration  # pytest -m integration (needs the local devcontainer
-#                            stack: postgres, temporal, nginx). The fishsense-web
+#                            stack: postgres, temporal, nginx). The fishsense-lite-web
 #                            SSR smoke check that runs in integration.yml is a
 #                            shell-level curl-and-grep against the local
 #                            container; replicate it manually if needed.
@@ -24,7 +24,7 @@
 # - Each package's pyproject.toml sets `addopts = "-m 'not integration'"`,
 #   so `unit` deselects integration tests automatically.
 # - Node steps require Node 22+ on PATH (the devcontainer ships Node 24). If
-#   `npm` isn't on PATH the apps/web steps are skipped with a notice — they
+#   `npm` isn't on PATH the apps/fishsense-lite-web steps are skipped with a notice — they
 #   don't fail the run, so a Python-only environment can still ./check.sh.
 
 set -euo pipefail
@@ -67,16 +67,16 @@ run_lint() {
     fi
 
     # ESLint runs full-project (next lint has no incremental mode), but
-    # only when something under apps/web changed. Skip cleanly when npm
+    # only when something under apps/fishsense-lite-web changed. Skip cleanly when npm
     # isn't installed so a Python-only host can still run check.sh.
     local changed_web
-    changed_web="$(git diff --name-only --diff-filter=ACMR "$base" -- 'apps/web/*')"
+    changed_web="$(git diff --name-only --diff-filter=ACMR "$base" -- 'apps/fishsense-lite-web/*')"
     if [ -z "$changed_web" ]; then
-        echo "no apps/web changes since origin/main; skipping eslint"
+        echo "no apps/fishsense-lite-web changes since origin/main; skipping eslint"
     elif ! command -v npm >/dev/null 2>&1; then
-        echo "npm not on PATH; skipping apps/web eslint"
+        echo "npm not on PATH; skipping apps/fishsense-lite-web eslint"
     else
-        npm --prefix apps/web run lint || rc=$?
+        npm --prefix apps/fishsense-lite-web run lint || rc=$?
     fi
 
     return "$rc"
@@ -122,14 +122,14 @@ run_pytests() {
 }
 
 run_npm_unit() {
-    heading "unit tests: apps/web (typecheck + vitest)"
+    heading "unit tests: apps/fishsense-lite-web (typecheck + vitest)"
     if ! command -v npm >/dev/null 2>&1; then
-        echo "npm not on PATH; skipping apps/web unit tests"
+        echo "npm not on PATH; skipping apps/fishsense-lite-web unit tests"
         return 0
     fi
     local rc=0
-    npm --prefix apps/web run typecheck || rc=$?
-    npm --prefix apps/web test || rc=$?
+    npm --prefix apps/fishsense-lite-web run typecheck || rc=$?
+    npm --prefix apps/fishsense-lite-web test || rc=$?
     return "$rc"
 }
 
