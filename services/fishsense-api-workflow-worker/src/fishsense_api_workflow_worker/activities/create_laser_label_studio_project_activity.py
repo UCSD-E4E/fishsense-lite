@@ -1,12 +1,13 @@
-"""Activity to idempotently create the laser-labeling LS project."""
+"""Activity to idempotently create a per-dive laser-labeling LS project."""
 
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.populate_utils import (
+    build_per_dive_title,
     create_or_get_label_studio_project,
 )
 
-LASER_PROJECT_TITLE = "FishSense — Laser Calibration Labeling (Stage 0.3)"
+LASER_PROJECT_TITLE_SUFFIX = "Laser Calibration Labeling"
 
 # Labeling-config XML from the prod laser project. The keypoint
 # `from_name` is "laser" — must stay aligned with
@@ -25,13 +26,15 @@ LASER_LABELING_CONFIG_XML = """\
 
 
 @activity.defn
-async def create_laser_label_studio_project_activity() -> int:
-    """Create the laser-labeling LS project if it doesn't exist; return its ID.
+async def create_laser_label_studio_project_activity(dive_id: int) -> int:
+    """Create a per-dive laser-labeling LS project; return its ID.
 
-    Idempotent — re-running returns the existing project's ID rather
-    than creating a duplicate. Match is by title.
+    Title is `"{dive.name} - Laser Calibration Labeling"`. Idempotent
+    — re-running for the same dive returns the existing project's ID
+    rather than creating a duplicate. Match is by title.
     """
+    title = await build_per_dive_title(dive_id, LASER_PROJECT_TITLE_SUFFIX)
     return await create_or_get_label_studio_project(
-        project_title=LASER_PROJECT_TITLE,
+        project_title=title,
         labeling_config_xml=LASER_LABELING_CONFIG_XML,
     )

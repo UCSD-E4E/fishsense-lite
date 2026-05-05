@@ -4,9 +4,9 @@ Each populate stage creates LS tasks pointing at the labeler-facing
 static-file server, imports them in one batch, then upserts a
 per-image label row anchoring the (image, LS task, LS project) triple.
 Each create stage uses `create_or_get_label_studio_project` to
-idempotently materialize the LS project from a stored labeling-config
-XML — populate workflows themselves query SQL for the project IDs to
-target and never create projects.
+idempotently materialize a per-dive LS project from a stored
+labeling-config XML; populate workflows call create first to get the
+target project ID and then push tasks into it.
 """
 
 from __future__ import annotations
@@ -17,7 +17,10 @@ from typing import Any, Awaitable, Callable, Iterable, List
 from label_studio_sdk.client import LabelStudio
 from temporalio import activity
 
-from fishsense_api_workflow_worker.activities.utils import get_ls_client
+from fishsense_api_workflow_worker.activities.utils import (
+    get_fs_client,
+    get_ls_client,
+)
 from fishsense_api_workflow_worker.config import settings
 
 
@@ -40,9 +43,8 @@ async def create_or_get_label_studio_project(
     """Idempotent create — return the LS project ID for `project_title`,
     creating one with `labeling_config_xml` if none exists.
 
-    Used by the create-side workflows. The populate-side workflows
-    don't call this; they query SQL for actively-labeled project IDs
-    via the `get_active_*_label_studio_project_ids_activity` family.
+    Used by the create-side activities. Per-dive titles are built by
+    `build_per_dive_title`.
     """
     ls = _get_ls_client()
 
@@ -75,6 +77,25 @@ async def create_or_get_label_studio_project(
         "Created LS project %r (id=%d)", project_title, project.id
     )
     return project.id
+
+
+async def build_per_dive_title(dive_id: int, suffix: str) -> str:
+    """Build a per-dive LS project title in the form
+    `"{dive.name} - {suffix}"`. Used by the four create-LS-project
+    activities so each dive ends up with its own project rather than
+    sharing one canonical project per stage.
+
+    Falls back to `f"Dive {dive_id}"` when the dive has no `name`.
+    """
+    async with get_fs_client() as fs:
+        dive = await fs.dives.get(dive_id=dive_id)
+    if dive is None:
+        raise RuntimeError(
+            f"Cannot build LS project title for dive_id={dive_id}: "
+            "no such dive found via the API"
+        )
+    dive_label = dive.name or f"Dive {dive_id}"
+    return f"{dive_label} - {suffix}"
 
 
 async def import_tasks_and_record_labels(

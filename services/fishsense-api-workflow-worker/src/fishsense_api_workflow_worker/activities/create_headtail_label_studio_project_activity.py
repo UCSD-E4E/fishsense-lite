@@ -1,12 +1,13 @@
-"""Activity to idempotently create the headtail-labeling LS project."""
+"""Activity to idempotently create a per-dive headtail-labeling LS project."""
 
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.populate_utils import (
+    build_per_dive_title,
     create_or_get_label_studio_project,
 )
 
-HEADTAIL_PROJECT_TITLE = "FishSense — HeadTail Labeling (Stage 5.3)"
+HEADTAIL_PROJECT_TITLE_SUFFIX = "HeadTail Labeling"
 
 # Labeling-config XML from the prod headtail project. The keypoint
 # `from_name` is "kp-1" — must match the literal in
@@ -24,13 +25,15 @@ HEADTAIL_LABELING_CONFIG_XML = """\
 
 
 @activity.defn
-async def create_headtail_label_studio_project_activity() -> int:
-    """Create the headtail-labeling LS project if it doesn't exist; return its ID.
+async def create_headtail_label_studio_project_activity(dive_id: int) -> int:
+    """Create a per-dive headtail-labeling LS project; return its ID.
 
-    Idempotent — re-running returns the existing project's ID rather
-    than creating a duplicate. Match is by title.
+    Title is `"{dive.name} - HeadTail Labeling"`. Idempotent —
+    re-running for the same dive returns the existing project's ID
+    rather than creating a duplicate. Match is by title.
     """
+    title = await build_per_dive_title(dive_id, HEADTAIL_PROJECT_TITLE_SUFFIX)
     return await create_or_get_label_studio_project(
-        project_title=HEADTAIL_PROJECT_TITLE,
+        project_title=title,
         labeling_config_xml=HEADTAIL_LABELING_CONFIG_XML,
     )
