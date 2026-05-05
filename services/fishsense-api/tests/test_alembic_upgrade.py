@@ -15,30 +15,71 @@ import pytest
 from fishsense_api import database
 
 
-def test_run_alembic_upgrade_invokes_command_upgrade_to_head():
-    """The function must end up calling `alembic.command.upgrade(cfg,
-    "head")`. The Config's `script_location` must point at the
-    package's alembic directory so the migration scripts are found
-    inside the installed wheel (where alembic.ini does NOT ship)."""
+def _patch_run_alembic(has_alembic_version: bool):
+    """Helper: mock the alembic deps + the fresh-vs-existing detector.
+
+    Returns the (fake_command, fake_cfg) so the caller can assert on
+    which alembic verb fired and the Config wiring.
+    """
+
+    async def _fake_check():
+        return has_alembic_version
+
     fake_command = MagicMock()
     fake_config_cls = MagicMock()
     fake_cfg = MagicMock()
     fake_config_cls.return_value = fake_cfg
 
-    with patch.object(database, "alembic_command", fake_command), patch.object(
-        database, "AlembicConfig", fake_config_cls
-    ):
-        database.run_alembic_upgrade()
+    return (
+        fake_command,
+        fake_cfg,
+        patch.multiple(
+            database,
+            alembic_command=fake_command,
+            AlembicConfig=fake_config_cls,
+            _has_alembic_version_table=_fake_check,
+        ),
+    )
 
-    fake_command.upgrade.assert_called_once_with(fake_cfg, "head")
+
+def _assert_script_location_set(fake_cfg):
+    """The Config's `script_location` must point at the package's
+    alembic directory so the migration scripts are found inside the
+    installed wheel (where alembic.ini does NOT ship)."""
     set_calls = fake_cfg.set_main_option.call_args_list
     script_location_call = next(
         c for c in set_calls if c.args[0] == "script_location"
     )
-    expected = str(
-        Path(database.__file__).resolve().parent / "alembic"
-    )
+    expected = str(Path(database.__file__).resolve().parent / "alembic")
     assert script_location_call.args[1] == expected
+
+
+def test_run_alembic_upgrade_existing_db_invokes_upgrade_to_head():
+    """When alembic_version exists, this is an existing DB — apply any
+    new pending migrations via `alembic upgrade head`."""
+    fake_command, fake_cfg, patcher = _patch_run_alembic(has_alembic_version=True)
+    with patcher:
+        database.run_alembic_upgrade()
+
+    fake_command.upgrade.assert_called_once_with(fake_cfg, "head")
+    fake_command.stamp.assert_not_called()
+    _assert_script_location_set(fake_cfg)
+
+
+def test_run_alembic_upgrade_fresh_db_stamps_head_without_running_ddl():
+    """When alembic_version is absent, the lifespan's prior
+    `create_all` has populated the full ORM-defined schema. Stamp
+    head to mark the DB as fully migrated — running the historical
+    migration tail on top would crash on every pre-existing column /
+    table / constraint that `add_column` / `create_table` /
+    `create_unique_constraint` ops try to (re-)add."""
+    fake_command, fake_cfg, patcher = _patch_run_alembic(has_alembic_version=False)
+    with patcher:
+        database.run_alembic_upgrade()
+
+    fake_command.stamp.assert_called_once_with(fake_cfg, "head")
+    fake_command.upgrade.assert_not_called()
+    _assert_script_location_set(fake_cfg)
 
 
 @pytest.mark.asyncio
