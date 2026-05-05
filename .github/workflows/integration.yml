@@ -57,6 +57,11 @@ jobs:
         run: |
           docker compose -f compose.local.yml up -d --wait \
             postgres temporal fishsense-api static_file_server label-studio
+          # fishsense-lite-web has no healthcheck (SSR renders depend on
+          # fishsense-api + label-studio being warm), so bring it up
+          # without --wait. The smoke step at the end of this job
+          # retry-loops until / returns the dashboard title.
+          docker compose -f compose.local.yml up -d fishsense-lite-web
         # --wait blocks on each service's healthcheck. label-studio's
         # start_period is 60s on a cold image; first run after a cache
         # miss can take ~90s before --wait returns.
@@ -100,6 +105,20 @@ jobs:
       - name: Sync workspace (all packages, all groups)
         run: uv sync --all-packages --all-groups
 
+      # Node + npm install must precede `./check.sh integration` because
+      # check.sh's run_npm_integration step calls `npm run test:integration`
+      # in apps/fishsense-lite-web, which needs node_modules (vitest) on
+      # disk. Without these steps it fails with `vitest: not found` (exit 127).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: apps/fishsense-lite-web/package-lock.json
+
+      - name: Install fishsense-lite-web deps
+        working-directory: apps/fishsense-lite-web
+        run: npm ci --no-audit --no-fund
+
       - name: Run integration suite
         env:
           # Map the docker-internal hostnames the test fixtures fall
@@ -124,6 +143,14 @@ jobs:
           E4EFS_LABEL_STUDIO__URL: http://localhost:8082
           E4EFS_LABEL_STUDIO__API_KEY: fishsense_local_test_token_42
           E4EFS_LABEL_STUDIO__IMAGE_URL_BASE: http://localhost:8080
+          # Read by apps/fishsense-lite-web/tests/integration/dashboard.integration.test.ts.
+          # Container exposes 3000 on the host via compose.local.yml's port mapping.
+          FISHSENSE_WEB_URL: http://localhost:3000
+        # check.sh integration runs Python pytest -m integration AND
+        # vitest run --config vitest.config.integration.ts in
+        # apps/fishsense-lite-web. The latter exercises the running
+        # fishsense-lite-web container and asserts SSR shape (title,
+        # Results/Admin cards, empty-DB collapse of labeling sections).
         run: ./check.sh integration
 
       - name: Compose logs on failure

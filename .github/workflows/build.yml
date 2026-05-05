@@ -31,11 +31,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service:
-          - fishsense-api
-          - fishsense-api-workflow-worker
-          - fishsense-backup-worker
-          - fishsense-data-processing-workflow-worker
+        # `dockerfile` is explicit because the web app lives under apps/
+        # rather than services/ — the path can't be derived from `service`.
+        include:
+          - service: fishsense-api
+            dockerfile: services/fishsense-api/Dockerfile
+          - service: fishsense-api-workflow-worker
+            dockerfile: services/fishsense-api-workflow-worker/Dockerfile
+          - service: fishsense-backup-worker
+            dockerfile: services/fishsense-backup-worker/Dockerfile
+          - service: fishsense-data-processing-workflow-worker
+            dockerfile: services/fishsense-data-processing-workflow-worker/Dockerfile
+          - service: fishsense-lite-web
+            dockerfile: apps/fishsense-lite-web/Dockerfile
     steps:
       - uses: actions/checkout@v4
 
@@ -68,7 +76,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: services/${{ matrix.service }}/Dockerfile
+          file: ${{ matrix.dockerfile }}
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

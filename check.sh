@@ -3,10 +3,19 @@
 #
 # Usage:
 #   ./check.sh lint         # pylint on Python files changed since origin/main
-#                            (matches .github/workflows/lint.yml)
-#   ./check.sh unit         # pytest with default markers per package (CI mode)
+#                            + ESLint on apps/fishsense-lite-web if any TS/JS changed
+#                            (matches .github/workflows/lint.yml + the lint
+#                             step in the apps/fishsense-lite-web vitest CI job).
+#   ./check.sh unit         # pytest with default markers per Python package
+#                            + apps/fishsense-lite-web typecheck + vitest (CI mode).
 #   ./check.sh integration  # pytest -m integration (needs the local devcontainer
-#                            stack: postgres, temporal, nginx)
+#                            stack: postgres, temporal, nginx) PLUS the
+#                            apps/fishsense-lite-web SSR vitest integration
+#                            suite (needs `fishsense-lite-web` running on
+#                            FISHSENSE_WEB_URL, default localhost:3000).
+#                            Bring up the web container first with:
+#                              docker compose -f deploy/compose.local.yml \
+#                                up -d fishsense-lite-web
 #   ./check.sh all          # lint, then unit, then integration (fail-fast across
 #                            categories; within a category each package runs
 #                            even if a prior one failed, so the report is full)
@@ -17,6 +26,9 @@
 #   this devcontainer (see CLAUDE.md history); python -m sidesteps it.
 # - Each package's pyproject.toml sets `addopts = "-m 'not integration'"`,
 #   so `unit` deselects integration tests automatically.
+# - Node steps require Node 22+ on PATH (the devcontainer ships Node 24). If
+#   `npm` isn't on PATH the apps/fishsense-lite-web steps are skipped with a notice — they
+#   don't fail the run, so a Python-only environment can still ./check.sh.
 
 set -euo pipefail
 
@@ -44,16 +56,33 @@ run_lint() {
     git fetch --quiet origin main 2>/dev/null || true
     local base
     base="$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD)"
-    local changed
+    local rc=0
+
     # Compare working tree (committed + staged + unstaged) to $base, not
     # HEAD, so a local pre-commit run lints uncommitted edits. CI is
     # unaffected because there the working tree equals HEAD.
-    changed="$(git diff --name-only --diff-filter=ACMR "$base" -- '*.py')"
-    if [ -z "$changed" ]; then
+    local changed_py
+    changed_py="$(git diff --name-only --diff-filter=ACMR "$base" -- '*.py')"
+    if [ -z "$changed_py" ]; then
         echo "no Python changes since origin/main; skipping pylint"
-        return 0
+    else
+        echo "$changed_py" | xargs uv run python -m pylint || rc=$?
     fi
-    echo "$changed" | xargs uv run python -m pylint
+
+    # ESLint runs full-project (next lint has no incremental mode), but
+    # only when something under apps/fishsense-lite-web changed. Skip cleanly when npm
+    # isn't installed so a Python-only host can still run check.sh.
+    local changed_web
+    changed_web="$(git diff --name-only --diff-filter=ACMR "$base" -- 'apps/fishsense-lite-web/*')"
+    if [ -z "$changed_web" ]; then
+        echo "no apps/fishsense-lite-web changes since origin/main; skipping eslint"
+    elif ! command -v npm >/dev/null 2>&1; then
+        echo "npm not on PATH; skipping apps/fishsense-lite-web eslint"
+    else
+        npm --prefix apps/fishsense-lite-web run lint || rc=$?
+    fi
+
+    return "$rc"
 }
 
 # $1: marker (empty for unit / package-default, "integration" for integration)
@@ -95,11 +124,55 @@ run_pytests() {
     fi
 }
 
+run_npm_unit() {
+    heading "unit tests: apps/fishsense-lite-web (typecheck + vitest)"
+    if ! command -v npm >/dev/null 2>&1; then
+        echo "npm not on PATH; skipping apps/fishsense-lite-web unit tests"
+        return 0
+    fi
+    local rc=0
+    npm --prefix apps/fishsense-lite-web run typecheck || rc=$?
+    npm --prefix apps/fishsense-lite-web test || rc=$?
+    return "$rc"
+}
+
+run_npm_integration() {
+    heading "integration tests: apps/fishsense-lite-web (SSR vs local stack)"
+    if ! command -v npm >/dev/null 2>&1; then
+        echo "npm not on PATH; skipping apps/fishsense-lite-web integration tests"
+        return 0
+    fi
+    # Tests assume fishsense-lite-web is already up at FISHSENSE_WEB_URL
+    # (default http://localhost:3000) — same shape as the Python
+    # integration tests, which assume their services are already on
+    # localhost ports. Bring it up first with:
+    #   docker compose -f deploy/compose.local.yml up -d fishsense-lite-web
+    npm --prefix apps/fishsense-lite-web run test:integration
+}
+
+# Wrap run_pytests + run_npm_unit so a Python failure doesn't suppress
+# the JS run (and vice versa) — the goal is a complete report per
+# invocation, mirroring the per-package behavior already inside
+# run_pytests.
+run_unit() {
+    local rc=0
+    run_pytests "" || rc=$?
+    run_npm_unit || rc=$?
+    return "$rc"
+}
+
+run_integration() {
+    local rc=0
+    run_pytests "integration" || rc=$?
+    run_npm_integration || rc=$?
+    return "$rc"
+}
+
 case "${1:-}" in
     lint)         run_lint ;;
-    unit)         run_pytests "" ;;
-    integration)  run_pytests "integration" ;;
-    all)          run_lint && run_pytests "" && run_pytests "integration" ;;
+    unit)         run_unit ;;
+    integration)  run_integration ;;
+    all)          run_lint && run_unit && run_integration ;;
     -h|--help|"") usage ;;
     *)            echo "unknown command: $1" >&2; usage ;;
 esac

@@ -19,7 +19,6 @@ services:
       - ./temporal_volumes/certs:/certs:ro
       - ./worker_volumes/api_worker/config:/e4efs/config:ro
       - ./worker_volumes/api_worker/logs:/e4efs/logs:rw
-      - ./mafl_volumes/data/config.yml:/config/dashboard_config.yaml:rw
     # `default` for fishsense-temporal (compose.temporal.yml); `traefik_proxy`
     # for fishsense-api + static_file_server (compose.orchestrator.yml). The
     # SDK calls into fishsense-api on the internal hostname bypass the public
