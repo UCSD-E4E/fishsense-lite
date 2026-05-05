@@ -108,6 +108,7 @@ async def populate_headtail_label_studio_project_activity(
             image = await fs.images.get(image_id=image_id)
             if image is not None:
                 images_by_id[image.id] = image
+            activity.heartbeat()
 
         targets = _select_target_images(
             laser_labels, images_by_id, existing_headtail

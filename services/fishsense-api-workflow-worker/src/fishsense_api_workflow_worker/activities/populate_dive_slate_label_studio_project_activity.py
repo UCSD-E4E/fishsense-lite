@@ -80,6 +80,7 @@ async def populate_dive_slate_label_studio_project_activity(
             image = await fs.images.get(image_id=image_id)
             if image is not None:
                 images.append(image)
+            activity.heartbeat()
 
         if not images:
             return 0

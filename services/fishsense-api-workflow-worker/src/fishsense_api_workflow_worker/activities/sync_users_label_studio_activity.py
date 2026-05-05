@@ -63,3 +63,5 @@ async def sync_users_label_studio_activity():
                         new_fs_user.id = fs_user.id
 
                         tg.create_task(fs.users.put(new_fs_user))
+
+                    activity.heartbeat()

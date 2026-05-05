@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 
 from temporalio import activity
 
+from fishsense_backup_worker.activities._heartbeat import heartbeat_pump
 from fishsense_backup_worker.backup_naming import backup_filename
 from fishsense_backup_worker.config import settings
 from fishsense_backup_worker.nas import NasBackupClient
@@ -83,10 +84,11 @@ async def pg_dump_database(payload) -> None:  # type: ignore[no-untyped-def]
         payload.nas_root_path,
     )
 
-    await asyncio.to_thread(
-        _dump_and_upload,
-        db_name=payload.db_name,
-        nas_root_path=payload.nas_root_path,
-    )
+    async with heartbeat_pump():
+        await asyncio.to_thread(
+            _dump_and_upload,
+            db_name=payload.db_name,
+            nas_root_path=payload.nas_root_path,
+        )
 
     activity.logger.info("pg_dump_database done db=%s", payload.db_name)

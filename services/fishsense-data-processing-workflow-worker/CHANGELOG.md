@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.3.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.2.4...fishsense-data-processing-workflow-worker-v2.3.0) (2026-05-05)
+
+
+### Features
+
+* **workers:** heartbeat activity loops for progress visibility ([d19771f](https://github.com/UCSD-E4E/fishsense-lite/commit/d19771fcbc475a167a4a772ec5f57b133394b971))
+* **workers:** heartbeat activity loops for progress visibility ([c6e9448](https://github.com/UCSD-E4E/fishsense-lite/commit/c6e94480d35c1e8d42318332d762e097368d1b6e))
+
 ## [2.2.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.2.3...fishsense-data-processing-workflow-worker-v2.2.4) (2026-05-04)
 
 
