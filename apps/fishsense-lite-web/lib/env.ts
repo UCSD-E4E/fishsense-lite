@@ -12,6 +12,10 @@ const ENV_VARS = {
   fishsenseApiPassword: "FISHSENSE_API_PASSWORD",
   labelStudioUrl: "LABEL_STUDIO_URL",
   labelStudioApiKey: "LABEL_STUDIO_API_KEY",
+  authSecret: "AUTH_SECRET",
+  authAuthentikId: "AUTH_AUTHENTIK_ID",
+  authAuthentikSecret: "AUTH_AUTHENTIK_SECRET",
+  authAuthentikIssuer: "AUTH_AUTHENTIK_ISSUER",
 } as const;
 
 type EnvKey = keyof typeof ENV_VARS;

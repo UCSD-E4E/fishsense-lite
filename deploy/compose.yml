@@ -30,7 +30,8 @@ services:
     env_file:
       # Untracked, populated on the host. Required keys:
       #   FISHSENSE_API_URL, FISHSENSE_API_USERNAME, FISHSENSE_API_PASSWORD,
-      #   LABEL_STUDIO_URL, LABEL_STUDIO_API_KEY
+      #   LABEL_STUDIO_URL, LABEL_STUDIO_API_KEY,
+      #   AUTH_SECRET, AUTH_AUTHENTIK_ID, AUTH_AUTHENTIK_SECRET, AUTH_AUTHENTIK_ISSUER
       # See apps/fishsense-lite-web/.env.example for the canonical shape.
       - ./web_volumes/.env
     labels:
