@@ -3,10 +3,16 @@
 #
 # Usage:
 #   ./check.sh lint         # pylint on Python files changed since origin/main
-#                            (matches .github/workflows/lint.yml)
-#   ./check.sh unit         # pytest with default markers per package (CI mode)
+#                            + ESLint on apps/web if any TS/JS changed
+#                            (matches .github/workflows/lint.yml + the lint
+#                             step in the apps/web vitest CI job).
+#   ./check.sh unit         # pytest with default markers per Python package
+#                            + apps/web typecheck + vitest (CI mode).
 #   ./check.sh integration  # pytest -m integration (needs the local devcontainer
-#                            stack: postgres, temporal, nginx)
+#                            stack: postgres, temporal, nginx). The fishsense-web
+#                            SSR smoke check that runs in integration.yml is a
+#                            shell-level curl-and-grep against the local
+#                            container; replicate it manually if needed.
 #   ./check.sh all          # lint, then unit, then integration (fail-fast across
 #                            categories; within a category each package runs
 #                            even if a prior one failed, so the report is full)
@@ -17,6 +23,9 @@
 #   this devcontainer (see CLAUDE.md history); python -m sidesteps it.
 # - Each package's pyproject.toml sets `addopts = "-m 'not integration'"`,
 #   so `unit` deselects integration tests automatically.
+# - Node steps require Node 22+ on PATH (the devcontainer ships Node 24). If
+#   `npm` isn't on PATH the apps/web steps are skipped with a notice — they
+#   don't fail the run, so a Python-only environment can still ./check.sh.
 
 set -euo pipefail
 
@@ -44,16 +53,33 @@ run_lint() {
     git fetch --quiet origin main 2>/dev/null || true
     local base
     base="$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD)"
-    local changed
+    local rc=0
+
     # Compare working tree (committed + staged + unstaged) to $base, not
     # HEAD, so a local pre-commit run lints uncommitted edits. CI is
     # unaffected because there the working tree equals HEAD.
-    changed="$(git diff --name-only --diff-filter=ACMR "$base" -- '*.py')"
-    if [ -z "$changed" ]; then
+    local changed_py
+    changed_py="$(git diff --name-only --diff-filter=ACMR "$base" -- '*.py')"
+    if [ -z "$changed_py" ]; then
         echo "no Python changes since origin/main; skipping pylint"
-        return 0
+    else
+        echo "$changed_py" | xargs uv run python -m pylint || rc=$?
     fi
-    echo "$changed" | xargs uv run python -m pylint
+
+    # ESLint runs full-project (next lint has no incremental mode), but
+    # only when something under apps/web changed. Skip cleanly when npm
+    # isn't installed so a Python-only host can still run check.sh.
+    local changed_web
+    changed_web="$(git diff --name-only --diff-filter=ACMR "$base" -- 'apps/web/*')"
+    if [ -z "$changed_web" ]; then
+        echo "no apps/web changes since origin/main; skipping eslint"
+    elif ! command -v npm >/dev/null 2>&1; then
+        echo "npm not on PATH; skipping apps/web eslint"
+    else
+        npm --prefix apps/web run lint || rc=$?
+    fi
+
+    return "$rc"
 }
 
 # $1: marker (empty for unit / package-default, "integration" for integration)
@@ -95,11 +121,34 @@ run_pytests() {
     fi
 }
 
+run_npm_unit() {
+    heading "unit tests: apps/web (typecheck + vitest)"
+    if ! command -v npm >/dev/null 2>&1; then
+        echo "npm not on PATH; skipping apps/web unit tests"
+        return 0
+    fi
+    local rc=0
+    npm --prefix apps/web run typecheck || rc=$?
+    npm --prefix apps/web test || rc=$?
+    return "$rc"
+}
+
+# Wrap run_pytests + run_npm_unit so a Python failure doesn't suppress
+# the JS run (and vice versa) — the goal is a complete report per
+# invocation, mirroring the per-package behavior already inside
+# run_pytests.
+run_unit() {
+    local rc=0
+    run_pytests "" || rc=$?
+    run_npm_unit || rc=$?
+    return "$rc"
+}
+
 case "${1:-}" in
     lint)         run_lint ;;
-    unit)         run_pytests "" ;;
+    unit)         run_unit ;;
     integration)  run_pytests "integration" ;;
-    all)          run_lint && run_pytests "" && run_pytests "integration" ;;
+    all)          run_lint && run_unit && run_pytests "integration" ;;
     -h|--help|"") usage ;;
     *)            echo "unknown command: $1" >&2; usage ;;
 esac
