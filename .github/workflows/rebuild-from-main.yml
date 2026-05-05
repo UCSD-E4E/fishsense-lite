@@ -27,11 +27,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service:
-          - fishsense-api
-          - fishsense-api-workflow-worker
-          - fishsense-backup-worker
-          - fishsense-data-processing-workflow-worker
+        # `manifest_key` is explicit because services live under services/
+        # but the web app lives under apps/. `dockerfile` is explicit for
+        # the same reason.
+        include:
+          - service: fishsense-api
+            manifest_key: services/fishsense-api
+            dockerfile: services/fishsense-api/Dockerfile
+          - service: fishsense-api-workflow-worker
+            manifest_key: services/fishsense-api-workflow-worker
+            dockerfile: services/fishsense-api-workflow-worker/Dockerfile
+          - service: fishsense-backup-worker
+            manifest_key: services/fishsense-backup-worker
+            dockerfile: services/fishsense-backup-worker/Dockerfile
+          - service: fishsense-data-processing-workflow-worker
+            manifest_key: services/fishsense-data-processing-workflow-worker
+            dockerfile: services/fishsense-data-processing-workflow-worker/Dockerfile
+          - service: fishsense-web
+            manifest_key: apps/web
+            dockerfile: apps/web/Dockerfile
     steps:
       - uses: actions/checkout@v4
 
@@ -40,9 +54,9 @@ jobs:
       - name: Read version from release-please manifest
         id: ver
         run: |
-          v="$(jq -r --arg k "services/${{ matrix.service }}" '.[$k]' .release-please-manifest.json)"
+          v="$(jq -r --arg k "${{ matrix.manifest_key }}" '.[$k]' .release-please-manifest.json)"
           if [ -z "$v" ] || [ "$v" = "null" ]; then
-            echo "::error::no manifest entry for services/${{ matrix.service }}"
+            echo "::error::no manifest entry for ${{ matrix.manifest_key }}"
             exit 1
           fi
           echo "version=v${v}" >> "$GITHUB_OUTPUT"
@@ -66,7 +80,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: services/${{ matrix.service }}/Dockerfile
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: |
             ${{ steps.img.outputs.name }}:${{ steps.ver.outputs.version }}
