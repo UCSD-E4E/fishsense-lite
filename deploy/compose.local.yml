@@ -191,6 +191,36 @@ services:
   # `uv run` from the dev container, or refactor those activities to skip
   # cleanly when their backends are unset.
 
+  fishsense-web:
+    # Mirrors the fishsense-api pattern: build from source so PR changes
+    # are exercised, not a previously-published image.
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    restart: on-failure:15
+    depends_on:
+      - fishsense-api
+      - label-studio
+    environment:
+      # fishsense-api in the local stack runs WITHOUT the prod authentik
+      # middleware — the basic-auth header is parsed but never checked,
+      # so any non-empty values satisfy env.ts's required-var validator.
+      FISHSENSE_API_URL: http://fishsense-api:8000
+      FISHSENSE_API_USERNAME: local
+      FISHSENSE_API_PASSWORD: local
+      LABEL_STUDIO_URL: http://label-studio:8080
+      # Same fixed token as label-studio's LABEL_STUDIO_USER_TOKEN above.
+      LABEL_STUDIO_API_KEY: fishsense_local_test_token_42
+    ports:
+      - "3000:3000"
+    networks:
+      - fishsense_local
+
+  # `npm run dev` from inside the dev container is the iteration loop for
+  # apps/web (hot reload, source maps). The fishsense-web service above is
+  # the production-shape image — exercised by integration.yml's smoke
+  # check and available for end-to-end validation.
+
   # Workspace container the devcontainer attaches to. The data-processing
   # worker has no Dockerfile — we run it from here with `uv run` while
   # iterating, which is the whole point of this setup.
