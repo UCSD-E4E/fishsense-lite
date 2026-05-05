@@ -108,7 +108,12 @@ async def test_create_activity_creates_then_returns_existing_on_rerun(monkeypatc
     returns the same ID. This is the contract that lets us re-run the
     Create workflow without accumulating duplicate projects."""
     dive_id = 393
-    dive_name = f"fs-create-rerun-{uuid.uuid4().hex[:8]}"
+    # LS caps `Project.title` at 50 chars. The per-dive title is
+    # `f"{dive_name} - Laser Calibration Labeling"` (29 chars of fixed
+    # suffix), so dive_name must stay <= 21 chars or LS rejects with a
+    # 400. Same constraint applies to all three integration tests
+    # below — keep prefixes short.
+    dive_name = f"rerun-{uuid.uuid4().hex[:8]}"
     _patch_dive_lookup(monkeypatch, dive_id=dive_id, dive_name=dive_name)
     monkeypatch.setattr(create_sut, "LASER_LABELING_CONFIG_XML", _MIN_LASER_XML)
     title = _expected_title(dive_name)
@@ -139,7 +144,7 @@ async def test_create_activity_raises_when_xml_constant_empty(monkeypatch):
     """Empty XML must raise rather than silently make an unlabel-able
     project, even when LS is reachable."""
     dive_id = 393
-    dive_name = f"fs-empty-xml-{uuid.uuid4().hex[:8]}"
+    dive_name = f"empty-{uuid.uuid4().hex[:8]}"
     _patch_dive_lookup(monkeypatch, dive_id=dive_id, dive_name=dive_name)
     monkeypatch.setattr(create_sut, "LASER_LABELING_CONFIG_XML", "")
 
@@ -304,7 +309,7 @@ async def test_populate_workflow_creates_then_imports_tasks_against_real_ls(
     imported on the first invocation, without any pre-seeding.
     """
     dive_id = 42
-    dive_name = f"fs-int-flow-{uuid.uuid4().hex[:8]}"
+    dive_name = f"flow-{uuid.uuid4().hex[:8]}"
     _patch_dive_lookup(monkeypatch, dive_id=dive_id, dive_name=dive_name)
     monkeypatch.setattr(create_sut, "LASER_LABELING_CONFIG_XML", _MIN_LASER_XML)
     title = _expected_title(dive_name)

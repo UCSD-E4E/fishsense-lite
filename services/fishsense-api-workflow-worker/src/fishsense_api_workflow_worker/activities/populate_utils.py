@@ -79,13 +79,25 @@ async def create_or_get_label_studio_project(
     return project.id
 
 
+# LS rejects `Project.title` over 50 characters with a 400. The
+# longest stage suffix ("Laser Calibration Labeling") is 26 chars, so
+# many real dive names blow the budget. `build_per_dive_title` keeps
+# titles within this cap by falling back to the `Dive {id}` form when
+# the dive's own name doesn't fit — that form is always under 50 chars
+# for any reasonable dive_id and uniquely identifies the dive.
+LS_PROJECT_TITLE_MAX = 50
+
+
 async def build_per_dive_title(dive_id: int, suffix: str) -> str:
     """Build a per-dive LS project title in the form
     `"{dive.name} - {suffix}"`. Used by the four create-LS-project
     activities so each dive ends up with its own project rather than
     sharing one canonical project per stage.
 
-    Falls back to `f"Dive {dive_id}"` when the dive has no `name`.
+    Falls back to `f"Dive {dive_id}"` when the dive has no `name` or
+    when `dive.name` would push the full title past LS's 50-char cap.
+    The fallback is keyed by `dive_id` rather than truncated name so
+    two long-named dives can't collide on the same truncated title.
     """
     async with get_fs_client() as fs:
         dive = await fs.dives.get(dive_id=dive_id)
@@ -95,7 +107,10 @@ async def build_per_dive_title(dive_id: int, suffix: str) -> str:
             "no such dive found via the API"
         )
     dive_label = dive.name or f"Dive {dive_id}"
-    return f"{dive_label} - {suffix}"
+    title = f"{dive_label} - {suffix}"
+    if len(title) > LS_PROJECT_TITLE_MAX:
+        title = f"Dive {dive_id} - {suffix}"
+    return title
 
 
 async def import_tasks_and_record_labels(
