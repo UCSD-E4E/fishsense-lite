@@ -68,7 +68,7 @@ async def test_workflow_uses_start_to_close_not_schedule_to_close():
     timeouts: List[Tuple[Optional[timedelta], Optional[timedelta]]] = []
 
     @activity.defn(name="preprocess_slate_image")
-    async def stub(payload: PreprocessSlateImageInput) -> None:
+    async def stub(payload: PreprocessSlateImageInput) -> None:  # pylint: disable=unused-argument
         info = activity.info()
         timeouts.append((info.start_to_close_timeout, info.schedule_to_close_timeout))
 
