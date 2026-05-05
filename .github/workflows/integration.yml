@@ -131,26 +131,27 @@ jobs:
           E4EFS_LABEL_STUDIO__IMAGE_URL_BASE: http://localhost:8080
         run: ./check.sh integration
 
-      - name: Smoke-test fishsense-lite-web SSR
-        # The empty postgres in the local stack means the dashboard's
-        # Laser/Species/HeadTail/Slate sections are empty — buildSections
-        # collapses them, so only "Results" + "Administration" render.
-        # That still exercises the full code path: env loading, the four
-        # parallel fishsense-api fetches, buildSections, and SSR. Title
-        # match confirms the page rendered (vs. a 5xx error page).
-        run: |
-          for i in $(seq 1 30); do
-            body="$(curl -fsS http://localhost:3000/ 2>/dev/null || true)"
-            if printf '%s' "$body" | grep -q "E4E FishSense"; then
-              echo "fishsense-lite-web SSR reachable on attempt $i"
-              exit 0
-            fi
-            echo "[$i/30] waiting for fishsense-lite-web..."
-            sleep 2
-          done
-          echo "::error::fishsense-lite-web never returned the dashboard title"
-          docker compose -f deploy/compose.local.yml logs fishsense-lite-web --tail=200
-          exit 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: apps/fishsense-lite-web/package-lock.json
+
+      - name: Install fishsense-lite-web deps
+        working-directory: apps/fishsense-lite-web
+        run: npm ci --no-audit --no-fund
+
+      - name: fishsense-lite-web SSR integration tests
+        # Empty postgres + empty Label Studio in the local stack: tests
+        # assert that all four labeling categories collapse out (only
+        # static Results + Administration sections render) — exercises
+        # env loading, parallel fishsense-api fetches, buildSections,
+        # and SSR end-to-end. The vitest suite has its own retry-loop
+        # waiting for the container to respond 2xx.
+        working-directory: apps/fishsense-lite-web
+        env:
+          FISHSENSE_WEB_URL: http://localhost:3000
+        run: npm run test:integration
 
       - name: Compose logs on failure
         if: failure()

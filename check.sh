@@ -9,10 +9,13 @@
 #   ./check.sh unit         # pytest with default markers per Python package
 #                            + apps/fishsense-lite-web typecheck + vitest (CI mode).
 #   ./check.sh integration  # pytest -m integration (needs the local devcontainer
-#                            stack: postgres, temporal, nginx). The fishsense-lite-web
-#                            SSR smoke check that runs in integration.yml is a
-#                            shell-level curl-and-grep against the local
-#                            container; replicate it manually if needed.
+#                            stack: postgres, temporal, nginx) PLUS the
+#                            apps/fishsense-lite-web SSR vitest integration
+#                            suite (needs `fishsense-lite-web` running on
+#                            FISHSENSE_WEB_URL, default localhost:3000).
+#                            Bring up the web container first with:
+#                              docker compose -f deploy/compose.local.yml \
+#                                up -d fishsense-lite-web
 #   ./check.sh all          # lint, then unit, then integration (fail-fast across
 #                            categories; within a category each package runs
 #                            even if a prior one failed, so the report is full)
@@ -133,6 +136,20 @@ run_npm_unit() {
     return "$rc"
 }
 
+run_npm_integration() {
+    heading "integration tests: apps/fishsense-lite-web (SSR vs local stack)"
+    if ! command -v npm >/dev/null 2>&1; then
+        echo "npm not on PATH; skipping apps/fishsense-lite-web integration tests"
+        return 0
+    fi
+    # Tests assume fishsense-lite-web is already up at FISHSENSE_WEB_URL
+    # (default http://localhost:3000) — same shape as the Python
+    # integration tests, which assume their services are already on
+    # localhost ports. Bring it up first with:
+    #   docker compose -f deploy/compose.local.yml up -d fishsense-lite-web
+    npm --prefix apps/fishsense-lite-web run test:integration
+}
+
 # Wrap run_pytests + run_npm_unit so a Python failure doesn't suppress
 # the JS run (and vice versa) — the goal is a complete report per
 # invocation, mirroring the per-package behavior already inside
@@ -144,11 +161,18 @@ run_unit() {
     return "$rc"
 }
 
+run_integration() {
+    local rc=0
+    run_pytests "integration" || rc=$?
+    run_npm_integration || rc=$?
+    return "$rc"
+}
+
 case "${1:-}" in
     lint)         run_lint ;;
     unit)         run_unit ;;
-    integration)  run_pytests "integration" ;;
-    all)          run_lint && run_unit && run_pytests "integration" ;;
+    integration)  run_integration ;;
+    all)          run_lint && run_unit && run_integration ;;
     -h|--help|"") usage ;;
     *)            echo "unknown command: $1" >&2; usage ;;
 esac
