@@ -1,4 +1,4 @@
-import type { Account, Profile, Session } from "next-auth";
+import type { Account, Profile, Session, User } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 
 interface AuthentikProfileLike extends Profile {
@@ -9,14 +9,26 @@ interface JwtCallbackArgs {
   token: JWT;
   account?: Account | null;
   profile?: AuthentikProfileLike;
+  user?: User;
 }
 
-export async function jwtCallback({ token, account, profile }: JwtCallbackArgs): Promise<JWT> {
+export async function jwtCallback({
+  token,
+  account,
+  profile,
+  user,
+}: JwtCallbackArgs): Promise<JWT> {
   if (account) {
     if (typeof account.access_token === "string") {
       token.accessToken = account.access_token;
     }
     token.groups = Array.isArray(profile?.groups) ? profile.groups : [];
+    if (user) {
+      if (typeof user.id === "string") token.sub = user.id;
+      if (typeof user.name === "string") token.name = user.name;
+      if (typeof user.email === "string") token.email = user.email;
+      if (typeof user.image === "string") token.picture = user.image;
+    }
   }
   return token;
 }
@@ -30,6 +42,10 @@ export async function sessionCallback({ session, token }: SessionCallbackArgs): 
   if (typeof token.accessToken === "string") {
     session.accessToken = token.accessToken;
   }
+  if (typeof token.sub === "string") session.user.id = token.sub;
+  if (typeof token.name === "string") session.user.name = token.name;
+  if (typeof token.email === "string") session.user.email = token.email;
+  if (typeof token.picture === "string") session.user.image = token.picture;
   session.user.groups = Array.isArray(token.groups) ? token.groups : [];
   return session;
 }
