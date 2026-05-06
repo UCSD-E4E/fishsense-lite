@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.3.0...fishsense-lite-web-v0.3.1) (2026-05-06)
+
+
+### Bug Fixes
+
+* **web:** copy OIDC user identity onto JWT + session in auth callbacks ([cc915a3](https://github.com/UCSD-E4E/fishsense-lite/commit/cc915a3f6a401d7be1eb5f2556a80e40ccfedd3d))
+* **web:** copy OIDC user identity onto JWT + session in auth callbacks ([e200141](https://github.com/UCSD-E4E/fishsense-lite/commit/e20014161b538404cce1379133da7804ed698c2d))
+
 ## [0.3.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.2.0...fishsense-lite-web-v0.3.0) (2026-05-06)
 
 
