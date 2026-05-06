@@ -118,16 +118,73 @@ async def select_next_for_laser_preprocessing(
     return (await session.exec(query)).first()
 
 
-@app.get("/api/v1/dives/select-next/dive-image-preprocessing/")
-async def select_next_for_dive_image_preprocessing(
+@app.get("/api/v1/dives/select-next/dive-frame-clustering/")
+async def select_next_for_dive_frame_clustering(
+    session: AsyncSession = Depends(get_async_session),
+) -> int | None:
+    """Stage 1: HIGH-priority + has at least one image carrying a
+    *valid* LaserLabel (completed=True, superseded=False, x/y both
+    populated) AND has zero PREDICTION DiveFrameCluster rows.
+
+    Cascades from valid lasers like the headtail/species pipelines
+    do — clustering is the prerequisite for stage 2 species
+    preprocessing, so it should fire as soon as labelers + the
+    validator sign off on lasers. The "no PREDICTION cluster"
+    half is the one-shot gate: clustering is per-dive and
+    deterministic on the timestamp set, so once it has run we
+    don't need to re-run.
+    """
+    has_valid_laser_image = (
+        select(LaserLabel.id)
+        .join(Image, Image.id == LaserLabel.image_id)
+        .where(Image.dive_id == Dive.id)
+        .where(LaserLabel.completed == True)
+        .where(LaserLabel.superseded == False)
+        .where(LaserLabel.x != None)
+        .where(LaserLabel.y != None)
+        .exists()
+    )
+    has_prediction_cluster = (
+        select(DiveFrameCluster.id)
+        .where(DiveFrameCluster.dive_id == Dive.id)
+        .where(DiveFrameCluster.data_source == DataSource.PREDICTION)
+        .exists()
+    )
+    query = (
+        select(Dive.id)
+        .where(Dive.priority == Priority.HIGH)
+        .where(has_valid_laser_image)
+        .where(~has_prediction_cluster)
+        .order_by(Dive.id)
+        .limit(1)
+    )
+    return (await session.exec(query)).first()
+
+
+@app.get("/api/v1/dives/select-next/species-preprocessing/")
+async def select_next_for_species_preprocessing(
     session: AsyncSession = Depends(get_async_session),
 ) -> int | None:
     """Stage 2: HIGH-priority + has PREDICTION cluster + at least one
-    image without a non-sentinel SpeciesLabel row.
+    image carrying a *valid* LaserLabel (completed, not superseded,
+    both x/y populated) whose image carries no non-sentinel
+    SpeciesLabel row.
 
-    "Non-sentinel" = `project_id IS NOT NULL`. See the laser cohort
-    docstring for the rationale (sentinels predate the new flow and
-    every other discovery query already filters them out).
+    Cohort flipped from species-only ("any image without species
+    label") → laser-cascade on 2026-05-05 so species labeling fires
+    in parallel with head/tail (5.1) as soon as laser labelers + the
+    validator sign off, while still waiting on stage-1 clustering to
+    land PREDICTION clusters that the data-worker fan-out needs for
+    the cluster-overlay context.
+
+    "Valid laser" matches the predicate already used by
+    `perform_laser_calibration_activity`,
+    `validate_laser_labels_for_dive_activity._positive_xy`, and the
+    headtail cohort.
+
+    "Non-sentinel" species = `project_id IS NOT NULL`. See the laser
+    cohort docstring for the rationale (sentinels predate the new
+    flow and every other discovery query already filters them out).
     """
     has_prediction_cluster = (
         select(DiveFrameCluster.id)
@@ -135,9 +192,14 @@ async def select_next_for_dive_image_preprocessing(
         .where(DiveFrameCluster.data_source == DataSource.PREDICTION)
         .exists()
     )
-    has_image_without_real_species_label = (
-        select(Image.id)
+    has_valid_laser_image_without_real_species = (
+        select(LaserLabel.id)
+        .join(Image, Image.id == LaserLabel.image_id)
         .where(Image.dive_id == Dive.id)
+        .where(LaserLabel.completed == True)
+        .where(LaserLabel.superseded == False)
+        .where(LaserLabel.x != None)
+        .where(LaserLabel.y != None)
         .where(
             ~select(SpeciesLabel.id)
             .where(SpeciesLabel.image_id == Image.id)
@@ -150,7 +212,7 @@ async def select_next_for_dive_image_preprocessing(
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
         .where(has_prediction_cluster)
-        .where(has_image_without_real_species_label)
+        .where(has_valid_laser_image_without_real_species)
         .order_by(Dive.id)
         .limit(1)
     )

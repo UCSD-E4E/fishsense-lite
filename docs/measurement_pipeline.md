@@ -52,14 +52,15 @@ status" section of [CLAUDE.md](../CLAUDE.md).
 
 | Stage | Notebook | Worker | Status |
 |---|---|---|---|
-| 1   | `cluster_dive_frames` | data | ported (no api-worker parent yet) |
-| 2   | `preprocess_dive_images` | api (parent) + data (child) | ported (hourly self-paced, +15min) |
+| 1   | `cluster_dive_frames` | api (parent) + data (child) | ported (hourly, +5min) |
+| 2   | `preprocess_species_images` | api (parent) + data (child) | ported (hourly, +15min) |
 | 4   | `populate_label_studio_project` (Species) | api | ported |
 | 4.2 | `sync_species_labels` | api | partial — generic sync runs; species-specific TBD |
 
-6. **Stage 1** clusters consecutive frames of the same fish (data-worker).
-7. **Stage 2** rectifies + overlays + JPEG-encodes dive frames into
-   `preprocess_groups_jpeg/` (data-worker).
+6. **Stage 1** clusters consecutive frames of the same fish (api-worker
+   parent + data-worker child); api-worker persists PREDICTION clusters.
+7. **Stage 2** rectifies + overlays + JPEG-encodes laser-valid frames
+   into `preprocess_groups_jpeg/` (data-worker).
 8. **Stage 4** `PopulateSpeciesLabelStudioProjectWorkflow` pushes them
    into the LS Species project.
 9. *Humans bounding-box and species-tag each fish.*

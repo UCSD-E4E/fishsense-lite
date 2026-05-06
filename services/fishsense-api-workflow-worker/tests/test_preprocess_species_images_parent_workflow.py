@@ -1,5 +1,5 @@
 # pylint: disable=unused-argument
-"""Workflow contract test for PreprocessDiveImagesParentWorkflow."""
+"""Workflow contract test for PreprocessSpeciesImagesParentWorkflow."""
 
 from __future__ import annotations
 
@@ -12,22 +12,22 @@ from temporalio import activity, workflow
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
-from fishsense_api_workflow_worker.workflows.preprocess_dive_images_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
+from fishsense_api_workflow_worker.workflows.preprocess_species_images_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
     DATA_PROCESSING_TASK_QUEUE,
-    PreprocessDiveImagesParentWorkflow,
+    PreprocessSpeciesImagesParentWorkflow,
 )
-from fishsense_shared import PreprocessDiveImagesInput
+from fishsense_shared import PreprocessSpeciesImagesInput
 
 
 _K = [[1000.0, 0.0, 960.0], [0.0, 1000.0, 540.0], [0.0, 0.0, 1.0]]
 _D = [-0.1, 0.05, 0.0, 0.0, 0.0]
 
 
-@workflow.defn(name="PreprocessDiveImagesWorkflow")
+@workflow.defn(name="PreprocessSpeciesImagesWorkflow")
 class _StubChildWorkflow:
     # pylint: disable=too-few-public-methods
     @workflow.run
-    async def run(self, payload: PreprocessDiveImagesInput) -> None:
+    async def run(self, payload: PreprocessSpeciesImagesInput) -> None:
         flat = [c for cluster in payload.clusters for c in cluster]
         await workflow.execute_activity(
             "_record_child_dispatch",
@@ -69,18 +69,18 @@ def _make_populate_recording_activity(captures: List[tuple]):
 
 def _make_stubs(
     selector_result: Optional[int],
-    resolver_result: Optional[PreprocessDiveImagesInput],
+    resolver_result: Optional[PreprocessSpeciesImagesInput],
 ):
     selector_calls: List[None] = []
     resolver_calls: List[int] = []
 
-    @activity.defn(name="select_next_high_priority_dive_for_dive_image_preprocessing_activity")
+    @activity.defn(name="select_next_high_priority_dive_for_species_preprocessing_activity")
     async def stub_select() -> Optional[int]:
         selector_calls.append(None)
         return selector_result
 
-    @activity.defn(name="resolve_dive_image_preprocess_inputs_activity")
-    async def stub_resolve(dive_id: int) -> PreprocessDiveImagesInput:
+    @activity.defn(name="resolve_species_preprocess_inputs_activity")
+    async def stub_resolve(dive_id: int) -> PreprocessSpeciesImagesInput:
         resolver_calls.append(dive_id)
         assert resolver_result is not None
         return resolver_result
@@ -114,7 +114,7 @@ def _make_stubs(
 
 @pytest.mark.asyncio
 async def test_dispatches_child_with_deterministic_id_and_clusters():
-    inputs = PreprocessDiveImagesInput(
+    inputs = PreprocessSpeciesImagesInput(
         dive_id=440,
         clusters=[["a", "b"], ["c"]],
         camera_matrix=_K,
@@ -129,7 +129,7 @@ async def test_dispatches_child_with_deterministic_id_and_clusters():
             env.client,
             task_queue="test-stage2-parent",
             workflows=[
-                PreprocessDiveImagesParentWorkflow,
+                PreprocessSpeciesImagesParentWorkflow,
                 _StubPopulateWorkflow,
             ],
             activities=[
@@ -143,7 +143,7 @@ async def test_dispatches_child_with_deterministic_id_and_clusters():
             activities=[_make_recording_activity(child_runs)],
         ):
             result = await env.client.execute_workflow(
-                PreprocessDiveImagesParentWorkflow.run,
+                PreprocessSpeciesImagesParentWorkflow.run,
                 id=f"test-stage2-parent-{uuid.uuid4()}",
                 task_queue="test-stage2-parent",
             )
@@ -153,7 +153,7 @@ async def test_dispatches_child_with_deterministic_id_and_clusters():
     assert resolver_calls == [440]
     assert len(child_runs) == 1
     child_id, child_dive_id, flat = child_runs[0]
-    assert child_id == "preprocess-dive-images-440"
+    assert child_id == "preprocess-species-440"
     assert child_dive_id == 440
     assert flat == ["a", "b", "c"]
     assert populate_runs == [("populate-species-440", 440)]
@@ -170,7 +170,7 @@ async def test_returns_none_when_selector_finds_no_dive():
             env.client,
             task_queue="test-stage2-parent-empty",
             workflows=[
-                PreprocessDiveImagesParentWorkflow,
+                PreprocessSpeciesImagesParentWorkflow,
                 _StubPopulateWorkflow,
             ],
             activities=[
@@ -184,7 +184,7 @@ async def test_returns_none_when_selector_finds_no_dive():
             activities=[_make_recording_activity(child_runs)],
         ):
             result = await env.client.execute_workflow(
-                PreprocessDiveImagesParentWorkflow.run,
+                PreprocessSpeciesImagesParentWorkflow.run,
                 id=f"test-stage2-parent-empty-{uuid.uuid4()}",
                 task_queue="test-stage2-parent-empty",
             )
@@ -197,7 +197,7 @@ async def test_returns_none_when_selector_finds_no_dive():
 
 @pytest.mark.asyncio
 async def test_skips_child_dispatch_when_no_clusters():
-    inputs = PreprocessDiveImagesInput(
+    inputs = PreprocessSpeciesImagesInput(
         dive_id=440,
         clusters=[],
         camera_matrix=_K,
@@ -212,7 +212,7 @@ async def test_skips_child_dispatch_when_no_clusters():
             env.client,
             task_queue="test-stage2-parent-empty-clusters",
             workflows=[
-                PreprocessDiveImagesParentWorkflow,
+                PreprocessSpeciesImagesParentWorkflow,
                 _StubPopulateWorkflow,
             ],
             activities=[
@@ -226,7 +226,7 @@ async def test_skips_child_dispatch_when_no_clusters():
             activities=[_make_recording_activity(child_runs)],
         ):
             result = await env.client.execute_workflow(
-                PreprocessDiveImagesParentWorkflow.run,
+                PreprocessSpeciesImagesParentWorkflow.run,
                 id=f"test-stage2-parent-empty-clusters-{uuid.uuid4()}",
                 task_queue="test-stage2-parent-empty-clusters",
             )

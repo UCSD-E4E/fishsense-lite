@@ -9,20 +9,30 @@ from fishsense_api_workflow_worker.activities.populate_utils import (
 
 SPECIES_PROJECT_TITLE_SUFFIX = "Species Labeling"
 
-# Labeling-config XML from the prod species project. Several control
+# Labeling-config XML supplied by the user 2026-05-05. Several control
 # names are load-bearing for downstream code:
-#   * `name="laser"` — same name used by the laser project, so the
-#     sync activity's `LASER_LABEL_KEY_NAMES = ["kp-1", "laser"]`
-#     picks up laser keypoints labeled here too.
+#   * `name="grouping"` choices — stage 6.1
+#     (`update_dive_image_groups_activity`) walks PREDICTION clusters
+#     using these labels to materialize LABEL_STUDIO clusters.
+#   * `name="exclude"` with `Top 3 photos of group` — historically used
+#     by stage 5.1 head/tail. The 2026-05-04 cascade flip moved
+#     head/tail off this gate (it now cascades from valid lasers), so
+#     this control is informational rather than load-bearing on the
+#     species side, but kept in the XML to preserve labeler workflow.
 #   * `name="species"` taxonomy — its top-level `Slate` branch with
-#     the `Laser on slate` leaf is what stage 11 keys on
+#     the `Laser on slate` leaf is what stage 9 keys on
 #     (`SLATE_CONTENT_MARKER = "Slate, Laser on slate"` in
 #     `populate_dive_slate_label_studio_project_activity.py`).
-#   * `name="exclude"` with `Top 3 photos of group` — what
-#     `populate_headtail_label_studio_project_activity.py`
-#     filters on via `species_label.top_three_photos_of_group`.
 # Renaming any of these breaks the downstream populate / sync chain
 # silently (the activity returns no rows rather than erroring).
+#
+# Schema diffs vs the prior XML:
+#   - `<KeyPointLabels name="laser">` removed: lasers are labeled in
+#     their own dedicated project (stage 0.1).
+#   - `<Choices name="slate">` ("Slate upside down") removed.
+#   - Slate branch expanded with H-Slate, Tic-Tac-Toe 1..6, V-Slate 1..4.
+#   - Fish Model branch added (George, Purple Angel, Purple Ant,
+#     Yellow Ant, Yellow Anthias, Snook).
 SPECIES_LABELING_CONFIG_XML = """\
 <View>
   <Choices name="grouping" toName="image">
@@ -34,17 +44,7 @@ SPECIES_LABELING_CONFIG_XML = """\
     <Choice value="Top 3 photos of group" />
   </Choices>
 
-  <Choices name="slate" toName="image">
-    <Choice value="Slate upside down" />
-  </Choices>
-
   <Image name="image" value="$image"/>
-
-  <Header value="Please label the laser" />
-  <KeyPointLabels name="laser" toName="image">
-    <Label value="Red Laser" background="#FFA39E"/>
-    <Label value="Green Laser" background="#26a269"/>
-  </KeyPointLabels>
 
   <Header value="Please select the content of the image" />
   <Taxonomy name="species" toName="image" leafsOnly="true">
@@ -52,6 +52,20 @@ SPECIES_LABELING_CONFIG_XML = """\
     <Choice value="Slate">
       <Choice value="Laser on slate"/>
       <Choice value="Laser not on slate"/>
+
+      <Choice value="H-Slate"/>
+
+      <Choice value="Tic-Tac-Toe 1"/>
+      <Choice value="Tic-Tac-Toe 2"/>
+      <Choice value="Tic-Tac-Toe 3"/>
+      <Choice value="Tic-Tac-Toe 4"/>
+      <Choice value="Tic-Tac-Toe 5"/>
+      <Choice value="Tic-Tac-Toe 6"/>
+
+      <Choice value="V-Slate 1"/>
+      <Choice value="V-Slate 2"/>
+      <Choice value="V-Slate 3"/>
+      <Choice value="V-Slate 4"/>
     </Choice>
     <Choice value="Fish">
       <Choice value="Hogfish (Lachnolaimus maximus)"/>
@@ -69,7 +83,14 @@ SPECIES_LABELING_CONFIG_XML = """\
       <Choice value="Yellowmouth Grouper (Mycteroperca interstitialis)"/>
       <Choice value="Unidentifiable (Cannot see)"/>
       <Choice value="Other (Identifiable but Nontarget)"/>
-      <Choice value="Other (Fish Model)"/>
+    </Choice>
+    <Choice value="Fish Model">
+      <Choice value="George"/>
+      <Choice value="Purple Angel"/>
+	  <Choice value="Purple Ant"/>
+      <Choice value="Yellow Ant"/>
+	  <Choice value="Yellow Anthias"/>
+      <Choice value="Snook"/>
     </Choice>
   </Taxonomy>
 

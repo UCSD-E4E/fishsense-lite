@@ -1,5 +1,5 @@
 # pylint: disable=unused-argument
-"""Unit tests for select_next_high_priority_dive_for_dive_image_preprocessing_activity.
+"""Unit tests for select_next_high_priority_dive_for_species_preprocessing_activity.
 
 Cohort predicate moved server-side; see
 `services/fishsense-api/tests/test_select_next_dive_endpoints.py`. The
@@ -14,7 +14,7 @@ import pytest
 from temporalio.testing import ActivityEnvironment
 
 from fishsense_api_workflow_worker.activities import (
-    select_next_high_priority_dive_for_dive_image_preprocessing_activity as sut,
+    select_next_high_priority_dive_for_species_preprocessing_activity as sut,
 )
 
 
@@ -23,7 +23,7 @@ def _make_fs(*, dive_id: int | None):
     fs.__aenter__ = AsyncMock(return_value=fs)
     fs.__aexit__ = AsyncMock(return_value=None)
     fs.dives = MagicMock()
-    fs.dives.select_next_for_dive_image_preprocessing = AsyncMock(return_value=dive_id)
+    fs.dives.select_next_for_species_preprocessing = AsyncMock(return_value=dive_id)
     return fs
 
 
@@ -33,11 +33,11 @@ async def test_passes_through_dive_id_from_sdk(monkeypatch):
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
 
     result = await ActivityEnvironment().run(
-        sut.select_next_high_priority_dive_for_dive_image_preprocessing_activity
+        sut.select_next_high_priority_dive_for_species_preprocessing_activity
     )
 
     assert result == 42
-    fs.dives.select_next_for_dive_image_preprocessing.assert_awaited_once_with()
+    fs.dives.select_next_for_species_preprocessing.assert_awaited_once_with()
 
 
 @pytest.mark.asyncio
@@ -46,7 +46,7 @@ async def test_returns_none_when_sdk_returns_none(monkeypatch):
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
 
     result = await ActivityEnvironment().run(
-        sut.select_next_high_priority_dive_for_dive_image_preprocessing_activity
+        sut.select_next_high_priority_dive_for_species_preprocessing_activity
     )
 
     assert result is None

@@ -1,4 +1,4 @@
-"""Stage 2: rectify a raw dive image, overlay the cluster index, and
+"""Stage 2: rectify a raw species image, overlay the cluster index, and
 push the JPEG to the file-exchange.
 
 The pure-logic core (`overlay_and_encode_jpeg`) is broken out as a
@@ -71,14 +71,14 @@ def _rectify_overlay_encode(
 # package side-effects during unit-test collection.
 def _input_model():
     # pylint: disable=import-outside-toplevel
-    from fishsense_data_processing_workflow_worker.workflows.preprocess_dive_images_workflow \
-        import PreprocessDiveImageInput
+    from fishsense_data_processing_workflow_worker.workflows.preprocess_species_images_workflow \
+        import PreprocessSpeciesImageInput
 
-    return PreprocessDiveImageInput
+    return PreprocessSpeciesImageInput
 
 
 @activity.defn
-async def preprocess_dive_image(payload) -> None:  # type: ignore[no-untyped-def]
+async def preprocess_species_image(payload) -> None:  # type: ignore[no-untyped-def]
     """Download one raw image from the file-exchange, rectify it,
     overlay the cluster index, and PUT the JPEG back to the
     file-exchange under `{output_folder}/{checksum}.JPG`."""
@@ -89,7 +89,7 @@ async def preprocess_dive_image(payload) -> None:  # type: ignore[no-untyped-def
         payload = payload_cls.model_validate(payload)
 
     activity.logger.info(
-        "preprocessing image checksum=%s cluster=%d/%d",
+        "preprocessing species image checksum=%s cluster=%d/%d",
         payload.checksum,
         payload.cluster_index,
         payload.cluster_size,

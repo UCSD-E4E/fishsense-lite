@@ -15,8 +15,8 @@ from fishsense_data_processing_workflow_worker.activities.measure_fish_activity 
 from fishsense_data_processing_workflow_worker.activities.perform_laser_calibration_activity import (  # noqa: E501  pylint: disable=line-too-long
     perform_laser_calibration_activity,
 )
-from fishsense_data_processing_workflow_worker.activities.preprocess_dive_image import (
-    preprocess_dive_image,
+from fishsense_data_processing_workflow_worker.activities.preprocess_species_image import (
+    preprocess_species_image,
 )
 from fishsense_data_processing_workflow_worker.activities.preprocess_headtail_image import (
     preprocess_headtail_image,
@@ -40,8 +40,8 @@ from fishsense_data_processing_workflow_worker.workflows.measure_fish_workflow i
 from fishsense_data_processing_workflow_worker.workflows.perform_laser_calibration_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PerformLaserCalibrationWorkflow,
 )
-from fishsense_data_processing_workflow_worker.workflows.preprocess_dive_images_workflow import (
-    PreprocessDiveImagesWorkflow,
+from fishsense_data_processing_workflow_worker.workflows.preprocess_species_images_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    PreprocessSpeciesImagesWorkflow,
 )
 from fishsense_data_processing_workflow_worker.workflows.preprocess_headtail_images_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PreprocessHeadtailImagesWorkflow,
@@ -83,7 +83,7 @@ async def main():
                 DiveFrameClusteringWorkflow,
                 MeasureFishWorkflow,
                 PerformLaserCalibrationWorkflow,
-                PreprocessDiveImagesWorkflow,
+                PreprocessSpeciesImagesWorkflow,
                 PreprocessHeadtailImagesWorkflow,
                 PreprocessLaserImagesWorkflow,
                 PreprocessSlateImagesWorkflow,
@@ -94,7 +94,7 @@ async def main():
                 cluster_dive_frames,
                 measure_fish_activity,
                 perform_laser_calibration_activity,
-                preprocess_dive_image,
+                preprocess_species_image,
                 preprocess_headtail_image,
                 preprocess_laser_image,
                 preprocess_slate_image,

@@ -1,52 +1,47 @@
-from typing import Iterator
+"""Stage 1 (dive-frame clustering) activity.
+
+Consumes `(image_id, taken_datetime)` pairs from the api-worker parent
+via `fishsense_shared.ClusterDiveFramesInput.images` and returns a
+list of clusters of image_ids. The math kernel (HDBSCAN on
+timestamps, `min_cluster_size=2`) is unchanged from the notebook port;
+only the input/output shapes flipped to make the contract serializable
+across worker boundaries (no data-worker-local pydantic types in the
+cross-worker DTO).
+"""
+
+from __future__ import annotations
+
+from typing import Iterable, List
 
 from sklearn.cluster import HDBSCAN
 from temporalio import activity
 
-from fishsense_data_processing_workflow_worker.models import Image
+from fishsense_shared import ClusterDiveFrameImage
 
 
 @activity.defn
-async def cluster_dive_frames(images: Iterator[Image]):
-    """Cluster dive frames into clusters based on their timestamps.
-
-    Args:
-        images (Iterator[Image]): An iterator of Image objects to be clustered.
+async def cluster_dive_frames(images: Iterable[ClusterDiveFrameImage]) -> List[List[int]]:
+    """Cluster a dive's images by their taken_datetime timestamps.
 
     Returns:
-        list[list[Image]]: A list of clusters, where each cluster is a list of Image objects.
+        list[list[int]]: image_ids grouped by temporal cluster.
+        HDBSCAN noise points (label -1) are dropped.
     """
-    # Convert the iterator to a list for processing
     image_list = list(images)
-
     if not image_list:
         return []
 
-    # Extract timestamps and convert them to seconds since epoch
-    timestamps = [
-        img.taken_datetime.timestamp() if img.taken_datetime else 0
-        for img in image_list
-    ]
+    timestamps = [[img.taken_datetime.timestamp()] for img in image_list]
 
-    # Reshape timestamps for DBSCAN
-    X = [[ts] for ts in timestamps]
+    activity.logger.info("Clustering %d images", len(image_list))
 
-    # Define DBSCAN parameters
-    min_samples = 2  # Minimum number of images to form a cluster
-
-    activity.logger.info(f"Clustering {len(image_list)} images")
-
-    # Perform HDBSCAN clustering
-    db = HDBSCAN(min_cluster_size=min_samples).fit(X)
+    db = HDBSCAN(min_cluster_size=2).fit(timestamps)
     labels = db.labels_
 
-    # Group images by their cluster labels
-    clusters = {}
+    clusters: dict[int, List[int]] = {}
     for label, img in zip(labels, image_list):
         if label == -1:
-            continue  # Ignore noise points
-        if label not in clusters:
-            clusters[label] = []
-        clusters[label].append(img)
+            continue
+        clusters.setdefault(int(label), []).append(img.image_id)
 
     return list(clusters.values())

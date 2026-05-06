@@ -255,20 +255,22 @@ default root.
 | Stage | Parent workflow | Schedule offset | Child id pattern |
 |---|---|---|---|
 | 0.1 | `PreprocessLaserImagesParentWorkflow` | :00 | `preprocess-laser-{dive_id}` |
-| 2   | `PreprocessDiveImagesParentWorkflow` | :15 | `preprocess-dive-images-{dive_id}` |
+| 1   | `ClusterDiveFramesParentWorkflow` | :05 | `cluster-{dive_id}` |
+| 2   | `PreprocessSpeciesImagesParentWorkflow` | :15 | `preprocess-species-{dive_id}` |
 | 5.1 | `PreprocessHeadtailImagesParentWorkflow` | :30 | `preprocess-headtail-{dive_id}` |
 | 9   | `PreprocessSlateImagesParentWorkflow` | :45 | `preprocess-slate-{dive_id}` |
 
 Per-stage cohort (selector predicate):
 
-* **0.1** — HIGH-priority dive without `LaserExtrinsics` (matches
-  `dry_run_stage13.py`'s target cohort, so preprocessing always
-  feeds the next calibration).
+* **0.1** — HIGH-priority dive with at least one image lacking a
+  non-sentinel `LaserLabel` row.
+* **1** — HIGH-priority dive with at least one *valid* `LaserLabel`
+  (completed, not superseded, x/y both set) AND zero PREDICTION
+  `DiveFrameCluster` rows.
 * **2** — HIGH-priority dive with PREDICTION clusters AND at least
-  one image without a completed `SpeciesLabel`.
-* **5.1** — HIGH-priority dive with at least one
-  `SpeciesLabel.top_three_photos_of_group=True` whose `HeadTailLabel`
-  is missing or incomplete.
+  one laser-valid image lacking a non-sentinel `SpeciesLabel`.
+* **5.1** — HIGH-priority dive with at least one laser-valid image
+  lacking a non-sentinel `HeadTailLabel`.
 * **9** — HIGH-priority dive with `dive_slate_id` set AND at least
   one `SpeciesLabel.content_of_image='Slate, Laser on slate'` whose
   `DiveSlateLabel` is missing or incomplete.
