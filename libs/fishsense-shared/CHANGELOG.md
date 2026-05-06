@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.3.0...fishsense-shared-v0.4.0) (2026-05-06)
+
+
+### Features
+
+* species cascade flip + stage 1 clustering automation ([ec565f5](https://github.com/UCSD-E4E/fishsense-lite/commit/ec565f5ffe4c53c24196c69ff3a2554098034db9))
+
 ## [0.3.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.2.1...fishsense-shared-v0.3.0) (2026-05-02)
 
 
