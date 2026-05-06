@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.4.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.3.1...fishsense-data-processing-workflow-worker-v2.4.0) (2026-05-06)
+
+
+### Features
+
+* species cascade flip + stage 1 clustering automation ([ec565f5](https://github.com/UCSD-E4E/fishsense-lite/commit/ec565f5ffe4c53c24196c69ff3a2554098034db9))
+
 ## [2.3.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.3.0...fishsense-data-processing-workflow-worker-v2.3.1) (2026-05-05)
 
 
