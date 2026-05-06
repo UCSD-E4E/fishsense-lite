@@ -397,7 +397,7 @@ async def test_selector_skips_dive__resolver_returns_empty(monkeypatch):
         sut.resolve_species_preprocess_inputs_activity, 42
     )
 
-    assert result.clusters == []
+    assert not result.clusters
 
 
 @pytest.mark.asyncio

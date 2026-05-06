@@ -79,4 +79,4 @@ async def test_returns_zero_when_no_clusters(monkeypatch):
     )
 
     assert posted == 0
-    assert post_calls == []
+    assert not post_calls

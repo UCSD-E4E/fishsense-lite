@@ -64,7 +64,7 @@ async def test_returns_empty_image_list_when_dive_has_no_images(monkeypatch):
     )
 
     assert result.dive_id == 42
-    assert result.images == []
+    assert not result.images
 
 
 @pytest.mark.asyncio

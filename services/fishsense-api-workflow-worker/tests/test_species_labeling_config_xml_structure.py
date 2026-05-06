@@ -128,7 +128,7 @@ def test_no_keypoint_labels_remain(root):
     0.1 LS project. If a future XML edit re-introduces a
     `<KeyPointLabels>` here, the species sync activity's stripped
     laser-extraction path would need to come back; pin its absence."""
-    assert root.findall(".//KeyPointLabels") == []
+    assert not root.findall(".//KeyPointLabels")
 
 
 def test_no_slate_upside_down_choice(root):
@@ -136,4 +136,4 @@ def test_no_slate_upside_down_choice(root):
     is gone. The sync activity's `slate_upside_down` extraction was
     stripped accordingly. Pin the absence."""
     slate_choices = root.findall(".//Choices[@name='slate']")
-    assert slate_choices == []
+    assert not slate_choices

@@ -54,4 +54,4 @@ async def test_returns_image_ids_grouped_by_temporal_proximity():
 @pytest.mark.asyncio
 async def test_returns_empty_when_no_images():
     result = await ActivityEnvironment().run(cluster_dive_frames, [])
-    assert result == []
+    assert not result

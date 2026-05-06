@@ -122,4 +122,4 @@ async def test_workflow_returns_empty_list_on_empty_input():
             task_queue=task_queue,
         )
 
-    assert result == []
+    assert not result
