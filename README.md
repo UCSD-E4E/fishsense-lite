@@ -16,6 +16,14 @@ Services (each is a workspace member with its own Dockerfile under
 - `services/fishsense-backup-worker/` — Temporal worker for nightly
   Postgres → NAS backups + retention pruning
 
+Apps (Node/Next.js workspace, separate from the Python services):
+
+- `apps/fishsense-lite-web/` — Next.js 15 (App Router) + React + TS web
+  app at `fishsense.e4e.ucsd.edu`. Public landing page (SSR LS-project
+  link cards). Authenticated `/portal/*` gated by Auth.js (next-auth v5)
+  with Authentik OIDC; app-owned JWT session. Configure with the four
+  `AUTH_*` env vars in `web_volumes/.env` (see `.env.example`).
+
 Libraries (workspace members, not published separately):
 
 - `libs/fishsense-shared/` — shared Dynaconf / TLS / logging helpers

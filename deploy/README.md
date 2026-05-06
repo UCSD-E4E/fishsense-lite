@@ -7,7 +7,7 @@ orchestrator host, and prod data-worker host.
 
 | File | Purpose |
 |---|---|
-| `compose.yml` | Top-level prod orchestrator stack. `include:`s the four siblings below + defines `postgres`, `qcomm-static-file-server`, `fishsense-lite-web`. Pulls `prometheus_network` and `traefik_proxy` as external networks. |
+| `compose.yml` | Top-level prod orchestrator stack. `include:`s the four siblings below + defines `postgres`, `qcomm-static-file-server`, `fishsense-lite-web` (public landing + Authentik-OIDC-gated `/portal/*`). Pulls `prometheus_network` and `traefik_proxy` as external networks. |
 | `compose.orchestrator.yml` | `fishsense-api` + nginx `static_file_server` (file-exchange DAV). Behind Traefik + `authentik@docker` middleware. |
 | `compose.temporal.yml` | Temporal cluster (history, frontend, matching, worker, UI). |
 | `compose.workers.yml` | `fishsense-*` workers running on the orchestrator host: `fishsense-api-workflow-worker`, `fishsense-backup-worker`. (Workers consume Temporal but aren't part of the cluster.) |
@@ -94,8 +94,11 @@ without its mTLS certs.
    - `worker_volumes/backup_worker/config/.secrets.toml` — same shape
      for `fishsense-backup-worker` (paired `settings.toml` tracked).
    - `worker_volumes/backup_worker/logs/` — log volume.
-   - `web_volumes/.env` — `fishsense-lite-web` runtime env file (5
-     required keys; see `web_volumes/.env.example` for the shape).
+   - `web_volumes/.env` — `fishsense-lite-web` runtime env file (9
+     required keys: 5 for fishsense-api / Label Studio access + 4
+     `AUTH_*` for Authentik OIDC gating of `/portal/*`. Generate
+     `AUTH_SECRET` with `openssl rand -base64 32`. See
+     `apps/fishsense-lite-web/.env.example` for the canonical shape).
    - `superset_volumes/`, `qcomm_static_file_server_volumes/`,
      `static_file_server_volumes/`, `fishsense_api_volumes/` — see the
      respective compose files for the bind-mount paths.
@@ -321,7 +324,8 @@ Orchestrator host (one runner: `fishsense-prod`):
 compose.yml
 ├── postgres (PG 16, password file via docker secret)
 ├── qcomm-static-file-server (Traefik + authentik)
-├── fishsense-lite-web (homepage at fishsense.e4e.ucsd.edu)
+├── fishsense-lite-web (homepage + /portal at fishsense.e4e.ucsd.edu;
+│     /portal/* auth via Authentik OIDC, app-owned NextAuth session)
 ├── include: compose.orchestrator.yml
 │     ├── fishsense-api
 │     └── static_file_server (nginx DAV — the /api/v1/exchange/ routes)

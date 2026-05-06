@@ -15,8 +15,14 @@ export default async function HomePage() {
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-12">
-      <header className="mb-10">
+      <header className="mb-10 flex items-center justify-between gap-4">
         <h1 className="text-4xl font-semibold tracking-tight">E4E FishSense</h1>
+        <a
+          href="/portal"
+          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+        >
+          Sign in
+        </a>
       </header>
       <div className="space-y-10">
         {sections.map((section) => (

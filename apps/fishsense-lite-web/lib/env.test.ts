@@ -28,12 +28,25 @@ describe("env proxy", () => {
     vi.stubEnv("FISHSENSE_API_PASSWORD", "p");
     vi.stubEnv("LABEL_STUDIO_URL", "http://ls");
     vi.stubEnv("LABEL_STUDIO_API_KEY", "k");
+    vi.stubEnv("AUTH_SECRET", "s");
+    vi.stubEnv("AUTH_AUTHENTIK_ID", "cid");
+    vi.stubEnv("AUTH_AUTHENTIK_SECRET", "csec");
+    vi.stubEnv("AUTH_AUTHENTIK_ISSUER", "https://auth.example/application/o/slug");
 
     expect(env.fishsenseApiUrl).toBe("http://api");
     expect(env.fishsenseApiUsername).toBe("u");
     expect(env.fishsenseApiPassword).toBe("p");
     expect(env.labelStudioUrl).toBe("http://ls");
     expect(env.labelStudioApiKey).toBe("k");
+    expect(env.authSecret).toBe("s");
+    expect(env.authAuthentikId).toBe("cid");
+    expect(env.authAuthentikSecret).toBe("csec");
+    expect(env.authAuthentikIssuer).toBe("https://auth.example/application/o/slug");
+  });
+
+  it("throws on access when AUTH_AUTHENTIK_ISSUER is missing", () => {
+    vi.stubEnv("AUTH_AUTHENTIK_ISSUER", "");
+    expect(() => env.authAuthentikIssuer).toThrow(/AUTH_AUTHENTIK_ISSUER/);
   });
 
   it("throws on access when an env var is missing", () => {
