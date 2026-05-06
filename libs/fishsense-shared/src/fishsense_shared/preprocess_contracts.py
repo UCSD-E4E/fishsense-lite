@@ -14,12 +14,33 @@ construction.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import List, Tuple
 
 from pydantic import BaseModel
 
 
 ReferencePoint = Tuple[float, float]
+
+
+class ClusterDiveFrameImage(BaseModel):
+    """Per-image timestamp pair for stage-1 clustering."""
+
+    image_id: int
+    taken_datetime: datetime
+
+
+class ClusterDiveFramesInput(BaseModel):
+    """Stage 1 (dive-frame clustering) workflow-level input.
+
+    The kernel only needs `(image_id, taken_datetime)` — image bytes
+    are never read, so this DTO replaces the previous
+    `Iterable[Image]` shape that pulled the data-worker's local
+    pydantic Image model into the cross-worker contract.
+    """
+
+    dive_id: int
+    images: List[ClusterDiveFrameImage]
 
 
 class PreprocessLaserImagesInput(BaseModel):
@@ -39,12 +60,14 @@ class PreprocessLaserImagesInput(BaseModel):
     bbox: List[int]
 
 
-class PreprocessDiveImagesInput(BaseModel):
-    """Stage 2 (dive-image preprocess) workflow-level input.
+class PreprocessSpeciesImagesInput(BaseModel):
+    """Stage 2 (species preprocess) workflow-level input.
 
     Clusters preserve the temporal grouping from
     `DiveFrameCluster(data_source=PREDICTION)` so the per-image overlay
-    can render "image i of N" for each cluster.
+    can render "image i of N" for each cluster. Cluster image_ids are
+    pre-filtered by the api-worker resolver to images with a valid
+    laser label and no non-sentinel species label.
     """
 
     dive_id: int

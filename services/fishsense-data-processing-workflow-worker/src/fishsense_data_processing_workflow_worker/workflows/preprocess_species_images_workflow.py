@@ -1,14 +1,18 @@
-"""Stage 2 workflow: fan out preprocess_dive_image across every image
+"""Stage 2 workflow: fan out preprocess_species_image across every image
 in every cluster of a dive.
 
 Inputs are pre-resolved by the api-worker parent
-(`PreprocessDiveImagesParentWorkflow` on `fishsense_api_queue`),
+(`PreprocessSpeciesImagesParentWorkflow` on `fishsense_api_queue`),
 which does dive selection + SDK fetches and then starts this workflow
-as a child on `fishsense_data_processing_queue`. This workflow does
-not call fishsense-api, the NAS, or the file-exchange itself — it
-only orchestrates per-image activities.
+as a child on `fishsense_data_processing_queue`. Cluster image_ids
+are pre-filtered by the api-worker resolver to images with a valid
+laser label and no non-sentinel species label, so the cluster
+numbering ("image i of N") reflects the labeler-visible subset.
 
-The workflow-level input DTO `PreprocessDiveImagesInput` lives in
+This workflow does not call fishsense-api, the NAS, or the
+file-exchange itself — it only orchestrates per-image activities.
+
+The workflow-level input DTO `PreprocessSpeciesImagesInput` lives in
 `fishsense_shared` because it's the api-worker / data-worker
 contract.
 """
@@ -17,13 +21,13 @@ import asyncio
 from datetime import timedelta
 from typing import List
 
-from fishsense_shared import PreprocessDiveImagesInput
+from fishsense_shared import PreprocessSpeciesImagesInput
 from pydantic import BaseModel
 from temporalio import workflow
 
 
-class PreprocessDiveImageInput(BaseModel):
-    """Per-image input passed to the preprocess_dive_image activity."""
+class PreprocessSpeciesImageInput(BaseModel):
+    """Per-image input passed to the preprocess_species_image activity."""
 
     checksum: str
     cluster_index: int  # 1-based
@@ -34,12 +38,12 @@ class PreprocessDiveImageInput(BaseModel):
 
 
 @workflow.defn
-class PreprocessDiveImagesWorkflow:
+class PreprocessSpeciesImagesWorkflow:
     # pylint: disable=too-few-public-methods
     @workflow.run
-    async def run(self, payload: PreprocessDiveImagesInput) -> None:
+    async def run(self, payload: PreprocessSpeciesImagesInput) -> None:
         workflow.logger.info(
-            "preprocessing dive_id=%d clusters=%d images=%d",
+            "preprocessing species dive_id=%d clusters=%d images=%d",
             payload.dive_id,
             len(payload.clusters),
             sum(len(c) for c in payload.clusters),
@@ -49,8 +53,8 @@ class PreprocessDiveImagesWorkflow:
             await asyncio.gather(
                 *[
                     workflow.execute_activity(
-                        "preprocess_dive_image",
-                        PreprocessDiveImageInput(
+                        "preprocess_species_image",
+                        PreprocessSpeciesImageInput(
                             checksum=checksum,
                             cluster_index=i + 1,
                             cluster_size=len(cluster),

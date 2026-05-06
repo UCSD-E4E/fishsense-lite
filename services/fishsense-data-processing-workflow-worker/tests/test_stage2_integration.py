@@ -22,13 +22,13 @@ import pytest
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from fishsense_data_processing_workflow_worker.activities.preprocess_dive_image import (
-    preprocess_dive_image,
+from fishsense_data_processing_workflow_worker.activities.preprocess_species_image import (  # noqa: E501  pylint: disable=line-too-long
+    preprocess_species_image,
 )
-from fishsense_data_processing_workflow_worker.workflows.preprocess_dive_images_workflow import (
-    PreprocessDiveImagesInput,
-    PreprocessDiveImagesWorkflow,
+from fishsense_data_processing_workflow_worker.workflows.preprocess_species_images_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    PreprocessSpeciesImagesWorkflow,
 )
+from fishsense_shared import PreprocessSpeciesImagesInput
 
 pytestmark = pytest.mark.integration
 
@@ -96,12 +96,12 @@ async def test_workflow_processes_one_image_end_to_end(raw_orf_bytes: bytes):
         async with Worker(
             client,
             task_queue=task_queue,
-            workflows=[PreprocessDiveImagesWorkflow],
-            activities=[preprocess_dive_image],
+            workflows=[PreprocessSpeciesImagesWorkflow],
+            activities=[preprocess_species_image],
         ):
             await client.execute_workflow(
-                PreprocessDiveImagesWorkflow.run,
-                PreprocessDiveImagesInput(
+                PreprocessSpeciesImagesWorkflow.run,
+                PreprocessSpeciesImagesInput(
                     dive_id=-1,
                     clusters=[[checksum]],
                     camera_matrix=_K,

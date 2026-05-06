@@ -1,14 +1,14 @@
 """Pure-logic tests for the per-image transform that draws the cluster
 index and encodes the rectified image to JPEG bytes.
 
-This is the unit-testable core of the stage2 preprocess_dive_image
+This is the unit-testable core of the stage2 preprocess_species_image
 activity — no I/O, no Temporal, no fishsense-core RawImage decoding.
 """
 
 import cv2
 import numpy as np
 
-from fishsense_data_processing_workflow_worker.activities.preprocess_dive_image import (
+from fishsense_data_processing_workflow_worker.activities.preprocess_species_image import (  # noqa: E501  pylint: disable=line-too-long
     overlay_and_encode_jpeg,
 )
 

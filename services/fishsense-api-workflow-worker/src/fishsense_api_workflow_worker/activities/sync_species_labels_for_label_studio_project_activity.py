@@ -1,12 +1,14 @@
 """Activity to sync species labels for a Label Studio project (stage 4.2).
 
-Mirrors the laser/headtail/dive-slate sync pattern. The species
-annotation is the richest of the four — beyond the laser keypoint it
-also carries grouping, slate-upside-down, and four taxonomy fields
-(content, fish_measurable, fish_angle, fish_curved). All are pulled
-into their dedicated SpeciesLabel columns so downstream stages
-(especially 6.1's `update_dive_image_groups`) can read them without
-re-parsing `label_studio_json`.
+Mirrors the laser/headtail/dive-slate sync pattern. As of 2026-05-05
+the species LS XML no longer carries the laser keypoint or the
+"Slate upside down" choice, so this activity reads only the still-
+present fields: `grouping`, `exclude` (top-3 marker), the species
+taxonomy, and the three fish-attribute taxonomies (measurable, angle,
+curve). The unused SpeciesLabel columns (`laser_x`, `laser_y`,
+`laser_label`, `slate_upside_down`) are left whatever they were —
+historical rows keep their values; new rows from the new XML never
+populate them.
 
 Notebook this ports: `scripts/stage4.2_sync_species_labels.ipynb`. The
 notebook resolved annotators by parsing the email out of
@@ -73,22 +75,8 @@ def _content_of_image(results: list[dict]) -> str | None:
     return None
 
 
-def _laser_keypoint(results: list[dict]) -> Dict[str, Any] | None:
-    """Pull the laser keypoint section (with its original_width/height) or None."""
-    for r in results:
-        if r["from_name"] == "laser":
-            return r
-    return None
-
-
 def _parse_results(annotation: Dict[str, Any]) -> Dict[str, Any]:
-    """Pull the species annotation fields out of an LS task result list.
-
-    Returns absolute pixel coordinates for laser_x/y (the LS
-    annotation reports percentages of original_width/height — multiply
-    out so downstream consumers see the same units the laser-only
-    sync writes).
-    """
+    """Pull the species annotation fields out of an LS task result list."""
     results = annotation.get("result") or []
 
     grouping = _first_choice(results, "grouping")
@@ -100,38 +88,9 @@ def _parse_results(annotation: Dict[str, Any]) -> Dict[str, Any]:
         else None
     )
 
-    slate_choice = _first_choice(results, "slate")
-    slate_upside_down = (
-        slate_choice == "Slate upside down" if slate_choice is not None else None
-    )
-
-    laser_x: float | None = None
-    laser_y: float | None = None
-    laser_label: str | None = None
-    laser_section = _laser_keypoint(results)
-    if laser_section is not None:
-        original_width = laser_section.get("original_width")
-        original_height = laser_section.get("original_height")
-        value = laser_section.get("value", {})
-        if (
-            original_width is not None
-            and original_height is not None
-            and "x" in value
-            and "y" in value
-        ):
-            laser_x = value["x"] * original_width / 100.0
-            laser_y = value["y"] * original_height / 100.0
-        keypointlabels = value.get("keypointlabels") or []
-        if keypointlabels:
-            laser_label = keypointlabels[0]
-
     return {
         "grouping": grouping,
         "top_three_photos_of_group": top_three_photos_of_group,
-        "slate_upside_down": slate_upside_down,
-        "laser_x": laser_x,
-        "laser_y": laser_y,
-        "laser_label": laser_label,
         "content_of_image": _content_of_image(results),
         "fish_measurable_category": _first_taxonomy_leaf(results, "measurable"),
         "fish_angle_category": _first_taxonomy_leaf(results, "fishAngles"),
@@ -141,25 +100,11 @@ def _parse_results(annotation: Dict[str, Any]) -> Dict[str, Any]:
 
 def _apply_parsed(species_label: SpeciesLabel, parsed: Dict[str, Any]) -> None:
     """Copy parser output into the SpeciesLabel, leaving stored values
-    in place when the annotation didn't specify a field.
-
-    Mirror's the notebook's "if section is present, write it" semantics:
-    a re-sync of an annotation that dropped (say) the laser keypoint
-    won't clobber the previously-recorded laser_x/y. Choices fields
-    follow the same rule via the `is not None` gate.
-    """
+    in place when the annotation didn't specify a field."""
     if parsed["grouping"] is not None:
         species_label.grouping = parsed["grouping"]
     if parsed["top_three_photos_of_group"] is not None:
         species_label.top_three_photos_of_group = parsed["top_three_photos_of_group"]
-    if parsed["slate_upside_down"] is not None:
-        species_label.slate_upside_down = parsed["slate_upside_down"]
-    if parsed["laser_x"] is not None:
-        species_label.laser_x = parsed["laser_x"]
-    if parsed["laser_y"] is not None:
-        species_label.laser_y = parsed["laser_y"]
-    if parsed["laser_label"] is not None:
-        species_label.laser_label = parsed["laser_label"]
     if parsed["content_of_image"] is not None:
         species_label.content_of_image = parsed["content_of_image"]
     if parsed["fish_measurable_category"] is not None:

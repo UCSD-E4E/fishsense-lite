@@ -3,9 +3,10 @@
 
 Three things this file pins down:
   1. `_parse_results` correctly extracts every species annotation
-     field (grouping, exclude→top_three, slate→upside_down, laser
-     keypoint with %-to-pixel scaling, content/measurable/angle/curve
-     taxonomies).
+     field still present in the post-2026-05-05 XML (grouping,
+     exclude→top_three, content/measurable/angle/curve taxonomies).
+     The laser keypoint and "Slate upside down" controls were dropped
+     from the XML so this activity no longer reads them.
   2. `_apply_parsed` only writes fields the annotation actually
      specified — a re-sync that drops a section doesn't clobber the
      stored value.
@@ -102,17 +103,6 @@ def test_parse_results_extracts_all_fields():
         "result": [
             {"from_name": "grouping", "value": {"choices": ["Part of previous group"]}},
             {"from_name": "exclude", "value": {"choices": ["Top 3 photos of group"]}},
-            {"from_name": "slate", "value": {"choices": ["Slate upside down"]}},
-            {
-                "from_name": "laser",
-                "original_width": 4000,
-                "original_height": 3000,
-                "value": {
-                    "x": 50.0,
-                    "y": 25.0,
-                    "keypointlabels": ["Red Laser"],
-                },
-            },
             {
                 "from_name": "species",
                 "value": {"taxonomy": [["Slate", "Laser on slate"]]},
@@ -130,10 +120,6 @@ def test_parse_results_extracts_all_fields():
 
     assert parsed["grouping"] == "Part of previous group"
     assert parsed["top_three_photos_of_group"] is True
-    assert parsed["slate_upside_down"] is True
-    assert parsed["laser_x"] == pytest.approx(2000.0)
-    assert parsed["laser_y"] == pytest.approx(750.0)
-    assert parsed["laser_label"] == "Red Laser"
     assert parsed["content_of_image"] == "Slate, Laser on slate"
     assert parsed["fish_measurable_category"] == "Measurable"
     assert parsed["fish_angle_category"] == "Side"
@@ -145,28 +131,23 @@ def test_parse_results_handles_minimal_annotation():
 
     assert parsed["grouping"] is None
     assert parsed["top_three_photos_of_group"] is None
-    assert parsed["slate_upside_down"] is None
-    assert parsed["laser_x"] is None
-    assert parsed["laser_y"] is None
-    assert parsed["laser_label"] is None
     assert parsed["content_of_image"] is None
     assert parsed["fish_measurable_category"] is None
     assert parsed["fish_angle_category"] is None
     assert parsed["fish_curved_category"] is None
 
 
-def test_parse_results_choices_recognize_negative_values():
+def test_parse_results_recognizes_negative_top_three_choice():
     annotation = {
         "result": [
             {"from_name": "exclude", "value": {"choices": ["Skip this group"]}},
-            {"from_name": "slate", "value": {"choices": ["Slate right side up"]}},
         ]
     }
     parsed = sut._parse_results(annotation)  # pylint: disable=protected-access
-    # exclude is True only when literally "Top 3 photos of group" — anything
-    # else is False (we still got a choice, just not the affirmative one).
+    # exclude is True only when literally "Top 3 photos of group" —
+    # anything else is False (we still got a choice, just not the
+    # affirmative one).
     assert parsed["top_three_photos_of_group"] is False
-    assert parsed["slate_upside_down"] is False
 
 
 # ----------------------------- _apply_parsed ----------------------------
@@ -175,7 +156,7 @@ def test_parse_results_choices_recognize_negative_values():
 def test_apply_parsed_only_overwrites_specified_fields():
     label = _empty_species_label(image_id=1)
     label.grouping = "Part of previous group"  # pre-existing
-    label.laser_x = 1000.0  # pre-existing
+    label.content_of_image = "Fish, Hogfish"  # pre-existing
 
     parsed = sut._parse_results(  # pylint: disable=protected-access
         {"result": [{"from_name": "fishAngles", "value": {"taxonomy": [["Top"]]}}]}
@@ -183,10 +164,56 @@ def test_apply_parsed_only_overwrites_specified_fields():
 
     sut._apply_parsed(label, parsed)  # pylint: disable=protected-access
 
-    # Only fishAngles was specified; grouping and laser_x must survive.
+    # Only fishAngles was specified; grouping and content must survive.
     assert label.fish_angle_category == "Top"
     assert label.grouping == "Part of previous group"
-    assert label.laser_x == 1000.0
+    assert label.content_of_image == "Fish, Hogfish"
+
+
+def test_apply_parsed_does_not_clobber_dropped_fields_on_historical_rows():
+    """The 2026-05-05 species XML refresh dropped the laser keypoint
+    and "Slate upside down" controls. `_apply_parsed` and
+    `_parse_results` were stripped of those extraction paths
+    accordingly. Pinning the regression: a historical SpeciesLabel
+    row that has `laser_x` / `laser_y` / `laser_label` /
+    `slate_upside_down` populated must survive a re-sync against the
+    new XML *unchanged*. A future "helpful" zeroing of those fields
+    would silently invalidate every measurement that consumed them
+    before the refresh.
+    """
+    label = _empty_species_label(image_id=1)
+    # Pre-existing values from a row populated under the old XML.
+    label.laser_x = 1234.5
+    label.laser_y = 678.9
+    label.laser_label = "Red Laser"
+    label.slate_upside_down = True
+
+    # New-XML annotation: only the still-supported fields.
+    parsed = sut._parse_results(  # pylint: disable=protected-access
+        {
+            "result": [
+                {
+                    "from_name": "grouping",
+                    "value": {"choices": ["Part of previous group"]},
+                },
+                {
+                    "from_name": "species",
+                    "value": {"taxonomy": [["Fish", "Hogfish"]]},
+                },
+            ]
+        }
+    )
+
+    sut._apply_parsed(label, parsed)  # pylint: disable=protected-access
+
+    # The dropped-XML fields must still hold their historical values.
+    assert label.laser_x == 1234.5
+    assert label.laser_y == 678.9
+    assert label.laser_label == "Red Laser"
+    assert label.slate_upside_down is True
+    # And the new-XML fields landed.
+    assert label.grouping == "Part of previous group"
+    assert label.content_of_image == "Fish, Hogfish"
 
 
 # ----------------------- activity-shape guards ------------------------

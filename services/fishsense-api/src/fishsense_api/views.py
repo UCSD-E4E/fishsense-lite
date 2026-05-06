@@ -122,17 +122,36 @@ SELECT
           AND dfc.data_source = 'PREDICTION'
     ) AS has_prediction_clusters,
 
-    -- Stage 2: has PREDICTION clusters AND every image carries a
-    -- non-sentinel SpeciesLabel row.
+    -- Stage 2: has PREDICTION clusters AND every image carrying a
+    -- valid laser label (completed, not superseded, x/y both set) has
+    -- a non-sentinel SpeciesLabel row. ≥1 such laser-valid image must
+    -- exist (otherwise the predicate would be vacuously true for dives
+    -- with no laser work yet — same convention as headtail_preprocessed).
+    -- Cohort flipped 2026-05-05 from "every image" → "every laser-valid
+    -- image" so species labeling now mirrors head/tail (per-image
+    -- cascade from valid lasers) while keeping the cluster gate.
     (EXISTS (
          SELECT 1 FROM diveframecluster dfc
          WHERE dfc.dive_id = d.id
            AND dfc.data_source = 'PREDICTION'
      )
-     AND EXISTS (SELECT 1 FROM image i WHERE i.dive_id = d.id)
-     AND NOT EXISTS (
-         SELECT 1 FROM image i
+     AND EXISTS (
+         SELECT 1 FROM laserlabel ll
+         JOIN image i ON i.id = ll.image_id
          WHERE i.dive_id = d.id
+           AND ll.completed = TRUE
+           AND ll.superseded = FALSE
+           AND ll.x IS NOT NULL
+           AND ll.y IS NOT NULL
+     )
+     AND NOT EXISTS (
+         SELECT 1 FROM laserlabel ll
+         JOIN image i ON i.id = ll.image_id
+         WHERE i.dive_id = d.id
+           AND ll.completed = TRUE
+           AND ll.superseded = FALSE
+           AND ll.x IS NOT NULL
+           AND ll.y IS NOT NULL
            AND NOT EXISTS (
                SELECT 1 FROM specieslabel sl
                WHERE sl.image_id = i.id

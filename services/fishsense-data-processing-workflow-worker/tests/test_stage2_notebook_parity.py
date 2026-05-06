@@ -21,7 +21,7 @@ from fishsense_api_sdk.models.camera_intrinsics import CameraIntrinsics
 from fishsense_core.image.raw_image import RawImage
 from fishsense_core.image.rectified_image import RectifiedImage
 
-from fishsense_data_processing_workflow_worker.activities.preprocess_dive_image import (
+from fishsense_data_processing_workflow_worker.activities.preprocess_species_image import (  # noqa: E501  pylint: disable=line-too-long
     _rectify_overlay_encode,
 )
 

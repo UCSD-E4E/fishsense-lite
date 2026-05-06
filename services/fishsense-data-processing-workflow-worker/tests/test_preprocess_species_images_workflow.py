@@ -1,8 +1,8 @@
-"""Workflow contract test for PreprocessDiveImagesWorkflow.
+"""Workflow contract test for PreprocessSpeciesImagesWorkflow.
 
 Runs the workflow end-to-end against an in-process Temporal test server
 (`WorkflowEnvironment.start_time_skipping()` — no real temporald). The
-preprocess_dive_image activity is replaced with a stub that records its
+preprocess_species_image activity is replaced with a stub that records its
 payloads so we can assert the workflow's fanout and per-image arg shape
 without doing any real image work.
 """
@@ -16,11 +16,11 @@ from temporalio import activity
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
-from fishsense_data_processing_workflow_worker.workflows.preprocess_dive_images_workflow import (
-    PreprocessDiveImageInput,
-    PreprocessDiveImagesInput,
-    PreprocessDiveImagesWorkflow,
+from fishsense_data_processing_workflow_worker.workflows.preprocess_species_images_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    PreprocessSpeciesImageInput,
+    PreprocessSpeciesImagesWorkflow,
 )
+from fishsense_shared import PreprocessSpeciesImagesInput
 
 
 # A small but realistic intrinsics shape (3x3 matrix, 5-element distortion
@@ -31,11 +31,11 @@ _D = [-0.1, 0.05, 0.0, 0.0, 0.0]
 
 @pytest.mark.asyncio
 async def test_workflow_fans_out_one_activity_per_image_with_correct_indices():
-    calls: List[PreprocessDiveImageInput] = []
+    calls: List[PreprocessSpeciesImageInput] = []
 
-    @activity.defn(name="preprocess_dive_image")
-    async def stub_preprocess_dive_image(
-        payload: PreprocessDiveImageInput,
+    @activity.defn(name="preprocess_species_image")
+    async def stub_preprocess_species_image(
+        payload: PreprocessSpeciesImageInput,
     ) -> None:
         calls.append(payload)
 
@@ -43,12 +43,12 @@ async def test_workflow_fans_out_one_activity_per_image_with_correct_indices():
         async with Worker(
             env.client,
             task_queue="test-stage2",
-            workflows=[PreprocessDiveImagesWorkflow],
-            activities=[stub_preprocess_dive_image],
+            workflows=[PreprocessSpeciesImagesWorkflow],
+            activities=[stub_preprocess_species_image],
         ):
             await env.client.execute_workflow(
-                PreprocessDiveImagesWorkflow.run,
-                PreprocessDiveImagesInput(
+                PreprocessSpeciesImagesWorkflow.run,
+                PreprocessSpeciesImagesInput(
                     dive_id=383,
                     clusters=[
                         ["cs1", "cs2", "cs3"],
@@ -88,8 +88,8 @@ async def test_workflow_uses_start_to_close_not_schedule_to_close():
     shape, same prod failure mode."""
     timeouts: List[Tuple[Optional[timedelta], Optional[timedelta]]] = []
 
-    @activity.defn(name="preprocess_dive_image")
-    async def stub_preprocess_dive_image(payload: PreprocessDiveImageInput) -> None:  # pylint: disable=unused-argument
+    @activity.defn(name="preprocess_species_image")
+    async def stub_preprocess_species_image(payload: PreprocessSpeciesImageInput) -> None:  # pylint: disable=unused-argument
         info = activity.info()
         timeouts.append((info.start_to_close_timeout, info.schedule_to_close_timeout))
 
@@ -97,12 +97,12 @@ async def test_workflow_uses_start_to_close_not_schedule_to_close():
         async with Worker(
             env.client,
             task_queue="test-stage2-timeouts",
-            workflows=[PreprocessDiveImagesWorkflow],
-            activities=[stub_preprocess_dive_image],
+            workflows=[PreprocessSpeciesImagesWorkflow],
+            activities=[stub_preprocess_species_image],
         ):
             await env.client.execute_workflow(
-                PreprocessDiveImagesWorkflow.run,
-                PreprocessDiveImagesInput(
+                PreprocessSpeciesImagesWorkflow.run,
+                PreprocessSpeciesImagesInput(
                     dive_id=383,
                     clusters=[["a"]],
                     camera_matrix=_K,
@@ -121,11 +121,11 @@ async def test_workflow_uses_start_to_close_not_schedule_to_close():
 
 @pytest.mark.asyncio
 async def test_workflow_with_no_clusters_makes_no_activity_calls():
-    calls: List[PreprocessDiveImageInput] = []
+    calls: List[PreprocessSpeciesImageInput] = []
 
-    @activity.defn(name="preprocess_dive_image")
-    async def stub_preprocess_dive_image(
-        payload: PreprocessDiveImageInput,
+    @activity.defn(name="preprocess_species_image")
+    async def stub_preprocess_species_image(
+        payload: PreprocessSpeciesImageInput,
     ) -> None:
         calls.append(payload)
 
@@ -133,12 +133,12 @@ async def test_workflow_with_no_clusters_makes_no_activity_calls():
         async with Worker(
             env.client,
             task_queue="test-stage2-empty",
-            workflows=[PreprocessDiveImagesWorkflow],
-            activities=[stub_preprocess_dive_image],
+            workflows=[PreprocessSpeciesImagesWorkflow],
+            activities=[stub_preprocess_species_image],
         ):
             await env.client.execute_workflow(
-                PreprocessDiveImagesWorkflow.run,
-                PreprocessDiveImagesInput(
+                PreprocessSpeciesImagesWorkflow.run,
+                PreprocessSpeciesImagesInput(
                     dive_id=383,
                     clusters=[],
                     camera_matrix=_K,

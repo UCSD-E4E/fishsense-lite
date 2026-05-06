@@ -1,12 +1,12 @@
 """Stage 2 parent workflow (api-worker side).
 
-Picks the next HIGH-priority dive needing dive-image preprocessing,
-resolves its PREDICTION clusters + camera intrinsics via SDK, and
-dispatches `PreprocessDiveImagesWorkflow` as a child on the
-data-worker (`fishsense_data_processing_queue`). After archive+cleanup,
-chains into `PopulateSpeciesLabelStudioProjectWorkflow` so the
-group-preprocessed JPEGs land in the species LS project in the same
-hourly run that produced them.
+Picks the next HIGH-priority dive needing species preprocessing,
+resolves its PREDICTION clusters + camera intrinsics + laser/species
+labels via SDK, and dispatches `PreprocessSpeciesImagesWorkflow` as a
+child on the data-worker (`fishsense_data_processing_queue`). After
+archive+cleanup, chains into `PopulateSpeciesLabelStudioProjectWorkflow`
+so the group-preprocessed JPEGs land in the per-dive species LS
+project in the same hourly run that produced them.
 
 Same cluster-correctness invariants as
 `PreprocessLaserImagesParentWorkflow` — see CLAUDE.md's "Cross-worker
@@ -18,7 +18,7 @@ rather than re-importing duplicate LS tasks.
 
 from datetime import timedelta
 
-from fishsense_shared import PreprocessDiveImagesInput
+from fishsense_shared import PreprocessSpeciesImagesInput
 from temporalio import workflow
 from temporalio.common import WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
@@ -30,13 +30,13 @@ with workflow.unsafe.imports_passed_through():
 
 DATA_PROCESSING_TASK_QUEUE = "fishsense_data_processing_queue"
 EXCHANGE_FOLDER = "preprocess_groups_jpeg"
-NAS_WORKFLOW = "dive_images"
+NAS_WORKFLOW = "species_images"
 
 
 @workflow.defn
-class PreprocessDiveImagesParentWorkflow:
+class PreprocessSpeciesImagesParentWorkflow:
     # pylint: disable=too-few-public-methods
-    """Auto-pick the next HIGH-priority dive needing dive-image
+    """Auto-pick the next HIGH-priority dive needing species
     preprocessing and dispatch its work to the data-worker.
 
     Returns the dive_id processed (or None when the backlog is empty).
@@ -47,7 +47,7 @@ class PreprocessDiveImagesParentWorkflow:
     @workflow.run
     async def run(self) -> int | None:
         dive_id = await workflow.execute_activity(
-            "select_next_high_priority_dive_for_dive_image_preprocessing_activity",
+            "select_next_high_priority_dive_for_species_preprocessing_activity",
             args=(),
             schedule_to_close_timeout=timedelta(minutes=5),
             retry_policy=SDK_FAIL_FAST_RETRY_POLICY,
@@ -56,16 +56,16 @@ class PreprocessDiveImagesParentWorkflow:
             return None
 
         inputs = await workflow.execute_activity(
-            "resolve_dive_image_preprocess_inputs_activity",
+            "resolve_species_preprocess_inputs_activity",
             args=(dive_id,),
             schedule_to_close_timeout=timedelta(minutes=5),
             retry_policy=SDK_FAIL_FAST_RETRY_POLICY,
-            result_type=PreprocessDiveImagesInput,
+            result_type=PreprocessSpeciesImagesInput,
         )
 
         total_images = sum(len(cluster) for cluster in inputs.clusters)
         workflow.logger.info(
-            "dispatching dive-image preprocess to data-worker dive_id=%d "
+            "dispatching species preprocess to data-worker dive_id=%d "
             "clusters=%d images=%d",
             inputs.dive_id,
             len(inputs.clusters),
@@ -84,16 +84,16 @@ class PreprocessDiveImagesParentWorkflow:
 
         try:
             await workflow.execute_child_workflow(
-                "PreprocessDiveImagesWorkflow",
+                "PreprocessSpeciesImagesWorkflow",
                 inputs,
-                id=f"preprocess-dive-images-{dive_id}",
+                id=f"preprocess-species-{dive_id}",
                 task_queue=DATA_PROCESSING_TASK_QUEUE,
                 execution_timeout=timedelta(hours=2),
                 id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
             )
         except WorkflowAlreadyStartedError:
             workflow.logger.info(
-                "preprocess-dive-images-%d already ran successfully in a "
+                "preprocess-species-%d already ran successfully in a "
                 "prior firing; skipping data-worker dispatch and continuing "
                 "to archive + cleanup + populate",
                 dive_id,

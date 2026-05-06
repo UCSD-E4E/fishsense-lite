@@ -21,7 +21,7 @@ need a failing test before the implementation lands.
 | Service | Purpose | Task queue |
 |---|---|---|
 | `services/fishsense-api/` | FastAPI app (DB CRUD, label endpoints) | — |
-| `services/fishsense-api-workflow-worker/` | api-side Temporal worker: hourly Label Studio sync (laser/headtail/dive-slate/species), on-demand Create/Populate × {Laser,Species,HeadTail,DiveSlate} LS project workflows, hourly preprocess parents for stages 0.1 / 2 / 5.1 / 9 (select + resolve; dispatch child to data-worker) | `fishsense_api_queue` |
+| `services/fishsense-api-workflow-worker/` | api-side Temporal worker: hourly Label Studio sync (laser/headtail/dive-slate/species), on-demand Create/Populate × {Laser,Species,HeadTail,DiveSlate} LS project workflows, hourly preprocess parents for stages 0.1 / 1 / 2 / 5.1 / 9 (select + resolve; dispatch child to data-worker) | `fishsense_api_queue` |
 | `apps/fishsense-lite-web/` | Next.js 15 (App Router) + React + TS landing page at `fishsense.e4e.ucsd.edu`. SSR fetches LS project IDs from fishsense-api, resolves names from Label Studio, renders categorized link cards. Auth.js (next-auth v5) with Authentik OIDC gates `/portal/*`; landing stays public. Replaces the prior mafl dashboard + its hourly config-writer workflow. Will grow into a full web app. | — |
 | `services/fishsense-data-processing-workflow-worker/` | image preprocessing (rectify/overlay/JPEG), laser calibration, fish measurement | `fishsense_data_processing_queue` |
 | `services/fishsense-backup-worker/` | nightly Postgres → NAS backups + retention | `fishsense_backup_queue` |
@@ -52,8 +52,8 @@ DB (negligible). To add or remove, override
 |---|---|---|---|
 | 0.1 | preprocess_laser_images | api-worker (parent) + data-worker (child) | ported (hourly) |
 | 0.3 | populate_label_studio_project | api-worker | ported |
-| 1   | cluster_dive_frames | data-worker | ported (pre-existing; no api-worker parent yet — workflow doesn't write back to DB) |
-| 2   | preprocess_dive_images | api-worker (parent) + data-worker (child) | ported (hourly, +15min offset) |
+| 1   | cluster_dive_frames | api-worker (parent) + data-worker (child) | ported (hourly, +5min offset) |
+| 2   | preprocess_species_images (renamed from preprocess_dive_images) | api-worker (parent) + data-worker (child) | ported (hourly, +15min offset) |
 | 4   | populate_label_studio_project | api-worker | ported |
 | 4.2 | sync_species_labels | api-worker | ported (hourly) |
 | 5.1 | preprocess_headtail_images | api-worker (parent) + data-worker (child) | ported (hourly, +30min offset) |
@@ -122,7 +122,7 @@ exist — the cluster API has no DELETE, so a re-POST would silently
 double-count. To re-group after labels change, an operator must
 manually drop the existing LABEL_STUDIO clusters first.
 
-## Cross-worker orchestration pattern (stages 0.1, 2, 5.1, 9, 13, 14)
+## Cross-worker orchestration pattern (stages 0.1, 1, 2, 5.1, 9, 13, 14)
 
 The api-worker is the brains; the data-worker is the executor. Stages
 that need both SDK-side decision-making *and* CPU-heavy per-image
@@ -164,8 +164,9 @@ URLs point at them). Raw `.ORF`s are deleted because they're
 reproducible from NAS. JPEG retention is a separate operational
 decision — see the project memory entry.
 
-The workflow-input DTOs (`PreprocessLaserImagesInput`, eventually
-`PreprocessDiveImagesInput`, etc.) live in
+The workflow-input DTOs (`PreprocessLaserImagesInput`,
+`PreprocessSpeciesImagesInput`, `PreprocessHeadtailImagesInput`,
+`PreprocessSlateImagesInput`, `ClusterDiveFramesInput`) live in
 [fishsense_shared.preprocess_contracts](libs/fishsense-shared/src/fishsense_shared/preprocess_contracts.py)
 because they're the api-worker / data-worker contract; per-image
 DTOs stay in the data-worker workflow modules because they're
@@ -192,22 +193,33 @@ one replica):
 * Per-image activities are idempotent: nginx DAV PUT overwrites,
   SDK upserts.
 
-Applied to stages 0.1, 2, 5.1, 9, 13 — each parent runs hourly. The
-four preprocess parents are slotted at +0/+15/+30/+45 min so their
-selectors don't all hit `dives.get()` at the top of the hour; stage
-13 calibration sits at +50 min. Stage 14 measurement is registered
-but not scheduled (see notes below). Per-stage cohort:
+Applied to stages 0.1, 1, 2, 5.1, 9, 13 — each parent runs hourly.
+Schedule slots: 0.1 at +0, 1 at +5, 2 at +15, 5.1 at +30, 9 at +45,
+13 at +50 min — staggered so their selectors don't all hit
+`dives.get()` at the top of the hour. Stage 14 measurement is
+registered but not scheduled (see notes below). Per-stage cohort:
 
 | Stage | Parent cohort definition |
 |---|---|
 | 0.1 | HIGH-priority + at least one image without ANY `LaserLabel` row (in any project) |
-| 2   | HIGH-priority + has PREDICTION clusters + at least one image without ANY `SpeciesLabel` row |
-| 5.1 | HIGH-priority + at least one image with a *valid* `LaserLabel` (`completed=True`, `superseded=False`, `x`/`y` both set) whose image carries no non-sentinel `HeadTailLabel` row |
+| 1   | HIGH-priority + at least one image with a *valid* `LaserLabel` (`completed=True`, `superseded=False`, `x`/`y` both set) + zero PREDICTION `DiveFrameCluster` rows |
+| 2   | HIGH-priority + has PREDICTION clusters + at least one image with a *valid* `LaserLabel` whose image carries no non-sentinel `SpeciesLabel` row |
+| 5.1 | HIGH-priority + at least one image with a *valid* `LaserLabel` whose image carries no non-sentinel `HeadTailLabel` row |
 | 9   | HIGH-priority + `dive_slate_id` set + at least one `SpeciesLabel.content_of_image='Slate, Laser on slate'` whose image carries no `DiveSlateLabel` row at all |
 | 13  | HIGH-priority + `dive_slate_id` set + no `LaserExtrinsics` + ≥2 completed `DiveSlateLabel` rows (matches the data-worker activity's `MIN_LASER_POINTS=2` precondition) |
 | 14  | HIGH-priority + has `LaserExtrinsics` + has LABEL_STUDIO clusters with at least one `fish_id is None` |
 
-The four preprocess cohorts (0.1, 2, 5.1, 9) check "no row at all"
+Stages 1, 2, and 5.1 all cascade from the same "valid laser" gate.
+Stage 1 lands PREDICTION clusters that stage 2 then consumes; stage
+5.1 has no cluster gate so it fires as soon as a single image's
+laser is valid. The `+5/+15` slot pair gives stage 1 a 10-minute
+head start on stage 2 — clustering on a ~hundred-image dive
+completes in seconds, so a single hourly cycle clears the
+laser→clustering→species chain. If stage 1 misses the window for
+a particular dive (e.g. fires while the dive's lasers are still
+landing), stage 2 picks it up next hour.
+
+The preprocess cohorts (0.1, 2, 5.1, 9) check "no row at all"
 rather than "no completed row" so a dive drops out the moment
 populate seeds even-incomplete sentinel rows for every image. The
 earlier `completed`-only predicate kept dives in the cohort
@@ -216,9 +228,9 @@ firing re-staged raw `.ORF`s from NAS, re-rectified, and re-archived
 (child-workflow `ALLOW_DUPLICATE_FAILED_ONLY` made the per-image
 work a no-op, but the NAS staging activity ran unconditionally on
 every parent firing). Resolver activities mirror the same predicate:
-`resolve_laser/headtail/slate_preprocess_inputs_activity` filter
-images on "no label row" so the dispatched per-image work matches
-what the cohort selector promised.
+`resolve_species/headtail/slate_preprocess_inputs_activity` filter
+images on laser-valid + no-non-sentinel-row so the dispatched
+per-image work matches what the cohort selector promised.
 
 **Stage 5.1 source flip (2026-05-04).** Head/tail used to cascade
 from `SpeciesLabel.top_three_photos_of_group=True`, which forced
@@ -226,13 +238,39 @@ labelers through stages 1 → 2 → 4 (cluster → preprocess dive →
 species top-3 selection) before any head/tail work could start. As
 of 2026-05-04 it cascades from valid laser labels instead: head/tail
 preprocess + populate fire as soon as laser labelers + the
-validator have signed off on an image (`completed=True`,
-`superseded=False`, `x`/`y` both populated — same gate
-`perform_laser_calibration_activity` and the validator's
-`_positive_xy` already use). Practical consequences: head/tail can
-run in parallel with stages 1/2/4; head/tail tasks are created for
-*every* laser-valid image, not just the species pass's top-3 per
-group, so the labeler queue is larger.
+validator have signed off on an image. Practical consequences:
+head/tail can run in parallel with stages 1/2; head/tail tasks are
+created for *every* laser-valid image, not just the species pass's
+top-3 per group, so the labeler queue is larger.
+
+**Stage 2 source flip (2026-05-05).** Species labeling used to be
+gated only on "image has no species row." Flipped to mirror head/tail:
+species fires per-image off valid lasers, in parallel with head/tail,
+but keeps the PREDICTION-cluster gate so the data-worker fan-out still
+gets cluster context for the "image i of N" overlay. Stage 1 was
+promoted from operator-driven to an automated parent at the same time
+to keep stage 2's cluster gate satisfied. Renames in this flip:
+
+| Before | After |
+|---|---|
+| `select_next_for_dive_image_preprocessing` (SDK + endpoint) | `select_next_for_species_preprocessing` |
+| `PreprocessDiveImagesInput` | `PreprocessSpeciesImagesInput` |
+| `PreprocessDiveImagesParentWorkflow` | `PreprocessSpeciesImagesParentWorkflow` |
+| `PreprocessDiveImagesWorkflow` | `PreprocessSpeciesImagesWorkflow` |
+| `preprocess_dive_image` activity | `preprocess_species_image` |
+| `resolve_dive_image_preprocess_inputs_activity` | `resolve_species_preprocess_inputs_activity` |
+| `select_next_high_priority_dive_for_dive_image_preprocessing_activity` | `select_next_high_priority_dive_for_species_preprocessing_activity` |
+| schedule id `preprocess-dive-images-workflow-schedule` | `preprocess-species-images-workflow-schedule` |
+
+Operator action at deploy: delete the orphan
+`preprocess-dive-images-workflow-schedule` Temporal schedule (the
+class it points at no longer exists) and drain or terminate any
+in-flight `PreprocessDiveImagesParentWorkflow` runs. The species LS
+labeling-config XML was also swapped at this flip — laser keypoints
+and the "Slate upside down" choice are gone from the new config; the
+species sync activity's laser-keypoint/slate-upside-down extraction
+paths are stripped accordingly. New labels write only the still-
+present columns; historical species rows keep whatever they had.
 
 ## `dive_pipeline_status` view
 
@@ -250,7 +288,7 @@ Backs Superset dashboards reading the fishsense Postgres connection.
 | `headtail_preprocessed` | every image carrying a *valid* laser label (completed, not superseded, x/y both set) has a non-sentinel `HeadTailLabel` row |
 | `headtail_labeling_complete` | ≥1 completed-non-superseded `HeadTailLabel` AND zero incomplete-non-superseded |
 | `has_prediction_clusters` | dive has at least one PREDICTION `DiveFrameCluster` (stage 1 ran and persisted) |
-| `dive_images_preprocessed` | `has_prediction_clusters` AND every image has a non-sentinel `SpeciesLabel` row |
+| `dive_images_preprocessed` | `has_prediction_clusters` AND every image carrying a *valid* laser label (completed, not superseded, x/y both set) has a non-sentinel `SpeciesLabel` row |
 | `species_labeling_complete` | ≥1 completed `SpeciesLabel` AND zero incomplete (no `superseded` column on this model) |
 | `slate_applicable` | `dive_slate_id IS NOT NULL` |
 | `slate_preprocessed` | every image with `SpeciesLabel.content_of_image='Slate, Laser on slate'` has a non-sentinel `DiveSlateLabel` row |
@@ -283,16 +321,23 @@ runtime image (`uv sync --no-editable` only installs the package
 source); `run_alembic_upgrade` builds the Config programmatically with
 `script_location` pointed at `<package>/alembic`.
 
-Stage 1 (clustering) does NOT yet have a parent — its data-worker
-workflow returns clusters but doesn't write them back to the DB, so
-adding a parent requires deciding whether the parent persists the
-output (via `images.post_cluster`) or whether the workflow itself
-gains a write step. Defer until a real consumer needs it.
+Stage 1 (clustering) was promoted to an automated parent on
+2026-05-05. The api-worker's `ClusterDiveFramesParentWorkflow` runs
+selector → resolver → data-worker child (`DiveFrameClusteringWorkflow`)
+→ persist. The child returns `list[list[int]]` of image_ids per
+cluster; the persist activity POSTs one
+`DiveFrameCluster(data_source=PREDICTION)` per id-list via
+`images.post_cluster`. No NAS staging or file-exchange traffic —
+clustering is pure math on `(image_id, taken_datetime)` pairs. The
+cohort selector excludes dives that already have *any* PREDICTION
+cluster, so this is one-shot per dive; an operator must drop partial
+PREDICTION rows manually if a parent run failed mid-persist (the
+cohort would otherwise skip the dive forever).
 
-Stages 13 and 14 are structurally lighter than the four preprocess
-parents: pure SDK math, no NAS staging, no file-exchange JPEGs, no
-per-image fan-out. Their selector + child-dispatch parents have only
-two activity calls (selector → `start_child_workflow`); the data-worker
+Stages 13 and 14 are structurally lighter than the preprocess parents:
+pure SDK math, no NAS staging, no file-exchange JPEGs, no per-image
+fan-out. Their selector + child-dispatch parents have only two
+activity calls (selector → `start_child_workflow`); the data-worker
 keeps SDK fetches inline because the math kernels need opencv +
 fishsense-core, so splitting fetch/math across workers would add 5+
 activity handoffs per dive for no gain.
@@ -744,11 +789,14 @@ activity inside the workflow body to materialize the per-dive
 project (titled `"{dive.name} - <Stage> Labeling"`), then runs the
 populate activity against that one project. The four
 `<STAGE>_LABELING_CONFIG_XML` constants are real pasted-from-prod
-XML, so Create-on-fresh-deploy stands up a usable project
-immediately. There is no discovery query or fan-out — each dive
-owns one project per stage.
+XML (species XML refreshed 2026-05-05 — laser keypoints removed,
+"Slate upside down" removed, Slate sub-choices expanded with
+H-Slate / Tic-Tac-Toe 1..6 / V-Slate 1..4, Fish Model branch added),
+so Create-on-fresh-deploy stands up a usable project immediately.
+There is no discovery query or fan-out — each dive owns one project
+per stage.
 
-The populate workflows are dispatched automatically by the four
+The populate workflows are dispatched automatically by the
 preprocess parents (see "Cross-worker orchestration pattern"); manual
 `temporal workflow start` is only needed for backfill of dives the
 auto-chain has already cleared, or to recover from a populate that

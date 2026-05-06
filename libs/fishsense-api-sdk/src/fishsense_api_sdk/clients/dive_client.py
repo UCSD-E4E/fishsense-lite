@@ -81,6 +81,10 @@ class DiveClient(ClientBase):
             _LaserExtrinsics.model_validate(json)
         )
 
+    async def select_next_for_dive_frame_clustering(self) -> int | None:
+        """Stage 1 cohort selector. See `select_next_for_laser_preprocessing`."""
+        return await self._select_next("dive-frame-clustering")
+
     async def select_next_for_laser_preprocessing(self) -> int | None:
         """Stage 0.1 cohort selector: returns the next HIGH-priority
         dive needing laser preprocessing, or None when the cohort is
@@ -89,9 +93,9 @@ class DiveClient(ClientBase):
         """
         return await self._select_next("laser-preprocessing")
 
-    async def select_next_for_dive_image_preprocessing(self) -> int | None:
+    async def select_next_for_species_preprocessing(self) -> int | None:
         """Stage 2 cohort selector. See `select_next_for_laser_preprocessing`."""
-        return await self._select_next("dive-image-preprocessing")
+        return await self._select_next("species-preprocessing")
 
     async def select_next_for_headtail_preprocessing(self) -> int | None:
         """Stage 5.1 cohort selector. See `select_next_for_laser_preprocessing`."""

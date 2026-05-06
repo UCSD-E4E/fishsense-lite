@@ -56,6 +56,9 @@ from fishsense_api_workflow_worker.activities.get_laser_label_studio_project_ids
 from fishsense_api_workflow_worker.activities.get_species_label_studio_project_ids_activity import (  # pylint: disable=line-too-long
     get_species_label_studio_project_ids_activity,
 )
+from fishsense_api_workflow_worker.activities.persist_dive_frame_clusters_activity import (  # pylint: disable=line-too-long
+    persist_dive_frame_clusters_activity,
+)
 from fishsense_api_workflow_worker.activities.populate_dive_slate_label_studio_project_activity import (  # pylint: disable=line-too-long
     populate_dive_slate_label_studio_project_activity,
 )
@@ -68,8 +71,11 @@ from fishsense_api_workflow_worker.activities.populate_laser_label_studio_projec
 from fishsense_api_workflow_worker.activities.populate_species_label_studio_project_activity import (  # pylint: disable=line-too-long
     populate_species_label_studio_project_activity,
 )
-from fishsense_api_workflow_worker.activities.resolve_dive_image_preprocess_inputs_activity import (  # pylint: disable=line-too-long
-    resolve_dive_image_preprocess_inputs_activity,
+from fishsense_api_workflow_worker.activities.resolve_dive_frame_clustering_inputs_activity import (  # pylint: disable=line-too-long
+    resolve_dive_frame_clustering_inputs_activity,
+)
+from fishsense_api_workflow_worker.activities.resolve_species_preprocess_inputs_activity import (  # pylint: disable=line-too-long
+    resolve_species_preprocess_inputs_activity,
 )
 from fishsense_api_workflow_worker.activities.resolve_headtail_preprocess_inputs_activity import (  # pylint: disable=line-too-long
     resolve_headtail_preprocess_inputs_activity,
@@ -80,8 +86,11 @@ from fishsense_api_workflow_worker.activities.resolve_laser_preprocess_inputs_ac
 from fishsense_api_workflow_worker.activities.resolve_slate_preprocess_inputs_activity import (  # pylint: disable=line-too-long
     resolve_slate_preprocess_inputs_activity,
 )
-from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_dive_image_preprocessing_activity import (  # pylint: disable=line-too-long
-    select_next_high_priority_dive_for_dive_image_preprocessing_activity,
+from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_clustering_activity import (  # pylint: disable=line-too-long
+    select_next_high_priority_dive_for_clustering_activity,
+)
+from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_species_preprocessing_activity import (  # pylint: disable=line-too-long
+    select_next_high_priority_dive_for_species_preprocessing_activity,
 )
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_headtail_preprocessing_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_headtail_preprocessing_activity,
@@ -147,14 +156,17 @@ from fishsense_api_workflow_worker.workflows.populate_laser_label_studio_project
 from fishsense_api_workflow_worker.workflows.populate_species_label_studio_project_workflow import (  # pylint: disable=line-too-long
     PopulateSpeciesLabelStudioProjectWorkflow,
 )
+from fishsense_api_workflow_worker.workflows.cluster_dive_frames_parent_workflow import (  # pylint: disable=line-too-long
+    ClusterDiveFramesParentWorkflow,
+)
 from fishsense_api_workflow_worker.workflows.measure_fish_parent_workflow import (  # pylint: disable=line-too-long
     MeasureFishParentWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.perform_laser_calibration_parent_workflow import (  # pylint: disable=line-too-long
     PerformLaserCalibrationParentWorkflow,
 )
-from fishsense_api_workflow_worker.workflows.preprocess_dive_images_parent_workflow import (  # pylint: disable=line-too-long
-    PreprocessDiveImagesParentWorkflow,
+from fishsense_api_workflow_worker.workflows.preprocess_species_images_parent_workflow import (  # pylint: disable=line-too-long
+    PreprocessSpeciesImagesParentWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.preprocess_headtail_images_parent_workflow import (  # pylint: disable=line-too-long
     PreprocessHeadtailImagesParentWorkflow,
@@ -278,6 +290,25 @@ async def schedule_workflows(client: Client):
             # so their selectors don't all hit `dives.get()` at the same
             # instant on the top of the hour. Stage-2 child can run
             # ~2h on a deep cluster; the others fit in 1h.
+            #
+            # Stage 1 (clustering) cascades from valid laser labels
+            # (same trigger as 5.1) and lands PREDICTION clusters that
+            # stage 2 then consumes. Slotted at +5 min so it has a
+            # head start on the +15 stage-2 firing — clustering on a
+            # ~hundred-image dive completes in seconds, so a single
+            # +5/+15 schedule pair clears the laser→clustering→species
+            # chain in one hour. SKIP overlap: same selector-race guard.
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "cluster-dive-frames-workflow-schedule",
+                    ClusterDiveFramesParentWorkflow,
+                    timedelta(hours=1),
+                    offset=timedelta(minutes=5),
+                    run_timeout=timedelta(minutes=30),
+                    overlap=ScheduleOverlapPolicy.SKIP,
+                )
+            )
             tg.create_task(
                 schedule_workflow(
                     client,
@@ -291,8 +322,8 @@ async def schedule_workflows(client: Client):
             tg.create_task(
                 schedule_workflow(
                     client,
-                    "preprocess-dive-images-workflow-schedule",
-                    PreprocessDiveImagesParentWorkflow,
+                    "preprocess-species-images-workflow-schedule",
+                    PreprocessSpeciesImagesParentWorkflow,
                     timedelta(hours=1),
                     offset=timedelta(minutes=15),
                     run_timeout=timedelta(hours=2),
@@ -369,8 +400,9 @@ async def main():
                 PopulateHeadTailLabelStudioProjectWorkflow,
                 PopulateDiveSlateLabelStudioProjectWorkflow,
                 UpdateDiveImageGroupsWorkflow,
+                ClusterDiveFramesParentWorkflow,
                 PreprocessLaserImagesParentWorkflow,
-                PreprocessDiveImagesParentWorkflow,
+                PreprocessSpeciesImagesParentWorkflow,
                 PreprocessHeadtailImagesParentWorkflow,
                 PreprocessSlateImagesParentWorkflow,
                 PerformLaserCalibrationParentWorkflow,
@@ -397,12 +429,15 @@ async def main():
                 populate_headtail_label_studio_project_activity,
                 populate_dive_slate_label_studio_project_activity,
                 update_dive_image_groups_activity,
+                resolve_dive_frame_clustering_inputs_activity,
                 resolve_laser_preprocess_inputs_activity,
-                resolve_dive_image_preprocess_inputs_activity,
+                resolve_species_preprocess_inputs_activity,
                 resolve_headtail_preprocess_inputs_activity,
                 resolve_slate_preprocess_inputs_activity,
+                persist_dive_frame_clusters_activity,
+                select_next_high_priority_dive_for_clustering_activity,
                 select_next_high_priority_dive_for_laser_preprocessing_activity,
-                select_next_high_priority_dive_for_dive_image_preprocessing_activity,
+                select_next_high_priority_dive_for_species_preprocessing_activity,
                 select_next_high_priority_dive_for_headtail_preprocessing_activity,
                 select_next_high_priority_dive_for_slate_preprocessing_activity,
                 select_next_high_priority_dive_for_laser_calibration_activity,

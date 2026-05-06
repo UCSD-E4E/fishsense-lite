@@ -1,16 +1,28 @@
-"""Unit tests for populate_species_label_studio_project_activity."""
+"""Unit tests for populate_species_label_studio_project_activity.
+
+Correctness invariant particular to species (post 2026-05-05): only
+images carrying a *valid* LaserLabel (completed=True, superseded=False,
+both x/y populated) are candidates — same gate as head/tail. Cascades
+from laser labelers + the validator signing off.
+
+Unlike head/tail, there is no supersede pass here because
+`SpeciesLabel` has no `superseded` column. The cohort selector's
+"no non-sentinel species row" predicate is what prevents re-imports;
+a partial prior run's stale rows linger until manual cleanup.
+"""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from typing import List
+from typing import List, Optional
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from temporalio.testing import ActivityEnvironment
 
 from fishsense_api_sdk.models.image import Image
+from fishsense_api_sdk.models.laser_label import LaserLabel
 from fishsense_api_sdk.models.species_label import SpeciesLabel
 from fishsense_api_workflow_worker.activities import (
     populate_species_label_studio_project_activity as sut,
@@ -30,16 +42,47 @@ def _image(image_id: int, checksum: str) -> Image:
     )
 
 
-def _label(
-    image_id: int, *, completed: bool, project_id: int | None = 70
+def _laser(
+    image_id: int,
+    *,
+    completed: bool = True,
+    superseded: bool = False,
+    x: Optional[float] = 100.0,
+    y: Optional[float] = 200.0,
+) -> LaserLabel:
+    return LaserLabel(
+        id=image_id * 7,
+        label_studio_task_id=image_id * 10,
+        label_studio_project_id=43,
+        x=x,
+        y=y,
+        label="laser",
+        updated_at=None,
+        superseded=superseded,
+        completed=completed,
+        label_studio_json={},
+        image_id=image_id,
+        user_id=None,
+    )
+
+
+def _species_label(
+    image_id: int,
+    *,
+    completed: bool,
+    has_id: bool = True,
+    project_id: int | None = 70,
 ) -> SpeciesLabel:
     return SpeciesLabel(
-        id=None,
-        label_studio_task_id=image_id * 10,
+        id=image_id * 1000 if has_id else None,
+        label_studio_task_id=image_id * 11,
         label_studio_project_id=project_id,
         image_url=None,
         updated_at=None,
         completed=completed,
+        label_studio_json={},
+        image_id=image_id,
+        user_id=None,
         grouping=None,
         top_three_photos_of_group=None,
         slate_upside_down=None,
@@ -50,36 +93,31 @@ def _label(
         fish_measurable_category=None,
         fish_angle_category=None,
         fish_curved_category=None,
-        label_studio_json={},
-        image_id=image_id,
-        user_id=None,
     )
 
 
-def test_select_unlabeled_excludes_images_with_any_completed_label():
-    images = [_image(1, "a"), _image(2, "b"), _image(3, "c")]
-    existing = [_label(1, completed=True), _label(2, completed=False)]
-
-    result = sut._select_unlabeled_images(images, existing)  # pylint: disable=protected-access
-
-    assert [img.id for img in result] == [2, 3]
-
-
-def test_select_unlabeled_handles_multi_row_state():
-    """Same multi-row hardening as the laser populate. An image with
-    a completed row in one project plus an incomplete sentinel in
-    another is treated as labeled — the previous dict-collapse filter
-    could go either way depending on iteration order."""
-    images = [_image(1, "a"), _image(2, "b")]
-    existing = [
-        _label(1, completed=True, project_id=70),
-        _label(1, completed=False, project_id=None),
-        _label(2, completed=False, project_id=70),
+def test_select_targets_filters_by_valid_laser_and_drops_completed():
+    laser = [
+        _laser(1),                             # valid + completed species -> drop
+        _laser(2, completed=False),            # incomplete laser -> drop
+        _laser(3),                             # valid + no species -> keep
+        _laser(4, superseded=True),            # superseded laser -> drop
+        _laser(5, x=None),                     # null x -> drop
+        _laser(6, y=None),                     # null y -> drop
     ]
+    images_by_id = {
+        1: _image(1, "a"),
+        2: _image(2, "b"),
+        3: _image(3, "c"),
+        4: _image(4, "d"),
+        5: _image(5, "e"),
+        6: _image(6, "f"),
+    }
+    existing = [_species_label(1, completed=True)]
 
-    result = sut._select_unlabeled_images(images, existing)  # pylint: disable=protected-access
+    selected = sut._select_target_images(laser, images_by_id, existing)  # pylint: disable=protected-access
 
-    assert [img.id for img in result] == [2]
+    assert [img.id for img in selected] == [3]
 
 
 def test_build_task_uses_groups_jpeg_folder_and_dual_keys(monkeypatch):
@@ -100,14 +138,24 @@ def test_build_task_uses_groups_jpeg_folder_and_dual_keys(monkeypatch):
     assert not task["predictions"]
 
 
-def _make_fs_client(images: List[Image], existing_labels: List[SpeciesLabel]):
+def _make_fs_client(
+    laser_labels: List[LaserLabel],
+    existing_species: List[SpeciesLabel],
+    images_by_id: dict,
+):
     fs = MagicMock()
     fs.__aenter__ = AsyncMock(return_value=fs)
     fs.__aexit__ = AsyncMock(return_value=None)
+
+    async def _get_image(image_id: int):
+        return images_by_id.get(image_id)
+
     fs.images = MagicMock()
-    fs.images.get = AsyncMock(return_value=images)
+    fs.images.get = AsyncMock(side_effect=_get_image)
+
     fs.labels = MagicMock()
-    fs.labels.get_species_labels = AsyncMock(return_value=existing_labels)
+    fs.labels.get_laser_labels = AsyncMock(return_value=laser_labels)
+    fs.labels.get_species_labels = AsyncMock(return_value=existing_species)
     fs.labels.put_species_label = AsyncMock()
     return fs
 
@@ -122,12 +170,33 @@ def _make_ls_client(returned_task_ids: List[int]):
 
 
 @pytest.mark.asyncio
-async def test_imports_tasks_and_writes_one_label_per_incomplete_image(monkeypatch):
-    images = [_image(1, "a"), _image(2, "b"), _image(3, "c")]
-    existing = [_label(1, completed=True)]
+async def test_imports_targets_and_writes_new_labels(monkeypatch):
+    """Image 1 has a completed old row -> skip. Image 2 has an
+    incomplete old row with id -> get a new task. Image 3 is fresh ->
+    get a new task. Image 4 has an incomplete old row but no id -> get
+    a new task. The activity writes only fresh (id=None) rows; stale
+    incomplete rows are left in place because SpeciesLabel has no
+    `superseded` column."""
+    laser = [
+        _laser(1),
+        _laser(2),
+        _laser(3),
+        _laser(4),
+    ]
+    images_by_id = {
+        1: _image(1, "a"),
+        2: _image(2, "b"),
+        3: _image(3, "c"),
+        4: _image(4, "d"),
+    }
+    existing = [
+        _species_label(1, completed=True),
+        _species_label(2, completed=False, has_id=True),
+        _species_label(4, completed=False, has_id=False),
+    ]
 
-    fs = _make_fs_client(images, existing)
-    ls = _make_ls_client(returned_task_ids=[2001, 2002])
+    fs = _make_fs_client(laser, existing, images_by_id)
+    ls = _make_ls_client(returned_task_ids=[3001, 3002, 3003])
 
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
     monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
@@ -136,21 +205,21 @@ async def test_imports_tasks_and_writes_one_label_per_incomplete_image(monkeypat
         sut.populate_species_label_studio_project_activity, 42, 70
     )
 
-    assert n == 2
-    assert fs.labels.put_species_label.await_count == 2
+    assert n == 3
+
     written = [c.args[1] for c in fs.labels.put_species_label.await_args_list]
-    assert {label.image_id for label in written} == {2, 3}
-    assert {label.label_studio_task_id for label in written} == {2001, 2002}
-    assert all(label.label_studio_project_id == 70 for label in written)
-    assert all(label.image_url and "groups_jpeg" in label.image_url for label in written)
+    assert all(w.id is None for w in written)
+    assert {w.image_id for w in written} == {2, 3, 4}
 
 
 @pytest.mark.asyncio
-async def test_no_incomplete_images_is_a_no_op(monkeypatch):
-    images = [_image(1, "a")]
-    existing = [_label(1, completed=True)]
+async def test_no_valid_laser_targets_is_a_no_op(monkeypatch):
+    """No laser-valid images -> no task import, no label writes."""
+    laser = [_laser(1, completed=False)]
+    images_by_id = {1: _image(1, "a")}
+    existing = [_species_label(1, completed=False, has_id=True)]
 
-    fs = _make_fs_client(images, existing)
+    fs = _make_fs_client(laser, existing, images_by_id)
     ls = _make_ls_client(returned_task_ids=[])
 
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
@@ -163,3 +232,37 @@ async def test_no_incomplete_images_is_a_no_op(monkeypatch):
     assert n == 0
     ls.projects.import_tasks.assert_not_called()
     fs.labels.put_species_label.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_writes_label_with_image_url_and_groups_jpeg_folder(monkeypatch):
+    """The post-2026-05-05 species populate writes a label whose
+    image_url uses the `groups_jpeg` folder, matching the LS task
+    URL — so downstream sync can recover the JPEG from the row."""
+    monkeypatch.setenv(
+        "E4EFS_LABEL_STUDIO__IMAGE_URL_BASE", "https://orchestrator.example.com"
+    )
+    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    cfg.settings.reload()
+
+    laser = [_laser(1)]
+    images_by_id = {1: _image(1, "abc123")}
+    existing = []
+
+    fs = _make_fs_client(laser, existing, images_by_id)
+    ls = _make_ls_client(returned_task_ids=[5001])
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    await ActivityEnvironment().run(
+        sut.populate_species_label_studio_project_activity, 42, 70
+    )
+
+    written = fs.labels.put_species_label.await_args.args[1]
+    assert written.image_id == 1
+    assert written.label_studio_task_id == 5001
+    assert written.label_studio_project_id == 70
+    assert written.image_url is not None
+    assert "groups_jpeg" in written.image_url
+    assert "abc123" in written.image_url
