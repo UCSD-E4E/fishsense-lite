@@ -48,7 +48,7 @@ jobs:
           # `promotable` controls the GHCR image retag step.
           # `deployable` controls whether we open a compose-pin PR.
           case "$package" in
-            fishsense-api|fishsense-api-workflow-worker|fishsense-backup-worker|fishsense-data-processing-workflow-worker)
+            fishsense-api|fishsense-api-workflow-worker|fishsense-backup-worker|fishsense-data-processing-workflow-worker|fishsense-lite-web)
               promotable=true
               deployable=true
               ;;

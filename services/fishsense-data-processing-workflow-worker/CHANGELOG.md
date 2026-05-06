@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.3.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.3.0...fishsense-data-processing-workflow-worker-v2.3.1) (2026-05-05)
+
+
+### Bug Fixes
+
+* **data-worker:** silence pylint unused-argument on timeout-test stubs ([5f3b81b](https://github.com/UCSD-E4E/fishsense-lite/commit/5f3b81b4ef9f7eef5a254aaf02d4bf22edd2c2ee))
+* **data-worker:** use start_to_close on per-image preprocess activities ([4bea338](https://github.com/UCSD-E4E/fishsense-lite/commit/4bea33863731cbcf598d4d6f04fa83dc84ad7b83))
+* **data-worker:** use start_to_close on per-image preprocess activities ([1fe1193](https://github.com/UCSD-E4E/fishsense-lite/commit/1fe11938d9ebe047bc6b1b7779455b31c53a7285))
+
+## [2.3.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.2.4...fishsense-data-processing-workflow-worker-v2.3.0) (2026-05-05)
+
+
+### Features
+
+* **workers:** heartbeat activity loops for progress visibility ([d19771f](https://github.com/UCSD-E4E/fishsense-lite/commit/d19771fcbc475a167a4a772ec5f57b133394b971))
+* **workers:** heartbeat activity loops for progress visibility ([c6e9448](https://github.com/UCSD-E4E/fishsense-lite/commit/c6e94480d35c1e8d42318332d762e097368d1b6e))
+
 ## [2.2.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.2.3...fishsense-data-processing-workflow-worker-v2.2.4) (2026-05-04)
 
 

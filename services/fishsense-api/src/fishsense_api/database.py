@@ -7,6 +7,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
+import sqlalchemy as sa
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -60,12 +61,44 @@ class Database:
         await self.engine.dispose()
 
 
+async def _has_alembic_version_table() -> bool:
+    """Whether the current DB already has the alembic_version table.
+
+    Used as the fresh-vs-existing DB signal by `run_alembic_upgrade`.
+    Async because asyncpg is the only Postgres driver in the runtime
+    image; spinning up a sync engine would require psycopg2 as a
+    new dep.
+    """
+    engine = create_async_engine(pg_connection_string())
+    try:
+        async with engine.connect() as conn:
+            return await conn.run_sync(
+                lambda c: sa.inspect(c).has_table("alembic_version")
+            )
+    finally:
+        await engine.dispose()
+
+
 def run_alembic_upgrade() -> None:
-    """Apply pending alembic migrations up to the latest revision.
+    """Apply pending migrations OR stamp head on a fresh DB.
 
     Invoked from the FastAPI lifespan so a deploy that ships a new
     migration (e.g. the `dive_pipeline_status` view) doesn't require
     a manual operator step.
+
+    On a **fresh DB** (no `alembic_version` table), the lifespan's
+    prior `SQLModel.metadata.create_all` call has just populated the
+    full ORM-defined schema. Running the historical migration tail
+    on top would crash on every pre-existing column / table /
+    constraint — `add_column`, `create_table`, and
+    `create_unique_constraint` ops in the historical migrations
+    weren't written idempotent against `create_all`. Stamp head
+    instead to mark the DB as fully migrated without doing any DDL.
+
+    On an **existing DB** (alembic_version present), upgrade as
+    normal — any new migrations land on top. New migrations going
+    forward must still be idempotent against `create_all` because
+    `create_all` keeps running before this on every restart.
 
     The Config is built programmatically because `alembic.ini` does
     NOT ship inside the wheel — `uv sync --no-editable` only installs
@@ -76,14 +109,20 @@ def run_alembic_upgrade() -> None:
     Sync API; callers should offload to a worker thread
     (`asyncio.to_thread`) to avoid blocking the event loop, since
     `command.upgrade` opens its own engine and runs DDL synchronously
-    via the async-engine bridge in `alembic/env.py`.
+    via the async-engine bridge in `alembic/env.py`. The
+    `_has_alembic_version_table` check uses `asyncio.run` because we
+    are already off the FastAPI event-loop thread.
     """
     cfg = AlembicConfig()
     cfg.set_main_option(
         "script_location",
         str(Path(__file__).resolve().parent / "alembic"),
     )
-    alembic_command.upgrade(cfg, "head")
+
+    if asyncio.run(_has_alembic_version_table()):
+        alembic_command.upgrade(cfg, "head")
+    else:
+        alembic_command.stamp(cfg, "head")
 
 
 _session_factory: sessionmaker | None = None  # pylint: disable=invalid-name

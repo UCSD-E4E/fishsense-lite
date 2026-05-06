@@ -82,15 +82,18 @@ async def _gather_laser_points(
     laser_points: list[np.ndarray] = []
     for label in dive_slate_labels:
         if label.image_id is None:
+            activity.heartbeat()
             continue
         laser_label = await fs.labels.get_laser_label(image_id=label.image_id)
         if laser_label is None or laser_label.x is None or laser_label.y is None:
+            activity.heartbeat()
             continue
         point = _laser_point_in_camera_space(
             label, laser_label, slate, camera_intrinsics
         )
         if point is not None:
             laser_points.append(point)
+        activity.heartbeat()
     return laser_points
 
 

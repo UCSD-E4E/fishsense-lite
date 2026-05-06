@@ -23,7 +23,10 @@
         "charliermarsh.ruff",
         "tamasfe.even-better-toml",
         "ms-azuretools.vscode-docker",
-        "ms-toolsai.jupyter"
+        "ms-toolsai.jupyter",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss"
       ],
       "settings": {
         "python.defaultInterpreterPath": "${containerWorkspaceFolder}/.venv/bin/python",
@@ -32,13 +35,15 @@
       }
     }
   },
-  "forwardPorts": [5432, 7233, 8000, 8080, 8233],
+  "forwardPorts": [3000, 5432, 7233, 8000, 8080, 8082, 8233],
   "portsAttributes": {
+    "3000": { "label": "fishsense-lite-web (next)" },
     "5432": { "label": "postgres" },
     "7233": { "label": "temporal-grpc" },
     "8000": { "label": "fishsense-api" },
     "8080": { "label": "static-file-server (nginx)" },
+    "8082": { "label": "label-studio" },
     "8233": { "label": "temporal-ui" }
   },
-  "postCreateCommand": "uv sync --all-packages --all-groups"
+  "postCreateCommand": "uv sync --all-packages --all-groups && npm install --prefix apps/fishsense-lite-web --no-audit --no-fund"
 }

@@ -143,10 +143,12 @@ and current status.
   the three sync-back workflows scheduled hourly
   (`SyncLabelStudioLaserLabelsWorkflow`,
   `SyncLabelStudioHeadTailLabelsWorkflow`,
-  `SyncLabelStudioDiveSlateLabelsWorkflow`), the dashboard-config
-  writer, and the laser-calibration + measurement workflows
+  `SyncLabelStudioDiveSlateLabelsWorkflow`), and the laser-
+  calibration + measurement workflows
   (`PerformLaserCalibrationWorkflow`, `MeasureFishWorkflow` —
-  both data-worker, on-demand).
+  both data-worker, on-demand). The mafl dashboard config writer
+  was removed when the dashboard moved to `apps/fishsense-lite-web/` (Next.js SSR
+  reads the same data live, no nightly batch needed).
 * **Still needed before a fresh dive can be measured end-to-end in
   the monorepo:** stage 6.1 (cluster reconciliation), plus the
   real-frame regression for stages 13 + 14 against historical
@@ -155,13 +157,12 @@ and current status.
 
 ## Workflow scheduling vs on-demand
 
-Of the workflows registered with the api-worker, four are on a
+Of the workflows registered with the api-worker, three are on a
 Temporal schedule (all hourly):
 
 * `SyncLabelStudioLaserLabelsWorkflow`
 * `SyncLabelStudioHeadTailLabelsWorkflow`
 * `SyncLabelStudioDiveSlateLabelsWorkflow`
-* `UpdateDashboardConfigWorkflow`
 
 The eight `Create*` and `Populate*` workflows are **on-demand**:
 

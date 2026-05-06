@@ -12,14 +12,13 @@
 
 services:
   fishsense-api-workflow-worker:
-    image: ghcr.io/ucsd-e4e/fishsense-api-workflow-worker:v1.32.1
+    image: ghcr.io/ucsd-e4e/fishsense-api-workflow-worker:v1.34.0
     depends_on:
       - temporal
     volumes:
       - ./temporal_volumes/certs:/certs:ro
       - ./worker_volumes/api_worker/config:/e4efs/config:ro
       - ./worker_volumes/api_worker/logs:/e4efs/logs:rw
-      - ./mafl_volumes/data/config.yml:/config/dashboard_config.yaml:rw
     # `default` for fishsense-temporal (compose.temporal.yml); `traefik_proxy`
     # for fishsense-api + static_file_server (compose.orchestrator.yml). The
     # SDK calls into fishsense-api on the internal hostname bypass the public
@@ -32,7 +31,7 @@ services:
       replicas: 2
 
   fishsense-backup-worker:
-    image: ghcr.io/ucsd-e4e/fishsense-backup-worker:v0.2.4
+    image: ghcr.io/ucsd-e4e/fishsense-backup-worker:v0.3.0
     depends_on:
       - temporal
     volumes:

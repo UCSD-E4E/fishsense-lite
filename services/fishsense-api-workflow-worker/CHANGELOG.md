@@ -2,6 +2,27 @@
 
 <!-- version list -->
 
+## [1.34.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.33.0...fishsense-api-workflow-worker-v1.34.0) (2026-05-05)
+
+
+### Features
+
+* **workers:** heartbeat activity loops for progress visibility ([d19771f](https://github.com/UCSD-E4E/fishsense-lite/commit/d19771fcbc475a167a4a772ec5f57b133394b971))
+* **workers:** heartbeat activity loops for progress visibility ([c6e9448](https://github.com/UCSD-E4E/fishsense-lite/commit/c6e94480d35c1e8d42318332d762e097368d1b6e))
+
+## [1.33.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.32.1...fishsense-api-workflow-worker-v1.33.0) (2026-05-05)
+
+
+### Features
+
+* **api-worker:** per-dive Label Studio projects (one project per dive per stage) ([2cff661](https://github.com/UCSD-E4E/fishsense-lite/commit/2cff6613ada94d8a118fd0723d93db0d024388fe))
+
+
+### Bug Fixes
+
+* **api-worker:** cap per-dive LS project titles at LS's 50-char limit ([246215c](https://github.com/UCSD-E4E/fishsense-lite/commit/246215c81460af25a57b61943eb247d24ab4cfba))
+* **api-worker:** make _patch_dive_lookup stub accept kwargs ([b05deef](https://github.com/UCSD-E4E/fishsense-lite/commit/b05deef34a7effb3eb896473b06d4beafe83cba8))
+
 ## [1.32.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.32.0...fishsense-api-workflow-worker-v1.32.1) (2026-05-04)
 
 

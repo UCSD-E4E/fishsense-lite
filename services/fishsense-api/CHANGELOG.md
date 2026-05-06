@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## [1.27.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.27.2...fishsense-api-v1.27.3) (2026-05-05)
+
+
+### Bug Fixes
+
+* **api:** make 3770d7474078 migration idempotent vs create_all ([0fd59c6](https://github.com/UCSD-E4E/fishsense-lite/commit/0fd59c6010df816858ca73c31a0fb5902658b821))
+* **api:** stamp head on fresh DB instead of running historical migrations ([7a60dbd](https://github.com/UCSD-E4E/fishsense-lite/commit/7a60dbdbb571d1cb3585f45ed3592e1c5587e0da))
+
+
+### Documentation
+
+* TDD convention + service map + READMEs refresh post-mafl ([e844bfe](https://github.com/UCSD-E4E/fishsense-lite/commit/e844bfe823298a772e87d1fa76d0e182dd103fb8))
+
 ## [1.27.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.27.1...fishsense-api-v1.27.2) (2026-05-05)
 
 

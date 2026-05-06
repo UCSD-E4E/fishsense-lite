@@ -8,6 +8,7 @@ from typing import List
 
 from temporalio import activity
 
+from fishsense_backup_worker.activities._heartbeat import heartbeat_pump
 from fishsense_backup_worker.backup_naming import filenames_to_prune
 from fishsense_backup_worker.config import settings
 from fishsense_backup_worker.nas import NasBackupClient
@@ -54,12 +55,13 @@ async def prune_database_backups(payload) -> None:  # type: ignore[no-untyped-de
         payload.keep,
     )
 
-    pruned = await asyncio.to_thread(
-        _prune,
-        db_name=payload.db_name,
-        nas_root_path=payload.nas_root_path,
-        keep=payload.keep,
-    )
+    async with heartbeat_pump():
+        pruned = await asyncio.to_thread(
+            _prune,
+            db_name=payload.db_name,
+            nas_root_path=payload.nas_root_path,
+            keep=payload.keep,
+        )
 
     activity.logger.info(
         "prune_database_backups done db=%s pruned_count=%d",

@@ -1,9 +1,11 @@
 # fishsense-api-workflow-worker
 
-Temporal worker for api-side orchestration — currently the
-Label Studio sync workflows and the Superset dashboard config writer.
-Talks to `fishsense-api` (via `fishsense-api-sdk`), Label Studio (via
-`label-studio-sdk`), and the E4E NAS.
+Temporal worker for api-side orchestration — Label Studio sync
+workflows, Create/Populate × {Laser, Species, HeadTail, DiveSlate}
+project workflows, and the four hourly preprocess parents that
+dispatch per-image work to the data-worker. Talks to `fishsense-api`
+(via `fishsense-api-sdk`), Label Studio (via `label-studio-sdk`), and
+the E4E NAS.
 
 Task queue: `fishsense_api_queue`.
 
@@ -13,7 +15,6 @@ Task queue: `fishsense_api_queue`.
 |---|---|---|
 | `SyncLabelStudioLaserLabelsWorkflow` | every 1 h | Pull laser labels from Label Studio projects → write to fishsense-api. |
 | `SyncLabelStudioHeadTailLabelsWorkflow` | every 1 h | Same shape for head/tail labels. |
-| `UpdateDashboardConfigWorkflow` | every 1 h | Render the Superset dashboard config from current api state. |
 | `Create<Stage>LabelStudioProjectWorkflow` × 4 | on-demand | Idempotently create the LS project for a stage (laser / species / headtail / dive_slate). Title-lookup or create from labeling-config XML. |
 | `Populate<Stage>LabelStudioProjectWorkflow(dive_id)` × 4 | on-demand | Query SQL for active LS projects (`incomplete=True`), fan out task imports across them with `Semaphore(4)`. |
 | `PreprocessLaserImagesParentWorkflow` | every 1 h (`overlap=SKIP`) | Stage-0.1 orchestrator: select → resolve → stage raw `.ORF`s NAS→file-exchange → dispatch `PreprocessLaserImagesWorkflow` → archive JPEGs file-exchange→NAS → cleanup raw `.ORF`s. |
