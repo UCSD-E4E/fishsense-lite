@@ -733,7 +733,7 @@ dependencies = [
     { name = "platformdirs" },
     { name = "pyaml" },
     { name = "pymupdf" },
-    { name = "synology-api" },
+    { name = "synology-filestation" },
     { name = "temporalio" },
     { name = "validators" },
 ]
@@ -759,7 +759,7 @@ requires-dist = [
     { name = "platformdirs", specifier = ">=4.3.8" },
     { name = "pyaml", specifier = ">=25.7.0" },
     { name = "pymupdf", specifier = ">=1.24.0" },
-    { name = "synology-api", specifier = ">=0.8.1" },
+    { name = "synology-filestation", url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.1.17/synology_filestation-0.1.17-cp39-abi3-manylinux_2_34_x86_64.whl" },
     { name = "temporalio", specifier = ">=1.15.0" },
     { name = "validators", specifier = ">=0.35.0" },
 ]
@@ -3016,6 +3016,18 @@ sdist = { url = "https://files.pythonhosted.org/packages/0f/fd/0201ace8938202fe4
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a0/9b/343db559db527dfefdf4246613cab6ef7329a6fad2e459e3c7d6bb05de9f/synology_api-0.8.2-py3-none-any.whl", hash = "sha256:e79b7fc801db32c1dda64698c28da6c1ade4b8d72c3dab1e6359c49feac46a98", size = 180097, upload-time = "2025-12-08T01:46:17.425Z" },
 ]
+
+[[package]]
+name = "synology-filestation"
+version = "0.1.17"
+source = { url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.1.17/synology_filestation-0.1.17-cp39-abi3-manylinux_2_34_x86_64.whl" }
+wheels = [
+    { url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.1.17/synology_filestation-0.1.17-cp39-abi3-manylinux_2_34_x86_64.whl", hash = "sha256:27d0c39222e5a2ef6a93a5d42fc297052ff22d28c60f8759a86413600f6283b5" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "fsspec", marker = "extra == 'fsspec'", specifier = ">=2023.10" }]
+provides-extras = ["fsspec"]
 
 [[package]]
 name = "temporalio"
