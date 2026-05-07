@@ -9,6 +9,10 @@ import { env } from "@/lib/env";
 export const { auth, handlers, signIn, signOut } = NextAuth(() => ({
   secret: env.authSecret,
   trustHost: true,
+  // Temporary diagnostic — surfaces internal NextAuth events
+  // (cookie decode failures, OAuth callback flow, jwt encode/decode)
+  // to stdout. Remove once the /portal session-null issue is resolved.
+  debug: true,
   session: { strategy: "jwt" },
   providers: [
     Authentik({

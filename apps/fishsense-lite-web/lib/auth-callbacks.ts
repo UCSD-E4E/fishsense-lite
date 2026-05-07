@@ -18,15 +18,24 @@ export async function jwtCallback({
   profile,
   user,
 }: JwtCallbackArgs): Promise<JWT> {
+  // Temporary diagnostic for the empty /portal user-info problem.
+  // Logs every invocation (initial sign-in *and* subsequent SSR
+  // calls) so we can see whether the callback runs at all, and what
+  // shape the token / profile is in. Remove once /portal is reliably
+  // populating session.user.
+  console.log("[auth] jwtCallback", {
+    hasAccount: !!account,
+    accountProvider: account?.provider,
+    accountType: account?.type,
+    profileKeys: profile ? Object.keys(profile) : null,
+    profile,
+    user,
+    tokenSub: token.sub,
+    tokenName: token.name,
+    tokenEmail: token.email,
+    tokenGroupsCount: Array.isArray(token.groups) ? token.groups.length : null,
+  });
   if (account) {
-    // Temporary diagnostic for the empty /portal user-info problem.
-    // Remove once the OIDC profile shape is confirmed in prod logs.
-    console.log("[auth] jwtCallback initial sign-in", {
-      account: { provider: account.provider, type: account.type, hasAccessToken: typeof account.access_token === "string" },
-      user,
-      profileKeys: profile ? Object.keys(profile) : null,
-      profile,
-    });
     if (typeof account.access_token === "string") {
       token.accessToken = account.access_token;
     }
@@ -47,6 +56,14 @@ interface SessionCallbackArgs {
 }
 
 export async function sessionCallback({ session, token }: SessionCallbackArgs): Promise<Session> {
+  // Temporary diagnostic — see jwtCallback comment above.
+  console.log("[auth] sessionCallback", {
+    tokenSub: token.sub,
+    tokenName: token.name,
+    tokenEmail: token.email,
+    tokenGroupsCount: Array.isArray(token.groups) ? token.groups.length : null,
+    hasAccessToken: typeof token.accessToken === "string",
+  });
   if (typeof token.accessToken === "string") {
     session.accessToken = token.accessToken;
   }
