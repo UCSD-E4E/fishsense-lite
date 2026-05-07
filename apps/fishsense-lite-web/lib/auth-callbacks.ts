@@ -19,6 +19,14 @@ export async function jwtCallback({
   user,
 }: JwtCallbackArgs): Promise<JWT> {
   if (account) {
+    // Temporary diagnostic for the empty /portal user-info problem.
+    // Remove once the OIDC profile shape is confirmed in prod logs.
+    console.log("[auth] jwtCallback initial sign-in", {
+      account: { provider: account.provider, type: account.type, hasAccessToken: typeof account.access_token === "string" },
+      user,
+      profileKeys: profile ? Object.keys(profile) : null,
+      profile,
+    });
     if (typeof account.access_token === "string") {
       token.accessToken = account.access_token;
     }

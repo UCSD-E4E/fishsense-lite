@@ -36,6 +36,15 @@ export default async function PortalPage() {
           <dd>{user?.groups?.length ? user.groups.join(", ") : "—"}</dd>
         </dl>
       </section>
+
+      <section className="mt-6 rounded-lg border border-amber-300 bg-amber-50 p-6 text-xs dark:border-amber-700 dark:bg-amber-950">
+        <h2 className="mb-2 text-sm font-medium text-amber-900 dark:text-amber-200">
+          Debug: raw session
+        </h2>
+        <pre className="overflow-x-auto whitespace-pre-wrap break-all text-amber-900 dark:text-amber-200">
+          {JSON.stringify(session, null, 2)}
+        </pre>
+      </section>
     </main>
   );
 }
