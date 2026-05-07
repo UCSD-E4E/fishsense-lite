@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.35.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.35.2...fishsense-api-workflow-worker-v1.35.3) (2026-05-07)
+
+
+### Bug Fixes
+
+* **api-workflow-worker:** suppress validation-pass failures in laser sync ([88b9404](https://github.com/UCSD-E4E/fishsense-lite/commit/88b9404c499a36eec5d3f0650ce9b70078d7b2d0))
+* **api-workflow-worker:** suppress validation-pass failures in laser sync ([79faf2e](https://github.com/UCSD-E4E/fishsense-lite/commit/79faf2e4b7a30225122093687f4017eaa777d57a))
+
 ## [1.35.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.35.1...fishsense-api-workflow-worker-v1.35.2) (2026-05-07)
 
 
