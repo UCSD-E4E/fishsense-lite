@@ -37,7 +37,7 @@ describe("buildSections", () => {
     ]);
   });
 
-  it("emits sections in the canonical order: Laser, Species, Head/Tail, Slate, Results, Administration", () => {
+  it("emits sections in the canonical order: Laser, Head/Tail, Species, Slate, Results, Administration", () => {
     const sections = buildSections(
       {
         laser: [{ id: 1, title: "L" }],
@@ -52,8 +52,8 @@ describe("buildSections", () => {
     );
     expect(sections.map((s) => s.title)).toEqual([
       "Laser Labeling",
-      "Species Labeling",
       "Head/Tail Labeling",
+      "Species Labeling",
       "Slate Labeling",
       "Results",
       "Administration",
