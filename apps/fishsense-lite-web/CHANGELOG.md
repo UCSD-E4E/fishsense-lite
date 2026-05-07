@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.5.0...fishsense-lite-web-v0.6.0) (2026-05-07)
+
+
+### Features
+
+* **web:** order Head/Tail before Species on dashboard ([13b33cf](https://github.com/UCSD-E4E/fishsense-lite/commit/13b33cfcf8fe2ab33883f62b1c4e6a691259c65f))
+* **web:** order Head/Tail before Species on dashboard ([91b86b1](https://github.com/UCSD-E4E/fishsense-lite/commit/91b86b16580939c3bc008a1705042d54da7100db))
+
 ## [0.5.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.4.0...fishsense-lite-web-v0.5.0) (2026-05-07)
 
 
