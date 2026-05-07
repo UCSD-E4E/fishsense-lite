@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.4.0...fishsense-shared-v0.4.1) (2026-05-07)
+
+
+### Bug Fixes
+
+* **api-workflow-worker:** suppress validation-pass failures in laser sync ([88b9404](https://github.com/UCSD-E4E/fishsense-lite/commit/88b9404c499a36eec5d3f0650ce9b70078d7b2d0))
+* **api-workflow-worker:** suppress validation-pass failures in laser sync ([79faf2e](https://github.com/UCSD-E4E/fishsense-lite/commit/79faf2e4b7a30225122093687f4017eaa777d57a))
+* **fishsense-shared:** only suppress Exception subclasses, never BaseException ([746dbca](https://github.com/UCSD-E4E/fishsense-lite/commit/746dbca9e5ffc5a6ebbd20b67d2f27b8b445950e))
+
 ## [0.4.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.3.0...fishsense-shared-v0.4.0) (2026-05-06)
 
 
