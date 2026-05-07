@@ -245,13 +245,13 @@ async def test_failed_nas_download_does_not_upload_to_file_exchange(monkeypatch)
     monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
     _, put_calls = _patch_routes(monkeypatch, head_results={})
 
-    with pytest.raises(BaseException):
+    with pytest.raises(Exception):
         await ActivityEnvironment().run(
             sut.stage_raw_bytes_for_dive_activity, 42
         )
 
     assert nas.download_to.call_count == 1
-    assert put_calls == [], (
+    assert not put_calls, (
         "stage_raw_bytes_for_dive_activity uploaded to the file-exchange "
         "after the NAS download raised — this is exactly the failure "
         "shape that propagated DSM JSON-error bodies to the file-exchange "
