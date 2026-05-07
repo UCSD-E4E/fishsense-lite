@@ -18,6 +18,7 @@ from typing import List
 
 import pytest
 from temporalio import activity, workflow
+from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
@@ -269,3 +270,73 @@ async def test_per_project_activity_caps_concurrency_at_workflow_level():
     # Workflow-level cap is PROJECT_CONCURRENCY = 4.
     assert peak_in_flight <= 4, f"peak concurrency was {peak_in_flight}, expected <= 4"
     assert len(started) == 20
+
+
+@pytest.mark.asyncio
+async def test_workflow_completes_when_validation_children_fail():
+    """Regression: when every per-dive validation child workflow fails,
+    the parent must still complete successfully.
+
+    Before the fix, asyncio.TaskGroup wrapped the per-dive failures in a
+    bare BaseExceptionGroup. That isn't a temporalio FailureError
+    subclass, so Temporal classified it as
+    WORKFLOW_TASK_FAILED_CAUSE_WORKFLOW_WORKER_UNHANDLED_FAILURE and
+    retried the workflow task indefinitely instead of treating the run
+    as a workflow execution failure. The validation pass is wrapped in
+    its own ExceptionGroupErrorLogging block precisely so failures
+    there don't roll back a successful sync, so the parent must finish.
+    """
+
+    @activity.defn(name="sync_users_label_studio_activity")
+    async def stub_sync_users() -> None:
+        return None
+
+    @activity.defn(name="get_laser_label_studio_project_ids_activity")
+    async def stub_get_ids() -> List[int]:
+        return []
+
+    @activity.defn(name="sync_laser_labels_for_label_studio_project_activity")
+    async def stub_sync_project(_: int) -> None:
+        return None
+
+    @activity.defn(name="get_dives_with_complete_laser_labeling_activity")
+    async def stub_get_complete_dives() -> List[int]:
+        return [1, 2, 3]
+
+    @activity.defn(name="validate_laser_labels_for_dive_activity")
+    async def stub_validate_fails(dive_id: int) -> int:
+        raise ApplicationError(
+            f"validation deliberately failed for dive {dive_id}",
+            non_retryable=True,
+        )
+
+    queue_parent = "test-laser-sync-validate-fails-parent"
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
+            task_queue=queue_parent,
+            workflows=[SyncLabelStudioLaserLabelsWorkflow],
+            activities=[
+                stub_sync_users,
+                stub_get_ids,
+                stub_sync_project,
+                stub_get_complete_dives,
+            ],
+        ):
+            async with Worker(
+                env.client,
+                task_queue=DATA_PROCESSING_TASK_QUEUE,
+                workflows=[_StubValidateChildWorkflow],
+                activities=[stub_validate_fails],
+            ):
+                # Must NOT raise. With the bug, this would either raise
+                # WorkflowFailureError or hang in the unhandled-failure
+                # retry loop until the test's wall-clock timeout.
+                await asyncio.wait_for(
+                    env.client.execute_workflow(
+                        SyncLabelStudioLaserLabelsWorkflow.run,
+                        id=f"test-laser-sync-validate-fails-{uuid.uuid4()}",
+                        task_queue=queue_parent,
+                    ),
+                    timeout=30.0,
+                )
