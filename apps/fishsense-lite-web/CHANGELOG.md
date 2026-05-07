@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.3.1...fishsense-lite-web-v0.4.0) (2026-05-07)
+
+
+### Features
+
+* **web:** show app version in footer ([e9e1475](https://github.com/UCSD-E4E/fishsense-lite/commit/e9e14752f0c6682d4f7d9608222fd7f37868d31e))
+* **web:** show app version in footer ([58e0339](https://github.com/UCSD-E4E/fishsense-lite/commit/58e0339ad352c5f58b96d70a97a3312c97085d49))
+
 ## [0.3.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.3.0...fishsense-lite-web-v0.3.1) (2026-05-06)
 
 
