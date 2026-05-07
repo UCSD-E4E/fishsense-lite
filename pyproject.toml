@@ -43,9 +43,11 @@ fishsense-shared = { workspace = true }
 # exceptions on DSM JSON-error responses (esp. SidNotFound for code 119)
 # and writes downloads atomically (`<local>.part` + rename), eliminating
 # the silent JSON-corruption failure mode that wedged stage 2 on
-# 2026-05-07. Wheel is cp39-abi3 + manylinux_2_34, compatible with
-# python:3.13-slim-trixie. Bump the URL when picking up a new release.
-synology-filestation = { url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.1.17/synology_filestation-0.1.17-cp39-abi3-manylinux_2_34_x86_64.whl" }
+# 2026-05-07. Wheel is cp310-abi3 + manylinux_2_34, compatible with
+# python:3.13-slim-trixie via the stable ABI. Bump the URL when picking
+# up a new release; v0.1.18 raised the project's requires-python to
+# >=3.10, so the platform tag flipped from cp39-abi3 to cp310-abi3.
+synology-filestation = { url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.1.19/synology_filestation-0.1.19-cp310-abi3-manylinux_2_34_x86_64.whl" }
 
 # Workspace-wide pylint configuration. Lives at the repo root so every
 # package picks up the same rules; pylint walks up the directory tree
