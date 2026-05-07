@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.4.0...fishsense-lite-web-v0.5.0) (2026-05-07)
+
+
+### Features
+
+* **web:** add server error boundary that logs the failure ([7470315](https://github.com/UCSD-E4E/fishsense-lite/commit/7470315b70e9e37c839fb6b5818042c9878ef4b1))
+* **web:** add server error boundary that logs the failure ([b23e93b](https://github.com/UCSD-E4E/fishsense-lite/commit/b23e93b35c999def570af27181e053334406e345))
+
 ## [0.4.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.3.1...fishsense-lite-web-v0.4.0) (2026-05-07)
 
 
