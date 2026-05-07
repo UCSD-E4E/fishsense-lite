@@ -101,7 +101,12 @@ class SyncLabelStudioLaserLabelsWorkflow:
                         dive_id,
                     )
 
-        async with ExceptionGroupErrorLogging(workflow.logger):
+        # suppress=True: validation failures must not roll back a successful
+        # sync. Without it, the BaseExceptionGroup from asyncio.TaskGroup
+        # leaks out of the workflow as a non-FailureError, which Temporal
+        # classifies as WORKFLOW_TASK_FAILED_CAUSE_WORKFLOW_WORKER_UNHANDLED_FAILURE
+        # and retries forever.
+        async with ExceptionGroupErrorLogging(workflow.logger, suppress=True):
             async with asyncio.TaskGroup() as tg:
                 for dive_id in complete_dive_ids:
                     tg.create_task(__validate_dive(dive_id))

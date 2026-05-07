@@ -3,14 +3,23 @@
 Wrap ``asyncio.TaskGroup()`` with this to make individual task failures visible
 (by default the TaskGroup raises a single ExceptionGroup whose contents only
 appear in the bare exception traceback).
+
+Pass ``suppress=True`` for fire-and-forget workflow blocks. Inside a Temporal
+workflow, the bare ``BaseExceptionGroup`` raised by ``asyncio.TaskGroup`` is
+not a ``temporalio.exceptions.FailureError`` subclass, so letting it propagate
+classifies the failure as ``WORKFLOW_TASK_FAILED_CAUSE_WORKFLOW_WORKER_UNHANDLED_FAILURE``
+and the workflow task retries forever instead of failing the run. The default
+stays ``suppress=False`` so activities and worker startup keep their existing
+propagating behavior.
 """
 
 
 class ExceptionGroupErrorLogging:
     """Async context manager to report errors in asyncio TaskGroups."""
 
-    def __init__(self, activity_logger):
+    def __init__(self, activity_logger, *, suppress: bool = False):
         self.activity_logger = activity_logger
+        self.suppress = suppress
 
     async def __aenter__(self):
         return self
@@ -37,4 +46,4 @@ class ExceptionGroupErrorLogging:
                 exc,
                 exc_info=(exc_type, exc, tb),
             )
-        return False
+        return self.suppress and exc is not None
