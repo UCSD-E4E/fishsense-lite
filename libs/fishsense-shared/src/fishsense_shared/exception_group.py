@@ -11,6 +11,14 @@ classifies the failure as ``WORKFLOW_TASK_FAILED_CAUSE_WORKFLOW_WORKER_UNHANDLED
 and the workflow task retries forever instead of failing the run. The default
 stays ``suppress=False`` so activities and worker startup keep their existing
 propagating behavior.
+
+``suppress=True`` only swallows ``Exception`` subclasses (which includes
+``ExceptionGroup`` — the all-``Exception``-subclass flavor of the group).
+Control-flow signals like ``asyncio.CancelledError``, ``KeyboardInterrupt``,
+and ``SystemExit`` are ``BaseException`` subclasses and always propagate; a
+``BaseExceptionGroup`` that contains any of those is likewise not an
+``ExceptionGroup`` and propagates. Without this, swallowing cancellation
+would break Temporal's workflow-cancel semantics.
 """
 
 
@@ -46,4 +54,4 @@ class ExceptionGroupErrorLogging:
                 exc,
                 exc_info=(exc_type, exc, tb),
             )
-        return self.suppress and exc is not None
+        return self.suppress and isinstance(exc, Exception)

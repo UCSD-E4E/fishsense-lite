@@ -120,6 +120,47 @@ async def test_real_taskgroup_propagates_by_default(caplog_at_error):
 
 
 @pytest.mark.asyncio
+async def test_suppress_true_does_not_swallow_cancelled_error():
+    """``asyncio.CancelledError`` is a control-flow signal — swallowing
+    it would break Temporal workflow cancellation. ``suppress=True``
+    must only stop ``Exception`` subclasses, never ``BaseException``."""
+    logger = logging.getLogger("test_suppress_cancelled")
+
+    with pytest.raises(asyncio.CancelledError):
+        async with ExceptionGroupErrorLogging(logger, suppress=True):
+            raise asyncio.CancelledError()
+
+
+@pytest.mark.asyncio
+async def test_suppress_true_does_not_swallow_keyboard_interrupt():
+    logger = logging.getLogger("test_suppress_kbd")
+
+    with pytest.raises(KeyboardInterrupt):
+        async with ExceptionGroupErrorLogging(logger, suppress=True):
+            raise KeyboardInterrupt()
+
+
+@pytest.mark.asyncio
+async def test_suppress_true_does_not_swallow_base_exception_group_with_cancellation():
+    """A ``BaseExceptionGroup`` that contains a ``CancelledError`` is
+    not an ``ExceptionGroup`` (which is the all-``Exception`` subclass
+    flavor). Cancellation must still escape so Temporal can drive the
+    workflow's cancel handler."""
+    logger = logging.getLogger("test_suppress_mixed_group")
+
+    mixed = BaseExceptionGroup(
+        "mixed",
+        [ValueError("ordinary failure"), asyncio.CancelledError()],
+    )
+
+    with pytest.raises(BaseExceptionGroup) as exc_info:
+        async with ExceptionGroupErrorLogging(logger, suppress=True):
+            raise mixed
+
+    assert exc_info.value is mixed
+
+
+@pytest.mark.asyncio
 async def test_real_taskgroup_swallowed_when_suppress_true(caplog_at_error):
     """The validation-pass scenario from the failing workflow event:
     multiple child workflow dispatches blow up, the helper logs each,
