@@ -1,14 +1,13 @@
 # pylint: disable=protected-access
 """Unit tests for NasBackupClient.
 
-Pins the regression for the 2026-05-03 backup-worker incident:
-synology-api 0.8.x caches `Authentication` on
-`BaseApi.shared_session` (class-level), so successive
-`FileStation()` constructors reuse the same in-memory SID across
-activity attempts. After DSM idle-times-out the session, every
-subsequent call returns "Invalid session / SID not found".
-NasBackupClient.__init__ must reset that class attribute before
-constructing FileStation so each client gets a real login.
+Pins the behavioral contract on the methods this worker uses
+(`upload`, `list_filenames`, `delete`) independent of the underlying
+NAS client implementation. The migration from synology-api to
+synology-filestation (driven by the 2026-05-07 stage 2 incident in
+the api-worker — see that worker's `nas.py` docstring) preserves
+this surface; these tests are the regression guard if a future swap
+ever breaks it.
 """
 
 from __future__ import annotations
@@ -16,75 +15,135 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from synology_api.base_api import BaseApi
+from synology_filestation import (
+    AlreadyExists,
+    NoSuchFile,
+    SidNotFound,
+)
 
 
-def test_init_resets_shared_session_before_constructing_filestation(monkeypatch):
-    """Regression: a stale `BaseApi.shared_session` from a previous
-    activity attempt must be cleared so the new FileStation()
-    constructor logs in fresh, rather than reusing an SID DSM has
-    already idle-timed-out.
+def test_external_shape_preserved_for_activity_call_sites(monkeypatch):
+    """Contract test for the public method shape of `NasBackupClient`.
+
+    `pg_dump_database` and `prune_database_backups` call into this
+    class using these exact keyword arguments. A future refactor that
+    renames a method or drops a kwarg can't be caught at import time
+    (call sites use `getattr` via `asyncio.to_thread`), so pin the
+    shape here.
     """
     from fishsense_backup_worker import nas as sut  # pylint: disable=import-outside-toplevel
 
-    # Pretend a previous activity attempt left a session on the class.
-    BaseApi.shared_session = MagicMock(name="stale-prior-session")
+    fake = MagicMock(name="synology_filestation.Client")
+    fake.list_dir.return_value = []
+    monkeypatch.setattr(sut.Client, "login", lambda *a, **kw: fake)
 
-    seen_shared_session: list = []
-
-    def fake_filestation(*_args, **_kwargs):
-        # Capture what `BaseApi.shared_session` looks like at the
-        # moment FileStation() runs — that's the contract we care
-        # about. By the real synology-api lib's logic this is what
-        # determines whether login() runs or the stale session is
-        # reused.
-        seen_shared_session.append(BaseApi.shared_session)
-        return MagicMock(name="fs-client")
-
-    monkeypatch.setattr(sut, "FileStation", fake_filestation)
-
-    sut.NasBackupClient(
+    client = sut.NasBackupClient(
         nas_url="https://nas.example.com:6021",
         username="u",
         password="p",
     )
 
-    assert seen_shared_session == [None], (
-        "FileStation was constructed while BaseApi.shared_session was "
-        f"still set to {seen_shared_session[0]!r}; the stale session "
-        "would be reused and DSM would reject calls after idle timeout."
-    )
+    # Asserting the calls don't raise TypeError is sufficient — we
+    # don't care what the underlying client does, only that our
+    # wrapper exposes these names with these kwarg names.
+    client.upload(dest_dir="/foo/bar", src_file_path="/tmp/x.dump")
+    client.list_filenames(folder_path="/foo/bar")
+    client.delete(file_path="/foo/bar/old.dump")
 
 
-def test_init_resets_shared_session_on_each_construction(monkeypatch):
-    """Same contract repeated across constructions — every new client
-    gets a clean class state, regardless of what the previous one
-    left behind."""
+def test_upload_propagates_underlying_failure(monkeypatch):
+    """Behavioral invariant: an underlying upload failure must surface
+    to the caller.
+
+    The 2026-05-07 stage 2 incident in the api-worker was caused by
+    silent error-swallowing in synology-api's `get_file`. A symmetric
+    failure mode would exist here if the wrapper ever started
+    swallowing typed exceptions from `Client.upload`. Pin the
+    contract so it can't.
+    """
     from fishsense_backup_worker import nas as sut  # pylint: disable=import-outside-toplevel
 
-    seen_shared_session: list = []
+    fake = MagicMock(name="synology_filestation.Client")
+    fake.upload.side_effect = SidNotFound("session expired")
+    monkeypatch.setattr(sut.Client, "login", lambda *a, **kw: fake)
 
-    def fake_filestation(*_args, **_kwargs):
-        seen_shared_session.append(BaseApi.shared_session)
-        # Simulate the real lib's behavior: when FileStation logs in,
-        # it stores its Authentication on the class attribute.
-        BaseApi.shared_session = MagicMock(name="fresh-session")
-        return MagicMock(name="fs-client")
+    client = sut.NasBackupClient(
+        nas_url="https://nas.example.com:6021",
+        username="u",
+        password="p",
+    )
 
-    monkeypatch.setattr(sut, "FileStation", fake_filestation)
-
-    for _ in range(3):
-        sut.NasBackupClient(
-            nas_url="https://nas.example.com:6021", username="u", password="p"
-        )
-
-    assert seen_shared_session == [None, None, None]
+    with pytest.raises(SidNotFound):
+        client.upload(dest_dir="/foo/bar", src_file_path="/tmp/x.dump")
 
 
-@pytest.fixture(autouse=True)
-def _restore_shared_session():
-    """Tests touch a module-global on synology-api; restore between runs
-    so an unrelated test that imports this module isn't affected."""
-    saved = BaseApi.shared_session
-    yield
-    BaseApi.shared_session = saved
+def test_delete_propagates_underlying_failure(monkeypatch):
+    """Same invariant for `delete` — the prune activity relies on
+    deletion failures bubbling up so retention violations don't
+    silently no-op.
+    """
+    from fishsense_backup_worker import nas as sut  # pylint: disable=import-outside-toplevel
+
+    fake = MagicMock(name="synology_filestation.Client")
+    fake.delete.side_effect = NoSuchFile("file not found")
+    monkeypatch.setattr(sut.Client, "login", lambda *a, **kw: fake)
+
+    client = sut.NasBackupClient(
+        nas_url="https://nas.example.com:6021",
+        username="u",
+        password="p",
+    )
+
+    with pytest.raises(NoSuchFile):
+        client.delete(file_path="/foo/bar/missing.dump")
+
+
+def test_ensure_dir_treats_already_exists_as_success(monkeypatch):
+    """`upload` calls `_ensure_dir` to create the destination folder
+    before uploading. The new `synology_filestation.Client` raises
+    typed `AlreadyExists` when the folder is already present; the
+    wrapper must treat that as success rather than propagate (the
+    folder-already-exists case is the common steady-state path).
+    """
+    from fishsense_backup_worker import nas as sut  # pylint: disable=import-outside-toplevel
+
+    fake = MagicMock(name="synology_filestation.Client")
+    fake.create_folder.side_effect = AlreadyExists("folder exists")
+    fake.upload.return_value = None  # success
+    monkeypatch.setattr(sut.Client, "login", lambda *a, **kw: fake)
+
+    client = sut.NasBackupClient(
+        nas_url="https://nas.example.com:6021",
+        username="u",
+        password="p",
+    )
+
+    # Should not raise — AlreadyExists during dir creation is a no-op.
+    client.upload(dest_dir="/foo/bar", src_file_path="/tmp/x.dump")
+    fake.upload.assert_called_once()
+
+
+def test_list_filenames_returns_basenames(monkeypatch):
+    """`list_dir` returns dicts with full paths in `path`; the wrapper
+    must strip them down to bare basenames so the prune activity's
+    string-matching logic works (`backup_naming.filenames_to_prune`
+    operates on filenames, not absolute paths).
+    """
+    from fishsense_backup_worker import nas as sut  # pylint: disable=import-outside-toplevel
+
+    fake = MagicMock(name="synology_filestation.Client")
+    fake.list_dir.return_value = [
+        {"path": "/backups/fishsense/2026-05-01.dump", "isdir": False, "size": 1024},
+        {"path": "/backups/fishsense/2026-05-02.dump", "isdir": False, "size": 1024},
+        {"path": "/backups/fishsense/old", "isdir": True, "size": 0},
+    ]
+    monkeypatch.setattr(sut.Client, "login", lambda *a, **kw: fake)
+
+    client = sut.NasBackupClient(
+        nas_url="https://nas.example.com:6021",
+        username="u",
+        password="p",
+    )
+
+    names = client.list_filenames(folder_path="/backups/fishsense")
+    assert names == ["2026-05-01.dump", "2026-05-02.dump", "old"]
