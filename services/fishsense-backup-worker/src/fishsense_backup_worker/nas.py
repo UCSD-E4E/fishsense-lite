@@ -62,7 +62,7 @@ class NasBackupClient:
     def upload(self, *, dest_dir: str, src_file_path: str) -> None:
         """Upload `src_file_path` into NAS folder `dest_dir`. Creates
         `dest_dir` (idempotently) before the upload — the new client
-        honors `_create_parents=True` in `upload`, but historical prod
+        creates parents by default in `upload`, but historical prod
         backup paths have at least one layout where the parent of the
         target dir doesn't exist, so the explicit `_ensure_dir` step
         stays as belt-and-suspenders. Existing files at the same name

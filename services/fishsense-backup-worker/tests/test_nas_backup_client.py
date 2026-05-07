@@ -73,7 +73,7 @@ def test_upload_propagates_underlying_failure(monkeypatch):
         password="p",
     )
 
-    with pytest.raises(Exception):
+    with pytest.raises(SidNotFound):
         client.upload(dest_dir="/foo/bar", src_file_path="/tmp/x.dump")
 
 
@@ -94,7 +94,7 @@ def test_delete_propagates_underlying_failure(monkeypatch):
         password="p",
     )
 
-    with pytest.raises(Exception):
+    with pytest.raises(NoSuchFile):
         client.delete(file_path="/foo/bar/missing.dump")
 
 
@@ -124,7 +124,7 @@ def test_ensure_dir_treats_already_exists_as_success(monkeypatch):
 
 
 def test_list_filenames_returns_basenames(monkeypatch):
-    """`list_dir` returns dicts with full paths in `name`; the wrapper
+    """`list_dir` returns dicts with full paths in `path`; the wrapper
     must strip them down to bare basenames so the prune activity's
     string-matching logic works (`backup_naming.filenames_to_prune`
     operates on filenames, not absolute paths).
