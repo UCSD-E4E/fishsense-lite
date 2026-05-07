@@ -250,7 +250,9 @@ async def schedule_workflow(
 async def schedule_workflows(client: Client):
     """Schedule workflows for the worker."""
 
-    async with ExceptionGroupErrorLogging(logging.getLogger()):
+    log = logging.getLogger(__name__)
+    log.info("registering Temporal schedules")
+    async with ExceptionGroupErrorLogging(log):
         async with asyncio.TaskGroup() as tg:
             tg.create_task(
                 schedule_workflow(
@@ -368,6 +370,7 @@ async def schedule_workflows(client: Client):
                     overlap=ScheduleOverlapPolicy.SKIP,
                 )
             )
+    log.info("Temporal schedules registered")
 
 
 async def main():
@@ -378,6 +381,12 @@ async def main():
 
     tls_config = build_tls_config(settings.temporal)
 
+    log.info(
+        "connecting to Temporal host=%s:%d tls=%s",
+        settings.temporal.host,
+        settings.temporal.port,
+        bool(tls_config),
+    )
     client = await Client.connect(
         f"{settings.temporal.host}:{settings.temporal.port}", tls=tls_config
     )

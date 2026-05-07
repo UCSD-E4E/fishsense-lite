@@ -22,6 +22,10 @@ async function getProjectIds(kind: LabelKind, revalidate: number): Promise<numbe
   });
 
   if (!response.ok) {
+    console.error(
+      `[fishsense-api] ${kind} project IDs fetch failed`,
+      { url, status: response.status, statusText: response.statusText },
+    );
     throw new Error(
       `fishsense-api ${kind} project IDs failed: ${response.status} ${response.statusText}`,
     );

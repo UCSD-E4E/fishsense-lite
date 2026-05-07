@@ -30,6 +30,9 @@ def _is_valid_laser(label) -> bool:
 async def resolve_headtail_preprocess_inputs_activity(
     dive_id: int,
 ) -> PreprocessHeadtailImagesInput:
+    activity.logger.info(
+        "resolving headtail preprocess inputs dive_id=%d", dive_id
+    )
     async with get_fs_client() as fs:
         dive = await fs.dives.get(dive_id=dive_id)
         if dive is None:
@@ -67,6 +70,13 @@ async def resolve_headtail_preprocess_inputs_activity(
             if image_id in checksum_by_id
         ]
 
+        activity.logger.info(
+            "resolved headtail preprocess inputs dive_id=%d "
+            "valid_laser_targets=%d image_checksums=%d",
+            dive_id,
+            len(target_image_ids),
+            len(image_checksums),
+        )
         return PreprocessHeadtailImagesInput(
             dive_id=dive_id,
             image_checksums=image_checksums,

@@ -71,6 +71,12 @@ async def main():
 
     tls_config = build_tls_config(settings.temporal)
 
+    log.info(
+        "connecting to Temporal host=%s:%d tls=%s",
+        settings.temporal.host,
+        settings.temporal.port,
+        bool(tls_config),
+    )
     client = await Client.connect(
         f"{settings.temporal.host}:{settings.temporal.port}", tls=tls_config
     )

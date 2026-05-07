@@ -9,12 +9,17 @@ export async function getProject(
   id: number,
   revalidate: number,
 ): Promise<LabelStudioProject> {
-  const response = await fetch(`${env.labelStudioUrl}/api/projects/${id}`, {
+  const url = `${env.labelStudioUrl}/api/projects/${id}`;
+  const response = await fetch(url, {
     headers: { Authorization: `Token ${env.labelStudioApiKey}` },
     next: { revalidate },
   });
 
   if (!response.ok) {
+    console.error(
+      `[label-studio] project ${id} fetch failed`,
+      { url, status: response.status, statusText: response.statusText },
+    );
     throw new Error(
       `Label Studio project ${id} fetch failed: ${response.status} ${response.statusText}`,
     );
