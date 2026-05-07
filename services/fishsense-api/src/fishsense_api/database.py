@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
@@ -35,6 +36,8 @@ from fishsense_api.models.measurement import Measurement
 from fishsense_api.models.species import Species
 from fishsense_api.models.species_label import SpeciesLabel
 from fishsense_api.models.user import User
+
+_log = logging.getLogger(__name__)
 
 
 class Database:
@@ -120,8 +123,13 @@ def run_alembic_upgrade() -> None:
     )
 
     if asyncio.run(_has_alembic_version_table()):
+        _log.info("alembic_version present; running upgrade head")
         alembic_command.upgrade(cfg, "head")
+        _log.info("alembic upgrade complete")
     else:
+        _log.info(
+            "alembic_version missing; stamping head (fresh DB after create_all)"
+        )
         alembic_command.stamp(cfg, "head")
 
 
@@ -156,6 +164,7 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
         try:
             yield session
             await session.commit()
-        except:
+        except Exception:
+            _log.exception("session rolled back due to unhandled exception")
             await session.rollback()
             raise

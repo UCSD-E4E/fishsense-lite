@@ -119,10 +119,21 @@ async def sync_label_studio_project(
     """
     ls = get_ls_client()
 
+    activity.logger.info(
+        "sync_label_studio_project starting kind=%s project_id=%d",
+        kind,
+        project_id,
+    )
+
     try:
         _ = await asyncio.to_thread(ls.projects.get, project_id)
     except ApiError as e:
-        activity.logger.warning(f"Error fetching project {project_id}: {e}")
+        activity.logger.warning(
+            "sync_label_studio_project missing kind=%s project_id=%d error=%s",
+            kind,
+            project_id,
+            e,
+        )
         return
 
     tasks = await _list_ls_tasks_with_heartbeat(ls, project_id)
@@ -144,9 +155,24 @@ async def sync_label_studio_project(
 
         if not eligible_tasks:
             activity.logger.info(
-                "No new tasks for project %d (cursor=%s)", project_id, cursor_ts
+                "sync_label_studio_project no new tasks kind=%s project_id=%d "
+                "total_tasks=%d cursor=%s",
+                kind,
+                project_id,
+                len(tasks),
+                cursor_ts,
             )
             return
+
+        activity.logger.info(
+            "sync_label_studio_project running kind=%s project_id=%d "
+            "total_tasks=%d eligible_tasks=%d cursor=%s",
+            kind,
+            project_id,
+            len(tasks),
+            len(eligible_tasks),
+            cursor_ts,
+        )
 
         async def _run(task: Any) -> None:
             async with sem:
@@ -173,3 +199,10 @@ async def sync_label_studio_project(
                 last_synced_at=max_seen,
             )
             await fs.labels.put_sync_cursor(kind, project_id, new_cursor)
+            activity.logger.info(
+                "sync_label_studio_project cursor advanced kind=%s "
+                "project_id=%d cursor=%s",
+                kind,
+                project_id,
+                max_seen,
+            )

@@ -1,12 +1,15 @@
 """FishSense API Server"""
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from fishsense_api.__version__ import __version__
 from fishsense_api.database import run_alembic_upgrade, setup_database
+
+_log = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -25,15 +28,20 @@ async def lifespan(_: FastAPI):
          offloaded via `asyncio.to_thread` so DDL doesn't block the
          event loop.
     """
+    _log.info("fishsense-api starting (version=%s)", __version__)
     database = setup_database()
 
+    _log.info("running SQLModel.metadata.create_all")
     async with database.engine.begin() as conn:
         await database.init_database(conn)
 
+    _log.info("running alembic upgrade")
     await asyncio.to_thread(run_alembic_upgrade)
+    _log.info("fishsense-api startup complete")
 
     yield
 
+    _log.info("fishsense-api shutting down")
     await database.dispose()
 
 

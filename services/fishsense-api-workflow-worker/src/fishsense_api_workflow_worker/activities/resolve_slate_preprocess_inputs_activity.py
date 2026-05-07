@@ -26,6 +26,9 @@ SLATE_CONTENT_MARKER = "Slate, Laser on slate"
 async def resolve_slate_preprocess_inputs_activity(
     dive_id: int,
 ) -> PreprocessSlateImagesInput:
+    activity.logger.info(
+        "resolving slate preprocess inputs dive_id=%d", dive_id
+    )
     async with get_fs_client() as fs:
         dive = await fs.dives.get(dive_id=dive_id)
         if dive is None:
@@ -81,6 +84,14 @@ async def resolve_slate_preprocess_inputs_activity(
             if image_id in checksum_by_id
         ]
 
+        activity.logger.info(
+            "resolved slate preprocess inputs dive_id=%d slate_id=%d "
+            "slate_targets=%d image_checksums=%d",
+            dive_id,
+            slate.id,
+            len(target_image_ids),
+            len(image_checksums),
+        )
         return PreprocessSlateImagesInput(
             dive_id=dive_id,
             image_checksums=image_checksums,

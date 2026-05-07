@@ -53,6 +53,7 @@ def _select_unlabeled_images(
 async def resolve_laser_preprocess_inputs_activity(
     dive_id: int,
 ) -> PreprocessLaserImagesInput:
+    activity.logger.info("resolving laser preprocess inputs dive_id=%d", dive_id)
     async with get_fs_client() as fs:
         dive = await fs.dives.get(dive_id=dive_id)
         if dive is None:
@@ -70,6 +71,12 @@ async def resolve_laser_preprocess_inputs_activity(
         existing_labels = await fs.labels.get_laser_labels(dive_id) or []
         unlabeled = _select_unlabeled_images(images, existing_labels)
 
+        activity.logger.info(
+            "resolved laser preprocess inputs dive_id=%d images=%d unlabeled=%d",
+            dive_id,
+            len(images),
+            len(unlabeled),
+        )
         return PreprocessLaserImagesInput(
             dive_id=dive_id,
             image_checksums=[image.checksum for image in unlabeled],

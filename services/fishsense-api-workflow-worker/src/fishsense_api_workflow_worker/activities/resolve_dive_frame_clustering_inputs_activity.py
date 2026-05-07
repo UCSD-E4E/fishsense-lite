@@ -18,17 +18,24 @@ from fishsense_api_workflow_worker.activities.utils import get_fs_client
 async def resolve_dive_frame_clustering_inputs_activity(
     dive_id: int,
 ) -> ClusterDiveFramesInput:
+    activity.logger.info(
+        "resolving clustering inputs dive_id=%d", dive_id
+    )
     async with get_fs_client() as fs:
         images = await fs.images.get(dive_id=dive_id) or []
 
-    return ClusterDiveFramesInput(
-        dive_id=dive_id,
-        images=[
-            ClusterDiveFrameImage(
-                image_id=image.id,
-                taken_datetime=image.taken_datetime,
-            )
-            for image in images
-            if image.id is not None
-        ],
+    cluster_images = [
+        ClusterDiveFrameImage(
+            image_id=image.id,
+            taken_datetime=image.taken_datetime,
+        )
+        for image in images
+        if image.id is not None
+    ]
+    activity.logger.info(
+        "resolved clustering inputs dive_id=%d images=%d cluster_inputs=%d",
+        dive_id,
+        len(images),
+        len(cluster_images),
     )
+    return ClusterDiveFramesInput(dive_id=dive_id, images=cluster_images)

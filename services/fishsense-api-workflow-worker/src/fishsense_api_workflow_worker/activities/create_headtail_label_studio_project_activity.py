@@ -32,8 +32,18 @@ async def create_headtail_label_studio_project_activity(dive_id: int) -> int:
     re-running for the same dive returns the existing project's ID
     rather than creating a duplicate. Match is by title.
     """
+    activity.logger.info(
+        "create headtail LS project dive_id=%d", dive_id
+    )
     title = await build_per_dive_title(dive_id, HEADTAIL_PROJECT_TITLE_SUFFIX)
-    return await create_or_get_label_studio_project(
+    project_id = await create_or_get_label_studio_project(
         project_title=title,
         labeling_config_xml=HEADTAIL_LABELING_CONFIG_XML,
     )
+    activity.logger.info(
+        "create headtail LS project dive_id=%d project_id=%d title=%r",
+        dive_id,
+        project_id,
+        title,
+    )
+    return project_id

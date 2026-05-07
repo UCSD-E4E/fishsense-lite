@@ -43,6 +43,9 @@ def _is_valid_laser(label: LaserLabel) -> bool:
 async def resolve_species_preprocess_inputs_activity(
     dive_id: int,
 ) -> PreprocessSpeciesImagesInput:
+    activity.logger.info(
+        "resolving species preprocess inputs dive_id=%d", dive_id
+    )
     async with get_fs_client() as fs:
         dive = await fs.dives.get(dive_id=dive_id)
         if dive is None:
@@ -89,6 +92,14 @@ async def resolve_species_preprocess_inputs_activity(
             if cluster_checksums:
                 clusters.append(cluster_checksums)
 
+        activity.logger.info(
+            "resolved species preprocess inputs dive_id=%d "
+            "prediction_clusters=%d non_empty_clusters=%d total_checksums=%d",
+            dive_id,
+            len(prediction_clusters),
+            len(clusters),
+            sum(len(c) for c in clusters),
+        )
         return PreprocessSpeciesImagesInput(
             dive_id=dive_id,
             clusters=clusters,
