@@ -722,7 +722,7 @@ dev = [
 
 [[package]]
 name = "fishsense-api-workflow-worker"
-version = "1.35.1"
+version = "1.35.3"
 source = { editable = "services/fishsense-api-workflow-worker" }
 dependencies = [
     { name = "dynaconf" },
@@ -759,7 +759,7 @@ requires-dist = [
     { name = "platformdirs", specifier = ">=4.3.8" },
     { name = "pyaml", specifier = ">=25.7.0" },
     { name = "pymupdf", specifier = ">=1.24.0" },
-    { name = "synology-filestation", url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.1.17/synology_filestation-0.1.17-cp39-abi3-manylinux_2_34_x86_64.whl" },
+    { name = "synology-filestation", url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.1.19/synology_filestation-0.1.19-cp310-abi3-manylinux_2_34_x86_64.whl" },
     { name = "temporalio", specifier = ">=1.15.0" },
     { name = "validators", specifier = ">=0.35.0" },
 ]
@@ -777,7 +777,7 @@ dev = [
 
 [[package]]
 name = "fishsense-backup-worker"
-version = "0.3.0"
+version = "0.3.1"
 source = { editable = "services/fishsense-backup-worker" }
 dependencies = [
     { name = "dynaconf" },
@@ -802,7 +802,7 @@ requires-dist = [
     { name = "fishsense-shared", editable = "libs/fishsense-shared" },
     { name = "platformdirs", specifier = ">=4.3.8" },
     { name = "pydantic", specifier = ">=2.11.9" },
-    { name = "synology-filestation", url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.1.17/synology_filestation-0.1.17-cp39-abi3-manylinux_2_34_x86_64.whl" },
+    { name = "synology-filestation", url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.1.19/synology_filestation-0.1.19-cp310-abi3-manylinux_2_34_x86_64.whl" },
     { name = "temporalio", specifier = ">=1.17.0" },
     { name = "validators", specifier = ">=0.35.0" },
 ]
@@ -995,7 +995,7 @@ dev = [
 
 [[package]]
 name = "fishsense-shared"
-version = "0.4.0"
+version = "0.4.1"
 source = { editable = "libs/fishsense-shared" }
 dependencies = [
     { name = "dynaconf" },
@@ -3019,14 +3019,14 @@ wheels = [
 
 [[package]]
 name = "synology-filestation"
-version = "0.1.17"
-source = { url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.1.17/synology_filestation-0.1.17-cp39-abi3-manylinux_2_34_x86_64.whl" }
+version = "0.1.19"
+source = { url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.1.19/synology_filestation-0.1.19-cp310-abi3-manylinux_2_34_x86_64.whl" }
 wheels = [
-    { url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.1.17/synology_filestation-0.1.17-cp39-abi3-manylinux_2_34_x86_64.whl", hash = "sha256:27d0c39222e5a2ef6a93a5d42fc297052ff22d28c60f8759a86413600f6283b5" },
+    { url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.1.19/synology_filestation-0.1.19-cp310-abi3-manylinux_2_34_x86_64.whl", hash = "sha256:f951fc7bbbdf4b692b4c2c164fdaee975a1bda524c48ba6944798095268bf104" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "fsspec", marker = "extra == 'fsspec'", specifier = ">=2023.10" }]
+requires-dist = [{ name = "fsspec", marker = "extra == 'fsspec'", specifier = ">=2026.4.0" }]
 provides-extras = ["fsspec"]
 
 [[package]]
