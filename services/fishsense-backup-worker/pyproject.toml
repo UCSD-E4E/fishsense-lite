@@ -12,7 +12,7 @@ dependencies = [
     "fishsense-shared",
     "platformdirs>=4.3.8",
     "pydantic>=2.11.9",
-    "synology-api>=0.8.1",
+    "synology-filestation",
     "temporalio>=1.17.0",
     "validators>=0.35.0",
 ]

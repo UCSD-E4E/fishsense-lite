@@ -784,7 +784,7 @@ dependencies = [
     { name = "fishsense-shared" },
     { name = "platformdirs" },
     { name = "pydantic" },
-    { name = "synology-api" },
+    { name = "synology-filestation" },
     { name = "temporalio" },
     { name = "validators" },
 ]
@@ -802,7 +802,7 @@ requires-dist = [
     { name = "fishsense-shared", editable = "libs/fishsense-shared" },
     { name = "platformdirs", specifier = ">=4.3.8" },
     { name = "pydantic", specifier = ">=2.11.9" },
-    { name = "synology-api", specifier = ">=0.8.1" },
+    { name = "synology-filestation", url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.1.17/synology_filestation-0.1.17-cp39-abi3-manylinux_2_34_x86_64.whl" },
     { name = "temporalio", specifier = ">=1.17.0" },
     { name = "validators", specifier = ">=0.35.0" },
 ]
