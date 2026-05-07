@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-backup-worker-v0.3.0...fishsense-backup-worker-v0.3.1) (2026-05-07)
+
+
+### Bug Fixes
+
+* **backup-worker:** address Copilot review feedback on PR 165 ([d68f913](https://github.com/UCSD-E4E/fishsense-lite/commit/d68f9132da59ee2c0bc71b632ca75bf05e33bde6))
+* **backup-worker:** replace synology-api with synology-filestation ([d7444c6](https://github.com/UCSD-E4E/fishsense-lite/commit/d7444c6a1e1923fb41f1f37ae067f0cbcffb04d2))
+* **backup-worker:** replace synology-api with synology-filestation ([b2f5e1b](https://github.com/UCSD-E4E/fishsense-lite/commit/b2f5e1b5a207dbcd3d440c6e7ab0ac78e2060258))
+
 ## [0.3.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-backup-worker-v0.2.4...fishsense-backup-worker-v0.3.0) (2026-05-05)
 
 

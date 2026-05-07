@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## [1.35.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.35.1...fishsense-api-workflow-worker-v1.35.2) (2026-05-07)
+
+
+### Bug Fixes
+
+* **api-workflow-worker:** address pylint + Copilot review feedback ([9a0255a](https://github.com/UCSD-E4E/fishsense-lite/commit/9a0255a9ba48e0af72a27fd299c27b1745dc098a))
+* **api-workflow-worker:** replace synology-api with synology-filestation ([5ee188d](https://github.com/UCSD-E4E/fishsense-lite/commit/5ee188d8e68caf35dfdbdee8cfa95dee52923744))
+* **api-workflow-worker:** replace synology-api with synology-filestation ([3821818](https://github.com/UCSD-E4E/fishsense-lite/commit/3821818103de07ad8197f1e0da952099415ebdf8))
+
 ## [1.35.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.35.0...fishsense-api-workflow-worker-v1.35.1) (2026-05-06)
 
 
