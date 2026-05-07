@@ -14,8 +14,8 @@ export type Section = {
 
 const LABELING_KINDS: { key: keyof ActiveProjects; title: string }[] = [
   { key: "laser", title: "Laser Labeling" },
-  { key: "species", title: "Species Labeling" },
   { key: "headtail", title: "Head/Tail Labeling" },
+  { key: "species", title: "Species Labeling" },
   { key: "slate", title: "Slate Labeling" },
 ];
 
