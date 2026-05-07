@@ -1,83 +1,120 @@
 # pylint: disable=protected-access
 """Unit tests for the api-worker's NasClient.
 
-Pins the regression for the 2026-05-03 backup-worker incident:
-synology-api 0.8.x caches `Authentication` on
-`BaseApi.shared_session` (class-level), so successive
-`FileStation()` constructors reuse the same in-memory SID across
-activity attempts. After DSM idle-times-out the session, every
-subsequent call returns "Invalid session / SID not found".
-NasClient.__init__ must reset that class attribute before
-constructing FileStation so each client gets a real login. Mirror
-of the same test in the backup-worker package.
+Pins the 2026-05-07 stage 2 incident: DSM returned 200 OK with a
+JSON-error body after the staging activity's idle session timed out
+(~30 min default DSM SID TTL). The previous synology-api 0.8.x
+`get_file(mode='download')` implementation streamed the JSON-error
+body to disk and returned a tuple instead of raising; the surrounding
+wrapper only caught `FileStationError` exceptions, so the corruption
+slipped through silently. Callers (`stage_raw_bytes_for_dive_activity`)
+read the JSON bytes via `read_bytes()` and uploaded them to the
+file-exchange as `.ORF` content — every subsequent stage-2
+`preprocess_species_image` activity received those JSON bytes, failed
+`rawpy.imread` with `LibRawIOError: Input/output error`, and Temporal
+retried 60+ times before the workflow timed out.
+
+The migration to `synology-filestation` (`Client`) eliminates the
+underlying-library footgun: it raises typed exceptions on JSON errors
+and writes downloads atomically. The test below pins the *behavioral
+contract* on `NasClient.download_to` so any future implementation
+swap (or accidental regression) re-trips the same alarm before
+corrupt content can reach the file-exchange.
 """
 
 from __future__ import annotations
 
+import pathlib
 from unittest.mock import MagicMock
 
 import pytest
-from synology_api.base_api import BaseApi
+from synology_filestation import SidNotFound
 
 
-def test_init_resets_shared_session_before_constructing_filestation(monkeypatch):
-    """Regression: a stale `BaseApi.shared_session` from a previous
-    activity attempt must be cleared so the new FileStation()
-    constructor logs in fresh, rather than reusing an SID DSM has
-    already idle-timed-out.
+def test_external_shape_preserved_for_activity_call_sites(monkeypatch):
+    """Contract test for the public method shape of `NasClient`.
+
+    `stage_raw_bytes_for_dive_activity`, `stage_slate_pdf_activity`,
+    `archive_processed_jpegs_to_nas_activity`, and
+    `cleanup_raw_bytes_for_dive_activity` all call into NasClient
+    using these exact keyword arguments. A future refactor that
+    renames a method or drops a kwarg can't be caught at import time
+    (call sites use `getattr` via `asyncio.to_thread` partials), so
+    pin the shape here.
+
+    `NasDownloadClient` must remain an alias for `NasClient` —
+    several activities import the narrow alias for documentation
+    intent.
     """
     from fishsense_api_workflow_worker import nas as sut  # pylint: disable=import-outside-toplevel
 
-    BaseApi.shared_session = MagicMock(name="stale-prior-session")
+    assert sut.NasDownloadClient is sut.NasClient
 
-    seen_shared_session: list = []
-
-    def fake_filestation(*_args, **_kwargs):
-        seen_shared_session.append(BaseApi.shared_session)
-        return MagicMock(name="fs-client")
-
-    monkeypatch.setattr(sut, "FileStation", fake_filestation)
-
-    sut.NasClient(
+    monkeypatch.setattr(sut.Client, "login", lambda *a, **kw: MagicMock())
+    client = sut.NasClient(
         nas_url="https://nas.example.com:6021",
         username="u",
         password="p",
     )
 
-    assert seen_shared_session == [None], (
-        "FileStation was constructed while BaseApi.shared_session was "
-        f"still set to {seen_shared_session[0]!r}; the stale session "
-        "would be reused and DSM would reject calls after idle timeout."
-    )
+    # All three call shapes use keyword args. Asserting the calls don't
+    # raise TypeError is sufficient — we don't care what the underlying
+    # client does, only that our wrapper exposes these names.
+    client.download_to(src_path="/foo", dest_dir="/tmp")
+    client.upload(dest_dir="/foo", src_file_path="/tmp/bar")
+    client.exists(file_path="/foo")
 
 
-def test_init_resets_shared_session_on_each_construction(monkeypatch):
-    """Same contract repeated across constructions — every new client
-    gets a clean class state, regardless of what the previous one
-    left behind."""
+def test_download_to_raises_when_underlying_client_signals_failure(
+    monkeypatch, tmp_path
+):
+    """Behavioral contract regression for the 2026-05-07 incident.
+
+    When the underlying NAS client signals a download failure (today:
+    by raising one of the `synology_filestation` typed exceptions on a
+    DSM JSON-error response), `NasClient.download_to` MUST surface
+    that failure to its caller AND MUST NOT leave any partial /
+    JSON-error content visible at the destination path. Previously
+    the wrapper silently swallowed tuple-returns from synology-api,
+    leaving DSM JSON-error bodies on disk for the activity to read
+    back as `.ORF` content.
+    """
     from fishsense_api_workflow_worker import nas as sut  # pylint: disable=import-outside-toplevel
 
-    seen_shared_session: list = []
+    src_path = "/share/data/2024.06.20.REEF/img.ORF"
 
-    def fake_filestation(*_args, **_kwargs):
-        seen_shared_session.append(BaseApi.shared_session)
-        BaseApi.shared_session = MagicMock(name="fresh-session")
-        return MagicMock(name="fs-client")
+    # Mock the boundary: NasClient delegates to synology_filestation's
+    # Client. We simulate the new client's correct failure mode —
+    # `download_to` raises a `SidNotFound` and (because of its atomic
+    # `<local>.part`+rename semantics) leaves no file at the
+    # destination.
+    fake_fs = MagicMock(name="synology_filestation.Client")
+    fake_fs.download_to.side_effect = SidNotFound("session expired")
+    monkeypatch.setattr(sut.Client, "login", lambda *a, **kw: fake_fs)
 
-    monkeypatch.setattr(sut, "FileStation", fake_filestation)
+    client = sut.NasClient(
+        nas_url="https://nas.example.com:6021",
+        username="u",
+        password="p",
+    )
 
-    for _ in range(3):
-        sut.NasClient(
-            nas_url="https://nas.example.com:6021", username="u", password="p"
+    dest_dir = tmp_path / "stage"
+    dest_dir.mkdir()
+
+    # Property 1: download_to surfaces the failure to the caller.
+    with pytest.raises(Exception):
+        client.download_to(src_path=src_path, dest_dir=str(dest_dir))
+
+    # Property 2: the destination doesn't contain JSON masquerading as
+    # raw image bytes. (Atomic-rename means it should be absent
+    # entirely; the assertion is broader to allow for a future client
+    # whose semantic is "leave a valid file or none at all.")
+    leftover = dest_dir / pathlib.Path(src_path).name
+    if leftover.exists():
+        contents = leftover.read_bytes()
+        assert b'"success"' not in contents and b'"error"' not in contents, (
+            "download_to left a DSM-shaped JSON-error body at the "
+            "destination; the caller will read those bytes via "
+            "read_bytes() and upload them to the file-exchange as `.ORF`, "
+            "reproducing the 2026-05-07 stage 2 corruption."
         )
-
-    assert seen_shared_session == [None, None, None]
-
-
-@pytest.fixture(autouse=True)
-def _restore_shared_session():
-    """Tests touch a module-global on synology-api; restore between runs
-    so an unrelated test that imports this module isn't affected."""
-    saved = BaseApi.shared_session
-    yield
-    BaseApi.shared_session = saved

@@ -11,6 +11,12 @@ Pins down:
   5. Share-relative `image.path` values (the DB convention) get
      `e4e_nas.raw_root_path` prepended before being handed to
      FileStation; absolute paths pass through unchanged.
+  6. (2026-05-07 stage 2 incident invariant) When the NAS download
+     fails, the activity raises without uploading anything to the
+     file-exchange. This is the "don't propagate corrupt content"
+     guard — even if the underlying NAS client ever regressed to
+     produce empty/JSON content, the activity must not turn around
+     and PUT it as `.ORF`.
 """
 
 from __future__ import annotations
@@ -202,6 +208,55 @@ async def test_counts_no_path_images_without_crashing(monkeypatch):
 
     assert result.no_path == 2
     assert result.staged == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_nas_download_does_not_upload_to_file_exchange(monkeypatch):
+    """Invariant for the 2026-05-07 stage 2 incident.
+
+    The original failure mode was: synology-api silently produced a
+    non-`.ORF` file in the activity's tempdir (a JSON-error response
+    body), `read_bytes()` returned those bytes, `upload_raw` PUT them
+    to the file-exchange. Migrating to `synology-filestation` makes
+    the underlying client raise on JSON-error — but the activity-side
+    invariant should hold independently of which client is in use:
+    if the download path fails for any reason, no PUT happens.
+
+    This test wires the NAS client to raise during `download_to` and
+    asserts (a) the activity surfaces the failure to the caller, and
+    (b) no checksum is PUT to the file-exchange. A future regression
+    that catches and ignores the download exception (or that stages
+    fallback bytes) would re-trip this alarm before any corrupt
+    content could reach prod.
+    """
+    monkeypatch.setenv(
+        "E4EFS_E4E_NAS__RAW_ROOT_PATH", "/fishsense_data/REEF/data"
+    )
+    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    cfg.settings.reload()
+
+    images = [_image(1, checksum="aaa")]
+    fs = _make_fs(images)
+    nas = _make_nas()
+    nas.download_to.side_effect = RuntimeError(
+        "simulated DSM session expired (code 119)"
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+    _, put_calls = _patch_routes(monkeypatch, head_results={})
+
+    with pytest.raises(Exception):
+        await ActivityEnvironment().run(
+            sut.stage_raw_bytes_for_dive_activity, 42
+        )
+
+    assert nas.download_to.call_count == 1
+    assert not put_calls, (
+        "stage_raw_bytes_for_dive_activity uploaded to the file-exchange "
+        "after the NAS download raised — this is exactly the failure "
+        "shape that propagated DSM JSON-error bodies to the file-exchange "
+        "as `.ORF` content on 2026-05-07."
+    )
 
 
 @pytest.mark.asyncio
