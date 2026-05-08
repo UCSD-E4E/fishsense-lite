@@ -211,6 +211,19 @@ services:
       LABEL_STUDIO_URL: http://label-studio:8080
       # Same fixed token as label-studio's LABEL_STUDIO_USER_TOKEN above.
       LABEL_STUDIO_API_KEY: fishsense_local_test_token_42
+      # Placeholder Authentik / next-auth values. lib/env.ts throws on any
+      # missing AUTH_* var the first time auth() is invoked, so /portal SSR
+      # would crash with "Missing required env var" without these. We never
+      # complete an actual OIDC flow against the local stack — the
+      # integration test only asserts the signed-out redirect to
+      # /api/auth/signin — so the secret + client values can be any
+      # non-empty strings, and AUTH_AUTHENTIK_ISSUER just needs to parse as
+      # a URL (next-auth doesn't reach out to it until a real sign-in
+      # actually starts).
+      AUTH_SECRET: fishsense_local_test_auth_secret_only_for_ci_v1
+      AUTH_AUTHENTIK_ID: local-test-client-id
+      AUTH_AUTHENTIK_SECRET: local-test-client-secret
+      AUTH_AUTHENTIK_ISSUER: http://localhost:9999/local-test-issuer
     ports:
       - "3000:3000"
     networks:
