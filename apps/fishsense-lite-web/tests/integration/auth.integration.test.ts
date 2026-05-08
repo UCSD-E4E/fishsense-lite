@@ -8,8 +8,7 @@ const WEB_URL = process.env.FISHSENSE_WEB_URL ?? "http://localhost:3000";
 // response cycle isn't being eaten by some downstream cascade (the
 // failure mode that originally turned PR #189 into a hotfix). Full OAuth
 // callback / session-creation coverage is gated on standing up a mock
-// OIDC IdP; tracked separately in github.com/UCSD-E4E/fishsense-lite
-// issue (see PR #189).
+// OIDC IdP — tracked in UCSD-E4E/fishsense-lite#190.
 
 describe("next-auth handler routes (against the local stack)", () => {
   it("registers the Authentik provider at /api/auth/providers", async () => {
