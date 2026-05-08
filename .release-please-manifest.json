@@ -5,5 +5,5 @@
   "services/fishsense-data-processing-workflow-worker": "2.4.1",
   "libs/fishsense-shared": "0.4.1",
   "libs/fishsense-api-sdk": "1.35.0",
-  "apps/fishsense-lite-web": "0.6.1"
+  "apps/fishsense-lite-web": "0.6.2"
 }
