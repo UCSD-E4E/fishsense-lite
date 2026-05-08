@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 // distinguish "user never signed in" from "cookie present but
 // decryption failed." Remove once /portal is reliably populating
 // session.user.
-export const middleware = auth((req) => {
+export default auth((req) => {
   const session = req.auth;
   console.log("[middleware] /portal request", {
     pathname: req.nextUrl.pathname,
