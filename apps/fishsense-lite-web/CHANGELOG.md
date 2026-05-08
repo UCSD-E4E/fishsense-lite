@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.6.0...fishsense-lite-web-v0.6.1) (2026-05-08)
+
+
+### Bug Fixes
+
+* **web:** restore /portal middleware export and document AUTH_* envs ([73dba46](https://github.com/UCSD-E4E/fishsense-lite/commit/73dba462e2b6a972b900904ed4e0ae894d14b64c))
+* **web:** restore /portal middleware export and document AUTH_* envs ([5db0cf4](https://github.com/UCSD-E4E/fishsense-lite/commit/5db0cf430357f89071cb6c33843494f9833fd403))
+
 ## [0.6.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.5.0...fishsense-lite-web-v0.6.0) (2026-05-07)
 
 
