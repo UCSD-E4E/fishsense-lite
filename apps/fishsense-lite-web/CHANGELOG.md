@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.6.1...fishsense-lite-web-v0.6.2) (2026-05-08)
+
+
+### Bug Fixes
+
+* **web:** remove middleware.ts, gate /portal in the page ([6c360a4](https://github.com/UCSD-E4E/fishsense-lite/commit/6c360a48ff9dd7a9acc91ba57c7b104dd2c3557f))
+* **web:** remove middleware.ts, gate /portal in the page itself ([d0577e3](https://github.com/UCSD-E4E/fishsense-lite/commit/d0577e339283b5cb1b3ba796ad20cb928be2772e))
+
 ## [0.6.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.6.0...fishsense-lite-web-v0.6.1) (2026-05-08)
 
 
