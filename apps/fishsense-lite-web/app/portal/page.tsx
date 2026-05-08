@@ -1,10 +1,14 @@
+import { redirect } from "next/navigation";
 import { auth, signOut } from "@/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function PortalPage() {
   const session = await auth();
-  const user = session?.user;
+  if (!session?.user) {
+    redirect(`/api/auth/signin?callbackUrl=${encodeURIComponent("/portal")}`);
+  }
+  const user = session.user;
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
