@@ -5,6 +5,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "E4E FishSense",
   description: "FishSense dashboard",
+  icons: { icon: "/logo.svg" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

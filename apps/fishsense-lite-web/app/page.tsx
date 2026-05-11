@@ -16,7 +16,25 @@ export default async function HomePage() {
   return (
     <main className="mx-auto max-w-6xl px-6 py-12">
       <header className="mb-10 flex items-center justify-between gap-4">
-        <h1 className="text-4xl font-semibold tracking-tight">E4E FishSense</h1>
+        <div className="flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {/*
+            invert + hue-rotate-180 in dark mode: black fish outline goes
+            black -> white (the laser-dot's red has no chroma to lose to
+            invert, so hue-rotate has no visible effect on it), while
+            invert turns the red dot to cyan and the subsequent 180deg
+            hue-rotate brings it back to red. Net effect: the outline
+            flips for contrast against bg-slate-950 while the brand-
+            critical red laser-pointer stays red.
+          */}
+          <img
+            src="/logo.svg"
+            alt=""
+            aria-hidden="true"
+            className="h-12 w-auto dark:invert dark:hue-rotate-180"
+          />
+          <h1 className="text-4xl font-semibold tracking-tight">E4E FishSense</h1>
+        </div>
         <a
           href="/portal"
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
