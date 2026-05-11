@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.6.2...fishsense-lite-web-v0.7.0) (2026-05-11)
+
+
+### Features
+
+* **web:** add the FishSense fish/laser logo ([0378b0f](https://github.com/UCSD-E4E/fishsense-lite/commit/0378b0fcce4b247ba413eaf0a23f11f8d0b367c1))
+* **web:** add the FishSense fish/laser logo ([f8aefbd](https://github.com/UCSD-E4E/fishsense-lite/commit/f8aefbdf50465b9827debe036e02163110a0a322))
+
+
+### Bug Fixes
+
+* **web:** address Copilot review on logo PR ([898376e](https://github.com/UCSD-E4E/fishsense-lite/commit/898376ef795808e01ad534ac2b17dc385398ea8f))
+
 ## [0.6.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.6.1...fishsense-lite-web-v0.6.2) (2026-05-08)
 
 
