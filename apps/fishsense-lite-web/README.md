@@ -138,12 +138,18 @@ narrow exception; extract logic into a unit and cover it there.
 - `fishsense.e4e.ucsd.edu` (this app) is **not** behind the
   Authentik forward-auth Traefik middleware that fronts
   `orchestrator.fishsense.e4e.ucsd.edu` (fishsense-api, qcomm static
-  server). Auth is app-owned and only gates `/portal/*`; the landing
-  must stay public.
+  server). Auth is app-owned and only gates `/portal` (the SSR check
+  lives in `app/portal/page.tsx`); the landing must stay public.
 - SSR fetches use the in-cluster URL `http://fishsense-api:8000` to
   bypass the public Traefik route + Authentik middleware that 302s
   basic-auth. Don't switch this to the public hostname.
-- `AUTH_URL` is **not** required: NextAuth v5 + `trustHost: true`
-  derives the base URL from the inbound `Host`/`X-Forwarded-Host`
-  header (Traefik supplies these). If you ever see callback URLs
-  built against `localhost`, that's the knob to revisit.
+- `AUTH_URL` is **strongly recommended** in any non-localhost deploy.
+  NextAuth v5 + `trustHost: true` is *supposed* to derive the base
+  URL from the inbound `Host`/`X-Forwarded-Host` header, but in
+  practice the providers/picker route and the OAuth post-sign-in
+  redirect can still end up built against the container's internal
+  listen address (`http://0.0.0.0:3000/...`) — which 500s the OAuth
+  callback and sends the browser somewhere unreachable. Set
+  `AUTH_URL=https://fishsense.e4e.ucsd.edu` to bypass header
+  detection entirely. See `deploy/web_volumes/.env.example` and the
+  orchestrator-bootstrap section of the repo's `CLAUDE.md`.

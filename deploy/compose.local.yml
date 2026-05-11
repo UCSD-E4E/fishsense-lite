@@ -224,6 +224,13 @@ services:
       AUTH_AUTHENTIK_ID: local-test-client-id
       AUTH_AUTHENTIK_SECRET: local-test-client-secret
       AUTH_AUTHENTIK_ISSUER: http://localhost:9999/local-test-issuer
+      # Pin the canonical URL so next-auth doesn't fall back to deriving
+      # it from the request's listen address (http://0.0.0.0:3000/...),
+      # which would point browsers from the host at an unreachable URL
+      # after sign-in. Prod sets the public hostname here; for the local
+      # stack the container's published port on the host is the right
+      # value.
+      AUTH_URL: http://localhost:3000
     ports:
       - "3000:3000"
     networks:

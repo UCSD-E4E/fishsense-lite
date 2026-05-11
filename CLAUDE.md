@@ -545,12 +545,17 @@ Orchestrator:
    existing prod state. Populate `web_volumes/.env` (untracked) per
    the canonical shape in `deploy/web_volumes/.env.example` —
    fishsense-lite-web reads it via `env_file:` and throws on first request
-   if any of the nine keys are missing — five for the public landing
-   page (FISHSENSE_API_*, LABEL_STUDIO_*) plus four for the Authentik
-   OIDC gate on `/portal/*` (AUTH_SECRET, AUTH_AUTHENTIK_ID,
-   AUTH_AUTHENTIK_SECRET, AUTH_AUTHENTIK_ISSUER). Landing stays up
-   when AUTH_* are missing because middleware only runs on
-   `/portal/:path*`; `/portal` itself 500s.
+   if any of the nine required keys are missing — five for the public
+   landing page (FISHSENSE_API_*, LABEL_STUDIO_*) plus four for the
+   Authentik OIDC gate on `/portal` (AUTH_SECRET, AUTH_AUTHENTIK_ID,
+   AUTH_AUTHENTIK_SECRET, AUTH_AUTHENTIK_ISSUER). Landing stays up when
+   AUTH_* are missing because the gate lives in app/portal/page.tsx,
+   not on the landing route; `/portal` itself 500s. A tenth key,
+   `AUTH_URL=https://fishsense.e4e.ucsd.edu`, is technically optional
+   but strongly recommended — without it next-auth derives URLs from
+   request headers, and the OAuth post-sign-in redirect lands at
+   `http://0.0.0.0:3000/...` (the container's internal listen address)
+   instead of the public hostname.
 
 Data-worker:
 1. Register a runner with `--labels fishsense-data-worker`.
