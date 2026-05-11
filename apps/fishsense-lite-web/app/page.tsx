@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { getActiveProjects } from "@/lib/active-projects";
 import { buildSections, type Section, type SectionLink } from "@/lib/sections";
 import { ADMIN_LINKS, RESULTS_LINKS } from "@/lib/static-links";
@@ -17,20 +18,32 @@ export default async function HomePage() {
     <main className="mx-auto max-w-6xl px-6 py-12">
       <header className="mb-10 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           {/*
-            invert + hue-rotate-180 in dark mode: black fish outline goes
-            black -> white (the laser-dot's red has no chroma to lose to
-            invert, so hue-rotate has no visible effect on it), while
-            invert turns the red dot to cyan and the subsequent 180deg
-            hue-rotate brings it back to red. Net effect: the outline
-            flips for contrast against bg-slate-950 while the brand-
-            critical red laser-pointer stays red.
+            Dark-mode contrast: bg-slate-950 makes the as-authored black
+            fish outline nearly invisible. invert turns black->white
+            (good) and the brand-critical red laser dot ->cyan (bad);
+            the chained 180deg hue-rotate brings cyan back to red while
+            leaving white unchanged (white has no chroma to rotate).
+            Net effect: outline flips for contrast, red stays red.
+
+            Width/height come from the source viewBox (207.5 x 123,
+            ratio ~1.69:1). h-12 (48px) renders ~81px wide; sized via
+            the ratio so next/image can reserve the exact box and avoid
+            CLS.
           */}
-          <img
+          <Image
             src="/logo.svg"
             alt=""
-            aria-hidden="true"
+            aria-hidden
+            width={81}
+            height={48}
+            priority
+            // next/image's default loader 400s on SVGs (XSS-safe default
+            // — see Next.js docs on dangerouslyAllowSVG). The asset is
+            // a hand-extracted vector with no scripts; nothing to
+            // optimize either way, so bypass the loader and serve the
+            // file from /public/ as-is.
+            unoptimized
             className="h-12 w-auto dark:invert dark:hue-rotate-180"
           />
           <h1 className="text-4xl font-semibold tracking-tight">E4E FishSense</h1>

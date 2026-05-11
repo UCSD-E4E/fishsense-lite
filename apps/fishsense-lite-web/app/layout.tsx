@@ -5,7 +5,16 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "E4E FishSense",
   description: "FishSense dashboard",
-  icons: { icon: "/logo.svg" },
+  // SVG first (modern browsers prefer the vector); 64x64 PNG fallback
+  // for clients that don't render SVG favicons (older Safari + niche
+  // legacy clients). Browsers walk the array and pick the first
+  // type they support, so order matters.
+  icons: {
+    icon: [
+      { url: "/logo.svg", type: "image/svg+xml" },
+      { url: "/favicon.png", type: "image/png", sizes: "64x64" },
+    ],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
