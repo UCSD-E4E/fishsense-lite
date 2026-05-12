@@ -99,6 +99,10 @@ ConfigMaps/Secrets.
    - `worker_volumes/api_worker/config/.secrets.toml` — basic auth /
      LS API token / etc. for `fishsense-api-workflow-worker`. The
      paired `settings.toml` is tracked in repo.
+   - `worker_volumes/api_worker/config/nrp.kubeconfig` — **only if**
+     NRP data-worker scaling is enabled (uncomment the `[kubernetes]`
+     block in `worker_volumes/api_worker/config/settings.toml`); the
+     same token kubeconfig used by the `NRP_KUBECONFIG` CI secret.
    - `worker_volumes/api_worker/logs/` — log volume.
    - `worker_volumes/backup_worker/config/.secrets.toml` — same shape
      for `fishsense-backup-worker` (paired `settings.toml` tracked).

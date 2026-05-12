@@ -2,10 +2,15 @@
 
 Temporal worker for api-side orchestration — Label Studio sync
 workflows, Create/Populate × {Laser, Species, HeadTail, DiveSlate}
-project workflows, and the four hourly preprocess parents that
-dispatch per-image work to the data-worker. Talks to `fishsense-api`
-(via `fishsense-api-sdk`), Label Studio (via `label-studio-sdk`), and
-the E4E NAS.
+project workflows, and the hourly parents (preprocess 0.1 / 2 / 5.1 /
+9, clustering 1, calibration 13, measurement 14) that dispatch work to
+the data-worker. It also owns the data-worker's replica count on NRP:
+parents call `ensure_data_worker_running_activity` before dispatching
+a child, and `ScaleDownIdleDataWorkerWorkflow` scales the Deployment
+back to 0 when its task queue is quiet (see `[kubernetes]` config
+below — a no-op when that's unset). Talks to `fishsense-api` (via
+`fishsense-api-sdk`), Label Studio (via `label-studio-sdk`), the E4E
+NAS, and (when configured) the NRP k8s API.
 
 Task queue: `fishsense_api_queue`.
 
@@ -22,6 +27,9 @@ Task queue: `fishsense_api_queue`.
 | `PreprocessSpeciesImagesParentWorkflow` | every 1 h, +15 min (`overlap=SKIP`) | Stage-2 orchestrator (PREDICTION cluster + laser-valid image without species label). Same five-step shape. |
 | `PreprocessHeadtailImagesParentWorkflow` | every 1 h, +30 min (`overlap=SKIP`) | Stage-5.1 orchestrator (laser-valid image without head/tail label). Same shape. |
 | `PreprocessSlateImagesParentWorkflow` | every 1 h, +45 min (`overlap=SKIP`) | Stage-9 orchestrator (slate-marked species labels lacking slate labels). Also stages the slate template PDF (`stage_slate_pdf_activity`) before dispatch. |
+| `PerformLaserCalibrationParentWorkflow` | every 1 h, +50 min (`overlap=SKIP`) | Stage-13 orchestrator: select → dispatch `PerformLaserCalibrationWorkflow`. No NAS/file-exchange staging. |
+| `MeasureFishParentWorkflow` | on-demand (`overlap=SKIP` when scheduled) | Stage-14 orchestrator: select → dispatch `MeasureFishWorkflow`. Drains one dive per run; not scheduled (measurement isn't idempotent — see CLAUDE.md). |
+| `ScaleDownIdleDataWorkerWorkflow` | every 1 h, +55 min (`overlap=SKIP`) | Scale the NRP data-worker Deployment to 0 if `fishsense_data_processing_queue` has had no running or recently-closed workflow for `kubernetes.idle_cooldown_minutes`. No-op when k8s scaling isn't configured. |
 
 Schedules are auto-registered at worker startup if missing, so the
 first deploy creates them and subsequent deploys are no-ops. To change
@@ -34,13 +42,14 @@ backup worker).
 ## Activities
 
 Per-workflow `activities/*.py` modules. Shared helpers in
-`label_utils.py`, `utils.py`, and `populate_utils.py`. The
-populate stages (0.3 / 4 / 5.3 / 11) are ported; the sync stages
-(4.2 / 12) are partial; calibration / measurement / dive-image-groups
-(6.1 / 13 / 14) are not yet ported. See `CLAUDE.md` for the full port
-status table.
+`label_utils.py`, `utils.py`, and `populate_utils.py`; the NRP
+data-worker scaling helpers live in `activities/k8s_scaling.py`
+(`resolve_scaling_config`, `apps_v1_api`, `set_deployment_replicas`),
+used by `ensure_data_worker_running_activity` and
+`scale_down_data_worker_if_idle_activity`. See `CLAUDE.md` for the
+full notebook-port status table.
 
-## Required env (`E4EFS_` prefix)
+## Required config (`E4EFS_` prefix — env vars or settings.toml)
 
 ```
 E4EFS_TEMPORAL__HOST, E4EFS_TEMPORAL__PORT
@@ -51,6 +60,13 @@ E4EFS_LABEL_STUDIO__URL, E4EFS_LABEL_STUDIO__API_KEY
 E4EFS_E4E_NAS__URL, E4EFS_E4E_NAS__USERNAME, E4EFS_E4E_NAS__PASSWORD
 E4EFS_FISHSENSE_API__URL
 E4EFS_FISHSENSE_API__USERNAME, E4EFS_FISHSENSE_API__PASSWORD     # optional
+# NRP data-worker scaling — all optional; scaling is OFF (the activities
+# no-op) unless kubeconfig_path is set:
+E4EFS_KUBERNETES__KUBECONFIG_PATH    # path to the NRP kubeconfig (file mounted into the pod)
+E4EFS_KUBERNETES__NAMESPACE          # required when kubeconfig_path is set
+E4EFS_KUBERNETES__DEPLOYMENT_NAME    # default: fishsense-data-processing-workflow-worker
+E4EFS_KUBERNETES__ACTIVE_REPLICAS    # default 1; clamped to [1, 4]
+E4EFS_KUBERNETES__IDLE_COOLDOWN_MINUTES  # default 15
 ```
 
 `general.max_workers` (default 4) caps the activity thread pool.

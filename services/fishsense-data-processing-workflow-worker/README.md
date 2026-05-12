@@ -6,10 +6,11 @@ to the file-exchange. CPU-bound, opencv-heavy.
 
 Task queue: `fishsense_data_processing_queue`.
 
-Intended deploy targets: Waiter, the Junkyard / Qualcomm clusters, or
-Nautilus — separate hosts from the orchestrator that runs the api +
-api-worker, since this image is heavy (opencv, rawpy, scikit-image,
-fishsense-core).
+Runs on NRP/Nautilus (Kubernetes) — off the orchestrator host that
+runs fishsense-api + the api-worker, since this image is heavy (opencv,
+rawpy, scikit-image, fishsense-core). It's a scale-to-zero Deployment;
+see [deploy/k8s/data-worker/](../../deploy/k8s/data-worker/README.md)
+and "Running" below.
 
 ## Workflows
 
@@ -51,15 +52,25 @@ PUT  /api/v1/exchange/{folder}/{checksum}.JPG        # this worker writes
 labeler-facing GET routes for these are configured in
 [deploy/static_file_server/nginx.conf](../../deploy/static_file_server/nginx.conf).
 
-## Required env (`E4EFS_` prefix)
+## Required config (`E4EFS_` prefix — env vars or settings.toml)
 
 ```
 E4EFS_TEMPORAL__HOST, E4EFS_TEMPORAL__PORT
 E4EFS_TEMPORAL__TLS=true|false
 E4EFS_TEMPORAL__CLIENT_CERT, E4EFS_TEMPORAL__CLIENT_PRIVATE_KEY  # when tls=true
+E4EFS_TEMPORAL__SERVER_ROOT_CA_CERT                              # when tls=true
 E4EFS_FISHSENSE_API__URL
+E4EFS_FISHSENSE_API__USERNAME, E4EFS_FISHSENSE_API__PASSWORD     # SDK basic auth (authentik passthrough)
 E4EFS_FILE_EXCHANGE__URL
+E4EFS_FILE_EXCHANGE__USERNAME, E4EFS_FILE_EXCHANGE__PASSWORD     # file-exchange basic auth (authentik passthrough)
 ```
+
+On NRP the non-secret keys come from a ConfigMap
+([deploy/k8s/data-worker/settings.toml](../../deploy/k8s/data-worker/settings.toml))
+and the four `*__USERNAME`/`*__PASSWORD` come from a Secret as env vars;
+the cert paths point at a Secret-mounted volume at `/certs`. Locally
+(devcontainer, hitting nginx directly) the `*__USERNAME`/`*__PASSWORD`
+are unset and no auth header is sent.
 
 The `*.url` validators use a custom `_url_condition` (http/https +
 non-empty hostname) instead of `validators.url`, because the strict

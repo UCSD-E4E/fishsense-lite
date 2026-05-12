@@ -13,19 +13,22 @@ services:
       - "traefik.http.routers.fishsense_static_file_server.tls.certresolver=letsencrypt"
       # Worker-to-worker file-exchange — separate router so the
       # `/api/v1/data` path stays CORS-only and the exchange path can
-      # have its own auth middleware. Lets the data-worker (separate
-      # host, can't reach the internal `static_file_server` docker
-      # hostname) GET/PUT/DELETE on `/api/v1/exchange/*`.
+      # have its own auth middleware. Lets the data-worker (off the
+      # orchestrator's docker network — it runs on NRP) GET/PUT/DELETE
+      # on `/api/v1/exchange/*`. (The api-worker, on this host, hits
+      # the internal `static_file_server` hostname and skips Traefik.)
       #
-      # Auth: IP allowlist scoped to the data-worker host's public IP.
-      # PUT/DELETE on the exchange surface stays inaccessible to the
-      # internet at large. Update the sourcerange when the data-worker
-      # host moves.
-      #
-      # TODO: migrate to authentik basic-auth-passthrough so we can
-      # drop the IP-pinning and consolidate auth on the same provider
-      # the rest of the orchestrator routes use. Tracked in project
-      # memory `project_data_worker_authentik_todo.md`.
+      # Auth (current): IP allowlist — but the data-worker now runs on
+      # NRP, where pods have no stable egress IP, so this is broken for
+      # it as soon as it deploys. **Required migration**: swap the
+      # `fishsense_exchange_ip_allowlist` middleware for `authentik@docker`
+      # (mirror the `fishsense_api_server` router below) + an authentik
+      # application / basic-auth-passthrough policy / service-account,
+      # and set the data-worker's `file_exchange.username/password`. See
+      # deploy/k8s/data-worker/README.md and project memory
+      # `project_data_worker_authentik_todo.md`. Until then the
+      # data-worker's exchange calls 302 → preprocess child workflows
+      # fail.
       - "traefik.http.routers.fishsense_static_file_server_exchange.rule=Host(`orchestrator.fishsense.e4e.ucsd.edu`) && PathPrefix(`/api/v1/exchange`)"
       - "traefik.http.routers.fishsense_static_file_server_exchange.entrypoints=websecure"
       - "traefik.http.routers.fishsense_static_file_server_exchange.tls.certresolver=letsencrypt"
