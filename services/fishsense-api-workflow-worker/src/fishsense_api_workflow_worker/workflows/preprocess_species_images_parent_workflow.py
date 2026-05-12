@@ -25,6 +25,7 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 
 with workflow.unsafe.imports_passed_through():
     from fishsense_api_workflow_worker.workflows._retry_policies import (
+        SCALING_RETRY_POLICY,
         SDK_FAIL_FAST_RETRY_POLICY,
     )
 
@@ -74,6 +75,18 @@ class PreprocessSpeciesImagesParentWorkflow:
 
         if not inputs.clusters or total_images == 0:
             return inputs.dive_id
+
+        # Wake the NRP data-worker before its child workflow lands on
+        # the queue (it scales to zero when idle). Idempotent — converges
+        # on the configured replica count, never accumulates; a no-op
+        # when k8s scaling isn't configured. Returns immediately, so the
+        # pod's cold start overlaps the NAS-staging step below.
+        await workflow.execute_activity(
+            "ensure_data_worker_running_activity",
+            args=(),
+            schedule_to_close_timeout=timedelta(minutes=5),
+            retry_policy=SCALING_RETRY_POLICY,
+        )
 
         await workflow.execute_activity(
             "stage_raw_bytes_for_dive_activity",

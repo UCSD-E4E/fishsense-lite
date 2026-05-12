@@ -268,10 +268,18 @@ services:
       FISHSENSE_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fishsense_local}
       FISHSENSE_POSTGRES_DB: ${FISHSENSE_DB_NAME:-fishsense}
       FISHSENSE_STATIC_FILE_SERVER_URL: http://static_file_server
-      # File-exchange URL (under the E4EFS_ prefix used by both the data-
+      # Worker config under the E4EFS_ prefix (read by both the data-
       # processing and api workflow workers — see each service's
-      # config.py). The worker's `settings.file_exchange.url` validator
-      # reads this when the worker is started from inside this container.
+      # config.py), so `uv run --package <worker> <entry-point>` from
+      # inside this container points at the compose services with no
+      # per-shell env. Auth creds (fishsense_api / file_exchange
+      # username/password) stay unset — the local fishsense-api and
+      # nginx are unauthenticated. (Tests set their own values via
+      # conftest; these are for manual worker runs.)
+      E4EFS_TEMPORAL__HOST: temporal
+      E4EFS_TEMPORAL__PORT: "7233"
+      E4EFS_TEMPORAL__TLS: "false"
+      E4EFS_FISHSENSE_API__URL: http://fishsense-api:8000
       E4EFS_FILE_EXCHANGE__URL: http://static_file_server
       # Label Studio endpoints for the api-workflow-worker integration tests.
       # Token must match LABEL_STUDIO_USER_TOKEN on the label-studio service.

@@ -453,13 +453,16 @@ The four-workflow pipeline:
 push to main         → build.yml    (image -> :sha-<short> + :main)
 release-please merge → release.yml  (cuts GitHub release + tag)
 release: published   → promote.yml  (:sha-<short> -> :v<version> + :latest;
-                                      opens auto-deploy/* PR bumping
-                                      deploy/compose*.yml pin)
-auto-deploy PR merge → deploy.yml   (docker compose pull && up -d on
-                                      the matching self-hosted runner —
-                                      [fishsense-prod] for the orchestrator
-                                      stack, [fishsense-data-worker] for
-                                      the data-processing worker host)
+                                      opens auto-deploy/* PR bumping the
+                                      image pin — deploy/compose*.yml for
+                                      orchestrator-stack services, or the
+                                      newTag in deploy/k8s/data-worker/
+                                      kustomization.yaml for the data-worker)
+auto-deploy PR merge → deploy.yml   (orchestrator stack: docker compose
+                                      pull && up -d on [fishsense-prod];
+                                      data-worker: kubectl apply -k
+                                      deploy/k8s/data-worker from a
+                                      GitHub-hosted runner, NRP)
 ```
 
 `.github/workflows/build.yml` runs on **every push to main + every PR**.
@@ -481,9 +484,13 @@ applies to all the rest.
 release-please after the release PR is merged). It does **not**
 rebuild — (a) retags the SHA-tagged image to `:v<version>` and
 `:latest` via `docker buildx imagetools create` (manifest-only push,
-no layer transfer); (b) opens a PR on `deploy/compose*.yml` bumping
-the package's image pin to the new version. Branch name pattern:
-`auto-deploy/<package>-<version>`.
+no layer transfer); (b) opens an auto-deploy PR bumping the package's
+image pin. For most packages that's the `image: ...:v*` pin in
+`deploy/compose*.yml`; for `fishsense-data-processing-workflow-worker`
+(which runs on NRP/Kubernetes, not compose) it's the `newTag:` in
+`deploy/k8s/data-worker/kustomization.yaml`. Branch name pattern:
+`auto-deploy/<package>-<version>` either way (deploy.yml routes by
+prefix).
 
 **SDK consumer cascade (release.yml `auto-bump-sdk-consumers` job).**
 `fishsense-api-sdk` is a workspace dep, not published — workers
@@ -509,29 +516,35 @@ built-in Python-workspace-aware plugin (unlike `node-workspace` /
 
 `.github/workflows/deploy.yml` runs when an `auto-deploy/*` PR is
 merged (via `pull_request: types:[closed]` + branch-prefix filter, so
-unrelated compose edits don't trigger it). Plus a `workflow_dispatch`
-for manual re-pulls. Two jobs route by branch name:
+unrelated edits don't trigger it). Plus a `workflow_dispatch` for
+manual re-deploys. Two jobs route by branch name:
 
 - `auto-deploy/fishsense-data-processing-workflow-worker-*` ->
-  `[self-hosted, fishsense-data-worker]`, repo variable
-  `DATA_WORKER_DEPLOY_DIR`, `compose.data-worker.yml`.
-- any other `auto-deploy/*` -> `[self-hosted, fishsense-prod]`, repo
-  variable `DEPLOY_DIR`, `compose.yml` (which `include:`s the four
-  orchestrator-stack siblings).
+  `deploy-data-worker` on `ubuntu-latest` (GitHub-hosted; kubectl is
+  preinstalled): writes the `NRP_KUBECONFIG` repo secret to a temp
+  kubeconfig and runs `kubectl apply -k deploy/k8s/data-worker` +
+  `kubectl rollout status`. No persistent ops dir, no docker — the
+  kustomization is self-contained and config/certs live in cluster
+  ConfigMaps/Secrets.
+- any other `auto-deploy/*` -> `deploy-orchestrator` on
+  `[self-hosted, fishsense-prod]`, repo variable `DEPLOY_DIR`,
+  `compose.yml` (which `include:`s the four orchestrator-stack
+  siblings).
 
-**Neither runner exists yet** — until each is registered, the matching
-deploy jobs sit in queue.
+**The `fishsense-prod` runner doesn't exist yet** — until it's
+registered the orchestrator deploy job sits in queue; the
+`deploy-data-worker` job runs but fails fast until `NRP_KUBECONFIG`
+is set.
 
-Each job operates on a **persistent ops-managed deploy directory**
-on its host (paths in `DEPLOY_DIR` / `DATA_WORKER_DEPLOY_DIR`), NOT
-the runner's default `_work` checkout. This matters because
-`deploy/compose*.yml` uses relative bind mounts (`./pg_volumes`,
-`./worker_volumes`, `./.secrets/...`, `./temporal_volumes/certs`)
-for postgres data, worker config, secrets, and Temporal mTLS certs —
-none of which are tracked in git. Running compose against the
-runner's fresh `_work` checkout would silently start postgres with
-an empty data dir on the orchestrator, or the data-worker without
-its mTLS certs.
+The `deploy-orchestrator` job operates on a **persistent ops-managed
+deploy directory** on the host (path in `DEPLOY_DIR`), NOT the
+runner's default `_work` checkout, because `deploy/compose*.yml` uses
+relative bind mounts (`./pg_volumes`, `./worker_volumes`,
+`./.secrets/...`, `./temporal_volumes/certs`) for postgres data,
+worker config, secrets, and Temporal mTLS certs — none tracked in git.
+Running compose against a fresh `_work` checkout would silently start
+postgres with an empty data dir. The data-worker k8s deploy has no
+such issue.
 
 Host bootstrap (one-time, per host):
 
@@ -557,17 +570,16 @@ Orchestrator:
    `http://0.0.0.0:3000/...` (the container's internal listen address)
    instead of the public hostname.
 
-Data-worker:
-1. Register a runner with `--labels fishsense-data-worker`.
-2. `git clone` the repo to a persistent path (e.g. `/srv/fishsense-data-worker`).
-3. Set repo variable `DATA_WORKER_DEPLOY_DIR` to that path.
-4. The in-repo `worker_volumes/data_worker/config/settings.toml` is
-   the canonical config — flows in via `git pull --ff-only origin main`
-   like the api-worker's. Populate `worker_volumes/data_worker/config/.secrets.toml`
-   (untracked) and `temporal_volumes/certs/` (a data-worker-specific
-   client cert + key + the same root CA) on the host.
+Data-worker (NRP/Kubernetes): no runner, no deploy dir. Bootstrap is
+NRP-side — namespace + permanent-service exception, the three Secrets
+(`fishsense-data-worker-secrets`, `fishsense-data-worker-temporal-certs`,
+`ghcr-pull`), the kubeconfig (used by both the `NRP_KUBECONFIG` CI
+secret and the api-worker's `[kubernetes]` config), plus the
+orchestrator-side authentik prerequisite. Full list:
+`deploy/k8s/data-worker/README.md`.
 
-Three reasons for the split:
+Three reasons for the build → release → promote → deploy split (applies
+to the compose-pin PR and the kustomize-`newTag` PR alike):
 1. **Race-proof promotion.** The release tag points at a specific
    commit SHA. Promote retags the image built from that exact SHA,
    not whatever happens to be `:latest`. If a newer non-release
@@ -577,15 +589,35 @@ Three reasons for the split:
    image when the release commit landed; promote.yml is a manifest
    retag (~seconds).
 3. **Intentional deploy.** deploy.yml only fires when a human merges
-   the auto-deploy PR. The compose-pin diff is reviewable in the PR
-   before any prod restart happens.
+   the auto-deploy PR. The pin diff (compose `image:` or kustomize
+   `newTag:`) is reviewable in the PR before any prod change happens.
 
-`fishsense-data-processing-workflow-worker` runs on a separate host
-(with its own compose file `deploy/compose.data-worker.yml`, NOT
-included by `deploy/compose.yml`) and uses the second deploy.yml job
-described above. Its compose-pin PR opens just like the orchestrator
-services; the routing in `deploy.yml` sends the merge to the
-`fishsense-data-worker` runner instead of `fishsense-prod`.
+`fishsense-data-processing-workflow-worker` runs on Kubernetes
+(`deploy/k8s/data-worker/`), not as a compose service — **NRP/Nautilus**
+is the current target; the **Junkyard** and **Qualcomm** clusters are
+longer-term targets (not ready yet; the manifests are cluster-generic
+apart from the per-cluster bootstrap). Its auto-deploy PR bumps the
+kustomize `newTag:` instead of a compose `image:` pin,
+and the `deploy-data-worker` job `kubectl apply`s it from a
+GitHub-hosted runner (see the deploy.yml routing above). **The
+Deployment manifest omits `replicas`** — the api-worker owns the
+replica count: each preprocess/calibration/measure parent calls
+`ensure_data_worker_running_activity` (after it knows there's real
+work) to scale the Deployment to `kubernetes.active_replicas`, and the
+hourly `ScaleDownIdleDataWorkerWorkflow` (api-worker schedule, slot
+:55) scales it back to 0 once `fishsense_data_processing_queue` has had
+no running or recently-closed workflow for `kubernetes.idle_cooldown_minutes`.
+Scaling no-ops when the api-worker's `[kubernetes].kubeconfig_path`
+isn't set (the data-worker is then assumed always-on — local
+devcontainer, pre-NRP). `active_replicas` is clamped to `[1, 4]`; >1
+is a deliberate operator choice (giant single dive, or active-window
+resilience on a preemption-prone cluster), never automatic. See
+`deploy/k8s/data-worker/README.md`.
+
+NRP GCs Deployments older than 2 weeks unless the namespace is on its
+exceptions list — the bootstrap requests a permanent-service
+exception. The worker's pods are ReplicaSet-owned so the 6-hour
+bare-pod rule never applies; ConfigMaps/Secrets aren't time-GC'd.
 
 `deploy/compose.workers.yml` is the home for `fishsense-*` worker
 services running on the orchestrator host. Currently has

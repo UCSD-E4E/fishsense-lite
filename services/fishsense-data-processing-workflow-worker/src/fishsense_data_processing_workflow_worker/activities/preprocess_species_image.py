@@ -9,7 +9,6 @@ import asyncio
 import logging
 
 import cv2
-import httpx
 import numpy as np
 from fishsense_api_sdk.models.camera_intrinsics import CameraIntrinsics
 from fishsense_core.image.raw_image import RawImage
@@ -18,7 +17,7 @@ from temporalio import activity
 
 from fishsense_data_processing_workflow_worker.config import settings
 from fishsense_data_processing_workflow_worker.file_exchange import (
-    FileExchangeClient,
+    open_file_exchange_client,
 )
 
 _log = logging.getLogger(__name__)
@@ -95,12 +94,7 @@ async def preprocess_species_image(payload) -> None:  # type: ignore[no-untyped-
         payload.cluster_size,
     )
 
-    async with httpx.AsyncClient(
-        base_url=settings.file_exchange.url, timeout=httpx.Timeout(60.0)
-    ) as http:
-        client = FileExchangeClient(
-            base_url=settings.file_exchange.url, http=http
-        )
+    async with open_file_exchange_client(settings.file_exchange) as client:
         raw_bytes = await client.download_raw(payload.checksum)
         jpeg_bytes = await asyncio.to_thread(
             _rectify_overlay_encode,

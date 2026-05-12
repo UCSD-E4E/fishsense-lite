@@ -15,9 +15,10 @@ url = "https://labeler.e4e.ucsd.edu"
 # URL prefix embedded into Label Studio task `data.image` fields —
 # labelers' browsers fetch from here through Traefik. /api/v1/data is
 # publicly routed (CORS-enabled, no auth at the Traefik layer);
-# /api/v1/exchange is also publicly routed now (second router for the
-# data-worker on a separate host) but worker-only and is the surface
-# that needs the auth middleware once one is attached.
+# /api/v1/exchange is also publicly routed (second router, for the
+# data-worker on NRP) but worker-only and behind `authentik@docker`
+# basic-auth-passthrough (same as the API route — see
+# compose.orchestrator.yml).
 image_url_base = "https://orchestrator.fishsense.e4e.ucsd.edu"
 
 [e4e_nas]
@@ -37,8 +38,26 @@ url = "http://fishsense-api:8000"
 # processed JPEGs / DELETE raw .ORF entries on the file-exchange
 # (/api/v1/exchange/*). The api-worker runs on the orchestrator host
 # alongside static_file_server on the same docker network, so this
-# bypasses Traefik (and any auth middleware on the public exchange
-# router) entirely. The data-worker, on a separate host, uses the
-# public Traefik route instead.
+# bypasses Traefik (and the authentik middleware on the public exchange
+# router) entirely. The data-worker, on NRP, uses the public Traefik
+# route instead.
 [file_exchange]
 url = "http://static_file_server"
+
+# --- NRP data-worker scale-to-zero (optional) ---
+# When `kubeconfig_path` points at a readable NRP kubeconfig (mount it
+# at this path — it's a sibling of this file under the bind-mounted
+# config dir, so /e4efs/config/nrp.kubeconfig works), the api-worker
+# scales the data-worker Deployment up before dispatching child
+# workflows and an hourly sweeper scales it back to 0 when idle. Leave
+# the whole section out (or just `kubeconfig_path` unset) and scaling
+# no-ops — the data-worker is then assumed always-on. `namespace` is
+# required when `kubeconfig_path` is set. `active_replicas` (default 1)
+# is clamped to [1, 4]; `deployment_name` defaults to the data-worker's
+# Deployment name; `idle_cooldown_minutes` defaults to 15.
+# [kubernetes]
+# kubeconfig_path = "/e4efs/config/nrp.kubeconfig"
+# namespace = "fishsense-..."
+# deployment_name = "fishsense-data-processing-workflow-worker"
+# active_replicas = 1
+# idle_cooldown_minutes = 15

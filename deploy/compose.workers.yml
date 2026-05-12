@@ -6,9 +6,10 @@
 # `image: ghcr.io/ucsd-e4e/<package>:v*` and bump it via PR on release.
 #
 # fishsense-data-processing-workflow-worker is intentionally NOT here:
-# it runs on a separate host with its own compose file
-# (compose.data-worker.yml). Auto-deploy still applies — deploy.yml
-# routes its bumps to the `fishsense-data-worker` runner.
+# it runs on NRP/Kubernetes (deploy/k8s/data-worker/), not as a compose
+# service. promote.yml bumps the image tag in that kustomization and
+# deploy.yml `kubectl apply`s it; the api-worker scales the Deployment
+# 0 <-> active_replicas at runtime.
 
 services:
   fishsense-api-workflow-worker:

@@ -28,8 +28,8 @@ flowchart LR
         SUP["Superset"]
     end
 
-    subgraph DWHOST["Data-worker host (Waiter / Junkyard / Qualcomm / Nautilus)"]
-        DPW["fishsense-data-processing-workflow-worker<br/>queue: fishsense_data_processing_queue"]
+    subgraph NRP["Kubernetes — NRP/Nautilus now<br/>(Junkyard / Qualcomm: future targets)"]
+        DPW["fishsense-data-processing-workflow-worker<br/>queue: fishsense_data_processing_queue<br/>(Deployment, scale-to-zero)"]
     end
 
     subgraph LIBS["Workspace libraries"]
@@ -41,9 +41,10 @@ flowchart LR
     APIWW --->|sdk| API
     APIWW --->|label-studio-sdk| LS
     APIWW --->|gRPC mTLS| TC
+    APIWW -.->|k8s scale 0..N| DPW
     DPW   --->|sdk| API
     DPW   --->|gRPC mTLS| TC
-    DPW   --->|GET raw / PUT jpeg| FX
+    DPW   --->|GET raw / PUT jpeg<br/>(authentik basic-auth)| FX
     BUW   --->|pg_dump -Fc| PG
     BUW   --->|FileStation HTTPS| NAS
     BUW   --->|gRPC mTLS| TC
@@ -91,8 +92,8 @@ flowchart TB
         end
     end
 
-    subgraph DWHOST["Data-worker host - separate, compose not in this repo"]
-        D_DPW["fishsense-data-processing-workflow-worker"]
+    subgraph NRP["NRP / Nautilus (k8s) - deploy/k8s/data-worker/<br/>Junkyard / Qualcomm: future targets"]
+        D_DPW["fishsense-data-processing-workflow-worker<br/>Deployment (replicas managed by the api-worker)"]
     end
 
     subgraph DEV["Local devcontainer - compose.local.yml"]
@@ -118,20 +119,27 @@ flowchart TB
     CI_RELEASE -->|on release PR merge| GH_REL
     GH_REL     -->|release published event| CI_PROMOTE
     CI_PROMOTE --> GHCR
-    CI_PROMOTE -->|opens compose-pin PR| AUTO_PR
-    AUTO_PR    -->|on merge| CI_DEPLOY
-    CI_DEPLOY  -->|target| PROD
+    CI_PROMOTE -->|opens image-pin PR| AUTO_PR
+    AUTO_PR    -->|merge: orchestrator pin| CI_DEPLOY
+    AUTO_PR    -->|merge: data-worker pin| CI_DEPLOY
+    CI_DEPLOY  -->|docker compose up -d| PROD
+    CI_DEPLOY  -->|kubectl apply -k| NRP
 
-    DWHOST -.->|manual docker compose pull and up| GHCR
+    P_APIWW -.->|k8s scale 0..N| D_DPW
 ```
 
 Notes:
 
-- The deploy PR is intentional — a human reviews the compose-pin diff
-  before any prod restart. See [.github/workflows/deploy.yml](../.github/workflows/deploy.yml).
-- The deploy host has a persistent ops-managed checkout (path passed
-  via repo variable `DEPLOY_DIR`); volumes/secrets sit beside the
-  compose files as untracked siblings.
+- The deploy PR is intentional — a human reviews the image-pin diff
+  (compose `image:` for the orchestrator stack, kustomize `newTag:` for
+  the data-worker) before any prod change. See
+  [.github/workflows/deploy.yml](../.github/workflows/deploy.yml).
+- The orchestrator deploy job uses a persistent ops-managed checkout
+  (path passed via repo variable `DEPLOY_DIR`); volumes/secrets sit
+  beside the compose files as untracked siblings. The data-worker
+  deploy job is a GitHub-hosted `kubectl apply -k` using the
+  `NRP_KUBECONFIG` secret — no persistent dir; config/certs live in
+  cluster ConfigMaps/Secrets.
 - The local stack does **not** layer onto `compose.yml` — Authentik /
   mTLS / letsencrypt aren't bootable on a laptop.
 
@@ -540,8 +548,8 @@ stateDiagram-v2
     Built --> ReleasePR : release-please opens PR
     ReleasePR --> Tagged : PR merged so release.yml cuts tag
     Tagged --> Promoted : promote.yml retags image
-    Promoted --> AutoDeployPR : promote.yml opens compose-pin PR
-    AutoDeployPR --> Deployed : human merges so deploy.yml runs compose
+    Promoted --> AutoDeployPR : promote.yml opens image-pin PR
+    AutoDeployPR --> Deployed : human merges so deploy.yml deploys
     Deployed --> [*]
 
     note right of Promoted
@@ -552,10 +560,12 @@ stateDiagram-v2
     end note
 
     note right of AutoDeployPR
-        data-processing-workflow-worker is held off
-        auto-deploy because its host compose is not
-        in this repo. The image still gets a version
-        tag for manual rollout.
+        Orchestrator-stack services: bumps the
+        image: pin in deploy/compose*.yml, deploy.yml
+        runs docker compose up -d on fishsense-prod.
+        data-processing-workflow-worker: bumps the
+        newTag: in deploy/k8s/data-worker/kustomization.yaml,
+        deploy.yml runs kubectl apply -k on NRP.
     end note
 ```
 

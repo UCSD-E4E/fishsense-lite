@@ -1,7 +1,11 @@
 # deploy/
 
-Docker-compose stacks for FishSense Lite — local devcontainer, prod
-orchestrator host, and prod data-worker host.
+Deployment config for FishSense Lite — docker-compose stacks for the
+local devcontainer and the prod **orchestrator host**, plus Kubernetes
+manifests (`k8s/data-worker/`) for the **data-processing worker**,
+which runs on Kubernetes rather than a docker host (NRP/Nautilus is
+the current target; the Junkyard and Qualcomm clusters are future
+ones, not ready yet).
 
 ## Compose layout
 
@@ -12,9 +16,13 @@ orchestrator host, and prod data-worker host.
 | `compose.temporal.yml` | Temporal cluster (history, frontend, matching, worker, UI). |
 | `compose.workers.yml` | `fishsense-*` workers running on the orchestrator host: `fishsense-api-workflow-worker`, `fishsense-backup-worker`. (Workers consume Temporal but aren't part of the cluster.) |
 | `compose.superset.yml` | Superset + redis + worker / beat. |
-| `compose.data-worker.yml` | `fishsense-data-processing-workflow-worker` on a **separate host** (image preprocessing + laser calibration + measurement). **Not** included by `compose.yml`. Invoked on the data-worker host as `docker compose -f compose.data-worker.yml ...`. |
 | `compose.local.yml` | Self-contained local devcontainer stack — postgres, temporal, fishsense-api (pinned image), nginx static_file_server, label-studio, dev container. **Not** layered on `compose.yml`; prod's authentik / mTLS / letsencrypt coupling is intentionally absent. |
 | `compose.dev.yml` | Dev-only compose extras (used inside the devcontainer for tooling). |
+
+`fishsense-data-processing-workflow-worker` (image preprocessing +
+laser calibration + measurement) is **not** a compose service — it's a
+Kubernetes Deployment on NRP, see [`k8s/data-worker/`](k8s/data-worker/README.md).
+The api-worker scales it to zero when idle and back up on demand.
 
 `compose.local.yml` and the prod stack are intentionally separate
 files. Prod is fronted by Traefik + authentik + letsencrypt + mTLS to
@@ -57,23 +65,26 @@ containers.
 
 ## Production deploy
 
-Prod runs on two hosts: the **orchestrator host** runs `compose.yml`
-(which `include:`s the four sibling files), and the **data-worker host**
-runs `compose.data-worker.yml` standalone. **Bringing them up by hand
-is not the path** — the auto-deploy pipeline handles version bumps via
-reviewable PRs, and routes the merge to the matching host's runner.
-See [.github/workflows/deploy.yml](../.github/workflows/deploy.yml)
-and the "CI pipeline" section of [CLAUDE.md](../CLAUDE.md).
+Two targets: the **orchestrator host** runs `compose.yml` (which
+`include:`s the four sibling files), and the **data-processing worker**
+runs as a Kubernetes Deployment on NRP (see
+[`k8s/data-worker/`](k8s/data-worker/README.md)). **Bringing either up
+by hand is not the steady-state path** — the auto-deploy pipeline
+handles version bumps via reviewable PRs, then `.github/workflows/deploy.yml`
+either `docker compose pull && up -d` on the `fishsense-prod` runner
+or `kubectl apply -k deploy/k8s/data-worker` from a GitHub-hosted
+runner. See the "CI pipeline" section of [CLAUDE.md](../CLAUDE.md).
 
-The deploy workflow does **not** check the repo out into the runner's
-default `_work` directory. Each job operates on a persistent ops-managed
-directory on its host. This matters because the compose files use
-relative bind mounts (`./pg_volumes/`, `./worker_volumes/`, `./.secrets/`,
+The **orchestrator** deploy job does **not** check the repo out into
+the runner's default `_work` directory — it operates on a persistent
+ops-managed directory on the host, because `compose*.yml` uses relative
+bind mounts (`./pg_volumes/`, `./worker_volumes/`, `./.secrets/`,
 `./temporal_volumes/certs`, etc.) for postgres data, worker config,
-secrets, and Temporal mTLS certs — none of which are tracked in git.
-Running compose against a fresh `_work` checkout would silently start
-postgres with an empty data dir on the orchestrator, or the data-worker
-without its mTLS certs.
+secrets, and Temporal mTLS certs — none tracked in git. Running compose
+against a fresh `_work` checkout would silently start postgres with an
+empty data dir. The **data-worker** k8s deploy has no such issue — the
+kustomization is self-contained and config/certs live in cluster
+ConfigMaps/Secrets.
 
 ### Orchestrator host bootstrap (one-time, ops)
 
@@ -90,6 +101,10 @@ without its mTLS certs.
    - `worker_volumes/api_worker/config/.secrets.toml` — basic auth /
      LS API token / etc. for `fishsense-api-workflow-worker`. The
      paired `settings.toml` is tracked in repo.
+   - `worker_volumes/api_worker/config/nrp.kubeconfig` — **only if**
+     NRP data-worker scaling is enabled (uncomment the `[kubernetes]`
+     block in `worker_volumes/api_worker/config/settings.toml`); the
+     same token kubeconfig used by the `NRP_KUBECONFIG` CI secret.
    - `worker_volumes/api_worker/logs/` — log volume.
    - `worker_volumes/backup_worker/config/.secrets.toml` — same shape
      for `fishsense-backup-worker` (paired `settings.toml` tracked).
@@ -112,38 +127,18 @@ without its mTLS certs.
 6. Set `USER_ID` / `GROUP_ID` in `.env` so the postgres container runs
    as the host owner of `pg_volumes/data/`.
 
-### Data-worker host bootstrap (one-time, ops)
+### Data-processing worker (Kubernetes)
 
-The data-worker is on its own host because it's CPU-heavy (rectify +
-JPEG encode + fishsense-core kernels) and we don't want it competing
-with the orchestrator's postgres / Temporal / authentik traffic.
-
-1. Register a self-hosted GitHub runner with
-   `--labels fishsense-data-worker`, co-located with the docker engine
-   that will run the worker.
-2. `git clone` this repo to a persistent path
-   (e.g. `/srv/fishsense-data-worker`).
-3. Set repo variable `DATA_WORKER_DEPLOY_DIR` to that absolute path.
-4. The in-repo `worker_volumes/data_worker/config/settings.toml` is
-   the canonical config and flows in via `git pull --ff-only origin main`
-   (same atomic-with-image-pin guarantee the orchestrator workers
-   have). Populate the untracked siblings on the host:
-   - `worker_volumes/data_worker/config/.secrets.toml` — fishsense-api
-     basic auth, NAS creds (untracked, host-only).
-   - `worker_volumes/data_worker/logs/` — log volume.
-   - `temporal_volumes/certs/client/fishsense-data-processing-workflow-worker.pem`
-     + `.key` — data-worker-specific mTLS client cert.
-   - `temporal_volumes/certs/ca/root-ca.pem` — same root CA the
-     orchestrator workers use.
-5. `docker login ghcr.io` with a PAT that has `read:packages` on
-   `UCSD-E4E` so the runner user can pull the worker image.
-6. First boot manually:
-   `docker compose -f compose.data-worker.yml up -d`. After it's
-   running, all subsequent rollouts ride the auto-deploy pipeline.
-
-If the host is upgrading from the polyrepo data-worker, **rename
-`DYNACONF_*` env vars to `E4EFS_*`** before redeploying. Dynaconf will
-silently ignore the old prefix.
+The data-worker is CPU-heavy (rectify + JPEG encode + fishsense-core
+kernels) and runs on Kubernetes rather than competing with the
+orchestrator's postgres / Temporal / authentik. It's a `replicas`-less
+Deployment that the api-worker scales 0 ↔ `kubernetes.active_replicas`
+on demand. **NRP/Nautilus** is the current target (the Junkyard and
+Qualcomm clusters are future ones); all the per-cluster bootstrap (NRP
+namespace + permanent-service exception, the three Secrets, the
+kubeconfig used by both CI and the api-worker, the api-worker's
+`[kubernetes]` config, the orchestrator-side authentik prerequisite) is
+in [`k8s/data-worker/README.md`](k8s/data-worker/README.md).
 
 ### Rollout operational notes
 
@@ -305,18 +300,27 @@ per-image activities load-balance for free across replicas (Temporal
 task-queue distribution). The parent's `overlap=SKIP` plus
 deterministic child ids keep the selector side race-free.
 
+**Scale-to-zero on NRP**: each parent above calls
+`ensure_data_worker_running_activity` (after it knows there's real
+work) to scale the NRP Deployment up to `kubernetes.active_replicas`
+before dispatching the child; an hourly `ScaleDownIdleDataWorkerWorkflow`
+(slot :55) scales it back to 0 once the data-worker task queue is
+quiet. Configured by the api-worker's `[kubernetes]` section
+(`kubeconfig_path`, `namespace`, …) — a no-op when that's unset (the
+data-worker is then assumed always-on). See [`k8s/data-worker/README.md`](k8s/data-worker/README.md).
+
 #### Stages 13 + 14 ride the data-worker auto-deploy
 
 Stages 13 (laser calibration) and 14 (fish measurement) are baked
 into the data-worker image. They roll out via the same auto-deploy
 flow as everything else — release-please cuts a data-worker version,
-promote.yml opens the compose-pin PR against
-`compose.data-worker.yml`, and merging it routes the deploy to the
-`fishsense-data-worker` runner. No manual step required *once the
-data-worker host is bootstrapped*. Until that runner is registered
-and `DATA_WORKER_DEPLOY_DIR` is set, the auto-deploy job sits in
-queue and stages 13/14 changes won't reach prod — see
-"Data-worker host bootstrap" above.
+`promote.yml` opens a PR bumping the image `newTag:` in
+`k8s/data-worker/kustomization.yaml`, and merging it triggers
+`deploy.yml` to `kubectl apply -k deploy/k8s/data-worker` from a
+GitHub-hosted runner. No manual step required *once the NRP namespace
++ `NRP_KUBECONFIG` are bootstrapped* (see [`k8s/data-worker/README.md`](k8s/data-worker/README.md));
+until then the `deploy-data-worker` job fails fast and stages 13/14
+changes won't reach prod.
 
 ## Where things live
 
@@ -338,12 +342,13 @@ compose.yml
       └── fishsense-backup-worker
 ```
 
-Data-worker host (separate runner: `fishsense-data-worker`,
-**not** included by `compose.yml`):
+Data-processing worker (NRP/Kubernetes, **not** a compose service):
 
 ```
-compose.data-worker.yml
-└── fishsense-data-processing-workflow-worker
+deploy/k8s/data-worker/        (kubectl apply -k)
+└── Deployment fishsense-data-processing-workflow-worker
+      + ConfigMap (settings.toml), Secrets (creds, Temporal certs, GHCR pull)
+      replicas managed by the api-worker (scale 0 <-> active_replicas)
 ```
 
 ## Related docs

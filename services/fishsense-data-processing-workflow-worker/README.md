@@ -6,10 +6,14 @@ to the file-exchange. CPU-bound, opencv-heavy.
 
 Task queue: `fishsense_data_processing_queue`.
 
-Intended deploy targets: Waiter, the Junkyard / Qualcomm clusters, or
-Nautilus — separate hosts from the orchestrator that runs the api +
-api-worker, since this image is heavy (opencv, rawpy, scikit-image,
-fishsense-core).
+Runs on Kubernetes — off the orchestrator host that runs fishsense-api
++ the api-worker, since this image is heavy (opencv, rawpy,
+scikit-image, fishsense-core). **NRP/Nautilus** is the current target
+(see [deploy/k8s/data-worker/](../../deploy/k8s/data-worker/README.md)
+and "Running" below); the **Junkyard** and **Qualcomm** clusters are
+longer-term targets — not ready yet, but the manifests are
+cluster-generic apart from the per-cluster bootstrap. It's a
+scale-to-zero Deployment whose replica count the api-worker drives.
 
 ## Workflows
 
@@ -51,15 +55,25 @@ PUT  /api/v1/exchange/{folder}/{checksum}.JPG        # this worker writes
 labeler-facing GET routes for these are configured in
 [deploy/static_file_server/nginx.conf](../../deploy/static_file_server/nginx.conf).
 
-## Required env (`E4EFS_` prefix)
+## Required config (`E4EFS_` prefix — env vars or settings.toml)
 
 ```
 E4EFS_TEMPORAL__HOST, E4EFS_TEMPORAL__PORT
 E4EFS_TEMPORAL__TLS=true|false
 E4EFS_TEMPORAL__CLIENT_CERT, E4EFS_TEMPORAL__CLIENT_PRIVATE_KEY  # when tls=true
+E4EFS_TEMPORAL__SERVER_ROOT_CA_CERT                              # when tls=true
 E4EFS_FISHSENSE_API__URL
+E4EFS_FISHSENSE_API__USERNAME, E4EFS_FISHSENSE_API__PASSWORD     # SDK basic auth (authentik passthrough)
 E4EFS_FILE_EXCHANGE__URL
+E4EFS_FILE_EXCHANGE__USERNAME, E4EFS_FILE_EXCHANGE__PASSWORD     # file-exchange basic auth (authentik passthrough)
 ```
+
+On NRP the non-secret keys come from a ConfigMap
+([deploy/k8s/data-worker/settings.toml](../../deploy/k8s/data-worker/settings.toml))
+and the four `*__USERNAME`/`*__PASSWORD` come from a Secret as env vars;
+the cert paths point at a Secret-mounted volume at `/certs`. Locally
+(devcontainer, hitting nginx directly) the `*__USERNAME`/`*__PASSWORD`
+are unset and no auth header is sent.
 
 The `*.url` validators use a custom `_url_condition` (http/https +
 non-empty hostname) instead of `validators.url`, because the strict
@@ -85,18 +99,45 @@ integration`), and a notebook byte-parity test (`-m integration`).
 The integration + parity tests share `tests/fixtures/stage2_sample.ORF`
 — there is no per-stage raw fixture.
 
-## Running
+## Running locally
+
+It's just a Temporal worker — no Kubernetes involved (the k8s manifests
+are the *prod deploy* mechanism). Inside the devcontainer, `compose.local.yml`
+already runs Temporal + fishsense-api + nginx, and the `dev` container
+exports the `E4EFS_*` config pointing at them, so:
 
 ```
 uv run --package fishsense-data-processing-workflow-worker \
     fishsense_data_processing_workflow_worker
 ```
 
-Auto-deployed by the
-[deploy.yml](../../.github/workflows/deploy.yml) data-worker job: a
-merge of an `auto-deploy/fishsense-data-processing-workflow-worker-*`
-PR (opened by `promote.yml` against
-[deploy/compose.data-worker.yml](../../deploy/compose.data-worker.yml))
-routes to the `fishsense-data-worker` self-hosted runner, which runs
-`docker compose -f compose.data-worker.yml pull && up -d` in
-`$DATA_WORKER_DEPLOY_DIR` on the data-worker host.
+connects to the local Temporal and polls `fishsense_data_processing_queue`.
+Nothing flows through it until something dispatches a child workflow onto
+that queue — run the api-worker too (`uv run --package
+fishsense-api-workflow-worker fishsense_api_workflow_worker`) so its
+hourly parents do, or kick one by hand:
+
+```
+temporal workflow start --address temporal:7233 \
+    --task-queue fishsense_data_processing_queue \
+    --type DiveFrameClusteringWorkflow --input '<ClusterDiveFramesInput JSON>'
+```
+
+(Outside the devcontainer, set `E4EFS_TEMPORAL__HOST` / `E4EFS_FISHSENSE_API__URL`
+/ `E4EFS_FILE_EXCHANGE__URL` yourself — see "Required config" above.)
+
+## Running in production
+
+Runs on Kubernetes (NRP/Nautilus today; Junkyard / Qualcomm later) —
+see [deploy/k8s/data-worker/](../../deploy/k8s/data-worker/README.md).
+It's a `replicas`-less Deployment; the api-worker scales it 0 ↔
+`kubernetes.active_replicas` on demand (parent workflows call
+`ensure_data_worker_running_activity` before dispatching a child, and
+an hourly `ScaleDownIdleDataWorkerWorkflow` scales it back to 0 when
+the `fishsense_data_processing_queue` is quiet). Auto-deployed by the
+[deploy.yml](../../.github/workflows/deploy.yml) `deploy-data-worker`
+job: merging an `auto-deploy/fishsense-data-processing-workflow-worker-*`
+PR (opened by `promote.yml`, bumping the image `newTag:` in
+[deploy/k8s/data-worker/kustomization.yaml](../../deploy/k8s/data-worker/kustomization.yaml))
+runs `kubectl apply -k deploy/k8s/data-worker` from a GitHub-hosted
+runner using the `NRP_KUBECONFIG` secret.

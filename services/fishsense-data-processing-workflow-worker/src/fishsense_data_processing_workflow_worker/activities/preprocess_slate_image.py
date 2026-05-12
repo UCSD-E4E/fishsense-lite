@@ -11,7 +11,6 @@ import logging
 from typing import List, Tuple
 
 import cv2
-import httpx
 import numpy as np
 import pymupdf
 from fishsense_api_sdk.models.camera_intrinsics import CameraIntrinsics
@@ -21,7 +20,7 @@ from temporalio import activity
 
 from fishsense_data_processing_workflow_worker.config import settings
 from fishsense_data_processing_workflow_worker.file_exchange import (
-    FileExchangeClient,
+    open_file_exchange_client,
 )
 
 _log = logging.getLogger(__name__)
@@ -137,12 +136,7 @@ async def preprocess_slate_image(payload) -> None:  # type: ignore[no-untyped-de
         payload.slate_id,
     )
 
-    async with httpx.AsyncClient(
-        base_url=settings.file_exchange.url, timeout=httpx.Timeout(60.0)
-    ) as http:
-        client = FileExchangeClient(
-            base_url=settings.file_exchange.url, http=http
-        )
+    async with open_file_exchange_client(settings.file_exchange) as client:
         raw_bytes = await client.download_raw(payload.checksum)
         pdf_bytes = await client.download_slate_pdf(payload.slate_id)
         jpeg_bytes = await asyncio.to_thread(
