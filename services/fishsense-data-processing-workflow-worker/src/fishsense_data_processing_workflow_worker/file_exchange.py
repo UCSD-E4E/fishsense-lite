@@ -16,7 +16,30 @@ their virtual-folder names (`preprocess_jpeg`, `groups_jpeg`,
 `headtail_jpeg`, `dive_slate_jpgs`) for the LS task URLs.
 """
 
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
+
 import httpx
+
+# Per-request timeout for the file-exchange. Raw ORFs are ~20 MB and
+# processed JPEGs a few MB; 60 s comfortably covers a transfer plus the
+# Traefik/authentik round-trip in production.
+_EXCHANGE_TIMEOUT = httpx.Timeout(60.0)
+
+
+def _basic_auth(
+    username: str | None, password: str | None
+) -> httpx.BasicAuth | None:
+    """HTTP Basic auth for the exchange, or None when creds aren't set.
+
+    Both are required — half a credential pair is treated as "no auth"
+    so a misconfigured-but-non-empty value can't silently send a broken
+    header. The local devcontainer leaves both unset and hits nginx
+    directly; production sets both for the authentik-fronted route.
+    """
+    if username and password:
+        return httpx.BasicAuth(username, password)
+    return None
 
 
 class FileExchangeClient:
@@ -47,3 +70,26 @@ class FileExchangeClient:
             content=data,
         )
         response.raise_for_status()
+
+
+@asynccontextmanager
+async def open_file_exchange_client(
+    file_exchange_settings,
+) -> AsyncIterator[FileExchangeClient]:
+    """Yield a FileExchangeClient wired to the configured exchange URL,
+    timeout, and (optional) HTTP Basic auth, managing the httpx client
+    lifecycle for the duration of the ``async with`` block.
+
+    ``file_exchange_settings`` is the ``settings.file_exchange`` section:
+    a ``url`` attribute plus optional ``username`` / ``password`` keys
+    (read via ``.get`` so an unset pair just means no auth).
+    """
+    url = file_exchange_settings.url
+    auth = _basic_auth(
+        file_exchange_settings.get("username"),
+        file_exchange_settings.get("password"),
+    )
+    async with httpx.AsyncClient(
+        base_url=url, timeout=_EXCHANGE_TIMEOUT, auth=auth
+    ) as http:
+        yield FileExchangeClient(base_url=url, http=http)

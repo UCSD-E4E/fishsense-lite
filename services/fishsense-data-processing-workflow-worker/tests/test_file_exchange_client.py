@@ -10,6 +10,8 @@ import pytest
 
 from fishsense_data_processing_workflow_worker.file_exchange import (
     FileExchangeClient,
+    _basic_auth,
+    open_file_exchange_client,
 )
 
 
@@ -150,3 +152,50 @@ async def test_upload_processed_jpeg_accepts_multiple_folders():
         "/api/v1/exchange/preprocess_headtail_jpeg/abc.JPG",
         "/api/v1/exchange/preprocess_slate_images_jpeg/abc.JPG",
     ]
+
+
+# --- file-exchange auth + client wiring ---
+
+
+class _FxSettings:
+    """Stand-in for the Dynaconf ``settings.file_exchange`` section: a
+    ``url`` attribute plus ``.get`` for the optional credential keys."""
+
+    def __init__(self, url: str, **optional: str):
+        self.url = url
+        self._optional = optional
+
+    def get(self, key, default=None):
+        return self._optional.get(key, default)
+
+
+def test_basic_auth_returns_none_when_no_creds():
+    assert _basic_auth(None, None) is None
+
+
+def test_basic_auth_requires_both_username_and_password():
+    # A half-pair is treated as "no auth" rather than sending a broken header.
+    assert _basic_auth("user", None) is None
+    assert _basic_auth(None, "pass") is None
+    assert _basic_auth("user", "") is None
+    assert _basic_auth("", "pass") is None
+
+
+def test_basic_auth_returns_basicauth_when_both_present():
+    assert isinstance(_basic_auth("svc", "secret"), httpx.BasicAuth)
+
+
+@pytest.mark.asyncio
+async def test_open_file_exchange_client_without_creds_sends_no_auth():
+    async with open_file_exchange_client(_FxSettings(_BASE)) as client:
+        assert not isinstance(client._http.auth, httpx.BasicAuth)
+        assert client._base_url == _BASE
+
+
+@pytest.mark.asyncio
+async def test_open_file_exchange_client_attaches_basic_auth_when_configured():
+    settings = _FxSettings(
+        "https://orchestrator.example", username="svc", password="secret"
+    )
+    async with open_file_exchange_client(settings) as client:
+        assert isinstance(client._http.auth, httpx.BasicAuth)

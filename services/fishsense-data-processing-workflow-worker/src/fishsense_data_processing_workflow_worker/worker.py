@@ -1,6 +1,8 @@
 import asyncio
 import logging
+import signal
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 
 from fishsense_shared import build_tls_config
 from temporalio.client import Client
@@ -58,9 +60,58 @@ from fishsense_data_processing_workflow_worker.workflows.validate_laser_labels_f
 
 TASK_QUEUE_NAME = "fishsense_data_processing_queue"
 
+# How long in-flight activities get to finish when the worker is asked to
+# stop. On NRP the api-worker scales this deployment to zero when idle, so
+# a scale-down delivers SIGTERM mid-activity; without a graceful window the
+# rectify/measure work in progress is cancelled immediately and re-queued
+# (idempotent, so safe — this just avoids throwing away a nearly-done image).
+# The k8s Deployment's terminationGracePeriodSeconds must be >= this.
+GRACEFUL_SHUTDOWN_TIMEOUT = timedelta(seconds=30)
+
 
 async def schedule_workflows(_: Client):
-    """Schedule workflows for the worker."""
+    """Schedule workflows for the worker.
+
+    The data-worker owns no recurring schedules — those live on the
+    always-up api-worker — so scaling this service to zero has no effect
+    on schedule registration. Kept as a hook for symmetry with the other
+    workers.
+    """
+
+
+def build_worker(client: Client, activity_executor: ThreadPoolExecutor) -> Worker:
+    """Construct the data-worker Temporal worker.
+
+    Single construction point so the worker config (workflows, activities,
+    graceful-shutdown window) is exercised by tests without standing up
+    the full ``main`` loop.
+    """
+    return Worker(
+        client,
+        task_queue=TASK_QUEUE_NAME,
+        workflows=[
+            DiveFrameClusteringWorkflow,
+            MeasureFishWorkflow,
+            PerformLaserCalibrationWorkflow,
+            PreprocessSpeciesImagesWorkflow,
+            PreprocessHeadtailImagesWorkflow,
+            PreprocessLaserImagesWorkflow,
+            PreprocessSlateImagesWorkflow,
+            ValidateLaserLabelsForDiveWorkflow,
+        ],
+        activity_executor=activity_executor,
+        activities=[
+            cluster_dive_frames,
+            measure_fish_activity,
+            perform_laser_calibration_activity,
+            preprocess_species_image,
+            preprocess_headtail_image,
+            preprocess_laser_image,
+            preprocess_slate_image,
+            validate_laser_labels_for_dive_activity,
+        ],
+        graceful_shutdown_timeout=GRACEFUL_SHUTDOWN_TIMEOUT,
+    )
 
 
 async def main():
@@ -81,38 +132,21 @@ async def main():
         f"{settings.temporal.host}:{settings.temporal.port}", tls=tls_config
     )
 
+    interrupt_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, interrupt_event.set)
+
     with ThreadPoolExecutor(max_workers=settings.general.max_workers) as executor:
-        worker = Worker(
-            client,
-            task_queue=TASK_QUEUE_NAME,
-            workflows=[
-                DiveFrameClusteringWorkflow,
-                MeasureFishWorkflow,
-                PerformLaserCalibrationWorkflow,
-                PreprocessSpeciesImagesWorkflow,
-                PreprocessHeadtailImagesWorkflow,
-                PreprocessLaserImagesWorkflow,
-                PreprocessSlateImagesWorkflow,
-                ValidateLaserLabelsForDiveWorkflow,
-            ],
-            activity_executor=executor,
-            activities=[
-                cluster_dive_frames,
-                measure_fish_activity,
-                perform_laser_calibration_activity,
-                preprocess_species_image,
-                preprocess_headtail_image,
-                preprocess_laser_image,
-                preprocess_slate_image,
-                validate_laser_labels_for_dive_activity,
-            ],
-        )
-
-        worker_task = worker.run()
-        log.info("Worker started, scheduling workflows...")
-
-        await schedule_workflows(client)
-        await worker_task
+        async with build_worker(client, executor):
+            log.info("Worker started, scheduling workflows...")
+            await schedule_workflows(client)
+            await interrupt_event.wait()
+            log.info(
+                "shutdown signal received; draining "
+                "(graceful_shutdown_timeout=%s)",
+                GRACEFUL_SHUTDOWN_TIMEOUT,
+            )
 
 
 def run():

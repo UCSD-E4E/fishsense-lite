@@ -1,25 +1,24 @@
 # fishsense-data-processing-workflow-worker — production settings.
 #
 # Loaded by Dynaconf (E4EFS_ prefix) at worker startup. The companion
-# `.secrets.toml` (gitignored, populated on the host next to this file)
-# carries credentials. See validators in
+# `.secrets.toml` carries credentials — on NRP that's a Kubernetes
+# Secret mounted next to this file (which itself ships as a ConfigMap);
+# see deploy/k8s/data-worker/. See validators in
 # services/fishsense-data-processing-workflow-worker/src/.../config.py
 # for the required key set.
 #
-# Networking: the data-worker host is genuinely off-network (separate
-# machine, not on the orchestrator's docker network), so every URL
+# Networking: the data-worker runs off the orchestrator's docker
+# network (on NRP, in pods with no stable egress IP), so every URL
 # below must be publicly routable. That's a change from the api-worker
 # pattern, where some endpoints use internal docker hostnames.
 #
 # `file_exchange.url` reaches static_file_server through Traefik's
 # `fishsense_static_file_server_exchange` router (deploy/
-# compose.orchestrator.yml). Auth is an IP allowlist pinned to the
-# data-worker host's public IP. If the host moves, update the
-# `ipallowlist.sourcerange=` middleware label there.
-#
-# TODO: migrate the auth to authentik basic-auth-passthrough so we
-# don't have to track the data-worker IP in compose. See project
-# memory `project_data_worker_authentik_todo.md`.
+# compose.orchestrator.yml), which is fronted by authentik
+# basic-auth-passthrough — the worker presents the
+# `file_exchange.username`/`password` from `.secrets.toml` so the
+# request survives the proxy. (This replaced an IP allowlist that
+# couldn't work once the worker moved to NRP.)
 
 [general]
 max_workers = 8
@@ -28,19 +27,21 @@ max_workers = 8
 host = "workflows.fishsense.e4e.ucsd.edu"
 port = "7233"
 tls = true
-client_cert = "/certs/client/fishsense-api-workflow-worker.pem"
-client_private_key = "/certs/client/fishsense-api-workflow-worker.key"
+# Data-worker's own mTLS client identity (distinct from the api-worker's).
+# On NRP these are mounted from a Kubernetes Secret at /certs.
+client_cert = "/certs/client/fishsense-data-processing-workflow-worker.pem"
+client_private_key = "/certs/client/fishsense-data-processing-workflow-worker.key"
 domain = "workflows.fishsense.e4e.ucsd.edu"
 server_root_ca_cert = "/certs/ca/root-ca.pem"
 
 [fishsense_api]
 url = "https://orchestrator.fishsense.e4e.ucsd.edu"
 
-# Public hostname — the data-worker is on a separate machine, so it
-# cannot use the internal docker hostname `static_file_server` like
-# the api-worker does. Routes through Traefik on the orchestrator
-# host. See top-of-file note about the prerequisite Traefik rule
-# extension + auth that ops must put in place.
+# Public hostname — the data-worker is off the orchestrator's docker
+# network, so it cannot use the internal `static_file_server` hostname
+# like the api-worker does. Routes through Traefik + authentik on the
+# orchestrator host; `file_exchange.username`/`password` live in
+# `.secrets.toml` (a k8s Secret on NRP).
 [file_exchange]
 url = "https://orchestrator.fishsense.e4e.ucsd.edu"
 

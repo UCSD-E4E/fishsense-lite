@@ -34,11 +34,22 @@ _VALIDATORS = [
     Validator("fishsense_api.url", required=True, cast=str, condition=url_condition),
     Validator("fishsense_api.username", cast=str),
     Validator("fishsense_api.password", cast=str),
-    # Internal docker URL for the static_file_server nginx that brokers
-    # the worker file-exchange (raw ORFs, slate PDFs, processed JPEGs).
+    # URL for the static_file_server nginx that brokers the worker
+    # file-exchange (raw ORFs, slate PDFs, processed JPEGs). Internal
+    # docker hostname in the local devcontainer; public Traefik route in
+    # production (the data-worker is off the orchestrator's network).
     Validator(
         "file_exchange.url", required=True, cast=str, condition=url_condition
     ),
+    # Optional HTTP Basic credentials for the file-exchange route. The
+    # orchestrator's Traefik fronts /api/v1/exchange/* with authentik
+    # basic-auth-passthrough (replacing the old single-IP allowlist, so
+    # the worker can run from NRP where pods have no stable egress IP);
+    # when set, the worker presents these so the request survives the
+    # proxy. Unset = no auth header (local devcontainer hits nginx
+    # directly). Both must be present for auth to be sent.
+    Validator("file_exchange.username", cast=str),
+    Validator("file_exchange.password", cast=str),
 ]
 
 # NOTE: standardized on E4EFS_ envvar prefix (was DYNACONF_) to match the other
