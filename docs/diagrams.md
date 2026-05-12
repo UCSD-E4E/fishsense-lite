@@ -28,7 +28,7 @@ flowchart LR
         SUP["Superset"]
     end
 
-    subgraph NRP["NRP / Nautilus (Kubernetes)"]
+    subgraph NRP["Kubernetes — NRP/Nautilus now<br/>(Junkyard / Qualcomm: future targets)"]
         DPW["fishsense-data-processing-workflow-worker<br/>queue: fishsense_data_processing_queue<br/>(Deployment, scale-to-zero)"]
     end
 
@@ -92,7 +92,7 @@ flowchart TB
         end
     end
 
-    subgraph NRP["NRP / Nautilus - deploy/k8s/data-worker/"]
+    subgraph NRP["NRP / Nautilus (k8s) - deploy/k8s/data-worker/<br/>Junkyard / Qualcomm: future targets"]
         D_DPW["fishsense-data-processing-workflow-worker<br/>Deployment (replicas managed by the api-worker)"]
     end
 

@@ -1,13 +1,19 @@
 # deploy/k8s/data-worker/
 
-Kubernetes manifests for `fishsense-data-processing-workflow-worker`
-running on **NRP** (the National Research Platform / Nautilus,
-<https://nrp.ai>). This is how the data-worker is deployed — it no
-longer runs on a self-hosted docker host via compose.
+Kubernetes manifests for `fishsense-data-processing-workflow-worker`.
+This is how the data-worker is deployed — it no longer runs on a
+self-hosted docker host via compose. **NRP** (the National Research
+Platform / Nautilus, <https://nrp.ai>) is the current target and this
+README's bootstrap is NRP-specific (kubeconfig source, the 2-week
+Deployment-GC exception, contact-via-Matrix). The **Junkyard** and
+**Qualcomm** clusters are longer-term targets — not ready yet; the
+Deployment / ConfigMap / Secrets / kustomization here are
+cluster-generic and would carry over, only the per-cluster bootstrap
+differs.
 
 | File | What |
 |---|---|
-| `deployment.yaml` | The Deployment. `replicas: 0` baseline — the api-worker scales it up on demand and back to 0 when idle (see below). amd64 nodeSelector, resource requests/limits, `maxSurge: 0`, no PDB, emptyDir scratch, no PVC/GPU/NAS. |
+| `deployment.yaml` | The Deployment. `replicas` is **omitted** — the api-worker owns the count (scales it up on demand, back to 0 when idle; see below). amd64 nodeSelector, resource requests/limits, `maxSurge: 0`, no PDB, emptyDir scratch, no PVC/GPU/NAS. |
 | `settings.toml` | Source for the `fishsense-data-worker-settings` ConfigMap (built by kustomize's `configMapGenerator`; mounted at `/e4efs/config/settings.toml`). Credentials are **not** here — they're env vars from a Secret. |
 | `kustomization.yaml` | `kubectl apply -k` entrypoint. Holds the overridable image tag (CI bumps it). |
 

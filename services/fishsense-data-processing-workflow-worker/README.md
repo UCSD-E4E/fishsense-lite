@@ -6,11 +6,14 @@ to the file-exchange. CPU-bound, opencv-heavy.
 
 Task queue: `fishsense_data_processing_queue`.
 
-Runs on NRP/Nautilus (Kubernetes) — off the orchestrator host that
-runs fishsense-api + the api-worker, since this image is heavy (opencv,
-rawpy, scikit-image, fishsense-core). It's a scale-to-zero Deployment;
-see [deploy/k8s/data-worker/](../../deploy/k8s/data-worker/README.md)
-and "Running" below.
+Runs on Kubernetes — off the orchestrator host that runs fishsense-api
++ the api-worker, since this image is heavy (opencv, rawpy,
+scikit-image, fishsense-core). **NRP/Nautilus** is the current target
+(see [deploy/k8s/data-worker/](../../deploy/k8s/data-worker/README.md)
+and "Running" below); the **Junkyard** and **Qualcomm** clusters are
+longer-term targets — not ready yet, but the manifests are
+cluster-generic apart from the per-cluster bootstrap. It's a
+scale-to-zero Deployment whose replica count the api-worker drives.
 
 ## Workflows
 
@@ -103,9 +106,9 @@ uv run --package fishsense-data-processing-workflow-worker \
     fishsense_data_processing_workflow_worker
 ```
 
-Runs on NRP/Kubernetes — see
-[deploy/k8s/data-worker/](../../deploy/k8s/data-worker/README.md). It's
-a `replicas`-less Deployment; the api-worker scales it 0 ↔
+Runs on Kubernetes (NRP/Nautilus today; Junkyard / Qualcomm later) —
+see [deploy/k8s/data-worker/](../../deploy/k8s/data-worker/README.md).
+It's a `replicas`-less Deployment; the api-worker scales it 0 ↔
 `kubernetes.active_replicas` on demand (parent workflows call
 `ensure_data_worker_running_activity` before dispatching a child, and
 an hourly `ScaleDownIdleDataWorkerWorkflow` scales it back to 0 when

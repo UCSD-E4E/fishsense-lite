@@ -3,7 +3,9 @@
 Deployment config for FishSense Lite — docker-compose stacks for the
 local devcontainer and the prod **orchestrator host**, plus Kubernetes
 manifests (`k8s/data-worker/`) for the **data-processing worker**,
-which runs on NRP/Nautilus rather than a docker host.
+which runs on Kubernetes rather than a docker host (NRP/Nautilus is
+the current target; the Junkyard and Qualcomm clusters are future
+ones, not ready yet).
 
 ## Compose layout
 
@@ -125,16 +127,18 @@ ConfigMaps/Secrets.
 6. Set `USER_ID` / `GROUP_ID` in `.env` so the postgres container runs
    as the host owner of `pg_volumes/data/`.
 
-### Data-processing worker (NRP/Kubernetes)
+### Data-processing worker (Kubernetes)
 
 The data-worker is CPU-heavy (rectify + JPEG encode + fishsense-core
-kernels) and runs on NRP rather than competing with the orchestrator's
-postgres / Temporal / authentik. It's a `replicas`-less Deployment that
-the api-worker scales 0 ↔ `kubernetes.active_replicas` on demand. All
-the bootstrap (NRP namespace + permanent-service exception, the three
-Secrets, the kubeconfig used by both CI and the api-worker, the
-api-worker's `[kubernetes]` config, the orchestrator-side authentik
-prerequisite) is in [`k8s/data-worker/README.md`](k8s/data-worker/README.md).
+kernels) and runs on Kubernetes rather than competing with the
+orchestrator's postgres / Temporal / authentik. It's a `replicas`-less
+Deployment that the api-worker scales 0 ↔ `kubernetes.active_replicas`
+on demand. **NRP/Nautilus** is the current target (the Junkyard and
+Qualcomm clusters are future ones); all the per-cluster bootstrap (NRP
+namespace + permanent-service exception, the three Secrets, the
+kubeconfig used by both CI and the api-worker, the api-worker's
+`[kubernetes]` config, the orchestrator-side authentik prerequisite) is
+in [`k8s/data-worker/README.md`](k8s/data-worker/README.md).
 
 ### Rollout operational notes
 

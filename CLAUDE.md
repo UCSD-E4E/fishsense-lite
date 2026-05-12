@@ -592,9 +592,12 @@ to the compose-pin PR and the kustomize-`newTag` PR alike):
    the auto-deploy PR. The pin diff (compose `image:` or kustomize
    `newTag:`) is reviewable in the PR before any prod change happens.
 
-`fishsense-data-processing-workflow-worker` runs on NRP/Kubernetes
-(`deploy/k8s/data-worker/`), not as a compose service. Its auto-deploy
-PR bumps the kustomize `newTag:` instead of a compose `image:` pin,
+`fishsense-data-processing-workflow-worker` runs on Kubernetes
+(`deploy/k8s/data-worker/`), not as a compose service — **NRP/Nautilus**
+is the current target; the **Junkyard** and **Qualcomm** clusters are
+longer-term targets (not ready yet; the manifests are cluster-generic
+apart from the per-cluster bootstrap). Its auto-deploy PR bumps the
+kustomize `newTag:` instead of a compose `image:` pin,
 and the `deploy-data-worker` job `kubectl apply`s it from a
 GitHub-hosted runner (see the deploy.yml routing above). **The
 Deployment manifest omits `replicas`** — the api-worker owns the
