@@ -78,16 +78,20 @@ if the test only uses one of them.
 
 ## Local development
 
-For an end-to-end Temporal dev loop without the full stack:
+Inside the devcontainer, `deploy/compose.local.yml` already runs
+Temporal + fishsense-api + Label Studio + nginx, and the `dev`
+container exports the `E4EFS_*` config pointing at them, so just run
+the worker:
 
 ```
-temporal server start-dev      # terminal 1: local Temporal
-uv run --package fishsense-api-workflow-worker fishsense_api_workflow_worker  # terminal 2: this worker
+uv run --package fishsense-api-workflow-worker fishsense_api_workflow_worker
 ```
 
-Inside the devcontainer the rest of the stack is already up via
-`deploy/compose.local.yml`, so only the worker needs to be run
-manually.
+It registers its schedules and starts polling `fishsense_api_queue`.
+(`k8s` scaling no-ops — `kubernetes.kubeconfig_path` isn't set
+locally.) Outside the devcontainer, run your own
+`temporal server start-dev` and set `E4EFS_TEMPORAL__HOST=localhost`
+(plus the other `E4EFS_*` config — see "Required config" above).
 
 ## Tests
 

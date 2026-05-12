@@ -99,12 +99,34 @@ integration`), and a notebook byte-parity test (`-m integration`).
 The integration + parity tests share `tests/fixtures/stage2_sample.ORF`
 — there is no per-stage raw fixture.
 
-## Running
+## Running locally
+
+It's just a Temporal worker — no Kubernetes involved (the k8s manifests
+are the *prod deploy* mechanism). Inside the devcontainer, `compose.local.yml`
+already runs Temporal + fishsense-api + nginx, and the `dev` container
+exports the `E4EFS_*` config pointing at them, so:
 
 ```
 uv run --package fishsense-data-processing-workflow-worker \
     fishsense_data_processing_workflow_worker
 ```
+
+connects to the local Temporal and polls `fishsense_data_processing_queue`.
+Nothing flows through it until something dispatches a child workflow onto
+that queue — run the api-worker too (`uv run --package
+fishsense-api-workflow-worker fishsense_api_workflow_worker`) so its
+hourly parents do, or kick one by hand:
+
+```
+temporal workflow start --address temporal:7233 \
+    --task-queue fishsense_data_processing_queue \
+    --type DiveFrameClusteringWorkflow --input '<ClusterDiveFramesInput JSON>'
+```
+
+(Outside the devcontainer, set `E4EFS_TEMPORAL__HOST` / `E4EFS_FISHSENSE_API__URL`
+/ `E4EFS_FILE_EXCHANGE__URL` yourself — see "Required config" above.)
+
+## Running in production
 
 Runs on Kubernetes (NRP/Nautilus today; Junkyard / Qualcomm later) —
 see [deploy/k8s/data-worker/](../../deploy/k8s/data-worker/README.md).
