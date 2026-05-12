@@ -68,7 +68,11 @@ kubeconfig is what CI uses to `kubectl apply` (repo secret
    reconciled by `kubectl apply` instead, add Sealed Secrets / SOPS.)
 4. First apply manually: `kubectl apply -k deploy/k8s/data-worker`
    (set the namespace via `-n` / the kubeconfig context, or pin it in
-   `kustomization.yaml`). After that, rollouts ride CI: `promote.yml`
+   `kustomization.yaml`). The Deployment manifest omits `replicas`
+   (the api-worker owns it), so this first create comes up at the k8s
+   default of 1 — `kubectl scale deployment/fishsense-data-processing-workflow-worker --replicas=0`
+   right after, or just leave it: the hourly idle-sweeper scales it to
+   0 within the hour. After that, rollouts ride CI: `promote.yml`
    bumps the image tag in `kustomization.yaml` and opens an
    `auto-deploy/fishsense-data-processing-workflow-worker-*` PR;
    merging it triggers `deploy.yml` to `kubectl apply -k` again.

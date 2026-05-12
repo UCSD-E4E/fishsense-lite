@@ -18,11 +18,14 @@ metadata:
     app.kubernetes.io/name: fishsense-data-processing-workflow-worker
     app.kubernetes.io/part-of: fishsense
 spec:
-  # Baseline 0 — the api-worker scales this up on demand and back down
-  # when idle. A `kubectl apply` while scaled to 0 surges 0->0 (no-op);
-  # while scaled to N it replaces the pod(s) one at a time (maxSurge: 0,
-  # below) rather than transiently doubling the count on NRP.
-  replicas: 0
+  # `replicas` is intentionally omitted: the api-worker owns this
+  # Deployment's replica count (scales it 0 <-> kubernetes.active_replicas
+  # on demand), so `kubectl apply` here must not fight it. On the very
+  # first apply k8s defaults it to 1, and the hourly idle-sweeper drops
+  # it to 0 within the hour (or `kubectl scale ... --replicas=0` once,
+  # see README). A `kubectl apply` while it's scaled to N replaces the
+  # pod(s) one at a time (maxSurge: 0, below) rather than transiently
+  # doubling the count on NRP.
   revisionHistoryLimit: 3
   strategy:
     type: RollingUpdate
