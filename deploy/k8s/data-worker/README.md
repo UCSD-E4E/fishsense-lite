@@ -35,7 +35,14 @@ kubeconfig is what CI uses to `kubectl apply` (repo secret
 ## One-time bootstrap (per NRP namespace)
 
 1. Request a namespace + enough quota from NRP support for
-   `active_replicas × the Deployment's limits`.
+   `active_replicas × the Deployment's limits`, **and** ask (in
+   Matrix, per <https://nrp.ai/contact>) for a permanent-service
+   exception for the namespace. NRP garbage-collects Deployments
+   older than 2 weeks unless the namespace is on the exceptions list
+   — this one's permanent. (ConfigMaps/Secrets aren't subject to that
+   policy, and our pods are owned by a ReplicaSet so the 6-hour
+   bare-pod rule doesn't apply either; the Deployment itself is the
+   only thing that needs the exception.)
 2. Get a (token) kubeconfig for that namespace. It's used in two
    places — the repo secret `NRP_KUBECONFIG` (CI deploys) and the
    api-worker's mounted kubeconfig (scaling) — and **expires**, so put
