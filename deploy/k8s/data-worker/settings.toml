@@ -1,0 +1,53 @@
+# fishsense-data-processing-workflow-worker — NRP settings.
+#
+# Source for the `fishsense-data-worker-settings` ConfigMap (kustomize's
+# configMapGenerator builds it from this file; editing it changes the
+# generated name's hash, which rolls the Deployment). Mounted at
+# /e4efs/config/settings.toml in the pod.
+#
+# Credentials are NOT here — they're injected as env vars from the
+# `fishsense-data-worker-secrets` Secret (see deployment.yaml /
+# README.md). Dynaconf reads `E4EFS_<SECTION>__<KEY>`, so e.g.
+# `E4EFS_FISHSENSE_API__USERNAME` populates `fishsense_api.username`.
+#
+# Networking: the data-worker runs off the orchestrator's docker
+# network (NRP pods, no stable egress IP), so every URL must be
+# publicly routable. `file_exchange.url` reaches static_file_server via
+# Traefik's `fishsense_static_file_server_exchange` router, which is
+# fronted by authentik basic-auth-passthrough — the worker presents the
+# `file_exchange.username`/`password` env creds so the request survives
+# the proxy.
+#
+# NOTE: during the migration this duplicates
+# deploy/worker_volumes/data_worker/config/settings.toml (the
+# docker-compose host config); they should match until
+# compose.data-worker.yml + worker_volumes/data_worker/ are removed.
+
+[general]
+max_workers = 8
+
+[temporal]
+host = "workflows.fishsense.e4e.ucsd.edu"
+port = "7233"
+tls = true
+# Data-worker's own mTLS client identity (distinct from the api-worker's).
+# Mounted from the `fishsense-data-worker-temporal-certs` Secret at /certs.
+client_cert = "/certs/client/fishsense-data-processing-workflow-worker.pem"
+client_private_key = "/certs/client/fishsense-data-processing-workflow-worker.key"
+domain = "workflows.fishsense.e4e.ucsd.edu"
+server_root_ca_cert = "/certs/ca/root-ca.pem"
+
+[fishsense_api]
+url = "https://orchestrator.fishsense.e4e.ucsd.edu"
+
+# Public hostname — the data-worker is off the orchestrator's docker
+# network, so it can't use the internal `static_file_server` hostname
+# like the api-worker does. Routes through Traefik + authentik;
+# `file_exchange.username`/`password` come from the env-injected Secret.
+[file_exchange]
+url = "https://orchestrator.fishsense.e4e.ucsd.edu"
+
+# No NAS access from the data-worker by design — the api-worker is the
+# only side that touches the NAS, and it stages all bytes the
+# data-worker needs onto the file-exchange before dispatching child
+# workflows. Don't add an [e4e_nas] block here.
