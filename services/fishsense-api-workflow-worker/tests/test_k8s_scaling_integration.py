@@ -23,6 +23,7 @@ from __future__ import annotations
 import os
 
 import pytest
+from kubernetes.client.rest import ApiException
 from temporalio.testing import ActivityEnvironment
 
 from fishsense_api_workflow_worker.activities import (
@@ -52,7 +53,14 @@ def namespace() -> str:
 
 @pytest.fixture
 def configure_scaling(monkeypatch, kubeconfig, namespace):
-    """Point the scaling helpers at the test cluster + Deployment."""
+    """Point the scaling helpers at the test cluster + Deployment.
+
+    Skips (rather than fails) when the Deployment isn't present — that
+    means `kubectl apply -k deploy/k8s/data-worker` hasn't run against
+    this cluster yet. CI's k8s-tests.yml does that before `pytest -m
+    k8s`, so it only skips when someone runs this against a bare
+    cluster.
+    """
     monkeypatch.setattr(
         k8s_scaling,
         "settings",
@@ -66,6 +74,17 @@ def configure_scaling(monkeypatch, kubeconfig, namespace):
             }
         },
     )
+    try:
+        k8s_scaling.apps_v1_api(kubeconfig).read_namespaced_deployment(
+            DEPLOYMENT, namespace
+        )
+    except ApiException as exc:
+        if exc.status == 404:
+            pytest.skip(
+                f"Deployment {namespace}/{DEPLOYMENT} not found — "
+                "run `kubectl apply -k deploy/k8s/data-worker` first"
+            )
+        raise
 
 
 def _api(kubeconfig: str):

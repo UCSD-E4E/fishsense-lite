@@ -9,10 +9,26 @@ name: K8s tests
 # runner image, so no setup actions are needed. The kind cluster is
 # torn down with the runner at job end.
 
+# Only when the k8s manifests, the scaling activities, or this workflow
+# change — a doc-only PR shouldn't spin up a kind cluster.
 on:
   push:
     branches: [main]
+    paths:
+      - 'deploy/k8s/**'
+      - 'services/fishsense-api-workflow-worker/src/fishsense_api_workflow_worker/activities/k8s_scaling.py'
+      - 'services/fishsense-api-workflow-worker/src/fishsense_api_workflow_worker/activities/ensure_data_worker_running_activity.py'
+      - 'services/fishsense-api-workflow-worker/src/fishsense_api_workflow_worker/activities/scale_down_data_worker_if_idle_activity.py'
+      - 'services/fishsense-api-workflow-worker/tests/test_k8s_scaling*.py'
+      - '.github/workflows/k8s-tests.yml'
   pull_request:
+    paths:
+      - 'deploy/k8s/**'
+      - 'services/fishsense-api-workflow-worker/src/fishsense_api_workflow_worker/activities/k8s_scaling.py'
+      - 'services/fishsense-api-workflow-worker/src/fishsense_api_workflow_worker/activities/ensure_data_worker_running_activity.py'
+      - 'services/fishsense-api-workflow-worker/src/fishsense_api_workflow_worker/activities/scale_down_data_worker_if_idle_activity.py'
+      - 'services/fishsense-api-workflow-worker/tests/test_k8s_scaling*.py'
+      - '.github/workflows/k8s-tests.yml'
 
 jobs:
   data-worker-manifests-and-scaling:
