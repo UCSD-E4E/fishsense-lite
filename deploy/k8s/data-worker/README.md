@@ -92,12 +92,18 @@ kubeconfig is what CI uses to `kubectl apply` (repo secret
 
 ## Prerequisite on the orchestrator side
 
-The `/api/v1/exchange/*` Traefik route must be moved from its
-single-IP allowlist to authentik basic-auth-passthrough before the
-NRP worker can reach the file-exchange (NRP pods have no stable egress
-IP). See `deploy/compose.orchestrator.yml` and the project notes. Also
-confirm the orchestrator's firewall allows Temporal `:7233` ingress
-from NRP node ranges.
+`deploy/compose.orchestrator.yml` already puts the `/api/v1/exchange/*`
+Traefik route behind `authentik@docker` (the same forward-auth
+middleware/outpost as the fishsense-api route — basic-auth-passthrough,
+no dedicated authentik application). So the only orchestrator-side TODO
+is to redeploy it (an orchestrator auto-deploy or a manual `docker
+compose up -d` once the `fishsense-prod` runner exists). The data-worker
+presents `file_exchange.username/password` (the Secret above) — make
+those a valid authentik user; the simplest is to reuse whatever
+service-account the SDK already uses for `fishsense_api.username/password`,
+since authentik validates both routes against the same user store.
+Also confirm the orchestrator's firewall allows Temporal `:7233`
+ingress from NRP node ranges.
 
 ## Not here
 

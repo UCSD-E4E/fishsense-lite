@@ -16,9 +16,9 @@ url = "https://labeler.e4e.ucsd.edu"
 # labelers' browsers fetch from here through Traefik. /api/v1/data is
 # publicly routed (CORS-enabled, no auth at the Traefik layer);
 # /api/v1/exchange is also publicly routed (second router, for the
-# data-worker on NRP) but worker-only — that's the route whose
-# IP-allowlist middleware needs to become authentik basic-auth-passthrough
-# (see compose.orchestrator.yml).
+# data-worker on NRP) but worker-only and behind `authentik@docker`
+# basic-auth-passthrough (same as the API route — see
+# compose.orchestrator.yml).
 image_url_base = "https://orchestrator.fishsense.e4e.ucsd.edu"
 
 [e4e_nas]

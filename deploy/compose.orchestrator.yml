@@ -12,28 +12,28 @@ services:
       - "traefik.http.routers.fishsense_static_file_server.entrypoints=websecure"
       - "traefik.http.routers.fishsense_static_file_server.tls.certresolver=letsencrypt"
       # Worker-to-worker file-exchange — separate router so the
-      # `/api/v1/data` path stays CORS-only and the exchange path can
-      # have its own auth middleware. Lets the data-worker (off the
-      # orchestrator's docker network — it runs on NRP) GET/PUT/DELETE
-      # on `/api/v1/exchange/*`. (The api-worker, on this host, hits
-      # the internal `static_file_server` hostname and skips Traefik.)
+      # `/api/v1/data` path stays CORS-only and the exchange path gets
+      # auth. Lets the data-worker (off the orchestrator's docker
+      # network — it runs on NRP) GET/PUT/DELETE on `/api/v1/exchange/*`.
+      # (The api-worker, on this host, hits the internal
+      # `static_file_server` hostname and skips Traefik entirely.)
       #
-      # Auth (current): IP allowlist — but the data-worker now runs on
-      # NRP, where pods have no stable egress IP, so this is broken for
-      # it as soon as it deploys. **Required migration**: swap the
-      # `fishsense_exchange_ip_allowlist` middleware for `authentik@docker`
-      # (mirror the `fishsense_api_server` router below) + an authentik
-      # application / basic-auth-passthrough policy / service-account,
-      # and set the data-worker's `file_exchange.username/password`. See
-      # deploy/k8s/data-worker/README.md and project memory
-      # `project_data_worker_authentik_todo.md`. Until then the
-      # data-worker's exchange calls 302 → preprocess child workflows
-      # fail.
+      # Auth: `authentik@docker` — the same forward-auth middleware /
+      # outpost the `fishsense_api_server` router below uses, which does
+      # basic-auth-passthrough (see project memory
+      # `project_authentik_fronts_api.md`). So the data-worker presents
+      # HTTP Basic creds for a valid authentik user (the
+      # `file_exchange.username/password` in its k8s Secret — can be the
+      # same service-account the SDK already uses for fishsense-api,
+      # since authentik validates both routes against the same user
+      # store). No dedicated authentik application needed — reuses the
+      # existing one. (Replaced an IP allowlist that pinned the old
+      # data-worker host's /32 — unworkable now that NRP pods have no
+      # stable egress IP.)
       - "traefik.http.routers.fishsense_static_file_server_exchange.rule=Host(`orchestrator.fishsense.e4e.ucsd.edu`) && PathPrefix(`/api/v1/exchange`)"
       - "traefik.http.routers.fishsense_static_file_server_exchange.entrypoints=websecure"
       - "traefik.http.routers.fishsense_static_file_server_exchange.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.fishsense_static_file_server_exchange.middlewares=fishsense_exchange_ip_allowlist"
-      - "traefik.http.middlewares.fishsense_exchange_ip_allowlist.ipallowlist.sourcerange=132.239.95.67/32"
+      - "traefik.http.routers.fishsense_static_file_server_exchange.middlewares=authentik@docker"
     volumes:
       - ./static_file_server/nginx.conf:/etc/nginx/conf.d/default.conf
       - ./static_file_server_volumes/data:/data
