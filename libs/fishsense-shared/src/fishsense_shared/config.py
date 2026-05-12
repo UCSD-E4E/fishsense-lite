@@ -12,7 +12,17 @@ from urllib.parse import urlparse
 
 import platformdirs
 
-IS_DOCKER = bool(os.environ.get("E4EFS_DOCKER", False))
+# True only when E4EFS_DOCKER is an explicitly-truthy value. NOT
+# `bool(os.environ.get("E4EFS_DOCKER"))` — that treats *any* non-empty
+# string as true, so `E4EFS_DOCKER=false` would (wrongly) read as
+# Docker mode, sending config/log paths to `/e4efs/*` even where those
+# don't exist (e.g. the local devcontainer, which sets it to "false").
+IS_DOCKER = os.environ.get("E4EFS_DOCKER", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 
 def get_config_path() -> Path:
