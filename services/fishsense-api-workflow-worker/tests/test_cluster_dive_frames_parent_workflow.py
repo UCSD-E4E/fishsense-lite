@@ -69,7 +69,11 @@ def _make_stubs(
         persist_calls.append((dive_id, clusters))
         return len(clusters)
 
-    return [stub_select, stub_resolve, stub_persist]
+    @activity.defn(name="ensure_data_worker_running_activity")
+    async def stub_ensure_running() -> int:
+        return 0
+
+    return [stub_select, stub_resolve, stub_persist, stub_ensure_running]
 
 
 @pytest.mark.asyncio

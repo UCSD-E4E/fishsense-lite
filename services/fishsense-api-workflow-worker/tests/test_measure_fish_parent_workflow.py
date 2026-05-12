@@ -57,6 +57,11 @@ def _make_recording_activity(captures: List[tuple]):
     return record_child_dispatch
 
 
+@activity.defn(name="ensure_data_worker_running_activity")
+async def _stub_ensure_data_worker_running() -> int:
+    return 0
+
+
 def _make_stub_selector(selector_result: Optional[int]):
     selector_calls: List[None] = []
 
@@ -81,7 +86,7 @@ async def test_dispatches_child_with_deterministic_id_and_dive_payload():
             env.client,
             task_queue="test-stage14-parent",
             workflows=[MeasureFishParentWorkflow],
-            activities=[stub_select],
+            activities=[stub_select, _stub_ensure_data_worker_running],
         ), Worker(
             env.client,
             task_queue=DATA_PROCESSING_TASK_QUEUE,
@@ -113,7 +118,7 @@ async def test_returns_none_when_selector_finds_no_dive():
             env.client,
             task_queue="test-stage14-parent-empty",
             workflows=[MeasureFishParentWorkflow],
-            activities=[stub_select],
+            activities=[stub_select, _stub_ensure_data_worker_running],
         ), Worker(
             env.client,
             task_queue=DATA_PROCESSING_TASK_QUEUE,

@@ -99,6 +99,10 @@ def _make_stubs(
     async def stub_cleanup(dive_id: int) -> None:
         return None
 
+    @activity.defn(name="ensure_data_worker_running_activity")
+    async def stub_ensure_running() -> int:
+        return 0
+
     return (
         [
             stub_select,
@@ -106,6 +110,7 @@ def _make_stubs(
             stub_stage,
             stub_archive,
             stub_cleanup,
+            stub_ensure_running,
         ],
         selector_calls,
         resolver_calls,

@@ -9,6 +9,9 @@ dependencies = [
     "fishsense-api-sdk>=1.35.0",
     "fishsense-shared",
     "httpx>=0.28.1",
+    # Scales the NRP data-processing worker Deployment up/down — the
+    # api-worker drives its replica count (scale-to-zero when idle).
+    "kubernetes>=31.0.0",
     "label-studio-sdk>=2.0.1",
     "platformdirs>=4.3.8",
     "pyaml>=25.7.0",

@@ -29,6 +29,12 @@ from fishsense_api_workflow_worker.activities.archive_processed_jpegs_to_nas_act
 from fishsense_api_workflow_worker.activities.cleanup_raw_bytes_for_dive_activity import (  # pylint: disable=line-too-long
     cleanup_raw_bytes_for_dive_activity,
 )
+from fishsense_api_workflow_worker.activities.ensure_data_worker_running_activity import (  # pylint: disable=line-too-long
+    ensure_data_worker_running_activity,
+)
+from fishsense_api_workflow_worker.activities.scale_down_data_worker_if_idle_activity import (  # pylint: disable=line-too-long
+    scale_down_data_worker_if_idle_activity,
+)
 from fishsense_api_workflow_worker.activities.create_dive_slate_label_studio_project_activity import (  # pylint: disable=line-too-long
     create_dive_slate_label_studio_project_activity,
 )
@@ -191,6 +197,9 @@ from fishsense_api_workflow_worker.workflows.sync_label_studio_species_labels_wo
 )
 from fishsense_api_workflow_worker.workflows.update_dive_image_groups_workflow import (
     UpdateDiveImageGroupsWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.scale_down_idle_data_worker_workflow import (  # pylint: disable=line-too-long
+    ScaleDownIdleDataWorkerWorkflow,
 )
 
 TASK_QUEUE_NAME = "fishsense_api_queue"
@@ -370,6 +379,22 @@ async def schedule_workflows(client: Client):
                     overlap=ScheduleOverlapPolicy.SKIP,
                 )
             )
+            # Scale-to-zero sweeper for the NRP data-worker: hourly at
+            # +55 min, after the last preprocess/calibration parent
+            # firing, so it never races a parent that's still scaling
+            # the data-worker *up*. SKIP overlap keeps a slow run from
+            # stacking; a no-op when k8s scaling isn't configured.
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "scale-down-idle-data-worker-workflow-schedule",
+                    ScaleDownIdleDataWorkerWorkflow,
+                    timedelta(hours=1),
+                    offset=timedelta(minutes=55),
+                    run_timeout=timedelta(minutes=10),
+                    overlap=ScheduleOverlapPolicy.SKIP,
+                )
+            )
     log.info("Temporal schedules registered")
 
 
@@ -416,6 +441,7 @@ async def main():
                 PreprocessSlateImagesParentWorkflow,
                 PerformLaserCalibrationParentWorkflow,
                 MeasureFishParentWorkflow,
+                ScaleDownIdleDataWorkerWorkflow,
             ],
             activity_executor=executor,
             activities=[
@@ -455,6 +481,8 @@ async def main():
                 stage_slate_pdf_activity,
                 archive_processed_jpegs_to_nas_activity,
                 cleanup_raw_bytes_for_dive_activity,
+                ensure_data_worker_running_activity,
+                scale_down_data_worker_if_idle_activity,
             ],
         )
 
