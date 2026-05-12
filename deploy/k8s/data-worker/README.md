@@ -2,8 +2,8 @@
 
 Kubernetes manifests for `fishsense-data-processing-workflow-worker`
 running on **NRP** (the National Research Platform / Nautilus,
-<https://nrp.ai>). Replaces `deploy/compose.data-worker.yml` — the
-data-worker no longer runs on a self-hosted docker host.
+<https://nrp.ai>). This is how the data-worker is deployed — it no
+longer runs on a self-hosted docker host via compose.
 
 | File | What |
 |---|---|

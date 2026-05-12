@@ -17,11 +17,6 @@
 # fronted by authentik basic-auth-passthrough — the worker presents the
 # `file_exchange.username`/`password` env creds so the request survives
 # the proxy.
-#
-# NOTE: during the migration this duplicates
-# deploy/worker_volumes/data_worker/config/settings.toml (the
-# docker-compose host config); they should match until
-# compose.data-worker.yml + worker_volumes/data_worker/ are removed.
 
 [general]
 max_workers = 8

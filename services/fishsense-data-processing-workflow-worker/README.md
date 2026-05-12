@@ -92,11 +92,16 @@ uv run --package fishsense-data-processing-workflow-worker \
     fishsense_data_processing_workflow_worker
 ```
 
-Auto-deployed by the
-[deploy.yml](../../.github/workflows/deploy.yml) data-worker job: a
-merge of an `auto-deploy/fishsense-data-processing-workflow-worker-*`
-PR (opened by `promote.yml` against
-[deploy/compose.data-worker.yml](../../deploy/compose.data-worker.yml))
-routes to the `fishsense-data-worker` self-hosted runner, which runs
-`docker compose -f compose.data-worker.yml pull && up -d` in
-`$DATA_WORKER_DEPLOY_DIR` on the data-worker host.
+Runs on NRP/Kubernetes — see
+[deploy/k8s/data-worker/](../../deploy/k8s/data-worker/README.md). It's
+a `replicas`-less Deployment; the api-worker scales it 0 ↔
+`kubernetes.active_replicas` on demand (parent workflows call
+`ensure_data_worker_running_activity` before dispatching a child, and
+an hourly `ScaleDownIdleDataWorkerWorkflow` scales it back to 0 when
+the `fishsense_data_processing_queue` is quiet). Auto-deployed by the
+[deploy.yml](../../.github/workflows/deploy.yml) `deploy-data-worker`
+job: merging an `auto-deploy/fishsense-data-processing-workflow-worker-*`
+PR (opened by `promote.yml`, bumping the image `newTag:` in
+[deploy/k8s/data-worker/kustomization.yaml](../../deploy/k8s/data-worker/kustomization.yaml))
+runs `kubectl apply -k deploy/k8s/data-worker` from a GitHub-hosted
+runner using the `NRP_KUBECONFIG` secret.

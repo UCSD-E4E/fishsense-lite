@@ -1,7 +1,8 @@
 # fishsense-data-processing-workflow-worker — NRP/Kubernetes Deployment.
 #
-# Replaces deploy/compose.data-worker.yml. The api-worker (on the
-# orchestrator) drives this Deployment's replica count: parent workflows
+# This is the data-worker's deployment (it no longer runs via compose).
+# The api-worker (on the orchestrator) drives this Deployment's replica
+# count: parent workflows
 # scale it up to kubernetes.active_replicas before dispatching a child,
 # and ScaleDownIdleDataWorkerWorkflow scales it back to 0 when the
 # data-worker task queue is quiet. So the steady state is `replicas: 0`;
