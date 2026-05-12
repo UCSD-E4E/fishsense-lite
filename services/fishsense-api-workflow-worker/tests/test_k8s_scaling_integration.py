@@ -92,7 +92,11 @@ def _api(kubeconfig: str):
 
 
 def _replicas(kubeconfig: str, namespace: str) -> int:
-    return _api(kubeconfig).read_namespaced_deployment_scale(DEPLOYMENT, namespace).spec.replicas
+    # Read the Deployment's .spec.replicas (a `*int32`, so 0 round-trips),
+    # NOT the Scale subresource — autoscaling/v1 ScaleSpec.replicas is a
+    # plain int32 with `omitempty`, so the API omits it when the count is
+    # 0 and the Python client deserializes that as None.
+    return _api(kubeconfig).read_namespaced_deployment(DEPLOYMENT, namespace).spec.replicas
 
 
 def _set_replicas(kubeconfig: str, namespace: str, n: int) -> None:

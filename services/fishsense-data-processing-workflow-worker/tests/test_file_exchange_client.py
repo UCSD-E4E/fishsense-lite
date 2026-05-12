@@ -1,3 +1,4 @@
+# pylint: disable=protected-access
 """Unit tests for the worker-side FileExchangeClient that brokers raw
 inputs and processed outputs through the nginx static_file_server.
 

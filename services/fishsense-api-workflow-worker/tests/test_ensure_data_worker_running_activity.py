@@ -1,3 +1,4 @@
+# pylint: disable=unnecessary-lambda
 """Unit tests for ensure_data_worker_running_activity.
 
 The activity scales the NRP data-worker Deployment up to the

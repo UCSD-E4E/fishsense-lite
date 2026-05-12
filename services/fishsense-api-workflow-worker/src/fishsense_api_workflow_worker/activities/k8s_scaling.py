@@ -107,10 +107,12 @@ def apps_v1_api(kubeconfig_path: str):
 
 
 def set_deployment_replicas(api, namespace: str, name: str, replicas: int) -> None:
-    """Declaratively set a Deployment's replica count (idempotent).
+    """Set a Deployment's replica count via the scale subresource.
 
-    A no-op when it already equals ``replicas``; never adds to the
-    current count.
+    Idempotent — the count is set absolutely (never added to), and
+    patching to the value it already has is a server-side no-op (no
+    resourceVersion bump, no pods touched). It always issues the PATCH;
+    it doesn't read-then-compare to skip the call.
     """
     api.patch_namespaced_deployment_scale(
         name=name,

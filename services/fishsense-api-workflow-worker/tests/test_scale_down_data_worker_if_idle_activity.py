@@ -1,3 +1,4 @@
+# pylint: disable=unnecessary-lambda,protected-access
 """Unit tests for scale_down_data_worker_if_idle_activity.
 
 The hourly sweeper scales the NRP data-worker Deployment to 0 only

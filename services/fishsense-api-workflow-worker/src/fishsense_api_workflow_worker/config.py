@@ -100,25 +100,17 @@ _VALIDATORS = [
         cast=str,
         default="fishsense-data-processing-workflow-worker",
     ),
-    # Hard-capped at 4: >1 is only ever a deliberate operator choice
-    # (a giant single dive, or active-window resilience on a
-    # preemption-prone cluster); the scaling activity clamps to
-    # [1, 4] so a fat-fingered value can't ask NRP for 50 pods.
-    Validator(
-        "kubernetes.active_replicas",
-        cast=int,
-        default=1,
-        condition=lambda x: 1 <= x <= 4,
-    ),
+    # >1 is only ever a deliberate operator choice (a giant single
+    # dive, or active-window resilience on a preemption-prone cluster).
+    # No `condition=` here: `resolve_scaling_config` clamps the value to
+    # [1, 4], so a fat-fingered value is clamped (with the actual count
+    # logged by the scaling activity), not a worker-startup error.
+    Validator("kubernetes.active_replicas", cast=int, default=1),
     # The sweeper refuses to scale to 0 until the data-worker task
     # queue has had no running OR recently-closed workflow for this
     # many minutes — so a back-to-back dive doesn't thrash the pod.
-    Validator(
-        "kubernetes.idle_cooldown_minutes",
-        cast=int,
-        default=15,
-        condition=lambda x: x >= 0,
-    ),
+    # `resolve_scaling_config` floors a negative value at 0.
+    Validator("kubernetes.idle_cooldown_minutes", cast=int, default=15),
 ]
 
 settings = Dynaconf(
