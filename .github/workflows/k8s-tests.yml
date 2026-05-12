@@ -1,0 +1,68 @@
+name: K8s tests
+
+# Validates deploy/k8s/data-worker/ and exercises the api-worker's
+# scale-up / scale-down activities against a real (kind) cluster — the
+# k8s surface the unit tests mock away (manifest validity, the actual
+# patch to a Deployment's .spec.replicas, kubeconfig handling).
+#
+# `kind` and `kubectl` are preinstalled on the GitHub `ubuntu-latest`
+# runner image, so no setup actions are needed. The kind cluster is
+# torn down with the runner at job end.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  data-worker-manifests-and-scaling:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Kustomize build (fast check before spinning up a cluster)
+        run: kubectl kustomize deploy/k8s/data-worker
+
+      - name: Create kind cluster
+        run: |
+          kind create cluster --wait 120s
+          # `kind create cluster` writes the kubeconfig + sets the
+          # current context here; expose the path to the pytest step.
+          echo "KUBECONFIG=$HOME/.kube/config" >> "$GITHUB_ENV"
+
+      - name: Create stub Secrets the Deployment references
+        # Real values don't matter — the pod won't pull the private
+        # image and we never wait for it to be Ready; this just lets
+        # `kubectl apply -k` resolve the secretKeyRef / imagePullSecrets
+        # so the apply is a faithful server-side validation.
+        run: |
+          kubectl create secret generic fishsense-data-worker-secrets \
+            --from-literal=fishsense_api_username=ci \
+            --from-literal=fishsense_api_password=ci \
+            --from-literal=file_exchange_username=ci \
+            --from-literal=file_exchange_password=ci
+          kubectl create secret generic fishsense-data-worker-temporal-certs \
+            --from-literal=client.pem=ci \
+            --from-literal=client.key=ci \
+            --from-literal=root-ca.pem=ci
+          kubectl create secret docker-registry ghcr-pull \
+            --docker-server=ghcr.io \
+            --docker-username=ci \
+            --docker-password=ci
+
+      - name: Apply the data-worker manifests (server-side validation)
+        run: |
+          kubectl apply -k deploy/k8s/data-worker
+          kubectl get deployment fishsense-data-processing-workflow-worker -o yaml
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install uv
+        run: pip install uv
+      - name: Sync workspace (all packages, all groups)
+        run: uv sync --all-packages --all-groups
+
+      - name: Run the k8s scaling integration tests
+        # KUBECONFIG (set above) points pytest at the kind cluster.
+        run: uv run --directory services/fishsense-api-workflow-worker pytest -v -m k8s
