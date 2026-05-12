@@ -16,6 +16,7 @@ Visibility is eventually consistent, so the assertions poll.
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 
 import pytest
@@ -29,6 +30,34 @@ from fishsense_shared import build_tls_config
 from temporalio.client import Client
 
 pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(autouse=True)
+def _temporal_target_from_ci_env(monkeypatch):
+    """Point `settings.temporal` at the right host for this environment.
+
+    `_data_worker_task_queue_busy` (and `_connect` below) connect via
+    `settings.temporal.host` — which conftest hard-sets to `temporal`,
+    resolvable only inside the docker network. The integration CI job
+    (`integration.yml`) runs pytest on the runner host and reaches the
+    compose services through published localhost ports, exporting
+    `FISHSENSE_TEMPORAL_HOST` / `FISHSENSE_TEMPORAL_PORT` for exactly
+    this — honor those (the rest of the integration suite does too).
+    Inside the devcontainer they're unset, so this is a no-op and the
+    conftest's `temporal` hostname stands.
+    """
+    host = os.environ.get("FISHSENSE_TEMPORAL_HOST")
+    port = os.environ.get("FISHSENSE_TEMPORAL_PORT")
+    if not host and not port:
+        return
+    if host:
+        monkeypatch.setenv("E4EFS_TEMPORAL__HOST", host)
+    if port:
+        monkeypatch.setenv("E4EFS_TEMPORAL__PORT", port)
+    # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker import config as cfg
+
+    cfg.settings.reload()
 
 # Big enough that any workflow closed during this test counts as
 # "recently closed", small enough to stay an int Temporal accepts.
