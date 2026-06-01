@@ -336,6 +336,11 @@ services:
       FISHSENSE_POSTGRES_USER: postgres
       FISHSENSE_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fishsense_local}
       FISHSENSE_POSTGRES_DB: ${FISHSENSE_DB_NAME:-fishsense}
+      # fishsense-lite-web SSR integration tests (vitest) target this. Use
+      # the in-cluster hostname so `./check.sh integration` works from
+      # inside the dev container; the CI runner overrides it to
+      # http://localhost:3000 (published port) in integration.yml.
+      FISHSENSE_WEB_URL: http://fishsense-lite-web:3000
       # Garage object store — both workers read `[object_store]` from
       # these. Integration tests seed/read the same bucket. Creds match
       # the fixed key imported by `garage-init`. Path-style addressing is
