@@ -125,23 +125,46 @@ services:
     networks:
       - fishsense_local
 
+  # Renders the live Garage config from the secret-free template by
+  # prepending a randomly-generated rpc_secret (see garage/keygen.sh) onto
+  # the shared `garage_config` volume. Runs before the daemon so no secret
+  # is ever committed to the repo. One-shot, idempotent.
+  garage-keygen:
+    image: alpine:3.20
+    restart: "no"
+    volumes:
+      - ./garage/garage.toml.template:/template:ro
+      - ./garage/keygen.sh:/keygen.sh:ro
+      - garage_config:/config
+    entrypoint: ["/bin/sh", "/keygen.sh"]
+    networks:
+      - fishsense_local
+
   # Real Garage (the same S3 object store we run in prod) — single-node,
   # no replication. Running the actual implementation rather than an
   # emulator means the integration tests exercise Garage's path-style +
   # presign behavior, not a stand-in's approximation of it. Config +
-  # bootstrap live in deploy/garage/. `:3900` = S3 API, `:3903` = admin.
+  # bootstrap live in deploy/garage/. `:3900` = S3 API. The rendered config
+  # (with the generated rpc_secret) comes from the garage_config volume via
+  # GARAGE_CONFIG_FILE — there's no config bind-mount and no committed secret.
   garage:
     image: dxflrs/garage:v1.0.1
     restart: on-failure:15
+    depends_on:
+      garage-keygen:
+        condition: service_completed_successfully
+    environment:
+      GARAGE_CONFIG_FILE: /config/garage.toml
     volumes:
-      - ./garage/garage.toml:/etc/garage.toml:ro
+      - garage_config:/config:ro
       - garage_meta:/var/lib/garage/meta
       - garage_data:/var/lib/garage/data
     ports:
       - "3900:3900"
     healthcheck:
       # The garage image is distroless (no shell), so use the exec form;
-      # `garage status` exits 0 once the daemon's RPC is up.
+      # `garage status` exits 0 once the daemon's RPC is up. (GARAGE_CONFIG_FILE
+      # from the service env is inherited by the healthcheck exec.)
       test: ["CMD", "/garage", "status"]
       interval: 3s
       timeout: 5s
@@ -153,8 +176,9 @@ services:
   # `fishsense` bucket, import a FIXED access key (deterministic test
   # creds), grant it rw. Built from deploy/garage/Dockerfile.init (alpine
   # + the static garage binary) because the garage image has no shell.
-  # Shares garage's metadata volume so the CLI can read the node key and
-  # connect over RPC. Exits 0 when done; `dev` waits on its completion.
+  # Shares the rendered config (for the rpc_secret) + garage's metadata
+  # volume (for the node key) so the CLI can connect over RPC. Exits 0 when
+  # done; `dev` waits on its completion.
   garage-init:
     build:
       context: ./garage
@@ -164,11 +188,16 @@ services:
       garage:
         condition: service_healthy
     environment:
+      GARAGE_CONFIG_FILE: /config/garage.toml
       OBJECT_STORE_BUCKET: fishsense
+      # Deterministic LOCAL TEST credentials (Garage requires hex-format
+      # keys, so they look secret-shaped, but they're throwaway test
+      # fixtures — not real and never used against prod). They must match
+      # the worker/test env below + tests/_object_store_itest.py.
       OBJECT_STORE_ACCESS_KEY: GK31c2f3a4b5c6d7e8f9a0b1c2
       OBJECT_STORE_SECRET_KEY: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
     volumes:
-      - ./garage/garage.toml:/etc/garage.toml:ro
+      - garage_config:/config:ro
       - ./garage/bootstrap.sh:/bootstrap.sh:ro
       - garage_meta:/var/lib/garage/meta
     networks:
@@ -350,6 +379,7 @@ services:
 
 volumes:
   pg_data:
+  garage_config:
   garage_meta:
   garage_data:
   dev_uv_cache:
