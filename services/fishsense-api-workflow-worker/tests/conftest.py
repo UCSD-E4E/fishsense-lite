@@ -39,20 +39,17 @@ def configure_worker_settings(
     monkeypatch.setenv("E4EFS_E4E_NAS__USERNAME", "unused")
     monkeypatch.setenv("E4EFS_E4E_NAS__PASSWORD", "unused")
     monkeypatch.setenv("E4EFS_FISHSENSE_API__URL", "http://fishsense-api.example.com")
-    monkeypatch.setenv(
-        "E4EFS_OBJECT_STORE__ENDPOINT_URL", "http://garage.example.com"
-    )
-    monkeypatch.setenv("E4EFS_OBJECT_STORE__REGION", "garage")
-    monkeypatch.setenv("E4EFS_OBJECT_STORE__BUCKET", "fishsense-test")
-    monkeypatch.setenv("E4EFS_OBJECT_STORE__ACCESS_KEY", "unused")
-    monkeypatch.setenv("E4EFS_OBJECT_STORE__SECRET_KEY", "unused")
 
     if _is_integration_test(request):
-        # LS + static-files come from compose.local.yml's `dev` service
-        # env (real LS endpoint, real bootstrap token). DON'T override
-        # them — that's the point of integration tests. Force a settings
-        # reload so any earlier placeholder-based attribute access is
-        # invalidated.
+        # LS, object-store, etc. come from compose.local.yml's `dev`
+        # service env (real LS endpoint + real Garage). DON'T override
+        # them — that's the point of integration tests. In particular the
+        # object_store endpoint must be the REAL Garage, because the
+        # Create activity registers the bucket as an LS S3 source storage
+        # and Label Studio validates that connection (head_bucket) at
+        # registration time — a placeholder endpoint would 500. Force a
+        # settings reload so any earlier placeholder-based attribute
+        # access is invalidated.
         from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
 
         cfg.settings.reload()
@@ -61,6 +58,16 @@ def configure_worker_settings(
 
     monkeypatch.setenv("E4EFS_LABEL_STUDIO__URL", "http://label-studio.example.com")
     monkeypatch.setenv("E4EFS_LABEL_STUDIO__API_KEY", "unused")
+    # Object-store placeholders for UNIT tests only (the LS client is
+    # mocked there, so these are never dialed). Integration tests use the
+    # ambient env's real Garage — see the note above.
+    monkeypatch.setenv(
+        "E4EFS_OBJECT_STORE__ENDPOINT_URL", "http://garage.example.com"
+    )
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__REGION", "garage")
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__BUCKET", "fishsense-test")
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__ACCESS_KEY", "unused")
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__SECRET_KEY", "unused")
     yield
 
 
