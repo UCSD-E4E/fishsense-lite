@@ -1,5 +1,16 @@
 # fishsense-lite-mono — architecture diagrams
 
+> **STORAGE MIGRATION (Garage):** the nginx `static_file_server`
+> file-exchange and the `fishsense_process_work` NAS archive have been
+> replaced by a hosted Garage (S3-compatible) object store. Wherever a
+> diagram below shows "nginx static_file_server / file-exchange (DAV)"
+> or "GET/PUT /api/v1/exchange/...", read it as the Garage bucket:
+> `raw/{checksum}.ORF` + `slate_pdf/{slate_id}.pdf` (scratch) and
+> `{prefix}/{checksum}.JPG` (durable, served to Label Studio via
+> presigned URLs). The api-worker's NAS access is read-only and there
+> is no NAS archive step. (The mermaid nodes themselves are pending a
+> redraw.)
+
 UML-flavored Mermaid diagrams. GitHub renders Mermaid natively in
 markdown — open this file on GitHub or in any Mermaid-aware editor.
 

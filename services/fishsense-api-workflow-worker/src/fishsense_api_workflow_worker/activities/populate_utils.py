@@ -24,15 +24,81 @@ from fishsense_api_workflow_worker.activities.utils import (
 from fishsense_api_workflow_worker.config import settings
 
 
-def build_image_url(folder: str, checksum: str) -> str:
-    """Build the labeler-facing URL for a preprocessed JPEG.
+# Title given to the per-project Garage S3 source storage. Matching on
+# (bucket, title) makes registration idempotent across re-runs.
+LS_S3_STORAGE_TITLE = "garage"
 
-    Folder names match the GET routes already exposed by
-    `deploy/static_file_server/nginx.conf` (preprocess_jpeg,
-    groups_jpeg, headtail_jpeg, dive_slate_jpgs).
+
+def build_image_url(folder: str, checksum: str) -> str:
+    """Build the `s3://` URI for a preprocessed JPEG in Garage.
+
+    Label Studio resolves this to a presigned GET URL at serve time via
+    the per-project S3 source storage (see
+    `ensure_label_studio_s3_storage`). `folder` is the **physical**
+    Garage prefix the data-worker wrote to (preprocess_jpeg /
+    preprocess_groups_jpeg / preprocess_headtail_jpeg /
+    preprocess_slate_images_jpeg) — i.e. the exact key the JPEG lives
+    at. There's no virtual->physical rewrite layer anymore, which is
+    why the old nginx alias mismatch (issue #113) is gone by
+    construction.
     """
-    base = settings.label_studio.image_url_base.rstrip("/")
-    return f"{base}/api/v1/data/{folder}/{checksum}"
+    bucket = settings.object_store.bucket
+    return f"s3://{bucket}/{folder}/{checksum}.JPG"
+
+
+def _ls_s3_presign_credentials() -> tuple[str, str]:
+    """`(access_key, secret_key)` Label Studio uses to presign GET URLs.
+
+    Prefers the optional read-only `presign_*` key; falls back to the
+    main object-store key when ops haven't scoped a separate one.
+    """
+    obj = settings.object_store
+    access = obj.get("presign_access_key", None) or obj.access_key
+    secret = obj.get("presign_secret_key", None) or obj.secret_key
+    return access, secret
+
+
+async def ensure_label_studio_s3_storage(project_id: int) -> None:
+    """Idempotently register a Garage S3 *source* storage on
+    `project_id` so LS presigns the `s3://` image URIs in each task's
+    data.
+
+    Open-source LS storages are per-project and projects are per-dive,
+    so every freshly-created project needs this. Matches on
+    (bucket, title) to avoid duplicate registrations on re-runs. Does
+    NOT call `.sync()` — tasks are POSTed explicitly; this connection
+    exists only to enable presigning.
+    """
+    ls = _get_ls_client()
+    bucket = settings.object_store.bucket
+
+    existing = await asyncio.to_thread(
+        lambda: list(ls.import_storage.s3.list(project=project_id))
+    )
+    for storage in existing:
+        if (
+            getattr(storage, "bucket", None) == bucket
+            and getattr(storage, "title", None) == LS_S3_STORAGE_TITLE
+        ):
+            return
+
+    access_key, secret_key = _ls_s3_presign_credentials()
+    await asyncio.to_thread(
+        lambda: ls.import_storage.s3.create(
+            project=project_id,
+            title=LS_S3_STORAGE_TITLE,
+            bucket=bucket,
+            s3endpoint=settings.object_store.endpoint_url,
+            region_name=settings.object_store.region,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            presign=True,
+            use_blob_urls=False,
+        )
+    )
+    activity.logger.info(
+        "registered LS S3 storage project_id=%d bucket=%s", project_id, bucket
+    )
 
 
 async def create_or_get_label_studio_project(
@@ -41,7 +107,8 @@ async def create_or_get_label_studio_project(
     labeling_config_xml: str,
 ) -> int:
     """Idempotent create — return the LS project ID for `project_title`,
-    creating one with `labeling_config_xml` if none exists.
+    creating one with `labeling_config_xml` if none exists, and
+    idempotently registering the Garage S3 source storage on it.
 
     Used by the create-side activities. Per-dive titles are built by
     `build_per_dive_title`.
@@ -58,7 +125,9 @@ async def create_or_get_label_studio_project(
                 project_title,
                 matches[0].id,
             )
-        return matches[0].id
+        project_id = matches[0].id
+        await ensure_label_studio_s3_storage(project_id)
+        return project_id
 
     if not labeling_config_xml:
         raise RuntimeError(
@@ -76,6 +145,7 @@ async def create_or_get_label_studio_project(
     activity.logger.info(
         "Created LS project %r (id=%d)", project_title, project.id
     )
+    await ensure_label_studio_s3_storage(project.id)
     return project.id
 
 

@@ -1,17 +1,16 @@
 """Stage 9: composite a binarized slate-template PDF render with the
-rectified raw image, draw reference-point markers, and PUT the JPEG to
-the file-exchange.
+rectified raw image, draw reference-point markers, and write the JPEG to
+the Garage object store.
 
 Pure-logic helpers (`render_slate_pdf_to_binarized_bgr`,
 `composite_slate_with_image`) are module-level so they can be tested
-without the Temporal/httpx surface."""
+without the Temporal/S3 surface."""
 
 import asyncio
 import logging
 from typing import List, Tuple
 
 import cv2
-import httpx
 import numpy as np
 import pymupdf
 from fishsense_api_sdk.models.camera_intrinsics import CameraIntrinsics
@@ -19,9 +18,8 @@ from fishsense_core.image.raw_image import RawImage
 from fishsense_core.image.rectified_image import RectifiedImage
 from temporalio import activity
 
-from fishsense_data_processing_workflow_worker.config import settings
-from fishsense_data_processing_workflow_worker.file_exchange import (
-    FileExchangeClient,
+from fishsense_data_processing_workflow_worker.object_store import (
+    open_object_store_client,
 )
 
 _log = logging.getLogger(__name__)
@@ -137,25 +135,20 @@ async def preprocess_slate_image(payload) -> None:  # type: ignore[no-untyped-de
         payload.slate_id,
     )
 
-    async with httpx.AsyncClient(
-        base_url=settings.file_exchange.url, timeout=httpx.Timeout(60.0)
-    ) as http:
-        client = FileExchangeClient(
-            base_url=settings.file_exchange.url, http=http
-        )
-        raw_bytes = await client.download_raw(payload.checksum)
-        pdf_bytes = await client.download_slate_pdf(payload.slate_id)
-        jpeg_bytes = await asyncio.to_thread(
-            _build_slate_jpeg,
-            raw_bytes,
-            pdf_bytes,
-            payload.camera_matrix,
-            payload.distortion_coefficients,
-            payload.slate_dpi,
-            [tuple(p) for p in payload.reference_points],
-        )
-        await client.upload_processed_jpeg(
-            folder=payload.output_folder,
-            checksum=payload.checksum,
-            data=jpeg_bytes,
-        )
+    client = open_object_store_client()
+    raw_bytes = await client.download_raw(payload.checksum)
+    pdf_bytes = await client.download_slate_pdf(payload.slate_id)
+    jpeg_bytes = await asyncio.to_thread(
+        _build_slate_jpeg,
+        raw_bytes,
+        pdf_bytes,
+        payload.camera_matrix,
+        payload.distortion_coefficients,
+        payload.slate_dpi,
+        [tuple(p) for p in payload.reference_points],
+    )
+    await client.upload_processed_jpeg(
+        folder=payload.output_folder,
+        checksum=payload.checksum,
+        data=jpeg_bytes,
+    )

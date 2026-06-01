@@ -22,7 +22,9 @@ from fishsense_api_workflow_worker.activities.populate_utils import (
 )
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
 
-DIVE_SLATE_FOLDER = "dive_slate_jpgs"
+# Physical Garage prefix the data-worker writes slate JPEGs to (stage 9).
+# Was the nginx virtual name "dive_slate_jpgs"; now the real key prefix.
+DIVE_SLATE_FOLDER = "preprocess_slate_images_jpeg"
 SLATE_CONTENT_MARKER = "Slate, Laser on slate"
 
 

@@ -125,19 +125,36 @@ services:
     networks:
       - fishsense_local
 
-  static_file_server:
-    image: nginx:1.29-alpine
+  # Local stand-in for the hosted Garage object store. MinIO is
+  # S3-compatible and trivial to run in the devcontainer; the workers
+  # point `[object_store]` at it (path-style addressing). The bucket is
+  # created once by the `minio-bucket` init container below.
+  minio:
+    image: minio/minio:latest
     restart: on-failure:15
-    # The named volume is created root-owned on first boot, but nginx workers
-    # run as the `nginx` user and need to write under /data/exchange/ for the
-    # worker-to-worker file-exchange (PUT). Chown on startup so the DAV
-    # location's create_full_put_path can mkdir + write.
-    command: ["sh", "-c", "chown -R nginx:nginx /data && exec nginx -g 'daemon off;'"]
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: fishsense_local
+      MINIO_ROOT_PASSWORD: fishsense_local_secret
     volumes:
-      - ./static_file_server/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - static_file_server_data:/data
+      - minio_data:/data
     ports:
-      - "8080:80"
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - fishsense_local
+
+  minio-bucket:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint:
+      - sh
+      - -c
+      - |
+        until mc alias set local http://minio:9000 fishsense_local fishsense_local_secret; do sleep 1; done
+        mc mb --ignore-existing local/fishsense
+        mc anonymous set download local/fishsense
     networks:
       - fishsense_local
 
@@ -253,7 +270,8 @@ services:
       - postgres
       - temporal
       - fishsense-api
-      - static_file_server
+      - minio
+      - minio-bucket
       - label-studio
     environment:
       E4EFS_DOCKER: "false"
@@ -267,19 +285,19 @@ services:
       FISHSENSE_POSTGRES_USER: postgres
       FISHSENSE_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fishsense_local}
       FISHSENSE_POSTGRES_DB: ${FISHSENSE_DB_NAME:-fishsense}
-      FISHSENSE_STATIC_FILE_SERVER_URL: http://static_file_server
-      # File-exchange URL (under the E4EFS_ prefix used by both the data-
-      # processing and api workflow workers — see each service's
-      # config.py). The worker's `settings.file_exchange.url` validator
-      # reads this when the worker is started from inside this container.
-      E4EFS_FILE_EXCHANGE__URL: http://static_file_server
+      # Garage (MinIO local stand-in) object store — both workers read
+      # `[object_store]` from these. Integration tests seed/read the
+      # same bucket. Path-style addressing is required (set in
+      # object_store.build_s3_client).
+      E4EFS_OBJECT_STORE__ENDPOINT_URL: http://minio:9000
+      E4EFS_OBJECT_STORE__REGION: garage
+      E4EFS_OBJECT_STORE__BUCKET: fishsense
+      E4EFS_OBJECT_STORE__ACCESS_KEY: fishsense_local
+      E4EFS_OBJECT_STORE__SECRET_KEY: fishsense_local_secret
       # Label Studio endpoints for the api-workflow-worker integration tests.
       # Token must match LABEL_STUDIO_USER_TOKEN on the label-studio service.
       E4EFS_LABEL_STUDIO__URL: http://label-studio:8080
       E4EFS_LABEL_STUDIO__API_KEY: fishsense_local_test_token_42
-      # URL embedded into Label Studio task `data.image` fields — workers'
-      # populate activities use this when constructing per-task image URLs.
-      E4EFS_LABEL_STUDIO__IMAGE_URL_BASE: http://static_file_server
     working_dir: ${HOST_REPO_PATH:?Set HOST_REPO_PATH in deploy/.env to the absolute path of this repo on your host (run "realpath .." from this directory).}
     # Give the in-container `vscode` user access to the host's docker socket
     # via supplementary group membership. The kernel only checks numeric GID,
@@ -310,7 +328,7 @@ services:
 
 volumes:
   pg_data:
-  static_file_server_data:
+  minio_data:
   dev_uv_cache:
   label_studio_data:
 

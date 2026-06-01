@@ -13,7 +13,6 @@ import asyncio
 import json
 from typing import Any, Dict, List, Tuple
 
-import httpx
 import pymupdf
 from fishsense_api_sdk.client import Client
 from fishsense_api_sdk.models.dive_slate_label import DiveSlateLabel
@@ -23,7 +22,10 @@ from fishsense_api_workflow_worker.activities.utils import (
     SYNC_CONCURRENCY,
     sync_label_studio_project,
 )
-from fishsense_api_workflow_worker.config import settings
+from fishsense_api_workflow_worker.object_store import (
+    ObjectStoreClient,
+    open_object_store_client,
+)
 
 __all__ = [
     "sync_dive_slate_labels_for_label_studio_project_activity",
@@ -140,20 +142,21 @@ async def _slate_id_for_image(
 
 
 async def _aspect_ratio_for_slate(
-    http: httpx.AsyncClient,
+    exchange: ObjectStoreClient,
     slate_id: int,
     aspect_cache: Dict[int, float],
 ) -> float | None:
-    """Fetch the slate PDF (once per activity) and return width/height in points."""
+    """Fetch the slate PDF (once per activity) from Garage and return
+    width/height in points."""
     if slate_id in aspect_cache:
         return aspect_cache[slate_id]
 
     try:
-        response = await http.get(
-            f"/api/v1/exchange/dive_slate_pdfs/{slate_id}.pdf"
-        )
-        response.raise_for_status()
-    except httpx.HTTPError as e:
+        pdf_bytes = await exchange.download_slate_pdf(slate_id)
+    except Exception as e:  # pylint: disable=broad-except
+        # Missing/unreadable slate PDF in Garage (botocore ClientError or
+        # transport error). Skip the panel-width offset for this label
+        # rather than failing the whole sync.
         activity.logger.warning(
             "Could not fetch slate PDF for slate_id=%d (%s); "
             "skipping panel-width offset for this label",
@@ -163,7 +166,7 @@ async def _aspect_ratio_for_slate(
         return None
 
     aspect = await asyncio.to_thread(
-        compute_pdf_panel_aspect_ratio, response.content
+        compute_pdf_panel_aspect_ratio, pdf_bytes
     )
     aspect_cache[slate_id] = aspect
     return aspect
@@ -173,7 +176,7 @@ async def _update_slate_label(
     fs: Client,
     task: Any,
     *,
-    http: httpx.AsyncClient,
+    exchange: ObjectStoreClient,
     aspect_cache: Dict[int, float],
     image_to_slate: Dict[int, int | None],
 ) -> None:
@@ -213,7 +216,7 @@ async def _update_slate_label(
             )
             if slate_id is not None:
                 aspect = await _aspect_ratio_for_slate(
-                    http, slate_id, aspect_cache
+                    exchange, slate_id, aspect_cache
                 )
                 if aspect is not None:
                     panel_width = compute_pdf_panel_width_in_composite(
@@ -239,18 +242,15 @@ async def sync_dive_slate_labels_for_label_studio_project_activity(project_id: i
     aspect_cache: Dict[int, float] = {}
     image_to_slate: Dict[int, int | None] = {}
 
-    async with httpx.AsyncClient(
-        base_url=settings.file_exchange.url,
-        timeout=httpx.Timeout(60.0),
-    ) as http:
+    exchange = open_object_store_client()
 
-        async def _update(fs: Client, task: Any) -> None:
-            await _update_slate_label(
-                fs,
-                task,
-                http=http,
-                aspect_cache=aspect_cache,
-                image_to_slate=image_to_slate,
-            )
+    async def _update(fs: Client, task: Any) -> None:
+        await _update_slate_label(
+            fs,
+            task,
+            exchange=exchange,
+            aspect_cache=aspect_cache,
+            image_to_slate=image_to_slate,
+        )
 
-        await sync_label_studio_project(project_id, _update, kind="dive_slate")
+    await sync_label_studio_project(project_id, _update, kind="dive_slate")

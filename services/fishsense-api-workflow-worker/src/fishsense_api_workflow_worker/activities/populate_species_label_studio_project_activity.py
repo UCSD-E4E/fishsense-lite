@@ -31,7 +31,9 @@ from fishsense_api_workflow_worker.activities.populate_utils import (
 )
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
 
-SPECIES_FOLDER = "groups_jpeg"
+# Physical Garage prefix the data-worker writes species JPEGs to
+# (stage 2). Was the nginx virtual name "groups_jpeg".
+SPECIES_FOLDER = "preprocess_groups_jpeg"
 
 
 def _is_valid_laser(label: LaserLabel) -> bool:

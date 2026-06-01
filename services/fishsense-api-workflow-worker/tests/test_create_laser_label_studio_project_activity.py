@@ -174,3 +174,103 @@ async def test_falls_back_to_dive_id_when_name_too_long(monkeypatch):
         title=expected_title,
         label_config="<View/>",
     )
+
+
+# --------- Garage S3 source-storage registration (ensure_*) ----------
+
+
+def _make_ls_with_storage(existing_storages=()):
+    ls = MagicMock()
+    ls.import_storage = MagicMock()
+    ls.import_storage.s3 = MagicMock()
+    ls.import_storage.s3.list = MagicMock(return_value=list(existing_storages))
+    ls.import_storage.s3.create = MagicMock(
+        return_value=SimpleNamespace(id=1)
+    )
+    return ls
+
+
+@pytest.mark.asyncio
+async def test_ensure_s3_storage_registers_presigned_source_when_absent(
+    monkeypatch,
+):
+    """A freshly-created per-dive project gets a Garage S3 source
+    storage registered with presign=True so LS can resolve the
+    `s3://` task URIs to presigned GET URLs."""
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__BUCKET", "fishsense-test")
+    monkeypatch.setenv(
+        "E4EFS_OBJECT_STORE__ENDPOINT_URL", "http://garage.example.com"
+    )
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__ACCESS_KEY", "ak")
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__SECRET_KEY", "sk")
+    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    cfg.settings.reload()
+
+    ls = _make_ls_with_storage(existing_storages=[])
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    async def _run():
+        await sut_utils.ensure_label_studio_s3_storage(73)
+
+    await ActivityEnvironment().run(_run)
+
+    ls.import_storage.s3.create.assert_called_once()
+    kwargs = ls.import_storage.s3.create.call_args.kwargs
+    assert kwargs["project"] == 73
+    assert kwargs["bucket"] == "fishsense-test"
+    assert kwargs["s3endpoint"] == "http://garage.example.com"
+    assert kwargs["presign"] is True
+    assert kwargs["use_blob_urls"] is False
+    assert kwargs["aws_access_key_id"] == "ak"
+    assert kwargs["aws_secret_access_key"] == "sk"
+
+
+@pytest.mark.asyncio
+async def test_ensure_s3_storage_is_idempotent_when_already_registered(
+    monkeypatch,
+):
+    """Re-running create on an existing project must not register a
+    duplicate storage — match is on (bucket, title)."""
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__BUCKET", "fishsense-test")
+    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    cfg.settings.reload()
+
+    existing = [
+        SimpleNamespace(
+            bucket="fishsense-test", title=sut_utils.LS_S3_STORAGE_TITLE
+        )
+    ]
+    ls = _make_ls_with_storage(existing_storages=existing)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    async def _run():
+        await sut_utils.ensure_label_studio_s3_storage(73)
+
+    await ActivityEnvironment().run(_run)
+
+    ls.import_storage.s3.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ensure_s3_storage_uses_presign_credentials_when_set(monkeypatch):
+    """When a read-only presign key is configured, LS gets THAT key (not
+    the main read/write object-store key)."""
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__BUCKET", "fishsense-test")
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__ACCESS_KEY", "rw-key")
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__SECRET_KEY", "rw-secret")
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__PRESIGN_ACCESS_KEY", "ro-key")
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__PRESIGN_SECRET_KEY", "ro-secret")
+    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    cfg.settings.reload()
+
+    ls = _make_ls_with_storage(existing_storages=[])
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    async def _run():
+        await sut_utils.ensure_label_studio_s3_storage(73)
+
+    await ActivityEnvironment().run(_run)
+
+    kwargs = ls.import_storage.s3.create.call_args.kwargs
+    assert kwargs["aws_access_key_id"] == "ro-key"
+    assert kwargs["aws_secret_access_key"] == "ro-secret"

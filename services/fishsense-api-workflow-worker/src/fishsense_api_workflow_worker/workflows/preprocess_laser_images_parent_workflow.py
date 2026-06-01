@@ -3,10 +3,10 @@
 Picks the next HIGH-priority dive needing laser preprocessing, resolves
 its unlabeled-image-set + camera intrinsics via SDK, and dispatches
 the resolved inputs to the data-worker's `PreprocessLaserImagesWorkflow`
-on `fishsense_data_processing_queue`. After archive+cleanup, chains
-into `PopulateLaserLabelStudioProjectWorkflow` on the api-worker so a
-fresh dive lands in Label Studio in the same hourly run that produced
-its JPEGs — no operator-triggered populate needed.
+on `fishsense_data_processing_queue`. After the raw-scratch cleanup,
+chains into `PopulateLaserLabelStudioProjectWorkflow` on the api-worker
+so a fresh dive lands in Label Studio in the same hourly run that
+produced its JPEGs — no operator-triggered populate needed.
 
 Cohort: HIGH-priority + at least one image with no completed
 `LaserLabel` in any project. Mirrors the work-state shape of the
@@ -20,8 +20,8 @@ hourly with no work for the resolver to return — see
 Cluster-correctness invariants — relevant once the data-worker scales
 beyond a single replica:
 
-* Per-image activities (in the child workflow) PUT to nginx DAV which
-  is idempotent under overwrite. Retried activities don't double-write.
+* Per-image activities (in the child workflow) PUT to Garage (S3),
+  which overwrites idempotently. Retried activities don't double-write.
 * SDK upserts on the resolver side don't mutate state — read-only.
 * The schedule that fires this workflow uses
   `overlap_policy=ScheduleOverlapPolicy.SKIP`, so a run still in
@@ -59,8 +59,6 @@ with workflow.unsafe.imports_passed_through():
     )
 
 DATA_PROCESSING_TASK_QUEUE = "fishsense_data_processing_queue"
-EXCHANGE_FOLDER = "preprocess_jpeg"
-NAS_WORKFLOW = "laser"
 
 
 @workflow.defn
@@ -132,16 +130,11 @@ class PreprocessLaserImagesParentWorkflow:
                 dive_id,
             )
 
-        # Phase 3b: archive processed JPEGs to NAS, then drop the raw
-        # `.ORF` bytes from the file-exchange. JPEGs intentionally stay
-        # on the file-exchange — LS tasks reference them by URL and
-        # their retention is a separate operational decision.
-        await workflow.execute_activity(
-            "archive_processed_jpegs_to_nas_activity",
-            args=(dive_id, EXCHANGE_FOLDER, NAS_WORKFLOW),
-            schedule_to_close_timeout=timedelta(hours=1),
-            heartbeat_timeout=timedelta(minutes=5),
-        )
+        # Drop the staged raw `.ORF` scratch objects from Garage now
+        # that the data-worker has produced the JPEGs. The JPEGs are the
+        # durable artifact and live in Garage (LS reads them via
+        # presign); only the reproducible-from-NAS raw scratch is
+        # evicted. The NAS source is never touched.
         await workflow.execute_activity(
             "cleanup_raw_bytes_for_dive_activity",
             args=(dive_id,),

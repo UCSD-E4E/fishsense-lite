@@ -19,10 +19,12 @@ services:
       - ./temporal_volumes/certs:/certs:ro
       - ./worker_volumes/api_worker/config:/e4efs/config:ro
       - ./worker_volumes/api_worker/logs:/e4efs/logs:rw
-    # `default` for fishsense-temporal (compose.temporal.yml); `traefik_proxy`
-    # for fishsense-api + static_file_server (compose.orchestrator.yml). The
+    # `default` for fishsense-temporal (compose.temporal.yml);
+    # `traefik_proxy` for fishsense-api (compose.orchestrator.yml). The
     # SDK calls into fishsense-api on the internal hostname bypass the public
     # Traefik route + authentik middleware — see settings.toml [fishsense_api].
+    # Object-store (Garage) creds come from the mounted
+    # worker_volumes/api_worker/config/.secrets.toml, not from compose env.
     networks:
       - default
       - traefik_proxy

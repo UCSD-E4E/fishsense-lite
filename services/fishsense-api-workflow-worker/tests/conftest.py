@@ -39,6 +39,13 @@ def configure_worker_settings(
     monkeypatch.setenv("E4EFS_E4E_NAS__USERNAME", "unused")
     monkeypatch.setenv("E4EFS_E4E_NAS__PASSWORD", "unused")
     monkeypatch.setenv("E4EFS_FISHSENSE_API__URL", "http://fishsense-api.example.com")
+    monkeypatch.setenv(
+        "E4EFS_OBJECT_STORE__ENDPOINT_URL", "http://garage.example.com"
+    )
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__REGION", "garage")
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__BUCKET", "fishsense-test")
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__ACCESS_KEY", "unused")
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__SECRET_KEY", "unused")
 
     if _is_integration_test(request):
         # LS + static-files come from compose.local.yml's `dev` service
@@ -54,14 +61,6 @@ def configure_worker_settings(
 
     monkeypatch.setenv("E4EFS_LABEL_STUDIO__URL", "http://label-studio.example.com")
     monkeypatch.setenv("E4EFS_LABEL_STUDIO__API_KEY", "unused")
-    monkeypatch.setenv(
-        "E4EFS_LABEL_STUDIO__IMAGE_URL_BASE",
-        "http://orchestrator.example.com",
-    )
-    monkeypatch.setenv(
-        "E4EFS_FILE_EXCHANGE__URL",
-        "http://static-file-server.example.com",
-    )
     yield
 
 

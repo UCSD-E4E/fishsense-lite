@@ -1,10 +1,13 @@
 """Activity to stage all raw `.ORF` bytes for a dive from NAS to the
-file-exchange.
+Garage object store.
 
 Runs on the api-worker (which holds the NAS credentials) ahead of the
-data-worker child workflow that consumes
-`/api/v1/exchange/raw/{checksum}.ORF`. Idempotent: HEAD-checks the
-file-exchange first and skips checksums already staged.
+data-worker child workflow that reads the staged raw `.ORF` from the
+Garage `raw/{checksum}.ORF` scratch key. Idempotent: HEAD-checks the
+object store first (HeadObject) and skips checksums already staged.
+
+NAS access here is strictly read-only (download). The NAS stays the
+source of truth — nothing in this activity ever deletes from it.
 
 Path resolution: `image.path` in the DB is stored relative to the
 lab's data-root share (e.g. `2024.06.20.REEF/08_2023/.../P8290052.ORF`);
@@ -29,12 +32,11 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-import httpx
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
 from fishsense_api_workflow_worker.config import settings
-from fishsense_api_workflow_worker.file_exchange import StagingFileExchangeClient
+from fishsense_api_workflow_worker.object_store import open_object_store_client
 from fishsense_api_workflow_worker.nas import NasDownloadClient
 
 STAGE_CONCURRENCY = 8
@@ -62,6 +64,8 @@ def _build_nas_client() -> NasDownloadClient:
         username=settings.e4e_nas.username,
         password=settings.e4e_nas.password,
     )
+
+
 
 
 def _resolve_nas_path(relative_path: str) -> str:
@@ -96,48 +100,42 @@ async def stage_raw_bytes_for_dive_activity(
     skipped = 0
     no_path = 0
 
-    async with httpx.AsyncClient(
-        base_url=settings.file_exchange.url,
-        timeout=httpx.Timeout(120.0),
-    ) as http:
-        exchange = StagingFileExchangeClient(
-            base_url=settings.file_exchange.url, http=http
-        )
+    exchange = open_object_store_client()
 
-        async def _stage_one(image) -> str:
-            nonlocal staged, skipped, no_path
-            if not image.path:
-                no_path += 1
+    async def _stage_one(image) -> str:
+        nonlocal staged, skipped, no_path
+        if not image.path:
+            no_path += 1
+            activity.heartbeat()
+            return "no_path"
+        if not image.checksum:
+            no_path += 1
+            activity.heartbeat()
+            return "no_checksum"
+
+        async with sem:
+            if await exchange.has_raw(image.checksum):
+                skipped += 1
                 activity.heartbeat()
-                return "no_path"
-            if not image.checksum:
-                no_path += 1
+                return "skipped"
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                src_path = _resolve_nas_path(image.path)
+                await asyncio.to_thread(
+                    nas.download_to,
+                    src_path=src_path,
+                    dest_dir=tmpdir,
+                )
+                local_path = Path(tmpdir) / os.path.basename(src_path)
+                data = await asyncio.to_thread(local_path.read_bytes)
+                await exchange.upload_raw(image.checksum, data)
+                staged += 1
                 activity.heartbeat()
-                return "no_checksum"
+                return "staged"
 
-            async with sem:
-                if await exchange.has_raw(image.checksum):
-                    skipped += 1
-                    activity.heartbeat()
-                    return "skipped"
-
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    src_path = _resolve_nas_path(image.path)
-                    await asyncio.to_thread(
-                        nas.download_to,
-                        src_path=src_path,
-                        dest_dir=tmpdir,
-                    )
-                    local_path = Path(tmpdir) / os.path.basename(src_path)
-                    data = await asyncio.to_thread(local_path.read_bytes)
-                    await exchange.upload_raw(image.checksum, data)
-                    staged += 1
-                    activity.heartbeat()
-                    return "staged"
-
-        async with asyncio.TaskGroup() as tg:
-            for image in images:
-                tg.create_task(_stage_one(image))
+    async with asyncio.TaskGroup() as tg:
+        for image in images:
+            tg.create_task(_stage_one(image))
 
     activity.logger.info(
         "staged dive_id=%d staged=%d skipped=%d no_path=%d",

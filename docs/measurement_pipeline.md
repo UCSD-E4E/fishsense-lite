@@ -102,7 +102,7 @@ status" section of [CLAUDE.md](../CLAUDE.md).
 18. The hourly `SyncLabelStudioDiveSlateLabelsWorkflow` pulls
     `DiveSlateLabel` rows back into Postgres. The LS image is a
     composite (PDF panel on the left, photo on the right), so the
-    sync activity opens the slate PDF via the file-exchange and
+    sync activity opens the slate PDF from the Garage object store and
     shifts reference-point + slate-rectangle x-coords left by the
     rendered panel width to land them in photo-frame coords.
 
@@ -174,15 +174,19 @@ The eight `Create*` and `Populate*` workflows are **on-demand**:
 See [worker.py](../services/fishsense-api-workflow-worker/src/fishsense_api_workflow_worker/worker.py)
 for the registration list and `schedule_workflows` body.
 
-## File-exchange URL contract (data flow between workers)
+## Garage object-store key contract (data flow between workers)
+
+Storage moved off the nginx file-exchange to a hosted Garage
+(S3-compatible) object store. One bucket, content-type prefixes:
 
 ```
-GET  /api/v1/exchange/raw/{checksum}.ORF             # api-worker upload, data-worker reads
-GET  /api/v1/exchange/dive_slate_pdfs/{slate_id}.pdf # api-worker upload, data-worker reads (stage 9)
-PUT  /api/v1/exchange/{folder}/{checksum}.JPG        # data-worker writes preprocessed JPEGs
+raw/{checksum}.ORF            # api-worker PUT (stage), data-worker GET; scratch
+slate_pdf/{slate_id}.pdf      # api-worker PUT (stage), data-worker GET; scratch (stage 9)
+{folder}/{checksum}.JPG       # data-worker PUT; durable; Label Studio reads via presign
 ```
 
-Output folders (matching nginx GET routes used by the labeler frontend):
+Output JPEG prefixes (the physical Garage keys that the populate
+activities embed into `s3://...` Label Studio task URIs):
 
 | Stage | Folder |
 |---|---|

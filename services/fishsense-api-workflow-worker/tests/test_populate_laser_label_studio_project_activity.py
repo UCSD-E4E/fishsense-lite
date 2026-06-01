@@ -124,13 +124,14 @@ def test_build_task_uses_configured_url_base_and_dual_keys(monkeypatch):
     older projects. Reverting either key would re-introduce the
     populate regression observed on 2026-05-03.
     """
-    monkeypatch.setenv(
-        "E4EFS_LABEL_STUDIO__IMAGE_URL_BASE", "https://orchestrator.example.com"
-    )
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__BUCKET", "fishsense-test")
     from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
     cfg.settings.reload()
 
-    expected_url = "https://orchestrator.example.com/api/v1/data/preprocess_jpeg/abc123"
+    # LS presigns this `s3://` URI via the per-project Garage source
+    # storage. The prefix is the physical Garage key prefix the
+    # data-worker wrote to (preprocess_jpeg), with the `.JPG` suffix.
+    expected_url = "s3://fishsense-test/preprocess_jpeg/abc123.JPG"
     task = sut._build_task(_image(7, "abc123"))  # pylint: disable=protected-access
 
     assert task == {

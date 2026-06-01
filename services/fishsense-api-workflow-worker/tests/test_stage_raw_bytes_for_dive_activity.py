@@ -3,7 +3,7 @@
 
 Pins down:
   1. HEAD-skips already-staged checksums (no NAS download, no PUT).
-  2. Newly-staged images: NAS download → file-exchange PUT.
+  2. Newly-staged images: NAS download → object-store PUT.
   3. Images without `path` or `checksum` get counted as `no_path`
      and don't crash.
   4. Returns the per-dive summary so the parent workflow can log
@@ -13,26 +13,35 @@ Pins down:
      FileStation; absolute paths pass through unchanged.
   6. (2026-05-07 stage 2 incident invariant) When the NAS download
      fails, the activity raises without uploading anything to the
-     file-exchange. This is the "don't propagate corrupt content"
+     object store. This is the "don't propagate corrupt content"
      guard — even if the underlying NAS client ever regressed to
      produce empty/JSON content, the activity must not turn around
      and PUT it as `.ORF`.
+
+Storage is exercised against moto (a real boto3 client over an
+in-memory S3), mirroring how the data-worker's object-store tests run
+and how the prior httpx.MockTransport exercised the nginx exchange.
 """
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import List
 from unittest.mock import AsyncMock, MagicMock
 
-import httpx
+import boto3
 import pytest
+from moto import mock_aws
 from temporalio.testing import ActivityEnvironment
 
 from fishsense_api_sdk.models.image import Image
 from fishsense_api_workflow_worker.activities import (
     stage_raw_bytes_for_dive_activity as sut,
 )
+from fishsense_api_workflow_worker.object_store import ObjectStoreClient, raw_key
+
+BUCKET = "fishsense-test"
 
 
 def _image(
@@ -75,38 +84,24 @@ def _make_nas() -> MagicMock:
     return nas
 
 
-def _patch_routes(monkeypatch, head_results: dict[str, bool]):
-    """Mock httpx HEAD/PUT against the file-exchange.
+@contextmanager
+def _moto_store(monkeypatch, *, preexisting: tuple[str, ...] = ()):
+    """Stand up an in-memory S3 bucket, pre-seed `preexisting` raw
+    checksums, and patch the activity's object-store factory to return
+    a client bound to it. Yields the raw boto3 client for assertions."""
+    with mock_aws():
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=BUCKET)
+        for checksum in preexisting:
+            s3.put_object(Bucket=BUCKET, Key=raw_key(checksum), Body=b"old")
+        client = ObjectStoreClient(s3, BUCKET)
+        monkeypatch.setattr(sut, "open_object_store_client", lambda: client)
+        yield s3
 
-    `head_results[checksum]` controls what HEAD returns for that
-    checksum. Any checksum not in the map defaults to 404.
-    """
-    head_calls: List[str] = []
-    put_calls: List[tuple] = []
 
-    def _mock_handler(request: httpx.Request) -> httpx.Response:
-        path = request.url.path
-        if request.method == "HEAD":
-            checksum = path.rsplit("/", 1)[-1].removesuffix(".ORF")
-            head_calls.append(checksum)
-            present = head_results.get(checksum, False)
-            return httpx.Response(200 if present else 404)
-        if request.method == "PUT":
-            checksum = path.rsplit("/", 1)[-1].removesuffix(".ORF")
-            put_calls.append((checksum, request.content))
-            return httpx.Response(201)
-        return httpx.Response(405)
-
-    transport = httpx.MockTransport(_mock_handler)
-
-    real_async_client = httpx.AsyncClient
-
-    def _client_factory(*args, **kwargs):
-        kwargs["transport"] = transport
-        return real_async_client(*args, **kwargs)
-
-    monkeypatch.setattr(sut.httpx, "AsyncClient", _client_factory)
-    return head_calls, put_calls
+def _raw_keys(s3) -> set[str]:
+    resp = s3.list_objects_v2(Bucket=BUCKET, Prefix="raw/")
+    return {o["Key"] for o in resp.get("Contents", [])}
 
 
 def _patch_tempfile_read(monkeypatch, payload: bytes):
@@ -129,20 +124,21 @@ async def test_skips_already_staged_checksums_no_nas_download(monkeypatch):
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
     monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
 
-    head_calls, put_calls = _patch_routes(
-        monkeypatch, head_results={"aaa": True, "bbb": True}
-    )
+    with _moto_store(monkeypatch, preexisting=("aaa", "bbb")) as s3:
+        result = await ActivityEnvironment().run(
+            sut.stage_raw_bytes_for_dive_activity, 42
+        )
 
-    result = await ActivityEnvironment().run(
-        sut.stage_raw_bytes_for_dive_activity, 42
-    )
-
-    assert result.staged == 0
-    assert result.skipped_already_present == 2
-    assert result.no_path == 0
-    nas.download_to.assert_not_called()
-    assert not put_calls
-    assert set(head_calls) == {"aaa", "bbb"}
+        assert result.staged == 0
+        assert result.skipped_already_present == 2
+        assert result.no_path == 0
+        nas.download_to.assert_not_called()
+        # nothing re-written: both keys keep their original bytes
+        assert _raw_keys(s3) == {raw_key("aaa"), raw_key("bbb")}
+        assert (
+            s3.get_object(Bucket=BUCKET, Key=raw_key("aaa"))["Body"].read()
+            == b"old"
+        )
 
 
 @pytest.mark.asyncio
@@ -166,25 +162,27 @@ async def test_stages_new_checksums_via_nas_download_then_put(monkeypatch):
     monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
     _patch_tempfile_read(monkeypatch, b"raw-bytes")
 
-    _, put_calls = _patch_routes(monkeypatch, head_results={})
+    with _moto_store(monkeypatch) as s3:
+        result = await ActivityEnvironment().run(
+            sut.stage_raw_bytes_for_dive_activity, 42
+        )
 
-    result = await ActivityEnvironment().run(
-        sut.stage_raw_bytes_for_dive_activity, 42
-    )
-
-    assert result.staged == 1
-    assert result.skipped_already_present == 0
-    assert nas.download_to.call_count == 1
-    nas_call = nas.download_to.call_args
-    assert nas_call.kwargs["src_path"] == (
-        "/fishsense_data/REEF/data/2024.06.20.REEF/dive_42/IMG.ORF"
-    )
-    # And explicitly NOT the bare DB path — this is the regression
-    # guard: a future "just pass image.path through" change must fail
-    # this test.
-    assert nas_call.kwargs["src_path"] != "2024.06.20.REEF/dive_42/IMG.ORF"
-    assert len(put_calls) == 1
-    assert put_calls[0][0] == "aaa"
+        assert result.staged == 1
+        assert result.skipped_already_present == 0
+        assert nas.download_to.call_count == 1
+        nas_call = nas.download_to.call_args
+        assert nas_call.kwargs["src_path"] == (
+            "/fishsense_data/REEF/data/2024.06.20.REEF/dive_42/IMG.ORF"
+        )
+        # And explicitly NOT the bare DB path — this is the regression
+        # guard: a future "just pass image.path through" change must fail
+        # this test.
+        assert nas_call.kwargs["src_path"] != "2024.06.20.REEF/dive_42/IMG.ORF"
+        assert _raw_keys(s3) == {raw_key("aaa")}
+        assert (
+            s3.get_object(Bucket=BUCKET, Key=raw_key("aaa"))["Body"].read()
+            == b"raw-bytes"
+        )
 
 
 @pytest.mark.asyncio
@@ -200,34 +198,33 @@ async def test_counts_no_path_images_without_crashing(monkeypatch):
     monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
     _patch_tempfile_read(monkeypatch, b"raw")
 
-    _patch_routes(monkeypatch, head_results={})
-
-    result = await ActivityEnvironment().run(
-        sut.stage_raw_bytes_for_dive_activity, 42
-    )
+    with _moto_store(monkeypatch):
+        result = await ActivityEnvironment().run(
+            sut.stage_raw_bytes_for_dive_activity, 42
+        )
 
     assert result.no_path == 2
     assert result.staged == 1
 
 
 @pytest.mark.asyncio
-async def test_failed_nas_download_does_not_upload_to_file_exchange(monkeypatch):
+async def test_failed_nas_download_does_not_upload_to_object_store(monkeypatch):
     """Invariant for the 2026-05-07 stage 2 incident.
 
     The original failure mode was: synology-api silently produced a
     non-`.ORF` file in the activity's tempdir (a JSON-error response
-    body), `read_bytes()` returned those bytes, `upload_raw` PUT them
-    to the file-exchange. Migrating to `synology-filestation` makes
-    the underlying client raise on JSON-error — but the activity-side
-    invariant should hold independently of which client is in use:
-    if the download path fails for any reason, no PUT happens.
+    body), `read_bytes()` returned those bytes, the staging upload PUT
+    them. Migrating to `synology-filestation` makes the underlying
+    client raise on JSON-error — but the activity-side invariant should
+    hold independently of which client is in use: if the download path
+    fails for any reason, no object is written.
 
     This test wires the NAS client to raise during `download_to` and
     asserts (a) the activity surfaces the failure to the caller, and
-    (b) no checksum is PUT to the file-exchange. A future regression
-    that catches and ignores the download exception (or that stages
-    fallback bytes) would re-trip this alarm before any corrupt
-    content could reach prod.
+    (b) no checksum object is written. A future regression that catches
+    and ignores the download exception (or that stages fallback bytes)
+    would re-trip this alarm before any corrupt content could reach
+    prod.
     """
     monkeypatch.setenv(
         "E4EFS_E4E_NAS__RAW_ROOT_PATH", "/fishsense_data/REEF/data"
@@ -243,20 +240,20 @@ async def test_failed_nas_download_does_not_upload_to_file_exchange(monkeypatch)
     )
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
     monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
-    _, put_calls = _patch_routes(monkeypatch, head_results={})
 
-    with pytest.raises(Exception):
-        await ActivityEnvironment().run(
-            sut.stage_raw_bytes_for_dive_activity, 42
+    with _moto_store(monkeypatch) as s3:
+        with pytest.raises(Exception):
+            await ActivityEnvironment().run(
+                sut.stage_raw_bytes_for_dive_activity, 42
+            )
+
+        assert nas.download_to.call_count == 1
+        assert _raw_keys(s3) == set(), (
+            "stage_raw_bytes_for_dive_activity uploaded to the object store "
+            "after the NAS download raised — this is exactly the failure "
+            "shape that propagated DSM JSON-error bodies as `.ORF` content "
+            "on 2026-05-07."
         )
-
-    assert nas.download_to.call_count == 1
-    assert not put_calls, (
-        "stage_raw_bytes_for_dive_activity uploaded to the file-exchange "
-        "after the NAS download raised — this is exactly the failure "
-        "shape that propagated DSM JSON-error bodies to the file-exchange "
-        "as `.ORF` content on 2026-05-07."
-    )
 
 
 @pytest.mark.asyncio
@@ -265,11 +262,11 @@ async def test_returns_zeros_when_dive_has_no_images(monkeypatch):
     nas = _make_nas()
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
     monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
-    _patch_routes(monkeypatch, head_results={})
 
-    result = await ActivityEnvironment().run(
-        sut.stage_raw_bytes_for_dive_activity, 42
-    )
+    with _moto_store(monkeypatch):
+        result = await ActivityEnvironment().run(
+            sut.stage_raw_bytes_for_dive_activity, 42
+        )
 
     assert result.staged == 0
     assert result.skipped_already_present == 0
@@ -331,17 +328,16 @@ async def test_relative_image_paths_get_prefixed_before_nas_download(monkeypatch
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
     monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
     _patch_tempfile_read(monkeypatch, b"raw-bytes")
-    _, put_calls = _patch_routes(monkeypatch, head_results={})
 
-    result = await ActivityEnvironment().run(
-        sut.stage_raw_bytes_for_dive_activity, 42
-    )
+    with _moto_store(monkeypatch) as s3:
+        result = await ActivityEnvironment().run(
+            sut.stage_raw_bytes_for_dive_activity, 42
+        )
 
-    assert result.staged == 1
-    nas.download_to.assert_called_once()
-    assert nas.download_to.call_args.kwargs["src_path"] == (
-        "/fishsense_data/REEF/data/2024.06.20.REEF/08_2023/082929_FishModels_FSL04/P8290052.ORF"
-    )
-    # File-exchange PUT still keys on checksum, not the rewritten path.
-    assert len(put_calls) == 1
-    assert put_calls[0][0] == "aaa"
+        assert result.staged == 1
+        nas.download_to.assert_called_once()
+        assert nas.download_to.call_args.kwargs["src_path"] == (
+            "/fishsense_data/REEF/data/2024.06.20.REEF/08_2023/082929_FishModels_FSL04/P8290052.ORF"
+        )
+        # Object-store PUT still keys on checksum, not the rewritten path.
+        assert _raw_keys(s3) == {raw_key("aaa")}

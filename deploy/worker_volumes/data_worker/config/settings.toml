@@ -11,15 +11,13 @@
 # below must be publicly routable. That's a change from the api-worker
 # pattern, where some endpoints use internal docker hostnames.
 #
-# `file_exchange.url` reaches static_file_server through Traefik's
-# `fishsense_static_file_server_exchange` router (deploy/
-# compose.orchestrator.yml). Auth is an IP allowlist pinned to the
-# data-worker host's public IP. If the host moves, update the
-# `ipallowlist.sourcerange=` middleware label there.
-#
-# TODO: migrate the auth to authentik basic-auth-passthrough so we
-# don't have to track the data-worker IP in compose. See project
-# memory `project_data_worker_authentik_todo.md`.
+# Storage is the hosted Garage (S3-compatible) object store — the
+# data-worker reads staged raw `.ORF` + slate PDFs from it and writes
+# processed JPEGs back. Garage S3 access keys authenticate from any IP,
+# so there's no IP allowlist / forward-auth to track here anymore (this
+# is what unblocks running the data-worker off-prem, e.g. on NRP, with
+# no stable egress IP). `access_key` / `secret_key` live in
+# `.secrets.toml`.
 
 [general]
 max_workers = 8
@@ -36,15 +34,16 @@ server_root_ca_cert = "/certs/ca/root-ca.pem"
 [fishsense_api]
 url = "https://orchestrator.fishsense.e4e.ucsd.edu"
 
-# Public hostname — the data-worker is on a separate machine, so it
-# cannot use the internal docker hostname `static_file_server` like
-# the api-worker does. Routes through Traefik on the orchestrator
-# host. See top-of-file note about the prerequisite Traefik rule
-# extension + auth that ops must put in place.
-[file_exchange]
-url = "https://orchestrator.fishsense.e4e.ucsd.edu"
+# Hosted Garage (S3-compatible) object store. The data-worker reads
+# staged raw `.ORF` + slate PDFs and writes processed JPEGs back. S3
+# access keys authenticate from any IP. `access_key` / `secret_key`
+# live in `.secrets.toml`.
+[object_store]
+endpoint_url = "https://garage.fishsense.e4e.ucsd.edu"
+region = "garage"
+bucket = "fishsense"
 
 # No NAS access from the data-worker by design — the api-worker is the
 # only side that touches the NAS, and it stages all bytes the
-# data-worker needs onto the file-exchange before dispatching child
-# workflows. Don't add an [e4e_nas] block here.
+# data-worker needs into the Garage object store before dispatching
+# child workflows. Don't add an [e4e_nas] block here.

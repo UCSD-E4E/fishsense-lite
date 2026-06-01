@@ -29,8 +29,6 @@ with workflow.unsafe.imports_passed_through():
     )
 
 DATA_PROCESSING_TASK_QUEUE = "fishsense_data_processing_queue"
-EXCHANGE_FOLDER = "preprocess_groups_jpeg"
-NAS_WORKFLOW = "species_images"
 
 
 @workflow.defn
@@ -95,16 +93,12 @@ class PreprocessSpeciesImagesParentWorkflow:
             workflow.logger.info(
                 "preprocess-species-%d already ran successfully in a "
                 "prior firing; skipping data-worker dispatch and continuing "
-                "to archive + cleanup + populate",
+                "to cleanup + populate",
                 dive_id,
             )
 
-        await workflow.execute_activity(
-            "archive_processed_jpegs_to_nas_activity",
-            args=(dive_id, EXCHANGE_FOLDER, NAS_WORKFLOW),
-            schedule_to_close_timeout=timedelta(hours=1),
-            heartbeat_timeout=timedelta(minutes=5),
-        )
+        # Drop the staged raw `.ORF` scratch objects from Garage; the
+        # JPEGs stay (LS reads them via presign). NAS is never touched.
         await workflow.execute_activity(
             "cleanup_raw_bytes_for_dive_activity",
             args=(dive_id,),
