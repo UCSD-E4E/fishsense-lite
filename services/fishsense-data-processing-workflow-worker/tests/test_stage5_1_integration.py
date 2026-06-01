@@ -1,5 +1,5 @@
 """End-to-end stage 5.1 integration test against the local devcontainer
-stack (temporal + MinIO object store)."""
+stack (temporal + Garage object store)."""
 
 import os
 import uuid

@@ -1,5 +1,5 @@
 """End-to-end stage 9 integration test against the local devcontainer
-stack (temporal + MinIO object store). Seeds both the raw .ORF and a
+stack (temporal + Garage object store). Seeds both the raw .ORF and a
 synthesized one-page slate PDF into the object store before running the
 workflow."""
 

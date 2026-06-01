@@ -1,13 +1,14 @@
 """Shared S3 helpers for the data-worker integration tests.
 
-The integration stack (deploy/compose.local.yml) runs MinIO as a local
-stand-in for the hosted Garage object store. These helpers build a
-boto3 client pointed at it (path-style addressing, like Garage) and seed
-the worker's `E4EFS_OBJECT_STORE__*` env so the activity under test
-resolves the same bucket.
+The integration stack (deploy/compose.local.yml) runs real Garage as the
+object store. These helpers build a boto3 client pointed at it (path-style
+addressing, as Garage requires) and seed the worker's
+`E4EFS_OBJECT_STORE__*` env so the activity under test resolves the same
+bucket.
 
-Defaults match the `dev`/`minio` services in compose.local.yml; override
-via env when running elsewhere.
+Defaults match the `garage` service + the fixed key imported by
+`garage-init` in compose.local.yml (in-cluster hostname). CI overrides
+`E4EFS_OBJECT_STORE__ENDPOINT_URL` to the host-published `localhost:3900`.
 """
 
 from __future__ import annotations
@@ -18,13 +19,16 @@ import boto3
 from botocore.config import Config
 
 ENDPOINT_URL = os.environ.get(
-    "E4EFS_OBJECT_STORE__ENDPOINT_URL", "http://minio:9000"
+    "E4EFS_OBJECT_STORE__ENDPOINT_URL", "http://garage:3900"
 )
 REGION = os.environ.get("E4EFS_OBJECT_STORE__REGION", "garage")
 BUCKET = os.environ.get("E4EFS_OBJECT_STORE__BUCKET", "fishsense")
-ACCESS_KEY = os.environ.get("E4EFS_OBJECT_STORE__ACCESS_KEY", "fishsense_local")
+ACCESS_KEY = os.environ.get(
+    "E4EFS_OBJECT_STORE__ACCESS_KEY", "GK31c2f3a4b5c6d7e8f9a0b1c2"
+)
 SECRET_KEY = os.environ.get(
-    "E4EFS_OBJECT_STORE__SECRET_KEY", "fishsense_local_secret"
+    "E4EFS_OBJECT_STORE__SECRET_KEY",
+    "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
 )
 
 

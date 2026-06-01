@@ -13,7 +13,7 @@ orchestrator host, and prod data-worker host.
 | `compose.workers.yml` | `fishsense-*` workers running on the orchestrator host: `fishsense-api-workflow-worker`, `fishsense-backup-worker`. (Workers consume Temporal but aren't part of the cluster.) |
 | `compose.superset.yml` | Superset + redis + worker / beat. |
 | `compose.data-worker.yml` | `fishsense-data-processing-workflow-worker` on a **separate host** (image preprocessing + laser calibration + measurement). **Not** included by `compose.yml`. Invoked on the data-worker host as `docker compose -f compose.data-worker.yml ...`. |
-| `compose.local.yml` | Self-contained local devcontainer stack — postgres, temporal, fishsense-api (pinned image), MinIO (local Garage stand-in) + bucket init, label-studio, dev container. **Not** layered on `compose.yml`; prod's authentik / mTLS / letsencrypt coupling is intentionally absent. |
+| `compose.local.yml` | Self-contained local devcontainer stack — postgres, temporal, fishsense-api (pinned image), Garage (single-node, same engine as prod) + one-shot bootstrap, label-studio, dev container. **Not** layered on `compose.yml`; prod's authentik / mTLS / letsencrypt coupling is intentionally absent. |
 | `compose.dev.yml` | Dev-only compose extras (used inside the devcontainer for tooling). |
 
 `compose.local.yml` and the prod stack are intentionally separate

@@ -125,36 +125,52 @@ services:
     networks:
       - fishsense_local
 
-  # Local stand-in for the hosted Garage object store. MinIO is
-  # S3-compatible and trivial to run in the devcontainer; the workers
-  # point `[object_store]` at it (path-style addressing). The bucket is
-  # created once by the `minio-bucket` init container below.
-  minio:
-    image: minio/minio:latest
+  # Real Garage (the same S3 object store we run in prod) — single-node,
+  # no replication. Running the actual implementation rather than an
+  # emulator means the integration tests exercise Garage's path-style +
+  # presign behavior, not a stand-in's approximation of it. Config +
+  # bootstrap live in deploy/garage/. `:3900` = S3 API, `:3903` = admin.
+  garage:
+    image: dxflrs/garage:v1.0.1
     restart: on-failure:15
-    command: ["server", "/data", "--console-address", ":9001"]
-    environment:
-      MINIO_ROOT_USER: fishsense_local
-      MINIO_ROOT_PASSWORD: fishsense_local_secret
     volumes:
-      - minio_data:/data
+      - ./garage/garage.toml:/etc/garage.toml:ro
+      - garage_meta:/var/lib/garage/meta
+      - garage_data:/var/lib/garage/data
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "3900:3900"
+    healthcheck:
+      # The garage image is distroless (no shell), so use the exec form;
+      # `garage status` exits 0 once the daemon's RPC is up.
+      test: ["CMD", "/garage", "status"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
     networks:
       - fishsense_local
 
-  minio-bucket:
-    image: minio/mc:latest
+  # One-shot idempotent bootstrap: assign the storage layout, create the
+  # `fishsense` bucket, import a FIXED access key (deterministic test
+  # creds), grant it rw. Built from deploy/garage/Dockerfile.init (alpine
+  # + the static garage binary) because the garage image has no shell.
+  # Shares garage's metadata volume so the CLI can read the node key and
+  # connect over RPC. Exits 0 when done; `dev` waits on its completion.
+  garage-init:
+    build:
+      context: ./garage
+      dockerfile: Dockerfile.init
+    restart: "no"
     depends_on:
-      - minio
-    entrypoint:
-      - sh
-      - -c
-      - |
-        until mc alias set local http://minio:9000 fishsense_local fishsense_local_secret; do sleep 1; done
-        mc mb --ignore-existing local/fishsense
-        mc anonymous set download local/fishsense
+      garage:
+        condition: service_healthy
+    environment:
+      OBJECT_STORE_BUCKET: fishsense
+      OBJECT_STORE_ACCESS_KEY: GK31c2f3a4b5c6d7e8f9a0b1c2
+      OBJECT_STORE_SECRET_KEY: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+    volumes:
+      - ./garage/garage.toml:/etc/garage.toml:ro
+      - ./garage/bootstrap.sh:/bootstrap.sh:ro
+      - garage_meta:/var/lib/garage/meta
     networks:
       - fishsense_local
 
@@ -267,12 +283,18 @@ services:
       dockerfile: .devcontainer/Dockerfile
     command: sleep infinity
     depends_on:
-      - postgres
-      - temporal
-      - fishsense-api
-      - minio
-      - minio-bucket
-      - label-studio
+      postgres:
+        condition: service_started
+      temporal:
+        condition: service_started
+      fishsense-api:
+        condition: service_started
+      garage:
+        condition: service_healthy
+      garage-init:
+        condition: service_completed_successfully
+      label-studio:
+        condition: service_started
     environment:
       E4EFS_DOCKER: "false"
       # Default endpoints for tests + manual `uv run` invocations from inside
@@ -285,15 +307,15 @@ services:
       FISHSENSE_POSTGRES_USER: postgres
       FISHSENSE_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fishsense_local}
       FISHSENSE_POSTGRES_DB: ${FISHSENSE_DB_NAME:-fishsense}
-      # Garage (MinIO local stand-in) object store — both workers read
-      # `[object_store]` from these. Integration tests seed/read the
-      # same bucket. Path-style addressing is required (set in
-      # object_store.build_s3_client).
-      E4EFS_OBJECT_STORE__ENDPOINT_URL: http://minio:9000
+      # Garage object store — both workers read `[object_store]` from
+      # these. Integration tests seed/read the same bucket. Creds match
+      # the fixed key imported by `garage-init`. Path-style addressing is
+      # required (set in object_store.build_s3_client).
+      E4EFS_OBJECT_STORE__ENDPOINT_URL: http://garage:3900
       E4EFS_OBJECT_STORE__REGION: garage
       E4EFS_OBJECT_STORE__BUCKET: fishsense
-      E4EFS_OBJECT_STORE__ACCESS_KEY: fishsense_local
-      E4EFS_OBJECT_STORE__SECRET_KEY: fishsense_local_secret
+      E4EFS_OBJECT_STORE__ACCESS_KEY: GK31c2f3a4b5c6d7e8f9a0b1c2
+      E4EFS_OBJECT_STORE__SECRET_KEY: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
       # Label Studio endpoints for the api-workflow-worker integration tests.
       # Token must match LABEL_STUDIO_USER_TOKEN on the label-studio service.
       E4EFS_LABEL_STUDIO__URL: http://label-studio:8080
@@ -328,7 +350,8 @@ services:
 
 volumes:
   pg_data:
-  minio_data:
+  garage_meta:
+  garage_data:
   dev_uv_cache:
   label_studio_data:
 

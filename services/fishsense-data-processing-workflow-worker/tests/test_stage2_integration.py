@@ -1,12 +1,12 @@
 """End-to-end stage2 integration test against the local devcontainer
-stack (temporal + MinIO object store).
+stack (temporal + Garage object store).
 
 Skipped automatically until a real `.ORF` fixture is committed at
 tests/fixtures/stage2_sample.ORF — rawpy decoding of synthetic bytes is
 not feasible, so this test exercises the actual file format.
 
 Mocks: only the upstream api-worker side. We seed the raw `.ORF` into
-the Garage/MinIO `raw/{checksum}.ORF` key directly (the api-worker would
+the Garage `raw/{checksum}.ORF` key directly (the api-worker would
 do this in production) and assert the data-worker produces a valid JPEG
 at the correct prefix. The DB is not touched by stage2 and is therefore
 not asserted here.

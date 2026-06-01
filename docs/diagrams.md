@@ -111,7 +111,7 @@ flowchart TB
         L_PG[("postgres 17")]
         L_TEMPORAL["temporal auto-setup"]
         L_API["fishsense-api pinned image"]
-        L_MINIO["minio + bucket init<br/>(local Garage stand-in)"]
+        L_GARAGE["garage + one-shot init<br/>(single node, same engine as prod)"]
         L_LS["label-studio (with hard-coded admin token)"]
         L_DEV["dev workspace bind-mount"]
     end

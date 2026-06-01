@@ -1,8 +1,8 @@
 """End-to-end stage 0.1 integration test against the local devcontainer
-stack (temporal + MinIO object store).
+stack (temporal + Garage object store).
 
 Mocks: only the upstream api-worker side. We seed the raw `.ORF` into
-the Garage/MinIO `raw/{checksum}.ORF` key directly and assert the
+the Garage `raw/{checksum}.ORF` key directly and assert the
 data-worker produces a valid JPEG at `preprocess_jpeg/{checksum}.JPG`.
 """
 
@@ -52,7 +52,7 @@ def raw_orf_bytes() -> bytes:
 
 @pytest.fixture
 def configure_worker_settings(monkeypatch: pytest.MonkeyPatch):
-    """Point the worker at the local MinIO object store + temporal."""
+    """Point the worker at the local Garage object store + temporal."""
     set_object_store_env(monkeypatch)
     monkeypatch.setenv("E4EFS_TEMPORAL__HOST", "temporal")
     monkeypatch.setenv("E4EFS_FISHSENSE_API__URL", "http://fishsense-api.invalid")

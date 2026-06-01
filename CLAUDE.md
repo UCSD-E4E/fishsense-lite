@@ -534,7 +534,7 @@ the test only uses one of them — see `configure_worker_settings` in
 The `*.url` validators (incl. `object_store.endpoint_url`) use a custom
 `_url_condition` (http/https + non-empty hostname) instead of
 `validators.url`, because the strict library condition rejects every
-Docker-internal hostname (`fishsense-api`, `temporal`, `minio` —
+Docker-internal hostname (`fishsense-api`, `temporal`, `garage` —
 underscores or no TLD). Don't switch back to `validators.url`.
 
 ## Repo-root `settings.toml` — do NOT commit
