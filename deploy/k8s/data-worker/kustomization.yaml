@@ -1,0 +1,29 @@
+# `kubectl apply -k deploy/k8s/data-worker` (or
+# `kustomize build deploy/k8s/data-worker | kubectl apply -f -`).
+#
+# CI's promote.yml bumps the image tag here via
+# `kustomize edit set image ghcr.io/ucsd-e4e/fishsense-data-processing-workflow-worker=ghcr.io/ucsd-e4e/fishsense-data-processing-workflow-worker:vX.Y.Z`
+# and opens the auto-deploy PR; deploy.yml applies it on merge.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# NRP assigns you a namespace. Either uncomment + pin it here, or pass
+# `-n <namespace>` / rely on the kubeconfig context default at apply
+# time. CI's deploy.yml does the latter via the NRP_KUBECONFIG context.
+# namespace: fishsense-...
+
+resources:
+  - deployment.yaml
+
+# Builds the `fishsense-data-worker-settings` ConfigMap from the TOML
+# file in this directory and appends a content hash to its name, so a
+# settings change rolls the Deployment. The Deployment references the
+# base name; kustomize rewrites it to the hashed name.
+configMapGenerator:
+  - name: fishsense-data-worker-settings
+    files:
+      - settings.toml
+
+images:
+  - name: ghcr.io/ucsd-e4e/fishsense-data-processing-workflow-worker
+    newTag: v2.4.1

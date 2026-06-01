@@ -33,8 +33,14 @@ def configure_worker_settings(
     # Dynaconf eagerly validates EVERY validator on first attribute
     # access of `settings`, so even tests that never read temporal.host
     # need it set or the test process fails at import time. Placeholders
-    # for the unused-by-this-test backends below.
+    # for the unused-by-this-test backends below. Set temporal.port /
+    # .tls explicitly too (not just .host): they have validator defaults,
+    # but `settings.reload()` on the integration path doesn't re-apply
+    # those, so a test that reaches Temporal (e.g. test_scale_down_query_integration)
+    # would otherwise hit a missing-key error on `.port` / `.tls`.
     monkeypatch.setenv("E4EFS_TEMPORAL__HOST", "temporal")
+    monkeypatch.setenv("E4EFS_TEMPORAL__PORT", "7233")
+    monkeypatch.setenv("E4EFS_TEMPORAL__TLS", "false")
     monkeypatch.setenv("E4EFS_E4E_NAS__URL", "http://nas.example.com")
     monkeypatch.setenv("E4EFS_E4E_NAS__USERNAME", "unused")
     monkeypatch.setenv("E4EFS_E4E_NAS__PASSWORD", "unused")

@@ -1,0 +1,52 @@
+# fishsense-data-processing-workflow-worker — NRP settings.
+#
+# Source for the `fishsense-data-worker-settings` ConfigMap (kustomize's
+# configMapGenerator builds it from this file; editing it changes the
+# generated name's hash, which rolls the Deployment). Mounted at
+# /e4efs/config/settings.toml in the pod.
+#
+# Credentials are NOT here — they're injected as env vars from the
+# `fishsense-data-worker-secrets` Secret (see deployment.yaml /
+# README.md). Dynaconf reads `E4EFS_<SECTION>__<KEY>`, so e.g.
+# `E4EFS_FISHSENSE_API__USERNAME` populates `fishsense_api.username`.
+#
+# Networking: the data-worker runs off the orchestrator's docker
+# network (NRP pods, no stable egress IP), so every URL must be
+# publicly routable. Storage is the hosted Garage (S3-compatible)
+# object store — Garage S3 access keys authenticate from any IP, so
+# there's no IP allowlist / forward-auth to survive (this is what lets
+# the worker run on NRP with no stable egress IP). The api-worker
+# stages raw `.ORF` + slate PDFs into Garage before dispatching a child
+# workflow; this worker reads that scratch and writes processed JPEGs
+# back. `object_store.access_key` / `secret_key` come from the Secret.
+
+[general]
+max_workers = 8
+
+[temporal]
+host = "workflows.fishsense.e4e.ucsd.edu"
+port = "7233"
+tls = true
+# Data-worker's own mTLS client identity (distinct from the api-worker's).
+# Mounted from the `fishsense-data-worker-temporal-certs` Secret at /certs.
+client_cert = "/certs/client/fishsense-data-processing-workflow-worker.pem"
+client_private_key = "/certs/client/fishsense-data-processing-workflow-worker.key"
+domain = "workflows.fishsense.e4e.ucsd.edu"
+server_root_ca_cert = "/certs/ca/root-ca.pem"
+
+[fishsense_api]
+url = "https://orchestrator.fishsense.e4e.ucsd.edu"
+
+# Hosted Garage (S3-compatible) object store. The data-worker reads
+# staged raw `.ORF` + slate PDFs and writes processed JPEGs back. S3
+# access keys authenticate from any IP, so the worker needs no stable
+# egress IP. `access_key` / `secret_key` are injected from the Secret.
+[object_store]
+endpoint_url = "https://garage.fishsense.e4e.ucsd.edu"
+region = "garage"
+bucket = "fishsense"
+
+# No NAS access from the data-worker by design — the api-worker is the
+# only side that touches the NAS, and it stages all bytes the
+# data-worker needs into the Garage object store before dispatching
+# child workflows. Don't add an [e4e_nas] block here.

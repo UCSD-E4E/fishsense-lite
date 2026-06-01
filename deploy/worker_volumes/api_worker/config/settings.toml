@@ -39,3 +39,21 @@ url = "http://fishsense-api:8000"
 endpoint_url = "https://garage.fishsense.e4e.ucsd.edu"
 region = "garage"
 bucket = "fishsense"
+
+# --- NRP data-worker scale-to-zero (optional) ---
+# When `kubeconfig_path` points at a readable NRP kubeconfig (mount it
+# at this path — it's a sibling of this file under the bind-mounted
+# config dir, so /e4efs/config/nrp.kubeconfig works), the api-worker
+# scales the data-worker Deployment up before dispatching child
+# workflows and an hourly sweeper scales it back to 0 when idle. Leave
+# the whole section out (or just `kubeconfig_path` unset) and scaling
+# no-ops — the data-worker is then assumed always-on. `namespace` is
+# required when `kubeconfig_path` is set. `active_replicas` (default 1)
+# is clamped to [1, 4]; `deployment_name` defaults to the data-worker's
+# Deployment name; `idle_cooldown_minutes` defaults to 15.
+# [kubernetes]
+# kubeconfig_path = "/e4efs/config/nrp.kubeconfig"
+# namespace = "fishsense-..."
+# deployment_name = "fishsense-data-processing-workflow-worker"
+# active_replicas = 1
+# idle_cooldown_minutes = 15
