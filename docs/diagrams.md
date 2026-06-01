@@ -1,15 +1,12 @@
 # fishsense-lite-mono — architecture diagrams
 
-> **STORAGE MIGRATION (Garage):** the nginx `static_file_server`
-> file-exchange and the `fishsense_process_work` NAS archive have been
-> replaced by a hosted Garage (S3-compatible) object store. Wherever a
-> diagram below shows "nginx static_file_server / file-exchange (DAV)"
-> or "GET/PUT /api/v1/exchange/...", read it as the Garage bucket:
+> **Storage = hosted Garage (S3-compatible) object store.** Storage
+> moved off the nginx `static_file_server` file-exchange and the
+> `fishsense_process_work` NAS archive onto a single Garage bucket:
 > `raw/{checksum}.ORF` + `slate_pdf/{slate_id}.pdf` (scratch) and
 > `{prefix}/{checksum}.JPG` (durable, served to Label Studio via
-> presigned URLs). The api-worker's NAS access is read-only and there
-> is no NAS archive step. (The mermaid nodes themselves are pending a
-> redraw.)
+> per-project presigned URLs). The api-worker's NAS access is read-only
+> and there is no NAS archive step. The diagrams below reflect this.
 
 UML-flavored Mermaid diagrams. GitHub renders Mermaid natively in
 markdown — open this file on GitHub or in any Mermaid-aware editor.
@@ -27,6 +24,7 @@ flowchart LR
     subgraph EXT[External systems]
         LS[Label Studio]
         NAS["E4E NAS<br/>(Synology, FileStation HTTPS)"]
+        GAR["Garage<br/>(hosted S3 object store)"]
         TC["Temporal cluster"]
     end
 
@@ -35,7 +33,6 @@ flowchart LR
         APIWW["fishsense-api-workflow-worker<br/>queue: fishsense_api_queue"]
         BUW["fishsense-backup-worker<br/>queue: fishsense_backup_queue"]
         PG[("PostgreSQL<br/>fishsense, superset, temporal_db")]
-        FX["nginx static_file_server<br/>file-exchange (DAV)"]
         SUP["Superset"]
     end
 
@@ -52,9 +49,12 @@ flowchart LR
     APIWW --->|sdk| API
     APIWW --->|label-studio-sdk| LS
     APIWW --->|gRPC mTLS| TC
+    APIWW --->|FileStation HTTPS, read-only| NAS
+    APIWW --->|S3 stage raw+slate + cleanup scratch| GAR
     DPW   --->|sdk| API
     DPW   --->|gRPC mTLS| TC
-    DPW   --->|GET raw / PUT jpeg| FX
+    DPW   --->|S3 GET raw, PUT jpeg| GAR
+    LS    --->|S3 presigned GET jpeg| GAR
     BUW   --->|pg_dump -Fc| PG
     BUW   --->|FileStation HTTPS| NAS
     BUW   --->|gRPC mTLS| TC
@@ -86,7 +86,6 @@ flowchart TB
         direction TB
         subgraph C_BASE["compose.yml + compose.orchestrator.yml"]
             P_API["fishsense-api"]
-            P_FX["static_file_server nginx DAV"]
             P_PG[("PostgreSQL 17")]
             P_AUTHENTIK["Authentik OAuth proxy"]
         end
@@ -102,6 +101,8 @@ flowchart TB
         end
     end
 
+    GAR["Garage (hosted S3 object store)<br/>not in this repo's compose"]
+
     subgraph DWHOST["Data-worker host - separate, compose not in this repo"]
         D_DPW["fishsense-data-processing-workflow-worker"]
     end
@@ -110,7 +111,7 @@ flowchart TB
         L_PG[("postgres 17")]
         L_TEMPORAL["temporal auto-setup"]
         L_API["fishsense-api pinned image"]
-        L_FX["nginx static_file_server"]
+        L_MINIO["minio + bucket init<br/>(local Garage stand-in)"]
         L_LS["label-studio (with hard-coded admin token)"]
         L_DEV["dev workspace bind-mount"]
     end
@@ -124,6 +125,9 @@ flowchart TB
         GH_REL["GitHub release tag"]
         AUTO_PR["auto-deploy PR"]
     end
+
+    P_APIWW -.->|S3| GAR
+    D_DPW   -.->|S3| GAR
 
     CI_BUILD   -->|on push to main| GHCR
     CI_RELEASE -->|on release PR merge| GH_REL
@@ -414,17 +418,17 @@ sequenceDiagram
     participant T as Temporal
     participant W as PreprocessWorkflow
     participant A as preprocess_image_activity
-    participant FX as nginx_file_exchange
+    participant OS as Garage_S3
     participant FC as fishsense_core
     participant CV as opencv
 
     T->>W: schedule workflow
     W->>A: execute_activity(payload)
-    A->>FX: GET /api/v1/exchange/raw/{checksum}.ORF
-    FX-->>A: raw bytes
+    A->>OS: S3 GetObject raw/{checksum}.ORF
+    OS-->>A: raw bytes
     opt stage 9 only
-        A->>FX: GET /api/v1/exchange/dive_slate_pdfs/{slate_id}.pdf
-        FX-->>A: pdf bytes
+        A->>OS: S3 GetObject slate_pdf/{slate_id}.pdf
+        OS-->>A: pdf bytes
     end
     A->>A: asyncio.to_thread(_rectify_overlay_encode)
     A->>FC: RawImage(bytes) → RectifiedImage(intrinsics)
@@ -432,16 +436,20 @@ sequenceDiagram
     A->>CV: stage-specific overlay (text / rectangle / pdf composite)
     A->>CV: cv2.imencode(.jpg)
     CV-->>A: jpeg bytes
-    A->>FX: PUT /api/v1/exchange/{folder}/{checksum}.JPG
-    FX-->>A: 201/204
+    A->>OS: S3 PutObject {prefix}/{checksum}.JPG
+    OS-->>A: 200
     A-->>W: None
     W-->>T: WorkflowResult
 ```
 
-The `_rectify_overlay_encode` step is sync CPU work, kept out of the
-event loop via `asyncio.to_thread`. Pure-logic
-`overlay_and_encode_jpeg` is broken out so unit tests don't need
-Temporal, httpx, or fishsense-core decode.
+The raw/slate scratch is staged into Garage by the api-worker parent
+beforehand; the JPEG written here is durable (Label Studio reads it via
+a presigned URL). The S3 calls go through `ObjectStoreClient` (boto3
+behind `asyncio.to_thread`, path-style addressing for Garage). The
+`_rectify_overlay_encode` step is sync CPU work, kept out of the event
+loop via `asyncio.to_thread`. Pure-logic `overlay_and_encode_jpeg` is
+broken out so unit tests don't need Temporal, S3, or fishsense-core
+decode.
 
 ## 6. Sequence — api-worker label sync
 
@@ -484,61 +492,71 @@ sequenceDiagram
 ## 7. Sequence — Label Studio project create + populate
 
 The eight on-demand workflows in the api-worker — Create + Populate
-× {Laser, Species, HeadTail, DiveSlate}. Same shape per stage; laser
+× {Laser, Species, HeadTail, DiveSlate}. Projects are **per-dive**
+(one project per stage per dive, titled `"{dive.name} - <Stage>
+Labeling"`); Populate self-bootstraps by calling Create internally, so
+a standalone Create run is rarely needed. Same shape per stage; laser
 shown.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant U as Operator
+    participant U as Operator / preprocess parent
     participant T as Temporal
-    participant CW as CreateLaserLabelStudioProjectWorkflow
-    participant CA as create_laser_label_studio_project_activity
+    participant CA as create_laser_..._activity
     participant LS as label_studio
+    participant GAR as Garage_S3
     participant PW as PopulateLaserLabelStudioProjectWorkflow
-    participant GA as get_active_laser_label_studio_project_ids_activity
     participant API as fishsense_api
     participant PA as populate_laser_label_studio_project_activity
 
-    Note over U,LS: Create — once per deployment, idempotent
-    U->>T: workflow start CreateLaserLabelStudioProjectWorkflow
-    T->>CW: run()
-    CW->>CA: execute_activity()
-    CA->>LS: list projects, find by title
+    Note over U,GAR: Create — idempotent, per dive (also called by Populate)
+    U->>T: workflow start Create...Workflow(dive_id)
+    T->>CA: execute_activity(dive_id)
+    CA->>API: SDK get dive (for per-dive title)
+    API-->>CA: dive.name
+    CA->>LS: list projects, find by per-dive title
     alt title exists
         LS-->>CA: project_id
     else not found
         CA->>LS: create from <STAGE>_LABELING_CONFIG_XML
         LS-->>CA: project_id
     end
-    CA-->>CW: project_id
-    CW-->>T: project_id
-
-    Note over U,API: Populate — per dive, on demand
-    U->>T: workflow start PopulateLaserLabelStudioProjectWorkflow(dive_id)
-    T->>PW: run(dive_id)
-    PW->>GA: execute_activity()
-    GA->>API: SDK get_laser_label_studio_project_ids(incomplete=True)
-    API-->>GA: List[int]
-    GA-->>PW: project_ids
-
-    par Semaphore(4) — bounded fan-out
-        loop per project_id
-            PW->>PA: execute_activity(dive_id, project_id)
-            PA->>API: list images for dive
-            API-->>PA: images
-            PA->>LS: import tasks
-            LS-->>PA: ok
-            PA-->>PW: count
-        end
+    Note over CA,LS: ensure_label_studio_s3_storage — idempotent
+    CA->>LS: list S3 source storages for project
+    LS-->>CA: existing storages
+    opt no matching (bucket,title)
+        CA->>LS: register Garage S3 source storage (presign=True)
+        LS-->>CA: ok
     end
-    PW-->>T: total tasks imported
+    CA-->>T: project_id
+
+    Note over U,API: Populate — per dive, on demand or auto-chained
+    U->>T: workflow start Populate...Workflow(dive_id)
+    T->>PW: run(dive_id)
+    PW->>CA: create activity (self-bootstrap → project_id)
+    CA-->>PW: project_id
+    PW->>PA: execute_activity(dive_id, project_id)
+    PA->>API: list unlabeled images for dive
+    API-->>PA: images
+    PA->>PA: build tasks with s3://{bucket}/{prefix}/{checksum}.JPG
+    PA->>LS: import tasks (1 per image)
+    LS-->>PA: task ids
+    PA->>API: upsert per-image label rows (image, LS task, project)
+    PA-->>PW: count
+    PW-->>T: tasks imported
+
+    Note over LS,GAR: at label time, LS presigns each s3:// URI → GET jpeg
+    LS->>GAR: S3 presigned GET {prefix}/{checksum}.JPG
+    GAR-->>LS: jpeg bytes
 ```
 
-Bootstrap caveat: `incomplete=True` returns nothing for a brand-new
-project (zero labels), so Populate is a no-op until something seeds
-at least one label. Existing prod projects already have labels;
-fresh deployments need a seed step that doesn't exist yet.
+No discovery / fan-out — each dive owns exactly one project per stage,
+and Populate materializes it via the Create activity before importing
+tasks. Because the LS task data holds `s3://` URIs and each project has
+a presign-enabled Garage source storage, the labeler's browser fetches
+JPEGs directly from Garage (so the bucket needs CORS for the labeler
+origin).
 
 ## 8. CI/CD pipeline (build → release → promote → deploy)
 
