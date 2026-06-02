@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError
 from moto import mock_aws
 from temporalio.testing import ActivityEnvironment
 
@@ -100,5 +101,6 @@ async def test_download_raw_raises_on_missing_key(s3):
     async def _run():
         return await client.download_raw("missing")
 
-    with pytest.raises(Exception):  # botocore NoSuchKey
+    with pytest.raises(ClientError) as exc_info:
         await ActivityEnvironment().run(_run)
+    assert exc_info.value.response["Error"]["Code"] == "NoSuchKey"

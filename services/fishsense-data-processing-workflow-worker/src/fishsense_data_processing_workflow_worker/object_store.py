@@ -103,7 +103,14 @@ class ObjectStoreClient:
     async def _get(self, key: str) -> bytes:
         def _do() -> bytes:
             response = self._s3.get_object(Bucket=self._bucket, Key=key)
-            return response["Body"].read()
+            # Close the StreamingBody so botocore returns the underlying
+            # HTTP connection to its pool; leaking it across repeated
+            # downloads can exhaust the pool and stall activities.
+            body = response["Body"]
+            try:
+                return body.read()
+            finally:
+                body.close()
 
         return await asyncio.to_thread(_do)
 
