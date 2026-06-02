@@ -62,3 +62,7 @@ services/fishsense-data-processing-workflow-worker/scripts/dry_run_stage13_*.jso
 # tools/scan_image_path_rollover.py output (per-run prod scan artifact —
 # stale within hours, contains image-path snapshots not worth versioning)
 /rollover_scan*.json
+
+# Claude Code local session state (lock file with sessionId/pid — not
+# repo content; committing it churns diffs across sessions)
+.claude/scheduled_tasks.lock

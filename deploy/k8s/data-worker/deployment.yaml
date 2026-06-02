@@ -117,7 +117,11 @@ spec:
             limits:
               cpu: "8"
               memory: 12Gi
-              ephemeral-storage: 6Gi
+              # >= the sum of the emptyDir sizeLimits below
+              # (logs 1Gi + cache 2Gi + scratch 4Gi = 7Gi) so a volume
+              # can fill to its own cap without tripping the container's
+              # overall ephemeral-storage limit and getting evicted first.
+              ephemeral-storage: 7Gi
           volumeMounts:
             - name: settings
               mountPath: /e4efs/config/settings.toml
