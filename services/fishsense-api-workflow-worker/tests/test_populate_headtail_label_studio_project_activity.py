@@ -118,13 +118,11 @@ def test_build_task_emits_dual_image_and_img_keys(monkeypatch):
     XML compatibility — see laser populate test of the same name.
     Reverting either key would re-introduce the populate regression
     observed on 2026-05-03."""
-    monkeypatch.setenv(
-        "E4EFS_LABEL_STUDIO__IMAGE_URL_BASE", "https://orchestrator.example.com"
-    )
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__BUCKET", "fishsense-test")
     from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
     cfg.settings.reload()
 
-    expected_url = "https://orchestrator.example.com/api/v1/data/headtail_jpeg/abc123"
+    expected_url = "s3://fishsense-test/preprocess_headtail_jpeg/abc123.JPG"
     task = sut._build_task(_image(7, "abc123"))  # pylint: disable=protected-access
 
     assert task["data"] == {"image": expected_url, "img": expected_url}

@@ -1,7 +1,7 @@
 """End-to-end stage 9 integration test against the local devcontainer
-stack (temporal + nginx static_file_server). Seeds both the raw .ORF
-and a synthesized one-page slate PDF onto the file-exchange before
-running the workflow."""
+stack (temporal + Garage object store). Seeds both the raw .ORF and a
+synthesized one-page slate PDF into the object store before running the
+workflow."""
 
 import os
 import uuid
@@ -9,7 +9,6 @@ from io import BytesIO
 from pathlib import Path
 
 import cv2
-import httpx
 import numpy as np
 import pymupdf
 import pytest
@@ -24,6 +23,8 @@ from fishsense_data_processing_workflow_worker.workflows.preprocess_slate_images
     PreprocessSlateImagesWorkflow,
 )
 
+from ._object_store_itest import BUCKET, make_s3_client, set_object_store_env
+
 pytestmark = pytest.mark.integration
 
 
@@ -34,12 +35,6 @@ _K = [[3000.0, 0.0, 2000.0], [0.0, 3000.0, 1500.0], [0.0, 0.0, 1.0]]
 _D = [-0.05, 0.01, 0.0, 0.0, 0.0]
 _DPI = 100
 _REF_POINTS = [(50.0, 50.0), (200.0, 200.0)]
-
-
-def _exchange_url() -> str:
-    return os.environ.get(
-        "FISHSENSE_STATIC_FILE_SERVER_URL", "http://static_file_server"
-    )
 
 
 def _temporal_target() -> str:
@@ -71,7 +66,7 @@ def raw_orf_bytes() -> bytes:
 
 @pytest.fixture
 def configure_worker_settings(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("E4EFS_FILE_EXCHANGE__URL", _exchange_url())
+    set_object_store_env(monkeypatch)
     monkeypatch.setenv("E4EFS_TEMPORAL__HOST", "temporal")
     monkeypatch.setenv("E4EFS_FISHSENSE_API__URL", "http://fishsense-api.invalid")
     yield
@@ -86,54 +81,47 @@ async def test_workflow_processes_one_image_end_to_end(raw_orf_bytes: bytes):
 
     pdf_bytes = _make_synthetic_pdf()
 
-    async with httpx.AsyncClient(
-        base_url=_exchange_url(), timeout=httpx.Timeout(60.0)
-    ) as http:
-        seed_orf = await http.put(
-            f"/api/v1/exchange/raw/{checksum}.ORF", content=raw_orf_bytes
-        )
-        seed_orf.raise_for_status()
-        seed_pdf = await http.put(
-            f"/api/v1/exchange/dive_slate_pdfs/{slate_id}.pdf",
-            content=pdf_bytes,
-        )
-        seed_pdf.raise_for_status()
+    s3 = make_s3_client()
+    s3.put_object(Bucket=BUCKET, Key=f"raw/{checksum}.ORF", Body=raw_orf_bytes)
+    s3.put_object(
+        Bucket=BUCKET, Key=f"slate_pdf/{slate_id}.pdf", Body=pdf_bytes
+    )
 
-        client = await Client.connect(_temporal_target())
-        task_queue = f"stage9-itest-{uuid.uuid4().hex}"
+    client = await Client.connect(_temporal_target())
+    task_queue = f"stage9-itest-{uuid.uuid4().hex}"
 
-        async with Worker(
-            client,
+    async with Worker(
+        client,
+        task_queue=task_queue,
+        workflows=[PreprocessSlateImagesWorkflow],
+        activities=[preprocess_slate_image],
+    ):
+        await client.execute_workflow(
+            PreprocessSlateImagesWorkflow.run,
+            PreprocessSlateImagesInput(
+                dive_id=-1,
+                image_checksums=[checksum],
+                slate_id=slate_id,
+                slate_dpi=_DPI,
+                reference_points=_REF_POINTS,
+                camera_matrix=_K,
+                distortion_coefficients=_D,
+            ),
+            id=f"stage9-itest-{uuid.uuid4().hex}",
             task_queue=task_queue,
-            workflows=[PreprocessSlateImagesWorkflow],
-            activities=[preprocess_slate_image],
-        ):
-            await client.execute_workflow(
-                PreprocessSlateImagesWorkflow.run,
-                PreprocessSlateImagesInput(
-                    dive_id=-1,
-                    image_checksums=[checksum],
-                    slate_id=slate_id,
-                    slate_dpi=_DPI,
-                    reference_points=_REF_POINTS,
-                    camera_matrix=_K,
-                    distortion_coefficients=_D,
-                ),
-                id=f"stage9-itest-{uuid.uuid4().hex}",
-                task_queue=task_queue,
-            )
-
-        out = await http.get(
-            f"/api/v1/exchange/preprocess_slate_images_jpeg/{checksum}.JPG"
         )
-        out.raise_for_status()
-        assert out.content[:2] == b"\xff\xd8"
 
-        decoded = cv2.imdecode(
-            np.frombuffer(out.content, dtype=np.uint8), cv2.IMREAD_COLOR
-        )
-        assert decoded is not None
-        # Composite = scaled PDF on the left + image on the right.
-        # Image is ~4000x3000-ish from the .ORF; expect width strictly
-        # larger than the image alone.
-        assert decoded.shape[1] > 3000
+    out = s3.get_object(
+        Bucket=BUCKET, Key=f"preprocess_slate_images_jpeg/{checksum}.JPG"
+    )
+    content = out["Body"].read()
+    assert content[:2] == b"\xff\xd8"
+
+    decoded = cv2.imdecode(
+        np.frombuffer(content, dtype=np.uint8), cv2.IMREAD_COLOR
+    )
+    assert decoded is not None
+    # Composite = scaled PDF on the left + image on the right.
+    # Image is ~4000x3000-ish from the .ORF; expect width strictly
+    # larger than the image alone.
+    assert decoded.shape[1] > 3000

@@ -1,0 +1,6 @@
+# Tiny bootstrap image: alpine (for a shell) + the static garage binary.
+# The dxflrs/garage image is distroless (no shell), so it can't run the
+# multi-step idempotent bootstrap script itself.
+FROM alpine:3.20
+COPY --from=dxflrs/garage:v1.0.1 /garage /usr/local/bin/garage
+ENTRYPOINT ["/bin/sh", "/bootstrap.sh"]

@@ -6,7 +6,7 @@ Pins down:
   2. Selector + resolver dispatch a child workflow on the data-worker
      task queue with a deterministic id (`preprocess-laser-{dive_id}`).
   3. Resolver returning 0 checksums skips the child dispatch.
-  4. After archive+cleanup, the parent dispatches
+  4. After the raw-scratch cleanup, the parent dispatches
      `PopulateLaserLabelStudioProjectWorkflow` as a child with
      deterministic id `populate-laser-{dive_id}` on the parent's
      own task queue.
@@ -126,18 +126,12 @@ def _make_stub_activities(
     async def stub_stage(dive_id: int) -> None:
         stage_calls.append(dive_id)
 
-    @activity.defn(name="archive_processed_jpegs_to_nas_activity")
-    async def stub_archive(
-        dive_id: int, exchange_folder: str, nas_workflow: str
-    ) -> None:
-        return None
-
     @activity.defn(name="cleanup_raw_bytes_for_dive_activity")
     async def stub_cleanup(dive_id: int) -> None:
         return None
 
     return (
-        [stub_select, stub_resolve, stub_stage, stub_archive, stub_cleanup],
+        [stub_select, stub_resolve, stub_stage, stub_cleanup],
         selector_calls,
         resolver_calls,
         stage_calls,

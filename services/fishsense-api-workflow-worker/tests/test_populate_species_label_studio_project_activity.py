@@ -124,13 +124,13 @@ def test_build_task_uses_groups_jpeg_folder_and_dual_keys(monkeypatch):
     """Pinned: dual-key `image` + `img` shape — see the laser populate
     test of the same name for the rationale (legacy LS project XML
     uses both conventions; emitting one fails import_tasks)."""
-    monkeypatch.setenv(
-        "E4EFS_LABEL_STUDIO__IMAGE_URL_BASE", "https://orchestrator.example.com"
-    )
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__BUCKET", "fishsense-test")
     from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
     cfg.settings.reload()
 
-    expected_url = "https://orchestrator.example.com/api/v1/data/groups_jpeg/abc123"
+    # Physical Garage prefix (preprocess_groups_jpeg) + `.JPG`; LS
+    # presigns this `s3://` URI.
+    expected_url = "s3://fishsense-test/preprocess_groups_jpeg/abc123.JPG"
     task = sut._build_task(_image(7, "abc123"))  # pylint: disable=protected-access
 
     assert task["data"]["image"] == expected_url
@@ -237,11 +237,9 @@ async def test_no_valid_laser_targets_is_a_no_op(monkeypatch):
 @pytest.mark.asyncio
 async def test_writes_label_with_image_url_and_groups_jpeg_folder(monkeypatch):
     """The post-2026-05-05 species populate writes a label whose
-    image_url uses the `groups_jpeg` folder, matching the LS task
+    image_url uses the species JPEG prefix, matching the LS task
     URL — so downstream sync can recover the JPEG from the row."""
-    monkeypatch.setenv(
-        "E4EFS_LABEL_STUDIO__IMAGE_URL_BASE", "https://orchestrator.example.com"
-    )
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__BUCKET", "fishsense-test")
     from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
     cfg.settings.reload()
 
@@ -264,5 +262,5 @@ async def test_writes_label_with_image_url_and_groups_jpeg_folder(monkeypatch):
     assert written.label_studio_task_id == 5001
     assert written.label_studio_project_id == 70
     assert written.image_url is not None
-    assert "groups_jpeg" in written.image_url
+    assert "preprocess_groups_jpeg" in written.image_url
     assert "abc123" in written.image_url

@@ -26,6 +26,8 @@ from fishsense_data_processing_workflow_worker.workflows.dive_frame_clustering_w
 )
 from fishsense_shared import ClusterDiveFrameImage, ClusterDiveFramesInput
 
+from ._object_store_itest import set_object_store_env
+
 
 pytestmark = pytest.mark.integration
 
@@ -38,10 +40,11 @@ def _temporal_target() -> str:
 
 @pytest.fixture
 def configure_worker_settings(monkeypatch: pytest.MonkeyPatch):
-    """Stage 1 doesn't use the file-exchange or fishsense-api, but the
-    Dynaconf eager-validation guards still demand placeholders. Same
-    pattern as stage 0.1 / stage 2 integration tests."""
-    monkeypatch.setenv("E4EFS_FILE_EXCHANGE__URL", "http://static_file_server")
+    """Stage 1 doesn't use the object store or fishsense-api, but the
+    Dynaconf eager-validation guards still demand placeholders for all
+    required settings. Same pattern as stage 0.1 / stage 2 integration
+    tests."""
+    set_object_store_env(monkeypatch)
     monkeypatch.setenv("E4EFS_TEMPORAL__HOST", "temporal")
     monkeypatch.setenv("E4EFS_FISHSENSE_API__URL", "http://fishsense-api.invalid")
     yield

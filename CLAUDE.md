@@ -99,8 +99,8 @@ Laser/Species/HeadTail/DiveSlate.
 The four populate workflows are also dispatched automatically as
 child workflows from the matching preprocess parent (stages 0.1 →
 laser, 2 → species, 5.1 → headtail, 9 → dive-slate). After
-`archive_processed_jpegs_to_nas_activity` and
-`cleanup_raw_bytes_for_dive_activity`, the parent runs
+`cleanup_raw_bytes_for_dive_activity` (Garage raw-scratch eviction),
+the parent runs
 `execute_child_workflow("Populate<Stage>LabelStudioProjectWorkflow",
 dive_id, id="populate-<stage>-{dive_id}",
 id_reuse_policy=ALLOW_DUPLICATE_FAILED_ONLY)`. Steady-state behavior
@@ -133,13 +133,14 @@ work split into two workflows:
   in-process LS-populate child:
   1. Selector — returns next dive_id in cohort, or None.
   2. Resolver — returns a fully-populated workflow-input DTO.
-  3. `stage_raw_bytes_for_dive_activity` — NAS → file-exchange.
+  3. `stage_raw_bytes_for_dive_activity` — NAS → Garage `raw/` scratch.
      Stage 9 also runs `stage_slate_pdf_activity` for the slate PDF.
-  4. `start_child_workflow` against the data-worker task queue.
-  5. `archive_processed_jpegs_to_nas_activity` — file-exchange JPEGs
-     → NAS (`processed_jpegs/<workflow>/<dive_id>/<checksum>.JPG`).
-     Then `cleanup_raw_bytes_for_dive_activity` deletes the dive's
-     raw `.ORF`s from the file-exchange.
+     NAS access is **read-only** (download only).
+  4. `start_child_workflow` against the data-worker task queue. The
+     child writes processed JPEGs directly to Garage.
+  5. `cleanup_raw_bytes_for_dive_activity` deletes the dive's staged
+     raw `.ORF` *scratch* objects from Garage (never the NAS source).
+     There is no NAS archive step — the JPEGs are durable in Garage.
   6. `execute_child_workflow("Populate<Stage>LabelStudioProjectWorkflow",
      dive_id, id="populate-<stage>-{dive_id}",
      id_reuse_policy=ALLOW_DUPLICATE_FAILED_ONLY)` — on-demand
@@ -149,20 +150,30 @@ work split into two workflows:
      the dive drops out of the cohort, but if the parent fires twice
      on the same dive_id (for whatever reason) the second populate
      hits `WorkflowAlreadyStartedError` and the parent catches it so
-     the post-archive run still completes successfully.
+     the post-cleanup run still completes successfully.
 * **Child** on data-worker (`fishsense_data_processing_queue`). Thin
   pre-input workflow that fans out per-image activities. No SDK
-  calls and no NAS calls; all bytes already on the file-exchange,
-  all decisions baked into the input DTO.
+  calls and no NAS calls; all bytes already in Garage, all decisions
+  baked into the input DTO.
 
-NAS access lives only on the api-worker side. The data-worker stays
-file-exchange-only — narrows the data-worker's blast radius and
+**Storage = hosted Garage (S3-compatible) object store** (migrated off
+the nginx file-exchange + the `fishsense_process_work` NAS share). One
+bucket; the api-worker stages raw/slate scratch in and reads nothing
+back; the data-worker reads scratch + writes JPEGs; Label Studio reads
+the JPEGs via per-project presigned URLs. S3 access keys authenticate
+from any IP — there's no IP allowlist / forward-auth, which is what
+lets the data-worker run off-prem (NRP) without a stable egress IP.
+
+NAS access lives only on the api-worker side and is **read-only** (raw
+`.ORF` + slate PDF download; nothing deletes from or writes to the
+NAS). The data-worker is Garage-only — narrows its blast radius and
 keeps NAS credentials off the cluster.
 
-JPEGs intentionally stay on the file-exchange after archive (LS task
-URLs point at them). Raw `.ORF`s are deleted because they're
-reproducible from NAS. JPEG retention is a separate operational
-decision — see the project memory entry.
+JPEGs are the durable artifact and live in Garage (LS task data holds
+`s3://bucket/<prefix>/<checksum>.JPG` URIs that LS presigns). Staged raw
+`.ORF` scratch is deleted post-process because it's reproducible from
+NAS. JPEG retention is a separate operational decision — see the
+project memory entry.
 
 The workflow-input DTOs (`PreprocessLaserImagesInput`,
 `PreprocessSpeciesImagesInput`, `PreprocessHeadtailImagesInput`,
@@ -190,7 +201,7 @@ one replica):
   per-image work. **Note:** temporalio's default child
   `id_reuse_policy` is `ALLOW_DUPLICATE`, which lets duplicates
   through silently — the explicit setting is required.
-* Per-image activities are idempotent: nginx DAV PUT overwrites,
+* Per-image activities are idempotent: S3 PutObject overwrites,
   SDK upserts.
 
 Applied to stages 0.1, 1, 2, 5.1, 9, 13 — each parent runs hourly.
@@ -327,7 +338,7 @@ selector → resolver → data-worker child (`DiveFrameClusteringWorkflow`)
 → persist. The child returns `list[list[int]]` of image_ids per
 cluster; the persist activity POSTs one
 `DiveFrameCluster(data_source=PREDICTION)` per id-list via
-`images.post_cluster`. No NAS staging or file-exchange traffic —
+`images.post_cluster`. No NAS staging or object-store traffic —
 clustering is pure math on `(image_id, taken_datetime)` pairs. The
 cohort selector excludes dives that already have *any* PREDICTION
 cluster, so this is one-shot per dive; an operator must drop partial
@@ -335,7 +346,7 @@ PREDICTION rows manually if a parent run failed mid-persist (the
 cohort would otherwise skip the dive forever).
 
 Stages 13 and 14 are structurally lighter than the preprocess parents:
-pure SDK math, no NAS staging, no file-exchange JPEGs, no per-image
+pure SDK math, no NAS staging, no object-store JPEGs, no per-image
 fan-out. Their selector + child-dispatch parents have only two
 activity calls (selector → `start_child_workflow`); the data-worker
 keeps SDK fetches inline because the math kernels need opencv +
@@ -364,18 +375,22 @@ a backlog.
 
 Every ported per-image stage follows the same shape:
 
-1. `download_raw(checksum)` from the file-exchange.
-2. (stage 9 only) `download_slate_pdf(slate_id)`.
+1. `download_raw(checksum)` from Garage (`raw/{checksum}.ORF`).
+2. (stage 9 only) `download_slate_pdf(slate_id)`
+   (`slate_pdf/{slate_id}.pdf`).
 3. Off-loop CPU work via `asyncio.to_thread`: rectify
    (`RectifiedImage(RawImage(bytes), intrinsics)` — rawpy + auto-gamma +
    CLAHE + `cv2.undistort`) → stage-specific overlay → `cv2.imencode`.
-4. `upload_processed_jpeg(folder, checksum, jpeg_bytes)` to the
-   file-exchange.
+4. `upload_processed_jpeg(folder, checksum, jpeg_bytes)` to Garage
+   (`{folder}/{checksum}.JPG`).
 
-Output folders match the labeler-facing GET routes already in
-`deploy/static_file_server/nginx.conf`:
+The client is `ObjectStoreClient` (per-worker `object_store.py`, boto3
+behind `asyncio.to_thread`, path-style addressing for Garage). The
+per-image JPEG prefixes are the **physical** Garage keys — the same
+ones the populate activities embed in `s3://` task URIs, so there's no
+virtual→physical rewrite layer anymore (this is why issue #113 is gone):
 
-| Stage | Folder |
+| Stage | Prefix |
 |---|---|
 | 2   | `preprocess_groups_jpeg` |
 | 0.1 | `preprocess_jpeg` |
@@ -398,17 +413,114 @@ PDF-composite) and a distinct DTO; one shared signature would have to
 be `Callable[[ndarray], ndarray]` plus union-typed extra args, which
 is messier than four small, self-contained activities.
 
-## File-exchange URL contract
+## Garage object-store key contract
+
+One bucket (`object_store.bucket`), content-type prefixes — the
+cross-worker key contract (the analog of the old file-exchange URL
+contract). Defined by the key helpers in each worker's
+`object_store.py`:
 
 ```
-GET  /api/v1/exchange/raw/{checksum}.ORF             # api-worker stages, data-worker reads
-GET  /api/v1/exchange/dive_slate_pdfs/{slate_id}.pdf # api-worker stages, data-worker reads (stage 9)
-PUT  /api/v1/exchange/{folder}/{checksum}.JPG        # data-worker writes
+raw/{checksum}.ORF            # api-worker stages (PUT), data-worker reads (GET); scratch
+slate_pdf/{slate_id}.pdf      # api-worker stages (PUT), data-worker reads (GET); scratch (stage 9)
+{jpeg_prefix}/{checksum}.JPG  # data-worker writes (PUT); durable; LS reads via presign
 ```
 
-The nginx DAV alias at `/api/v1/exchange/` covers any subpath, so
-adding new conventions is a `FileExchangeClient` change only — no
-nginx.conf change needed.
+`{jpeg_prefix}` ∈ {`preprocess_jpeg`, `preprocess_groups_jpeg`,
+`preprocess_headtail_jpeg`, `preprocess_slate_images_jpeg`}. Adding a
+new convention is an `object_store.py` change only.
+
+**Auth + addressing.** Garage uses S3 access keys (work from any IP)
+and **path-style** addressing (no virtual-host bucket DNS) — both set
+in `object_store.build_s3_client`. The api-worker key needs
+rw+delete on `raw/`+`slate_pdf/` and write on the JPEG prefixes; the
+data-worker key needs read on scratch + write on JPEGs; Label Studio
+gets a read-only key (optional `object_store.presign_*`) to presign
+the JPEGs.
+
+**Label Studio serving.** Populate activities emit
+`s3://{bucket}/{prefix}/{checksum}.JPG` into each task's `data.image`/
+`data.img`. Each per-dive project gets an S3 *source* storage
+registered (idempotently, `presign=True`) by
+`create_or_get_label_studio_project` → `ensure_label_studio_s3_storage`,
+so LS resolves those URIs to presigned GET URLs at serve time. Garage
+must send CORS headers for the labeler origin so the browser can fetch
+the presigned URLs directly.
+
+**NAS safety.** The api-worker's NAS access is read-only;
+`cleanup_raw_bytes_for_dive_activity` only deletes the Garage `raw/`
+scratch, never the NAS source (there's a test tripwire asserting the
+cleanup module imports no NAS client).
+
+## Service plumbing gotchas
+
+Four service-layer conventions that fail silently when broken. Note them
+before adding controllers, models, alembic migrations, or SDK tests.
+
+### `controllers/__init__.py` is the route registry
+
+Controllers register their routes against the FastAPI `app` singleton
+imported from `fishsense_api.server` as a **side effect of being
+imported**. [services/fishsense-api/src/fishsense_api/controllers/__init__.py](services/fishsense-api/src/fishsense_api/controllers/__init__.py)
+does the side-effect imports — add new controllers there or their routes
+will silently not register.
+
+### `database.py` is the model registry
+
+[services/fishsense-api/src/fishsense_api/database.py](services/fishsense-api/src/fishsense_api/database.py)
+imports every SQLModel so `SQLModel.metadata.create_all` (called from
+`lifespan`) and `alembic --autogenerate` both see them. Forgetting to
+import a new model there means it won't appear in autogenerated
+migrations and won't be picked up by the fresh-env `create_all` bootstrap.
+The `# pylint: disable=unused-import` at the top is intentional — don't
+"clean up" those imports.
+
+### Alembic dev workflow needs a valid local config
+
+```bash
+uv run alembic revision --autogenerate -m "description"   # new migration
+uv run alembic upgrade head                                # apply
+```
+
+`alembic.ini` points `script_location` at `src/fishsense_api/alembic`;
+its `env.py` imports `pg_connection_string` from `fishsense_api.config`,
+so a valid `settings.toml` + `.secrets.toml` (or `E4EFS_*` env vars)
+must resolve from cwd before alembic will run. In prod, the runtime
+image instead calls `run_alembic_upgrade` programmatically — see
+"Auto-migrate on startup" under the dive_pipeline_status view section.
+
+### SDK testing conventions
+
+[libs/fishsense-api-sdk/pyproject.toml](libs/fishsense-api-sdk/pyproject.toml)
+sets `asyncio_mode = "auto"` — async tests do **not** need the
+`@pytest.mark.asyncio` decorator. All clients inherit `ClientBase`
+(httpx + retry on `HTTPStatusError`) and **must be used inside
+`async with`** — instantiating a raw client and calling a method
+outside the context manager raises `RuntimeError`.
+
+## `E4EFS_DOCKER` toggles config + log roots
+
+[libs/fishsense-shared/src/fishsense_shared/config.py](libs/fishsense-shared/src/fishsense_shared/config.py)
+defines `IS_DOCKER` as true only when `E4EFS_DOCKER` is an
+**explicitly-truthy string** (`"true"`, `"1"`, `"yes"`, …). Shipped
+images set it; in that mode config reads from `/e4efs/config/` and logs
+go to `/e4efs/logs/`. Outside Docker, config falls back to cwd (see
+"Repo-root `settings.toml` — do NOT commit") and logs go to
+`platformdirs.user_log_path`.
+
+Do **not** rewrite as `bool(os.environ.get("E4EFS_DOCKER"))` — any
+non-empty string (including `"false"`) would read as Docker mode and
+send paths to `/e4efs/*` on a dev box. The current implementation has
+an inline comment to that effect; it's a real footgun, not a style
+preference.
+
+## Local Temporal
+
+For dev: `temporal server start-dev` + set `temporal.tls = false` in
+`settings.toml`. Production uses mTLS with certs under `/certs/` mounted
+from `deploy/temporal_volumes/certs` — the same `TLSConfig` is built
+from `settings.temporal.{client_cert,client_private_key,server_root_ca_cert,domain}`
+across every service that talks to Temporal.
 
 ## Worker config validation gotcha
 
@@ -419,11 +531,11 @@ activity module must plumb env values for all required settings
 the test only uses one of them — see `configure_worker_settings` in
 `test_stage2_integration.py` for the standard placeholder fixture.
 
-The `*.url` validators use a custom `_url_condition` (http/https +
-non-empty hostname) instead of `validators.url`, because the strict
-library condition rejects every Docker-internal hostname
-(`static_file_server`, `fishsense-api`, `temporal` — underscores or no
-TLD). Don't switch back to `validators.url`.
+The `*.url` validators (incl. `object_store.endpoint_url`) use a custom
+`_url_condition` (http/https + non-empty hostname) instead of
+`validators.url`, because the strict library condition rejects every
+Docker-internal hostname (`fishsense-api`, `temporal`, `garage` —
+underscores or no TLD). Don't switch back to `validators.url`.
 
 ## Repo-root `settings.toml` — do NOT commit
 

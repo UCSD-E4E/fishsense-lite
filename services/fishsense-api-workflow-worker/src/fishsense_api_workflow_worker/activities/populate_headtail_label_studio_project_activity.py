@@ -36,7 +36,9 @@ from fishsense_api_workflow_worker.activities.populate_utils import (
 )
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
 
-HEADTAIL_FOLDER = "headtail_jpeg"
+# Physical Garage prefix the data-worker writes head/tail JPEGs to
+# (stage 5.1). Was the nginx virtual name "headtail_jpeg".
+HEADTAIL_FOLDER = "preprocess_headtail_jpeg"
 
 
 def _is_valid_laser(label: LaserLabel) -> bool:

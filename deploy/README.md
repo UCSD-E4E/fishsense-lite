@@ -8,12 +8,12 @@ orchestrator host, and prod data-worker host.
 | File | Purpose |
 |---|---|
 | `compose.yml` | Top-level prod orchestrator stack. `include:`s the four siblings below + defines `postgres`, `qcomm-static-file-server`, `fishsense-lite-web` (public landing + Authentik-OIDC-gated `/portal/*`). Pulls `prometheus_network` and `traefik_proxy` as external networks. |
-| `compose.orchestrator.yml` | `fishsense-api` + nginx `static_file_server` (file-exchange DAV). Behind Traefik + `authentik@docker` middleware. |
+| `compose.orchestrator.yml` | `fishsense-api`. Behind Traefik + `authentik@docker` middleware. (The nginx `static_file_server` file-exchange was removed — storage moved to the hosted Garage object store; see the workers' `[object_store]` settings.) |
 | `compose.temporal.yml` | Temporal cluster (history, frontend, matching, worker, UI). |
 | `compose.workers.yml` | `fishsense-*` workers running on the orchestrator host: `fishsense-api-workflow-worker`, `fishsense-backup-worker`. (Workers consume Temporal but aren't part of the cluster.) |
 | `compose.superset.yml` | Superset + redis + worker / beat. |
 | `compose.data-worker.yml` | `fishsense-data-processing-workflow-worker` on a **separate host** (image preprocessing + laser calibration + measurement). **Not** included by `compose.yml`. Invoked on the data-worker host as `docker compose -f compose.data-worker.yml ...`. |
-| `compose.local.yml` | Self-contained local devcontainer stack — postgres, temporal, fishsense-api (pinned image), nginx static_file_server, label-studio, dev container. **Not** layered on `compose.yml`; prod's authentik / mTLS / letsencrypt coupling is intentionally absent. |
+| `compose.local.yml` | Self-contained local devcontainer stack — postgres, temporal, fishsense-api (pinned image), Garage (single-node, same engine as prod) + one-shot bootstrap, label-studio, dev container. **Not** layered on `compose.yml`; prod's authentik / mTLS / letsencrypt coupling is intentionally absent. |
 | `compose.dev.yml` | Dev-only compose extras (used inside the devcontainer for tooling). |
 
 `compose.local.yml` and the prod stack are intentionally separate
@@ -224,37 +224,31 @@ least once with completed labels), then trigger 6.1.
 #### Cross-worker preprocess parents (stages 0.1, 2, 5.1, 9)
 
 Each preprocess stage splits across both workers: an api-worker
-parent does dive selection + SDK resolution + NAS-to-file-exchange
+parent does dive selection + SDK resolution + NAS-to-Garage
 staging, then dispatches a child workflow on
 `fishsense_data_processing_queue` for the per-image CPU work. All
 four parents are hourly with
 `overlap=ScheduleOverlapPolicy.SKIP` and a 15-minute stagger so
 their selectors don't all hit `dives.get()` at the top of the hour.
 
-NAS access lives only on the api-worker side
+NAS access lives only on the api-worker side and is **read-only**
 (`stage_raw_bytes_for_dive_activity` for raw `.ORF`s,
-`stage_slate_pdf_activity` for stage-9 slate PDFs). All NAS
-activities are idempotent — a HEAD-equivalent skips already-staged
-content so retries are cheap. NAS failure is fatal for the parent
-run; the next schedule firing retries from scratch. The data-worker
-holds no NAS credentials and only reads/writes the file-exchange.
+`stage_slate_pdf_activity` for stage-9 slate PDFs — both download into
+the Garage `raw/` / `slate_pdf/` scratch prefixes). Staging is
+idempotent — a HeadObject skips already-staged content so retries are
+cheap. NAS failure is fatal for the parent run; the next schedule
+firing retries from scratch. The data-worker holds no NAS credentials
+and only reads/writes the Garage object store (S3).
 
-After the data-worker child completes, the parent runs two more
-activities:
+After the data-worker child completes (it has already written the
+processed JPEGs to Garage), the parent runs:
 
-* **`archive_processed_jpegs_to_nas_activity(dive_id, exchange_folder, nas_workflow)`** —
-  reads JPEGs from the file-exchange and uploads to
-  `{processed_jpegs.nas_root_path}/{nas_workflow}/{dive_id}/{checksum}.JPG`
-  (default root: `/fishsense_process_work/processed_jpegs`). Skips
-  checksums already on NAS; counts file-exchange 404s as missing-
-  not-fatal.
-* **`cleanup_raw_bytes_for_dive_activity(dive_id)`** — DELETEs raw
-  `.ORF` entries from the file-exchange. JPEGs intentionally stay
-  (Label Studio task URLs reference them).
-
-Configurable: set `processed_jpegs.nas_root_path` in
-`worker_volumes/api_worker/config/settings.toml` to override the
-default root.
+* **`cleanup_raw_bytes_for_dive_activity(dive_id)`** — deletes the
+  staged raw `.ORF` *scratch* objects from Garage (`raw/{checksum}.ORF`).
+  S3 delete is idempotent. This NEVER touches the NAS source. The
+  processed JPEGs stay in Garage (Label Studio reads them via
+  presigned URLs) — there is no NAS archive step; Garage is their
+  durable home.
 
 | Stage | Parent workflow | Schedule offset | Child id pattern |
 |---|---|---|---|

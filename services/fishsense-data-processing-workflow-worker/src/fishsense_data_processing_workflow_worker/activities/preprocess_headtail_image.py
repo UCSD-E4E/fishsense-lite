@@ -1,22 +1,20 @@
-"""Stage 5.1: rectify a raw head/tail image and PUT the JPEG to the
-file-exchange. No overlay — head/tail labeling wants the unannotated
-rectified frame.
+"""Stage 5.1: rectify a raw head/tail image and write the JPEG to the
+Garage object store. No overlay — head/tail labeling wants the
+unannotated rectified frame.
 """
 
 import asyncio
 import logging
 
 import cv2
-import httpx
 import numpy as np
 from fishsense_api_sdk.models.camera_intrinsics import CameraIntrinsics
 from fishsense_core.image.raw_image import RawImage
 from fishsense_core.image.rectified_image import RectifiedImage
 from temporalio import activity
 
-from fishsense_data_processing_workflow_worker.config import settings
-from fishsense_data_processing_workflow_worker.file_exchange import (
-    FileExchangeClient,
+from fishsense_data_processing_workflow_worker.object_store import (
+    open_object_store_client,
 )
 
 _log = logging.getLogger(__name__)
@@ -65,21 +63,16 @@ async def preprocess_headtail_image(payload) -> None:  # type: ignore[no-untyped
         "preprocessing headtail image checksum=%s", payload.checksum
     )
 
-    async with httpx.AsyncClient(
-        base_url=settings.file_exchange.url, timeout=httpx.Timeout(60.0)
-    ) as http:
-        client = FileExchangeClient(
-            base_url=settings.file_exchange.url, http=http
-        )
-        raw_bytes = await client.download_raw(payload.checksum)
-        jpeg_bytes = await asyncio.to_thread(
-            _rectify_and_encode_jpeg,
-            raw_bytes,
-            payload.camera_matrix,
-            payload.distortion_coefficients,
-        )
-        await client.upload_processed_jpeg(
-            folder=payload.output_folder,
-            checksum=payload.checksum,
-            data=jpeg_bytes,
-        )
+    client = open_object_store_client()
+    raw_bytes = await client.download_raw(payload.checksum)
+    jpeg_bytes = await asyncio.to_thread(
+        _rectify_and_encode_jpeg,
+        raw_bytes,
+        payload.camera_matrix,
+        payload.distortion_coefficients,
+    )
+    await client.upload_processed_jpeg(
+        folder=payload.output_folder,
+        checksum=payload.checksum,
+        data=jpeg_bytes,
+    )

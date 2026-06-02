@@ -34,11 +34,22 @@ _VALIDATORS = [
     Validator("fishsense_api.url", required=True, cast=str, condition=url_condition),
     Validator("fishsense_api.username", cast=str),
     Validator("fishsense_api.password", cast=str),
-    # Internal docker URL for the static_file_server nginx that brokers
-    # the worker file-exchange (raw ORFs, slate PDFs, processed JPEGs).
+    # Garage (S3-compatible) object store — replaces the nginx
+    # file-exchange. The data-worker reads staged raw `.ORF` + slate
+    # PDFs and writes processed JPEGs back. S3 access keys work from any
+    # IP (no IP allowlist / forward-auth needed), which is what lets the
+    # data-worker run off-prem (NRP) without a stable egress IP.
+    # `access_key`/`secret_key` live in `.secrets.toml`.
     Validator(
-        "file_exchange.url", required=True, cast=str, condition=url_condition
+        "object_store.endpoint_url",
+        required=True,
+        cast=str,
+        condition=url_condition,
     ),
+    Validator("object_store.region", required=True, cast=str, default="garage"),
+    Validator("object_store.bucket", required=True, cast=str),
+    Validator("object_store.access_key", required=True, cast=str),
+    Validator("object_store.secret_key", required=True, cast=str),
 ]
 
 # NOTE: standardized on E4EFS_ envvar prefix (was DYNACONF_) to match the other

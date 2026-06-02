@@ -89,13 +89,11 @@ def test_select_targets_filters_by_slate_marker_and_completion():
 def test_build_task_emits_dual_image_and_img_keys(monkeypatch):
     """Pinned: dual-key `image` + `img` shape for legacy LS project
     XML compatibility — see laser populate test of the same name."""
-    monkeypatch.setenv(
-        "E4EFS_LABEL_STUDIO__IMAGE_URL_BASE", "https://orchestrator.example.com"
-    )
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__BUCKET", "fishsense-test")
     from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
     cfg.settings.reload()
 
-    expected_url = "https://orchestrator.example.com/api/v1/data/dive_slate_jpgs/abc123"
+    expected_url = "s3://fishsense-test/preprocess_slate_images_jpeg/abc123.JPG"
     task = sut._build_task(_image(7, "abc123"))  # pylint: disable=protected-access
 
     assert task["data"] == {"image": expected_url, "img": expected_url}
@@ -157,7 +155,9 @@ async def test_imports_only_slate_marked_images(monkeypatch):
     written = [c.args[1] for c in fs.labels.put_dive_slate_label.await_args_list]
     assert {label.image_id for label in written} == {1, 3}
     assert all(label.label_studio_project_id == 66 for label in written)
-    assert all("dive_slate_jpgs" in label.image_url for label in written)
+    assert all(
+        "preprocess_slate_images_jpeg" in label.image_url for label in written
+    )
 
 
 @pytest.mark.asyncio

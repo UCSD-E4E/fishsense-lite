@@ -23,9 +23,6 @@ from temporalio.client import (
 )
 from temporalio.worker import Worker
 
-from fishsense_api_workflow_worker.activities.archive_processed_jpegs_to_nas_activity import (  # pylint: disable=line-too-long
-    archive_processed_jpegs_to_nas_activity,
-)
 from fishsense_api_workflow_worker.activities.cleanup_raw_bytes_for_dive_activity import (  # pylint: disable=line-too-long
     cleanup_raw_bytes_for_dive_activity,
 )
@@ -453,7 +450,6 @@ async def main():
                 select_next_high_priority_dive_for_measure_fish_activity,
                 stage_raw_bytes_for_dive_activity,
                 stage_slate_pdf_activity,
-                archive_processed_jpegs_to_nas_activity,
                 cleanup_raw_bytes_for_dive_activity,
             ],
         )

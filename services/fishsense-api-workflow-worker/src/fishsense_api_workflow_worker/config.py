@@ -32,27 +32,6 @@ _VALIDATORS = [
     Validator("temporal.server_root_ca_cert", cast=str, condition=path_validator),
     Validator("label_studio.url", required=True, condition=url_condition),
     Validator("label_studio.api_key", required=True, cast=str),
-    # URL prefix embedded into Label Studio task `data.image` fields —
-    # labelers' browsers fetch from here through Traefik/authentik.
-    # Public-facing; the file-exchange (`/api/v1/exchange/*`) is NOT
-    # routed publicly, so this URL works only for `/api/v1/data/*`.
-    Validator(
-        "label_studio.image_url_base",
-        required=True,
-        cast=str,
-        condition=url_condition,
-    ),
-    # Internal docker URL for the static_file_server nginx that brokers
-    # the worker file-exchange (raw ORFs, slate PDFs, processed JPEGs).
-    # Same backend as `label_studio.image_url_base` but on the docker
-    # network, bypassing Traefik/authentik. Stage 12 fetches slate PDFs
-    # from here to compute the composite-image PDF panel offset.
-    Validator(
-        "file_exchange.url",
-        required=True,
-        cast=str,
-        condition=url_condition,
-    ),
     Validator("e4e_nas.url", required=True, cast=str, condition=url_condition),
     Validator("e4e_nas.username", required=True, cast=str),
     Validator("e4e_nas.password", required=True, cast=str),
@@ -70,19 +49,30 @@ _VALIDATORS = [
         cast=str,
         default="/fishsense_data/REEF/data",
     ),
-    # NAS path under which Phase 3b's archive activity writes
-    # processed JPEGs. Per-stage subfolders + per-dive subfolders
-    # are appended at archive time; the final NAS path is
-    # `{processed_jpegs.nas_root_path}/{workflow}/{dive_id}/{checksum}.JPG`.
-    Validator(
-        "processed_jpegs.nas_root_path",
-        required=True,
-        cast=str,
-        default="/fishsense_process_work/processed_jpegs",
-    ),
     Validator("fishsense_api.url", required=True, cast=str, condition=url_condition),
     Validator("fishsense_api.username", cast=str),
     Validator("fishsense_api.password", cast=str),
+    # Garage (S3-compatible) object store — replaces the nginx
+    # file-exchange. Single bucket; the data-worker reads staged raw
+    # `.ORF` + slate PDFs from it and writes processed JPEGs back. This
+    # worker stages raw/slate in and cleans up the `raw/` scratch
+    # prefix. `access_key`/`secret_key` live in `.secrets.toml`.
+    Validator(
+        "object_store.endpoint_url",
+        required=True,
+        cast=str,
+        condition=url_condition,
+    ),
+    Validator("object_store.region", required=True, cast=str, default="garage"),
+    Validator("object_store.bucket", required=True, cast=str),
+    Validator("object_store.access_key", required=True, cast=str),
+    Validator("object_store.secret_key", required=True, cast=str),
+    # Optional read-only key handed to Label Studio when registering the
+    # per-dive S3 source storage so LS can presign GET URLs for the
+    # processed JPEGs. Falls back to `access_key`/`secret_key` when
+    # unset — ops can scope a read-only key here without code changes.
+    Validator("object_store.presign_access_key", cast=str),
+    Validator("object_store.presign_secret_key", cast=str),
 ]
 
 settings = Dynaconf(

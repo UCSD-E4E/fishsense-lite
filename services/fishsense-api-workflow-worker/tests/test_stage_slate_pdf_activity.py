@@ -1,17 +1,30 @@
 # pylint: disable=unused-argument
-"""Unit tests for stage_slate_pdf_activity."""
+"""Unit tests for stage_slate_pdf_activity.
+
+Storage is exercised against moto (a real boto3 client over an
+in-memory S3); the slate PDF lands at the `slate_pdf/{slate_id}.pdf`
+Garage key.
+"""
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from typing import List
 from unittest.mock import AsyncMock, MagicMock
 
-import httpx
+import boto3
 import pytest
+from moto import mock_aws
 from temporalio.testing import ActivityEnvironment
 
 from fishsense_api_sdk.models.dive_slate import DiveSlate
 from fishsense_api_workflow_worker.activities import stage_slate_pdf_activity as sut
+from fishsense_api_workflow_worker.object_store import (
+    ObjectStoreClient,
+    slate_pdf_key,
+)
+
+BUCKET = "fishsense-test"
 
 
 def _slate(
@@ -40,29 +53,23 @@ def _make_fs(slates: List[DiveSlate]):
     return fs
 
 
-def _patch_routes(monkeypatch, head_present: bool):
-    head_calls: List[int] = []
-    put_calls: List[tuple] = []
+@contextmanager
+def _moto_store(monkeypatch, *, preexisting_slate_ids: tuple[int, ...] = ()):
+    with mock_aws():
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=BUCKET)
+        for slate_id in preexisting_slate_ids:
+            s3.put_object(
+                Bucket=BUCKET, Key=slate_pdf_key(slate_id), Body=b"old"
+            )
+        client = ObjectStoreClient(s3, BUCKET)
+        monkeypatch.setattr(sut, "open_object_store_client", lambda: client)
+        yield s3
 
-    def _mock_handler(request: httpx.Request) -> httpx.Response:
-        path = request.url.path
-        if request.method == "HEAD":
-            head_calls.append(path)
-            return httpx.Response(200 if head_present else 404)
-        if request.method == "PUT":
-            put_calls.append((path, request.content))
-            return httpx.Response(201)
-        return httpx.Response(405)
 
-    transport = httpx.MockTransport(_mock_handler)
-    real_async_client = httpx.AsyncClient
-
-    def _client_factory(*args, **kwargs):
-        kwargs["transport"] = transport
-        return real_async_client(*args, **kwargs)
-
-    monkeypatch.setattr(sut.httpx, "AsyncClient", _client_factory)
-    return head_calls, put_calls
+def _slate_keys(s3) -> set[str]:
+    resp = s3.list_objects_v2(Bucket=BUCKET, Prefix="slate_pdf/")
+    return {o["Key"] for o in resp.get("Contents", [])}
 
 
 def _patch_tempfile_read(monkeypatch, payload: bytes):
@@ -82,16 +89,19 @@ async def test_skips_nas_when_pdf_already_present(monkeypatch):
     nas = MagicMock()
     nas.download_to = MagicMock()
     monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
-    head_calls, put_calls = _patch_routes(monkeypatch, head_present=True)
 
-    result = await ActivityEnvironment().run(
-        sut.stage_slate_pdf_activity, 7
-    )
+    with _moto_store(monkeypatch, preexisting_slate_ids=(7,)) as s3:
+        result = await ActivityEnvironment().run(
+            sut.stage_slate_pdf_activity, 7
+        )
 
-    assert result is True
-    nas.download_to.assert_not_called()
-    assert not put_calls
-    assert head_calls
+        assert result is True
+        nas.download_to.assert_not_called()
+        # already-present PDF is not re-written
+        assert (
+            s3.get_object(Bucket=BUCKET, Key=slate_pdf_key(7))["Body"].read()
+            == b"old"
+        )
 
 
 @pytest.mark.asyncio
@@ -111,21 +121,26 @@ async def test_downloads_and_puts_when_pdf_missing(monkeypatch):
     nas.download_to = MagicMock()
     monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
     _patch_tempfile_read(monkeypatch, b"pdf-bytes")
-    _, put_calls = _patch_routes(monkeypatch, head_present=False)
 
-    result = await ActivityEnvironment().run(
-        sut.stage_slate_pdf_activity, 7
-    )
+    with _moto_store(monkeypatch) as s3:
+        result = await ActivityEnvironment().run(
+            sut.stage_slate_pdf_activity, 7
+        )
 
-    assert result is True
-    nas.download_to.assert_called_once()
-    assert nas.download_to.call_args.kwargs["src_path"] == (
-        "/fishsense_data/REEF/data/slates/v1/slate.pdf"
-    )
-    # And explicitly NOT the bare DB path — regression guard: a future
-    # "just pass slate.path through" change must fail this test.
-    assert nas.download_to.call_args.kwargs["src_path"] != "slates/v1/slate.pdf"
-    assert len(put_calls) == 1
+        assert result is True
+        nas.download_to.assert_called_once()
+        assert nas.download_to.call_args.kwargs["src_path"] == (
+            "/fishsense_data/REEF/data/slates/v1/slate.pdf"
+        )
+        # And explicitly NOT the bare DB path — regression guard.
+        assert (
+            nas.download_to.call_args.kwargs["src_path"] != "slates/v1/slate.pdf"
+        )
+        assert _slate_keys(s3) == {slate_pdf_key(7)}
+        assert (
+            s3.get_object(Bucket=BUCKET, Key=slate_pdf_key(7))["Body"].read()
+            == b"pdf-bytes"
+        )
 
 
 @pytest.mark.asyncio
@@ -163,9 +178,9 @@ async def test_relative_slate_path_gets_prefixed_before_nas_download(monkeypatch
     nas.download_to = MagicMock()
     monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
     _patch_tempfile_read(monkeypatch, b"pdf-bytes")
-    _patch_routes(monkeypatch, head_present=False)
 
-    result = await ActivityEnvironment().run(sut.stage_slate_pdf_activity, 7)
+    with _moto_store(monkeypatch):
+        result = await ActivityEnvironment().run(sut.stage_slate_pdf_activity, 7)
 
     assert result is True
     nas.download_to.assert_called_once()

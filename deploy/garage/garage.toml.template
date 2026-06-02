@@ -1,0 +1,27 @@
+# Garage config TEMPLATE for the LOCAL devcontainer / CI integration stack
+# only. Single node, no replication.
+#
+# This file deliberately contains NO rpc_secret. The `garage-keygen` service
+# generates a random rpc_secret at runtime and prepends it to a rendered copy
+# of this template on a private `garage_config` volume (see keygen.sh); the
+# `garage` daemon + `garage-init` read that rendered copy via GARAGE_CONFIG_FILE.
+# So no secret is committed to the repo.
+#
+# Production Garage is hosted separately and is NOT configured from this repo —
+# see the workers' `[object_store]` settings.
+
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+
+replication_factor = 1
+
+rpc_bind_addr = "[::]:3901"
+# Service name on the compose network; the daemon advertises this and the
+# garage-init container's CLI dials it.
+rpc_public_addr = "garage:3901"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+root_domain = ".s3.garage.localhost"

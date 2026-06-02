@@ -12,13 +12,6 @@ server_root_ca_cert = "/certs/ca/root-ca.pem"
 
 [label_studio]
 url = "https://labeler.e4e.ucsd.edu"
-# URL prefix embedded into Label Studio task `data.image` fields —
-# labelers' browsers fetch from here through Traefik. /api/v1/data is
-# publicly routed (CORS-enabled, no auth at the Traefik layer);
-# /api/v1/exchange is also publicly routed now (second router for the
-# data-worker on a separate host) but worker-only and is the surface
-# that needs the auth middleware once one is attached.
-image_url_base = "https://orchestrator.fishsense.e4e.ucsd.edu"
 
 [e4e_nas]
 url = "https://e4e-nas.ucsd.edu:6021"
@@ -33,12 +26,16 @@ url = "https://e4e-nas.ucsd.edu:6021"
 [fishsense_api]
 url = "http://fishsense-api:8000"
 
-# Internal docker URL the api-worker uses to GET slate PDFs / PUT
-# processed JPEGs / DELETE raw .ORF entries on the file-exchange
-# (/api/v1/exchange/*). The api-worker runs on the orchestrator host
-# alongside static_file_server on the same docker network, so this
-# bypasses Traefik (and any auth middleware on the public exchange
-# router) entirely. The data-worker, on a separate host, uses the
-# public Traefik route instead.
-[file_exchange]
-url = "http://static_file_server"
+# Garage (S3-compatible) object store — replaces the nginx file-exchange
+# AND the fishsense_process_work NAS share. The api-worker stages raw
+# `.ORF` + slate PDFs into the `raw/` / `slate_pdf/` scratch prefixes and
+# cleans the `raw/` scratch up after the data-worker produces the JPEGs;
+# the JPEGs themselves live here durably and Label Studio reads them via
+# per-project presigned URLs. `access_key` / `secret_key` go in
+# `.secrets.toml`. `presign_*` (optional, also in `.secrets.toml`) is a
+# read-only key handed to Label Studio for presigning; omit it to reuse
+# the main key.
+[object_store]
+endpoint_url = "https://garage.fishsense.e4e.ucsd.edu"
+region = "garage"
+bucket = "fishsense"
