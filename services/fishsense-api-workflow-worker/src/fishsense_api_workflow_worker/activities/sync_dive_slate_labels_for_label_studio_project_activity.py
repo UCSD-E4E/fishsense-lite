@@ -14,6 +14,7 @@ import json
 from typing import Any, Dict, List, Tuple
 
 import pymupdf
+from botocore.exceptions import BotoCoreError, ClientError
 from fishsense_api_sdk.client import Client
 from fishsense_api_sdk.models.dive_slate_label import DiveSlateLabel
 from temporalio import activity
@@ -153,10 +154,11 @@ async def _aspect_ratio_for_slate(
 
     try:
         pdf_bytes = await exchange.download_slate_pdf(slate_id)
-    except Exception as e:  # pylint: disable=broad-except
+    except (ClientError, BotoCoreError) as e:
         # Missing/unreadable slate PDF in Garage (botocore ClientError or
         # transport error). Skip the panel-width offset for this label
-        # rather than failing the whole sync.
+        # rather than failing the whole sync. Anything else (e.g. a
+        # programming error) propagates and fails the activity.
         activity.logger.warning(
             "Could not fetch slate PDF for slate_id=%d (%s); "
             "skipping panel-width offset for this label",
