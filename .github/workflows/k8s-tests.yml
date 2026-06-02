@@ -55,8 +55,8 @@ jobs:
           kubectl create secret generic fishsense-data-worker-secrets \
             --from-literal=fishsense_api_username=ci \
             --from-literal=fishsense_api_password=ci \
-            --from-literal=file_exchange_username=ci \
-            --from-literal=file_exchange_password=ci
+            --from-literal=object_store_access_key=ci \
+            --from-literal=object_store_secret_key=ci
           kubectl create secret generic fishsense-data-worker-temporal-certs \
             --from-literal=client.pem=ci \
             --from-literal=client.key=ci \

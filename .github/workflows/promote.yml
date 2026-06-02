@@ -134,7 +134,7 @@ jobs:
               echo "::error::$kfile not found"
               exit 1
             fi
-            sed -i -E "s|^(\s*newTag:\s*)v[0-9]+\.[0-9]+\.[0-9]+\s*$|\1${NEW_VER}|" "$kfile"
+            sed -i -E "s|^([[:space:]]*newTag:[[:space:]]*)v[0-9]+\.[0-9]+\.[0-9]+[[:space:]]*$|\1${NEW_VER}|" "$kfile"
             echo "updated: $kfile"
             if git diff --quiet -- "$kfile"; then
               echo "::notice::$kfile already pinned to ${NEW_VER}; no PR"

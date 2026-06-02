@@ -73,7 +73,7 @@ async def _connect() -> Client:
 
 async def _poll(predicate, *, timeout_s: float = 20.0, interval_s: float = 0.5) -> bool:
     """Poll an async predicate until True or timeout."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout_s
     while loop.time() < deadline:
         if await predicate():
