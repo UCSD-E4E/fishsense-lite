@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.5.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.4.1...fishsense-data-processing-workflow-worker-v2.5.0) (2026-06-02)
+
+
+### Features
+
+* **data-worker:** move to NRP/Kubernetes (scale-to-zero) on the Garage base ([942a57e](https://github.com/UCSD-E4E/fishsense-lite/commit/942a57e9a68f2fdfd625c2b55fb592fdf2795f1f))
+* **data-worker:** NRP/Kubernetes scale-to-zero (stacked on Garage) ([1c76411](https://github.com/UCSD-E4E/fishsense-lite/commit/1c76411445db20c8a4322007de376d223af57c34))
+* migrate worker storage from nginx file-exchange to Garage object store ([34bb385](https://github.com/UCSD-E4E/fishsense-lite/commit/34bb385595732f77b4a01156a16e2c5515339783))
+* migrate worker storage from nginx file-exchange to Garage object store ([88e88f9](https://github.com/UCSD-E4E/fishsense-lite/commit/88e88f9df6df83768d831e3ea0e6e8d6360a2130))
+
+
+### Bug Fixes
+
+* **object-store:** address Copilot review on PR [#205](https://github.com/UCSD-E4E/fishsense-lite/issues/205) ([439958f](https://github.com/UCSD-E4E/fishsense-lite/commit/439958fa1c70f13bad6bf4043967ee80e4b15836))
+
 ## [2.4.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.4.0...fishsense-data-processing-workflow-worker-v2.4.1) (2026-05-06)
 
 

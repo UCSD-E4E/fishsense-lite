@@ -2,6 +2,23 @@
 
 <!-- version list -->
 
+## [1.36.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.35.3...fishsense-api-workflow-worker-v1.36.0) (2026-06-02)
+
+
+### Features
+
+* **data-worker:** move to NRP/Kubernetes (scale-to-zero) on the Garage base ([942a57e](https://github.com/UCSD-E4E/fishsense-lite/commit/942a57e9a68f2fdfd625c2b55fb592fdf2795f1f))
+* **data-worker:** NRP/Kubernetes scale-to-zero (stacked on Garage) ([1c76411](https://github.com/UCSD-E4E/fishsense-lite/commit/1c76411445db20c8a4322007de376d223af57c34))
+* migrate worker storage from nginx file-exchange to Garage object store ([34bb385](https://github.com/UCSD-E4E/fishsense-lite/commit/34bb385595732f77b4a01156a16e2c5515339783))
+* migrate worker storage from nginx file-exchange to Garage object store ([88e88f9](https://github.com/UCSD-E4E/fishsense-lite/commit/88e88f9df6df83768d831e3ea0e6e8d6360a2130))
+
+
+### Bug Fixes
+
+* address Copilot review on PR [#207](https://github.com/UCSD-E4E/fishsense-lite/issues/207) ([4f49cad](https://github.com/UCSD-E4E/fishsense-lite/commit/4f49cad19e2ebc43079f9df0eb0308c92c5a14c1))
+* **object-store:** address Copilot review on PR [#205](https://github.com/UCSD-E4E/fishsense-lite/issues/205) ([439958f](https://github.com/UCSD-E4E/fishsense-lite/commit/439958fa1c70f13bad6bf4043967ee80e4b15836))
+* **test:** api-worker integration tests must use the real Garage endpoint ([dbe4155](https://github.com/UCSD-E4E/fishsense-lite/commit/dbe4155db8c032b6e94f5f8623c30c6c840cd237))
+
 ## [1.35.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.35.2...fishsense-api-workflow-worker-v1.35.3) (2026-05-07)
 
 
