@@ -10,6 +10,9 @@ dependencies = [
     "fishsense-api-sdk>=1.35.0",
     "fishsense-shared",
     "httpx>=0.28.1",
+    # Scales the NRP data-processing worker Deployment up/down — the
+    # api-worker drives its replica count (scale-to-zero when idle).
+    "kubernetes>=31.0.0",
     "label-studio-sdk>=2.0.1",
     "platformdirs>=4.3.8",
     "pyaml>=25.7.0",
@@ -37,10 +40,15 @@ fishsense_api_workflow_worker = "fishsense_api_workflow_worker.worker:run"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# `integration` needs the local devcontainer stack (real Temporal,
+# Label Studio); `k8s` needs a Kubernetes cluster reachable via
+# $KUBECONFIG with deploy/k8s/data-worker/ already applied — run by the
+# k8s-tests.yml CI job (kind). The default selection skips both.
 markers = [
     "integration: requires the local devcontainer stack",
+    "k8s: requires a Kubernetes cluster ($KUBECONFIG) with the data-worker manifests applied",
 ]
-addopts = "-m 'not integration'"
+addopts = "-m 'not integration and not k8s'"
 
 [tool.semantic_release]
 version_variables = ["src/fishsense_api_workflow_worker/__init__.py:__version__"]

@@ -25,3 +25,13 @@ SDK_FAIL_FAST_RETRY_POLICY = RetryPolicy(
     maximum_attempts=2,
     non_retryable_error_types=["HTTPStatusError"],
 )
+
+# Kubernetes control-plane calls that scale the NRP data-worker
+# (`ensure_data_worker_running_activity`, `scale_down_data_worker_if_idle_activity`).
+# A transient NRP API blip should self-heal, but a real failure (bad
+# kubeconfig, RBAC denied, expired token) should surface in seconds
+# rather than burn the activity's full schedule_to_close window.
+SCALING_RETRY_POLICY = RetryPolicy(
+    initial_interval=timedelta(seconds=2),
+    maximum_attempts=3,
+)

@@ -1,0 +1,166 @@
+# fishsense-data-processing-workflow-worker — NRP/Kubernetes Deployment.
+#
+# This is the data-worker's deployment (it no longer runs via compose).
+# The api-worker (on the orchestrator) drives this Deployment's replica
+# count: parent workflows
+# scale it up to kubernetes.active_replicas before dispatching a child,
+# and ScaleDownIdleDataWorkerWorkflow scales it back to 0 when the
+# data-worker task queue is quiet. So the steady state is `replicas: 0`;
+# expect a pod to exist only ~10-15% of the hour.
+#
+# Apply via `kubectl apply -k deploy/k8s/data-worker` (kustomize sets
+# the image tag and generates the settings ConfigMap). See README.md in
+# this directory for the Secrets that must be created out-of-band first.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fishsense-data-processing-workflow-worker
+  labels:
+    app.kubernetes.io/name: fishsense-data-processing-workflow-worker
+    app.kubernetes.io/part-of: fishsense
+spec:
+  # `replicas` is intentionally omitted: the api-worker owns this
+  # Deployment's replica count (scales it 0 <-> kubernetes.active_replicas
+  # on demand), so `kubectl apply` here must not fight it. On the very
+  # first apply k8s defaults it to 1, and the hourly idle-sweeper drops
+  # it to 0 within the hour (or `kubectl scale ... --replicas=0` once,
+  # see README). A `kubectl apply` while it's scaled to N replaces the
+  # pod(s) one at a time (maxSurge: 0, below) rather than transiently
+  # doubling the count on NRP.
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fishsense-data-processing-workflow-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fishsense-data-processing-workflow-worker
+        app.kubernetes.io/part-of: fishsense
+    spec:
+      # fishsense-core ships only a cp313 x86_64 manylinux wheel; NRP
+      # also has arm64 nodes.
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      # We're a guest on a shared cluster — let NRP preempt our pods
+      # whenever it needs the capacity. No PodDisruptionBudget on
+      # purpose; an evicted activity just times out and re-runs
+      # (per-image activities are idempotent). If NRP exposes a
+      # preemptible priority class, set `priorityClassName:` here too.
+      terminationGracePeriodSeconds: 45   # >= worker.py GRACEFUL_SHUTDOWN_TIMEOUT (30s) + slack
+      # The data-worker never talks to the k8s API (only the api-worker
+      # does, from outside the cluster) — don't mount a SA token.
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: ghcr-pull
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          # Tag is overridden by kustomization.yaml (CI's promote.yml
+          # bumps it via `kustomize edit set image`).
+          image: ghcr.io/ucsd-e4e/fishsense-data-processing-workflow-worker:v2.4.1
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            # TODO: set runAsNonRoot: true once the Dockerfile adds a
+            # non-root USER and chowns /e4efs/{logs,cache,data}.
+          env:
+            # The image already sets E4EFS_DOCKER=true (→ /e4efs/config
+            # for settings); restated here for clarity.
+            - name: E4EFS_DOCKER
+              value: "true"
+            # HTTP Basic creds the SDK presents to fishsense-api
+            # (authentik basic-auth-passthrough on the API route).
+            - name: E4EFS_FISHSENSE_API__USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: fishsense-data-worker-secrets
+                  key: fishsense_api_username
+            - name: E4EFS_FISHSENSE_API__PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: fishsense-data-worker-secrets
+                  key: fishsense_api_password
+            # Garage S3 access key/secret the worker uses to read staged
+            # raw `.ORF` + slate PDFs and write processed JPEGs. S3 keys
+            # authenticate from any IP — no allowlist / forward-auth to
+            # survive, which is what lets this run on NRP with no stable
+            # egress IP.
+            - name: E4EFS_OBJECT_STORE__ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fishsense-data-worker-secrets
+                  key: object_store_access_key
+            - name: E4EFS_OBJECT_STORE__SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fishsense-data-worker-secrets
+                  key: object_store_secret_key
+          resources:
+            # Tune from `kubectl top pod` once it's running. The CPU
+            # limit must stay in lockstep with `general.max_workers` in
+            # settings.toml (the ThreadPoolExecutor size for the
+            # CPU-bound rectify activities) — currently 8. Memory
+            # headroom is for ~8 concurrent full-res rawpy decodes.
+            requests:
+              cpu: "4"
+              memory: 6Gi
+              ephemeral-storage: 2Gi
+            limits:
+              cpu: "8"
+              memory: 12Gi
+              # >= the sum of the emptyDir sizeLimits below
+              # (logs 1Gi + cache 2Gi + scratch 4Gi = 7Gi) so a volume
+              # can fill to its own cap without tripping the container's
+              # overall ephemeral-storage limit and getting evicted first.
+              ephemeral-storage: 7Gi
+          volumeMounts:
+            - name: settings
+              mountPath: /e4efs/config/settings.toml
+              subPath: settings.toml
+              readOnly: true
+            - name: temporal-certs
+              mountPath: /certs
+              readOnly: true
+            - name: logs
+              mountPath: /e4efs/logs
+            - name: cache
+              mountPath: /e4efs/cache
+            - name: scratch
+              mountPath: /e4efs/data
+      volumes:
+        - name: settings
+          configMap:
+            name: fishsense-data-worker-settings   # kustomize rewrites to the hashed name
+        - name: temporal-certs
+          # Created out-of-band — see README.md. Keys map to the paths
+          # settings.toml's [temporal] block references.
+          secret:
+            secretName: fishsense-data-worker-temporal-certs
+            items:
+              - key: client.pem
+                path: client/fishsense-data-processing-workflow-worker.pem
+              - key: client.key
+                path: client/fishsense-data-processing-workflow-worker.key
+              - key: root-ca.pem
+                path: ca/root-ca.pem
+        # The data-worker writes only ephemeral scratch — rotating logs
+        # (it also logs to stdout, so `kubectl logs` works), rawpy/opencv
+        # temp, downloaded raw bytes held briefly. No PVC by design.
+        - name: logs
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: cache
+          emptyDir:
+            sizeLimit: 2Gi
+        - name: scratch
+          emptyDir:
+            sizeLimit: 4Gi

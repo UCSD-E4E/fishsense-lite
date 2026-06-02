@@ -16,6 +16,8 @@ jobs:
             cov: fishsense_api_sdk
           - package: services/fishsense-api
             cov: fishsense_api
+          - package: services/fishsense-api-workflow-worker
+            cov: fishsense_api_workflow_worker
           - package: services/fishsense-data-processing-workflow-worker
             cov: fishsense_data_processing_workflow_worker
     name: pytest (${{ matrix.package }})

@@ -9,10 +9,12 @@
 #   ./check.sh unit         # pytest with default markers per Python package
 #                            + apps/fishsense-lite-web typecheck + vitest (CI mode).
 #   ./check.sh integration  # pytest -m integration (needs the local devcontainer
-#                            stack: postgres, temporal, nginx) PLUS the
-#                            apps/fishsense-lite-web SSR vitest integration
-#                            suite (needs `fishsense-lite-web` running on
-#                            FISHSENSE_WEB_URL, default localhost:3000).
+#                            stack: postgres, temporal, nginx) AND pytest -m k8s
+#                            (needs a Kubernetes cluster via $KUBECONFIG with
+#                            deploy/k8s/data-worker/ applied — skips cleanly
+#                            without one), PLUS the apps/fishsense-lite-web SSR
+#                            vitest integration suite (needs `fishsense-lite-web`
+#                            running on FISHSENSE_WEB_URL, default localhost:3000).
 #                            Bring up the web container first with:
 #                              docker compose -f deploy/compose.local.yml \
 #                                up -d fishsense-lite-web
@@ -24,8 +26,11 @@
 # - Uses `uv run --package <pkg> python -m pytest` not bare `pytest` because
 #   the .venv pylint/pytest entrypoints have a stale-shebang failure mode in
 #   this devcontainer (see CLAUDE.md history); python -m sidesteps it.
-# - Each package's pyproject.toml sets `addopts = "-m 'not integration'"`,
-#   so `unit` deselects integration tests automatically.
+# - Each package's pyproject.toml sets `addopts = "-m 'not integration and not k8s'"`
+#   (api-worker) / `"-m 'not integration'"` (others), so `unit` deselects
+#   integration + k8s tests automatically. The `-m k8s` run is part of
+#   `integration` because the kind cluster it needs lives in CI (k8s-tests.yml);
+#   locally it just skips.
 # - Node steps require Node 22+ on PATH (the devcontainer ships Node 24). If
 #   `npm` isn't on PATH the apps/fishsense-lite-web steps are skipped with a notice — they
 #   don't fail the run, so a Python-only environment can still ./check.sh.
@@ -164,6 +169,12 @@ run_unit() {
 run_integration() {
     local rc=0
     run_pytests "integration" || rc=$?
+    # `-m k8s` tests need a cluster ($KUBECONFIG, deploy/k8s/data-worker
+    # applied); they skip cleanly without one. The kind cluster that
+    # actually exercises them lives in CI (k8s-tests.yml), but running
+    # them here means a local `./check.sh integration` against a real
+    # cluster also covers them, and a bare run is a harmless no-op.
+    run_pytests "k8s" || rc=$?
     run_npm_integration || rc=$?
     return "$rc"
 }

@@ -1,56 +1,56 @@
 name: Deploy
 
-# Runs `docker compose pull && up -d` on the appropriate prod host
-# after a promote.yml-generated PR is merged. Intentional gate: a human
-# reviews the version-pin diff and merges, then this fires.
+# Rolls out a new image after a promote.yml-generated PR is merged.
+# Intentional gate: a human reviews the version-pin diff and merges,
+# then this fires. Two routes, picked by branch name:
 #
-# Two routes, picked by branch name:
-#   - auto-deploy/fishsense-data-processing-workflow-worker-* ->
-#     `fishsense-data-worker` runner, $DATA_WORKER_DEPLOY_DIR,
-#     `compose.data-worker.yml`.
-#   - any other auto-deploy/*                                 ->
-#     `fishsense-prod` runner, $DEPLOY_DIR, `compose.yml`
-#     (which include:s the four orchestrator-stack siblings).
+#   - auto-deploy/fishsense-data-processing-workflow-worker-*  ->
+#     `deploy-data-worker`: a GitHub-hosted runner runs
+#     `kubectl apply -k deploy/k8s/data-worker` against NRP using the
+#     `NRP_KUBECONFIG` repo secret. The data-worker is a stateless
+#     Kubernetes Deployment — the kustomization is self-contained, so
+#     no persistent ops-managed dir is needed (unlike the orchestrator
+#     route below). See deploy/k8s/data-worker/README.md.
 #
-# CRITICAL: each job runs against a **persistent ops-managed deploy
-# directory** on its host (paths in repo variables `DEPLOY_DIR` /
-# `DATA_WORKER_DEPLOY_DIR`), NOT the runner's default `_work` checkout.
-# `deploy/compose*.yml` uses relative bind mounts — `./pg_volumes`,
-# `./worker_volumes`, `./.secrets/...`, `./temporal_volumes/certs` —
-# for postgres data, worker config, secrets, certs. None of those
-# siblings are tracked in git. The persistent dir holds them, managed
-# manually by ops; running compose against the runner's fresh `_work`
-# checkout would silently start postgres with an empty data dir or the
-# data-worker without its Temporal mTLS certs.
+#   - any other auto-deploy/*  -> `deploy-orchestrator`: the
+#     `fishsense-prod` self-hosted runner runs `docker compose pull &&
+#     up -d` against `compose.yml` (which include:s the four
+#     orchestrator-stack siblings).
 #
-# Prereqs (one-time, per host):
-#   1. A self-hosted runner registered with the matching label
-#      (`fishsense-prod` or `fishsense-data-worker`), running as a
-#      user that can write to the deploy dir and use the docker socket.
-#   2. Repo variable set (Settings -> Secrets and variables ->
-#      Actions -> Variables): `DEPLOY_DIR` for the orchestrator host,
-#      `DATA_WORKER_DEPLOY_DIR` for the data-worker host. Each is the
-#      absolute path of that host's deploy checkout.
-#   3. The deploy dir is a git checkout of this repo with auth
-#      configured (SSH key or git credentials helper) so the runner
-#      user can `git pull origin main` non-interactively.
-#   4. The host's untracked sibling directories under `deploy/` are
-#      already populated and owned by ops. They survive `git pull`
-#      because they're untracked. See deploy/README.md for the per-host
-#      file list.
+# CRITICAL (orchestrator route only): the `deploy-orchestrator` job
+# runs against a **persistent ops-managed deploy directory** on the
+# host (path in repo variable `DEPLOY_DIR`), NOT the runner's default
+# `_work` checkout. `deploy/compose*.yml` uses relative bind mounts —
+# `./pg_volumes`, `./worker_volumes`, `./.secrets/...`,
+# `./temporal_volumes/certs` — for postgres data, worker config,
+# secrets, certs, none tracked in git. The persistent dir holds them,
+# managed manually by ops; compose against a fresh `_work` checkout
+# would silently start postgres with an empty data dir.
 #
-# Until each runner exists, jobs sit in queue (visible in Actions UI).
+# Prereqs:
+#   - orchestrator: a self-hosted runner labelled `fishsense-prod`;
+#     repo variable `DEPLOY_DIR` = the absolute path of a persistent
+#     git checkout of this repo on that host (auth configured for a
+#     non-interactive `git pull origin main`); the untracked sibling
+#     dirs under `deploy/` populated by ops (see deploy/README.md).
+#   - data-worker: repo secret `NRP_KUBECONFIG` = a token kubeconfig
+#     for the NRP namespace (the same one the api-worker uses to scale
+#     the Deployment). NRP tokens expire — rotate it. The namespace,
+#     Secrets, etc. are bootstrapped per deploy/k8s/data-worker/README.md.
+#
+# Until the `fishsense-prod` runner / `NRP_KUBECONFIG` exist, the
+# matching job fails (or sits in queue) — visible in the Actions UI.
 
 on:
   pull_request:
     types: [closed]
     branches: [main]
-  # Manual re-pull (re-pull + recreate without bumping a pin). Useful
-  # when a service crash-loops and you just want a clean restart.
+  # Manual re-deploy without bumping a pin — handy after a crash-loop
+  # or a kubeconfig rotation.
   workflow_dispatch:
     inputs:
       target:
-        description: "Which host to redeploy"
+        description: "Which target to redeploy"
         required: true
         type: choice
         default: orchestrator
@@ -120,50 +120,49 @@ jobs:
     # Fires on:
     #   - merge of an auto-deploy/fishsense-data-processing-workflow-worker-* PR
     #   - manual workflow_dispatch with target=data-worker
+    #
+    # The data-worker is a stateless Kubernetes Deployment on NRP, so
+    # this just runs `kubectl apply -k` against the repo checkout — no
+    # persistent ops-managed dir, no docker. The Deployment omits
+    # `replicas` (the api-worker owns it), so applying is a no-op
+    # rollout when it's scaled to 0 and a single-pod replacement when
+    # scaled to N. See deploy/k8s/data-worker/README.md.
     if: |
       (github.event_name == 'workflow_dispatch' && inputs.target == 'data-worker') ||
       (github.event.pull_request.merged == true &&
        startsWith(github.head_ref, 'auto-deploy/fishsense-data-processing-workflow-worker-'))
-    runs-on: [self-hosted, fishsense-data-worker]
+    runs-on: ubuntu-latest
+    env:
+      # NRP issues a token kubeconfig per namespace; this is the same
+      # one the api-worker uses to scale the Deployment. Empty when the
+      # repo secret isn't set yet (validated below).
+      NRP_KUBECONFIG: ${{ secrets.NRP_KUBECONFIG }}
     steps:
-      - name: Validate DATA_WORKER_DEPLOY_DIR is configured + bootstrapped
-        env:
-          DATA_WORKER_DEPLOY_DIR: ${{ vars.DATA_WORKER_DEPLOY_DIR }}
+      - name: Validate NRP_KUBECONFIG is configured
         run: |
-          if [ -z "$DATA_WORKER_DEPLOY_DIR" ]; then
-            echo "::error::repo variable DATA_WORKER_DEPLOY_DIR is not set."
-            echo "Set it under Settings -> Secrets and variables -> Actions -> Variables"
-            echo "to the absolute path of the persistent deploy checkout on this host"
-            echo "(e.g. /srv/fishsense-data-worker). See .github/workflows/deploy.yml header."
-            exit 1
-          fi
-          if [ ! -d "$DATA_WORKER_DEPLOY_DIR/.git" ]; then
-            echo "::error::$DATA_WORKER_DEPLOY_DIR is not a git checkout. Bootstrap the host first:"
-            echo "  git clone https://github.com/${{ github.repository }} $DATA_WORKER_DEPLOY_DIR"
-            exit 1
-          fi
-          if [ ! -f "$DATA_WORKER_DEPLOY_DIR/deploy/compose.data-worker.yml" ]; then
-            echo "::error::$DATA_WORKER_DEPLOY_DIR/deploy/compose.data-worker.yml not found. DATA_WORKER_DEPLOY_DIR may be wrong."
+          if [ -z "$NRP_KUBECONFIG" ]; then
+            echo "::error::repo secret NRP_KUBECONFIG is not set."
+            echo "Set it under Settings -> Secrets and variables -> Actions -> Secrets"
+            echo "to a token kubeconfig for the NRP namespace. See"
+            echo "deploy/k8s/data-worker/README.md for the bootstrap steps."
             exit 1
           fi
 
-      - name: Sync deploy checkout to latest main
-        working-directory: ${{ vars.DATA_WORKER_DEPLOY_DIR }}
+      - uses: actions/checkout@v4
+
+      - name: Write kubeconfig
         run: |
-          git fetch --quiet origin main
-          git checkout --quiet main
-          git pull --ff-only origin main
+          mkdir -p "$RUNNER_TEMP/.kube"
+          umask 077
+          printf '%s' "$NRP_KUBECONFIG" > "$RUNNER_TEMP/.kube/config"
+          echo "KUBECONFIG=$RUNNER_TEMP/.kube/config" >> "$GITHUB_ENV"
 
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Apply data-worker manifests (kubectl is preinstalled on ubuntu-latest)
+        run: |
+          kubectl version --client
+          kubectl apply -k deploy/k8s/data-worker
+          kubectl rollout status deployment/fishsense-data-processing-workflow-worker --timeout=5m
 
-      - name: Pull updated image
-        working-directory: ${{ vars.DATA_WORKER_DEPLOY_DIR }}/deploy
-        run: docker compose -f compose.data-worker.yml pull
-
-      - name: Recreate service with changed image
-        working-directory: ${{ vars.DATA_WORKER_DEPLOY_DIR }}/deploy
-        run: docker compose -f compose.data-worker.yml up -d --remove-orphans
+      - name: Clean up kubeconfig
+        if: always()
+        run: rm -f "$RUNNER_TEMP/.kube/config"
