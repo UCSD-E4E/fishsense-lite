@@ -1,0 +1,42 @@
+# fishsense-backup-worker — Incus interior settings.
+#
+# Non-secret config only. Postgres + NAS credentials come from the vault-agent-
+# rendered .secrets.toml alongside this file (secret/tenants/fishsense/*).
+#
+# DIFF vs the old orchestrator settings.toml:
+#   * [temporal] repointed at the shared krg-prod cluster (see api-worker).
+#   * [backup].databases drops `temporal_db` — Temporal is external now, so its
+#     DB no longer lives in our in-slot Postgres. Only `fishsense` + `superset`.
+
+[general]
+max_workers = 8
+
+# krg-prod shared Temporal (HANDOFF §6, ADR 0023). Same client cert the
+# vault-agent renders for the api-worker.
+[temporal]
+host = "krg-prod.ucsd.edu"
+port = "7233"
+tls = true
+client_cert = "/run/tenant/temporal/tls.crt"
+client_private_key = "/run/tenant/temporal/tls.key"
+domain = "workflows.krg.ucsd.edu"           # TLS server-name override (SNI)
+server_root_ca_cert = "/run/tenant/temporal/ca.crt"
+
+# In-slot Postgres (compose service `postgres`, interior network).
+[postgres]
+host = "postgres"
+port = 5432
+username = "backup"
+
+[e4e_nas]
+# Synology DSM URL — hostname AND port. DB dumps are written here (distinct from
+# the retired object-store share; this is the backup path, not process-work).
+url = "https://e4e-nas.ucsd.edu:6021"
+
+[backup]
+databases = ["fishsense", "superset"]       # temporal_db dropped — now on krg-prod
+retention_count = 14
+nas_root_path = "/fishsense_process_work/database_backups"
+schedule_id = "fishsense-daily-db-backup"
+schedule_cron = "0 3 * * *"
+task_queue = "fishsense_backup_queue"

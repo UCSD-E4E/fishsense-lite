@@ -1,0 +1,11 @@
+# fishsense-api — Incus interior settings (non-secret).
+#
+# DIFF vs the old orchestrator settings.toml: [postgres].host points at the
+# in-slot `postgres` compose service instead of the external fabricant-prod DB.
+# The password is injected as E4EFS_POSTGRES__PASSWORD from the vault-agent
+# render (app.env — admin role); see secrets.nix.
+[postgres]
+host = "postgres"
+port = 5432
+username = "postgres"
+database = "fishsense"
