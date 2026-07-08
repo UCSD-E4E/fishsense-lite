@@ -2,8 +2,9 @@
 # It only functions from that path — GitHub Actions only reads workflows under
 # .github/workflows/. Kept here during staging alongside the rest of the interior.
 #
-# What it does: on a merged `auto-deploy/*` PR, run on the platform-provided
-# self-hosted runner and trigger the selfupdate unit, which does
+# What it does: on a **push to an `auto-deploy/*` branch** (the `on:` trigger
+# below — e.g. when a release/promote auto-deploy PR is merged into it), run on
+# the platform-provided self-hosted runner and trigger the selfupdate unit, which does
 #   nixos-rebuild switch --flake github:UCSD-E4E/fishsense-lite#fishsense
 # converging the instance to the committed flake + compose interior (HANDOFF §3B).
 #

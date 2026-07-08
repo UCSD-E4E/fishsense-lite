@@ -42,6 +42,9 @@
         ram = "12GiB";
       };
       image = "krg-golden"; # slot boots from the hardened template (already applied)
+      # ROOT-relative path: correct once this flake lives at the repo root (the
+      # activation move — see STAGING NOTE header). NOT evaluated from the staging
+      # location; the runner only builds via `#fishsense` after activation.
       compose = ./deploy/incus/compose.yml; # YOUR interior — repo-owns-deploy
       repo = "UCSD-E4E/fishsense-lite"; # LOAD-BEARING: scopes the auto-provisioned runner (ADR 0022)
       # In-VM vault-agent renders a `fishsense-worker` Temporal client cert to
