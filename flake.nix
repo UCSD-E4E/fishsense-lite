@@ -1,10 +1,9 @@
 # fishsense-lite deploy target — INTERIOR half of the mkTenant contract (ADR 0020).
 #
-# STAGING NOTE: at cutover this file moves to the REPO ROOT as `flake.nix` (that's
-# where `fishsense-selfupdate` fetches it: `nixos-rebuild switch --flake
-# github:UCSD-E4E/fishsense-lite#fishsense`). It's kept here under deploy/incus/
-# during staging so it doesn't collide with the old orchestrator deploy. The
-# `compose = ` path below is written ROOT-RELATIVE for that final location.
+# This is the REPO-ROOT flake that `fishsense-selfupdate` builds on the Incus slot:
+# `nixos-rebuild switch --flake github:UCSD-E4E/fishsense-lite#fishsense`. The rest
+# of the interior (compose, config, secrets.nix, hardware-configuration.nix) lives
+# under `deploy/incus/`; this flake references it by root-relative paths.
 {
   description = "fishsense-lite — KRG Incus platform tenant #1";
 
@@ -42,9 +41,6 @@
         ram = "12GiB";
       };
       image = "krg-golden"; # slot boots from the hardened template (already applied)
-      # ROOT-relative path: correct once this flake lives at the repo root (the
-      # activation move — see STAGING NOTE header). NOT evaluated from the staging
-      # location; the runner only builds via `#fishsense` after activation.
       compose = ./deploy/incus/compose.yml; # YOUR interior — repo-owns-deploy
       repo = "UCSD-E4E/fishsense-lite"; # LOAD-BEARING: scopes the auto-provisioned runner (ADR 0022)
       # In-VM vault-agent renders a `fishsense-worker` Temporal client cert to
@@ -61,8 +57,8 @@
       modules = [
         krg-infra.nixosModules.tenant
         {krg.tenant = tenant;}
-        ./hardware-configuration.nix # captured on-box 2026-07-07; ⚠ instance-specific disk UUIDs (re-capture if the slot is reprovisioned)
-        ./secrets.nix # extends krg.vaultAgent.renders → /run/tenant/secrets/app.env (HANDOFF §9)
+        ./deploy/incus/hardware-configuration.nix # captured on-box 2026-07-07; ⚠ instance-specific disk UUIDs (re-capture if the slot is reprovisioned)
+        ./deploy/incus/secrets.nix # extends krg.vaultAgent.renders → /run/tenant/secrets/app.env (HANDOFF §9)
       ];
     };
 
