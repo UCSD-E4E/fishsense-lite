@@ -39,7 +39,16 @@ logger = logging.getLogger()
 # endpoints live at the Authentik root (https://<host>/application/o/...).
 AUTHENTIK_ISSUER = os.environ.get("AUTHENTIK_ISSUER", "").rstrip("/") + "/"
 _ak = urlparse(AUTHENTIK_ISSUER)
-_AUTHENTIK_ROOT = f"{_ak.scheme}://{_ak.netloc}" if _ak.netloc else ""
+# Fail fast + loud: a missing/malformed issuer would otherwise yield invalid
+# OAuth endpoints (e.g. "/jwks/") that only break at sign-in time, far from here.
+if _ak.scheme not in ("http", "https") or not _ak.netloc:
+    raise RuntimeError(
+        "AUTHENTIK_ISSUER must be the full OIDC issuer URL, e.g. "
+        "https://auth.krg.ucsd.edu/application/o/fishsense-analytics/ — got "
+        f"{os.environ.get('AUTHENTIK_ISSUER')!r}. It is rendered into app.env from "
+        "secret/tenants/fishsense/oidc/analytics.issuer_url (secrets.nix)."
+    )
+_AUTHENTIK_ROOT = f"{_ak.scheme}://{_ak.netloc}"
 
 DATABASE_DIALECT = os.getenv("DATABASE_DIALECT")
 DATABASE_USER = os.getenv("DATABASE_USER")

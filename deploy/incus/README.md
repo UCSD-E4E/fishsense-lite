@@ -69,14 +69,15 @@ its OpenBao grant are merged.
 delivery is a follow-up needing an NRP kubeconfig). Namespace isolation is by
 convention, not enforced (krg-infra #434).
 
-**The `backup_worker` settings.toml needs the same `[temporal]` block** — mirror
-the api-worker's.
+Both worker `settings.toml` files point `[temporal]` at krg-prod (api-worker and
+backup-worker alike).
 
 ## Secrets (HANDOFF §9 — vault-agent renders, `secret/tenants/fishsense/*`)
 
 Nothing secret is committed. `nixosModules.tenant` renders only the **certs**;
-[`secrets.nix`](secrets.nix) extends `krg.vaultAgent.renders` to produce one
-consolidated **`/run/tenant/secrets/app.env`**, `env_file`-mounted into the
+`secrets.nix` (in the companion pipeline PR — `deploy/incus/secrets.nix`, moved to
+repo-root `secrets.nix` at activation) extends `krg.vaultAgent.renders` to produce
+one consolidated **`/run/tenant/secrets/app.env`**, `env_file`-mounted into the
 services that need it. Vault-agent is **fail-closed** — seed every referenced
 path before the first converge or the stack won't start.
 

@@ -88,6 +88,13 @@ http:
     fishsense-auth:
       forwardAuth:
         address: "http://authentik-outpost:9000/outpost.goauthentik.io/auth/traefik"
+        # Required (HANDOFF §7): the outpost selects the fishsense_orchestrator
+        # provider by X-Forwarded-Host and builds sign-in redirects from it, so it
+        # must see the real public Host (api.fishsense.e4e.ucsd.edu), not this
+        # Traefik's internal view. Safe here because the ONLY ingress to this
+        # Traefik is the e4e edge (public → edge → krg-nat forward → :443), which
+        # sets these headers — no untrusted client path. Setting false re-introduces
+        # the wrong-Host redirect/cookie breakage Option A exists to avoid.
         trustForwardHeader: true
         authResponseHeaders:
           - X-authentik-username
