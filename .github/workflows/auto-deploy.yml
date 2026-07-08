@@ -1,0 +1,36 @@
+# Converge the fishsense Incus tenant: run `fishsense-selfupdate` on the tenant's
+# self-hosted runner, which does
+#   nixos-rebuild switch --flake github:UCSD-E4E/fishsense-lite#fishsense
+# bringing the slot to the committed root flake.nix + deploy/incus/ interior
+# (HANDOFF §3B).
+#
+# TRIGGER: `workflow_dispatch` (manual "Run workflow"), NOT the handoff's
+# `on: push: auto-deploy/**`. This is a monorepo: `deploy.yml` already fires on
+# `auto-deploy/*` and `promote.yml` *creates* `auto-deploy/<pkg>-<version>`
+# branches on every release — so an `auto-deploy/**` push trigger here would
+# converge the Incus instance on unrelated releases (and collide with the
+# orchestrator deploy). Manual dispatch is the clean "intentional deploy" gate;
+# a scoped auto-trigger (e.g. `push` on a dedicated non-`auto-deploy/*` branch,
+# or a `paths:`-filtered main trigger) can be added later if wanted.
+#
+# The runner is auto-provisioned + auto-registered by the platform because the
+# flake sets `repo = "UCSD-E4E/fishsense-lite"` (ADR 0022) — no runner token to
+# manage. It is opt-in by the `[self-hosted, fishsense]` label (HANDOFF §8): jobs
+# that must stay GitHub-hosted (e.g. the NRP data-worker deploy) use
+# `runs-on: ubuntu-latest` and are NEVER given a bare `runs-on: self-hosted`.
+name: auto-deploy
+
+# Zero GITHUB_TOKEN scopes — this job never touches the GitHub API, checks out
+# code, or reads repo contents via the token; it only runs `systemctl start` on
+# the tenant's self-hosted runner. Least privilege (CodeQL actions/missing-workflow-permissions).
+permissions: {}
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, fishsense] # the label the platform sets on our runner
+    steps:
+      - name: Converge the instance
+        run: systemctl start fishsense-selfupdate # polkit-authorized on the slot

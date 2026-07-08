@@ -9,13 +9,11 @@ the repo-root [`flake.nix`](../../flake.nix) which imports this directory.
 Upstream hand-off:
 <https://github.com/KastnerRG/krg-infra/tree/main/docs/handoff/fishsense-lite>
 
-> **Status: activated flake, pre-bootstrap.** The `flake.nix` is at the repo root
-> (activation done); `compose.yml` + config + `secrets.nix` live here and are
-> referenced by root-relative paths. Disk/boot come from the golden image's
-> `incus-virtual-machine.nix` (not a captured hardware-config). `auto-deploy.yml` is **not**
-> wired into `.github/workflows/` yet — its trigger needs to not collide with the
-> existing `auto-deploy/*` deploy pipeline (see the status section). First bring-up
-> is the admin's one-time `nixos-rebuild switch`, which doesn't need it.
+> **Status: activated, pre-bootstrap.** The `flake.nix` is at the repo root;
+> `compose.yml` + config + `secrets.nix` + `hardware-configuration.nix` live here and
+> are referenced by root-relative paths. `.github/workflows/auto-deploy.yml` is wired
+> with a manual `workflow_dispatch` trigger (see the status section for why not
+> `auto-deploy/**`). First bring-up is the admin's one-time `nixos-rebuild switch`.
 
 ## What runs here
 
@@ -138,11 +136,11 @@ into the `pgdata` volume (roles + passwords come from the dump); seed OpenBao to
   the flake also forces OEC off (ephemeral VM tier). *Both belong in `nixosModules.tenant`
   for isVM tenants — flagged upstream; the handoff/template flakes omit them.*
 - ✅ `secrets.nix` — §9 app-secret renders (`app.env` + `backup-postgres.env` + soft `token.env`).
-- ⏸️ `auto-deploy.yml` — **not yet wired into `.github/workflows/`.** The handoff's
-  `on: push: auto-deploy/**` collides with this monorepo's existing deploy pipeline
-  (`deploy.yml` fires on `auto-deploy/*`; `promote.yml` *creates* those branches), so
-  it would converge the incus instance on unrelated releases. Needs a scoped trigger
-  (or `workflow_dispatch`) — decision pending. Not needed for first bring-up (admin
+- ✅ `.github/workflows/auto-deploy.yml` — wired with a **`workflow_dispatch`** (manual)
+  trigger. The handoff's `on: push: auto-deploy/**` would collide with this monorepo's
+  existing deploy pipeline (`deploy.yml` fires on `auto-deploy/*`; `promote.yml` *creates*
+  those branches) and converge the incus instance on unrelated releases — so it's manual
+  for now; a scoped auto-trigger can be added later. First bring-up doesn't use it (admin
   bootstraps manually).
 - ✅ **Option A co-located outpost** (`authentik-outpost`, image `2026.5.3` — matches
   krg-prod's Authentik server per krg-infra `compose.authentik.yml`) — HANDOFF §7.
