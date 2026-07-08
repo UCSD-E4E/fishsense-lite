@@ -72,7 +72,7 @@ services:
     # host so SSR bypasses our traefik + the API forwardAuth gate.
     environment:
       FISHSENSE_API_URL: http://fishsense-api:8000
-      LABEL_STUDIO_URL: https://labeler.e4e.ucsd.edu
+      LABEL_STUDIO_URL: https://app.heartex.com   # hosted Label Studio (labeler.e4e.ucsd.edu retired)
       AUTH_URL: https://fishsense.e4e.ucsd.edu
     env_file:
       - /run/tenant/secrets/app.env
