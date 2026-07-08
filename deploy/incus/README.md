@@ -21,7 +21,7 @@ Upstream hand-off:
 |---|---|---|
 | `web` (fishsense-lite-web) | `fishsense.e4e.ucsd.edu` | in-app OIDC (`fishsense_oauth`) |
 | `fishsense-api` | `api.fishsense.e4e.ucsd.edu` | forwardAuth → co-located outpost |
-| `superset` (+init/worker/beat + `valkey`) | `analytics.fishsense.e4e.ucsd.edu` | in-app OIDC (`fishsense_analytics`) |
+| `superset` (+init/worker/beat + `valkey`) — **off by default** (`superset` compose profile) | `analytics.fishsense.e4e.ucsd.edu` | in-app OIDC (`fishsense_analytics`) |
 | `authentik-outpost` (co-located outpost) | `/outpost.goauthentik.io/*` on api | gates the API route |
 | `fishsense-api-workflow-worker` | — | krg-prod Temporal (mTLS) |
 | `fishsense-backup-worker` | — | krg-prod Temporal (mTLS) |
