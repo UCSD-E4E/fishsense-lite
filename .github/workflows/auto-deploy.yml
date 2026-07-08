@@ -20,6 +20,11 @@
 # `runs-on: ubuntu-latest` and are NEVER given a bare `runs-on: self-hosted`.
 name: auto-deploy
 
+# Zero GITHUB_TOKEN scopes — this job never touches the GitHub API, checks out
+# code, or reads repo contents via the token; it only runs `systemctl start` on
+# the tenant's self-hosted runner. Least privilege (CodeQL actions/missing-workflow-permissions).
+permissions: {}
+
 on:
   workflow_dispatch: {}
 
