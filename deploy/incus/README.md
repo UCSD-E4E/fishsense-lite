@@ -140,7 +140,8 @@ into the `pgdata` volume (roles + passwords come from the dump); seed OpenBao to
   it would converge the incus instance on unrelated releases. Needs a scoped trigger
   (or `workflow_dispatch`) — decision pending. Not needed for first bring-up (admin
   bootstraps manually).
-- ✅ **Option A co-located outpost** (`authentik-outpost`, image `2026.2`) — matches HANDOFF §7.
+- ✅ **Option A co-located outpost** (`authentik-outpost`, image `2026.5.3` — matches
+  krg-prod's Authentik server per krg-infra `compose.authentik.yml`) — HANDOFF §7.
   Platform IaC **landed** (#440): dedicated `fishsense_proxy` outpost, token →
   `oidc/proxy-outpost-token`, soft-rendered (`errorOnMissingKey=false`).
 - ✅ API renamed `orchestrator.` → `api.fishsense.e4e.ucsd.edu`; provider `external_host`
@@ -154,8 +155,8 @@ into the `pgdata` volume (roles + passwords come from the dump); seed OpenBao to
    switch returns non-zero but is recoverable: seed, re-run the switch). Seed **all**
    the `WE seed` KV paths above before the admin's first `nixos-rebuild switch`.
    Do **not** seed `oidc/*` (platform-written; the outpost token renders soft anyway).
-2. **Pin the outpost image** to krg-prod's Authentik server version (currently `2026.2`),
-   and **validate the sign-in round-trip** once the API route is up.
+2. **Validate the sign-in round-trip** once the API route is up (the outpost image is
+   pinned to krg-prod's Authentik `2026.5.3`; bump both together on Authentik upgrades).
 3. **File CNAMEs** `api.` + `analytics.` → e4e-prod, confirm they resolve, then let
    #437's SAN re-issue run (staging ACME first, confirm, then off — like the apex).
 4. **Apply the quota/disk raise + restart** the instance (6/12 + 50 GiB now merged, #436/#439).

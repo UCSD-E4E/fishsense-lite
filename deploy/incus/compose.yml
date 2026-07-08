@@ -51,7 +51,7 @@ services:
   # `fishsense_proxy` outpost whose API token is written to
   # secret/tenants/fishsense/oidc/proxy-outpost-token.
   authentik-outpost:
-    image: ghcr.io/goauthentik/proxy:2026.2   # keep in step with krg-prod's Authentik server version
+    image: ghcr.io/goauthentik/proxy:2026.5.3   # matches krg-prod's Authentik server (krg-infra compose.authentik.yml); bump together
     restart: unless-stopped
     environment:
       AUTHENTIK_HOST: https://auth.krg.ucsd.edu
