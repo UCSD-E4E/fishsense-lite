@@ -10,8 +10,9 @@ Upstream hand-off:
 <https://github.com/KastnerRG/krg-infra/tree/main/docs/handoff/fishsense-lite>
 
 > **Status: activated flake, pre-bootstrap.** The `flake.nix` is at the repo root
-> (activation done); `compose.yml` + config + `secrets.nix` + `hardware-configuration.nix`
-> live here and are referenced by root-relative paths. `auto-deploy.yml` is **not**
+> (activation done); `compose.yml` + config + `secrets.nix` live here and are
+> referenced by root-relative paths. Disk/boot come from the golden image's
+> `incus-virtual-machine.nix` (not a captured hardware-config). `auto-deploy.yml` is **not**
 > wired into `.github/workflows/` yet — its trigger needs to not collide with the
 > existing `auto-deploy/*` deploy pipeline (see the status section). First bring-up
 > is the admin's one-time `nixos-rebuild switch`, which doesn't need it.
@@ -131,8 +132,11 @@ into the `pgdata` volume (roles + passwords come from the dump); seed OpenBao to
 **Resolved (baked into these files):**
 - ✅ `flake.nix` — **at the repo root** (activation done), pinned rev `2554daa`
   (incl. #435–#440, #443), `temporal` opt-in, quota 6/12; imports this dir by root-relative paths.
-- ✅ `hardware-configuration.nix` — captured on-box, imported by the flake.
-  (⚠️ instance-specific disk UUIDs; durable fix = label-keyed golden profile, ADR 0022 §4.)
+- ✅ **Disk/boot via `incus-virtual-machine.nix`** (the same module the krg-golden image
+  builds from) — systemd-boot + ESP/root fileSystems **by label** + `incus-agent` (keeps
+  `incus exec` working post-switch). Replaces the fragile captured-UUID hardware-config;
+  the flake also forces OEC off (ephemeral VM tier). *Both belong in `nixosModules.tenant`
+  for isVM tenants — flagged upstream; the handoff/template flakes omit them.*
 - ✅ `secrets.nix` — §9 app-secret renders (`app.env` + `backup-postgres.env` + soft `token.env`).
 - ⏸️ `auto-deploy.yml` — **not yet wired into `.github/workflows/`.** The handoff's
   `on: push: auto-deploy/**` collides with this monorepo's existing deploy pipeline
