@@ -130,8 +130,11 @@ into the `pgdata` volume (roles + passwords come from the dump); seed OpenBao to
 **Resolved (baked into these files):**
 - ✅ `flake.nix` — **at the repo root** (activation done), pinned rev `2554daa`
   (incl. #435–#440, #443), `temporal` opt-in, quota 6/12; imports this dir by root-relative paths.
-- ✅ `hardware-configuration.nix` — captured on-box, imported by the flake.
-  (⚠️ instance-specific disk UUIDs; durable fix = label-keyed golden profile, ADR 0022 §4.)
+- ✅ **Disk/boot via `incus-virtual-machine.nix`** (the same module the krg-golden image
+  builds from) — systemd-boot + ESP/root fileSystems **by label** + `incus-agent` (keeps
+  `incus exec` working post-switch). Replaces the fragile captured-UUID hardware-config;
+  the flake also forces OEC off (ephemeral VM tier). *Both belong in `nixosModules.tenant`
+  for isVM tenants — flagged upstream; the handoff/template flakes omit them.*
 - ✅ `secrets.nix` — §9 app-secret renders (`app.env` + `backup-postgres.env` + soft `token.env`).
 - ✅ `.github/workflows/auto-deploy.yml` — wired with a **`workflow_dispatch`** (manual)
   trigger. The handoff's `on: push: auto-deploy/**` would collide with this monorepo's
@@ -139,7 +142,8 @@ into the `pgdata` volume (roles + passwords come from the dump); seed OpenBao to
   those branches) and converge the incus instance on unrelated releases — so it's manual
   for now; a scoped auto-trigger can be added later. First bring-up doesn't use it (admin
   bootstraps manually).
-- ✅ **Option A co-located outpost** (`authentik-outpost`, image `2026.2`) — matches HANDOFF §7.
+- ✅ **Option A co-located outpost** (`authentik-outpost`, image `2026.5.3` — matches
+  krg-prod's Authentik server per krg-infra `compose.authentik.yml`) — HANDOFF §7.
   Platform IaC **landed** (#440): dedicated `fishsense_proxy` outpost, token →
   `oidc/proxy-outpost-token`, soft-rendered (`errorOnMissingKey=false`).
 - ✅ API renamed `orchestrator.` → `api.fishsense.e4e.ucsd.edu`; provider `external_host`
@@ -153,8 +157,8 @@ into the `pgdata` volume (roles + passwords come from the dump); seed OpenBao to
    switch returns non-zero but is recoverable: seed, re-run the switch). Seed **all**
    the `WE seed` KV paths above before the admin's first `nixos-rebuild switch`.
    Do **not** seed `oidc/*` (platform-written; the outpost token renders soft anyway).
-2. **Pin the outpost image** to krg-prod's Authentik server version (currently `2026.2`),
-   and **validate the sign-in round-trip** once the API route is up.
+2. **Validate the sign-in round-trip** once the API route is up (the outpost image is
+   pinned to krg-prod's Authentik `2026.5.3`; bump both together on Authentik upgrades).
 3. **File CNAMEs** `api.` + `analytics.` → e4e-prod, confirm they resolve, then let
    #437's SAN re-issue run (staging ACME first, confirm, then off — like the apex).
 4. **Apply the quota/disk raise + restart** the instance (6/12 + 50 GiB now merged, #436/#439).
