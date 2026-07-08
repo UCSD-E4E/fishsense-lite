@@ -1,0 +1,17 @@
+# GitGuardian / ggshield configuration.
+# https://docs.gitguardian.com/ggshield-docs/reference/configuration
+version: 2
+
+secret:
+  ignored-paths:
+    # False positive: "Generic High Entropy Secret" (GitGuardian incident
+    # 34643179) on deploy/incus/traefik-dynamic.yml. That file is pure Traefik
+    # routing config — its only credential-adjacent values are cert *file paths*
+    # (/etc/traefik/tls/fishsense.vm.{crt,key}, rendered at runtime by the
+    # in-instance vault-agent, never committed) plus public hostnames, internal
+    # service URLs, and Authentik response-header *names* (X-authentik-jwt, ...).
+    # No secret material lives here by design — the Incus interior keeps every
+    # secret in OpenBao and delivers it via vault-agent renders (deploy/incus/
+    # secrets.nix + env_file mounts), so this path can never legitimately hold
+    # one. Scoped to the single file so real secrets elsewhere are still caught.
+    - deploy/incus/traefik-dynamic.yml

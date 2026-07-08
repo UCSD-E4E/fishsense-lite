@@ -1,0 +1,105 @@
+# Traefik file-provider dynamic config for the fishsense-lite interior.
+#
+# Loaded by the inner traefik (compose.yml `--providers.file.filename`). Three
+# concerns: (1) serve the vault-agent `fishsense.vm` cert on :443 for every
+# route — the edge re-encrypts to us and verifies serverName=fishsense.vm
+# regardless of the public Host; (2) route Host → container; (3) reproduce the
+# old `authentik@docker` gate on the orchestrator router only, as a forwardAuth
+# middleware to the krg-prod Authentik proxy outpost (HANDOFF §7).
+
+tls:
+  # Single cert served for all routers. `fishsense.vm.{crt,key}` is rendered by
+  # the in-instance vault-agent to /run/tenant/tls (mounted read-only). It is
+  # the default cert, so the edge's re-encrypt handshake (SNI=fishsense.vm)
+  # always matches.
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /etc/traefik/tls/fishsense.vm.crt
+        keyFile: /etc/traefik/tls/fishsense.vm.key
+  certificates:
+    - certFile: /etc/traefik/tls/fishsense.vm.crt
+      keyFile: /etc/traefik/tls/fishsense.vm.key
+
+http:
+  routers:
+    # Public landing + /portal (auth is in-app OIDC — no edge/traefik gate).
+    web:
+      rule: "Host(`fishsense.e4e.ucsd.edu`)"
+      entryPoints: [websecure]
+      service: web
+      tls: {}
+
+    # The outpost's own browser paths (sign-in redirect + callback) — served by the
+    # CO-LOCATED outpost so the handshake completes on api.fishsense's own domain
+    # (correct cookie domain). MUST out-prioritize the `api` router for this prefix;
+    # un-gated (the outpost is what does the gating). Higher priority via the longer
+    # rule, pinned explicitly for safety.
+    api-outpost:
+      rule: "Host(`api.fishsense.e4e.ucsd.edu`) && PathPrefix(`/outpost.goauthentik.io/`)"
+      entryPoints: [websecure]
+      service: authentik-outpost
+      priority: 100
+      tls: {}
+
+    # API — gated by the co-located Authentik proxy outpost (forward_single). The
+    # FishSense-group access policy lives on the `fishsense_orchestrator` proxy
+    # provider (external_host = https://api.fishsense.e4e.ucsd.edu, set platform-side
+    # #437). Direct replacement for the old authentik@docker middleware.
+    api:
+      rule: "Host(`api.fishsense.e4e.ucsd.edu`)"
+      entryPoints: [websecure]
+      service: api
+      middlewares: [fishsense-auth]
+      priority: 10
+      tls: {}
+
+    # Superset analytics — auth is in-app OIDC (fishsense_analytics provider).
+    superset:
+      rule: "Host(`analytics.fishsense.e4e.ucsd.edu`)"
+      entryPoints: [websecure]
+      service: superset
+      tls: {}
+
+  services:
+    web:
+      loadBalancer:
+        servers:
+          - url: "http://web:3000"
+    api:
+      loadBalancer:
+        servers:
+          - url: "http://fishsense-api:8000"
+    superset:
+      loadBalancer:
+        servers:
+          - url: "http://superset:8088"
+    authentik-outpost:
+      loadBalancer:
+        servers:
+          - url: "http://authentik-outpost:9000"
+
+  middlewares:
+    # forwardAuth → the CO-LOCATED Authentik outpost (compose service
+    # `authentik-outpost`), which dials krg-prod Authentik over a websocket and
+    # validates the session against the fishsense_orchestrator provider, returning
+    # the identity headers below or 302ing to the login flow. Local address (same
+    # interior network) — HANDOFF §7 / #440, structurally identical to guacamole_gate.
+    fishsense-auth:
+      forwardAuth:
+        address: "http://authentik-outpost:9000/outpost.goauthentik.io/auth/traefik"
+        # Required (HANDOFF §7): the outpost selects the fishsense_orchestrator
+        # provider by X-Forwarded-Host and builds sign-in redirects from it, so it
+        # must see the real public Host (api.fishsense.e4e.ucsd.edu), not this
+        # Traefik's internal view. Safe here because the ONLY ingress to this
+        # Traefik is the e4e edge (public → edge → krg-nat forward → :443), which
+        # sets these headers — no untrusted client path. Setting false re-introduces
+        # the wrong-Host redirect/cookie breakage Option A exists to avoid.
+        trustForwardHeader: true
+        authResponseHeaders:
+          - X-authentik-username
+          - X-authentik-groups
+          - X-authentik-email
+          - X-authentik-name
+          - X-authentik-uid
+          - X-authentik-jwt

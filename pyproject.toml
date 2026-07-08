@@ -55,6 +55,11 @@ synology-filestation = { url = "https://github.com/UCSD-E4E/synology-filestation
 # `[tool.pylint.*]` section.
 [tool.pylint.main]
 extension-pkg-allow-list = ["cv2"]
+# `deploy/` is deployment config + vendored third-party (e.g. Apache Superset's
+# stock `superset_config.py`, which isn't pylint-clean by our standards), not
+# first-party package code — exclude it. The changed-files pylint job passes
+# file paths explicitly, and pylint honors `ignore-paths` for those too.
+ignore-paths = ["^deploy/.*$"]
 
 [tool.pylint."messages control"]
 # fail-under=10 with all checks on is unworkable for a real codebase;

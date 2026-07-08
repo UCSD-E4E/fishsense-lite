@@ -1,0 +1,250 @@
+# fishsense-lite INTERIOR — KRG Incus platform tenant #1 (ADR 0017 / 0020).
+#
+# This is the repo-owned deploy that the platform runs on our Incus slot
+# (10.100.0.10). It REPLACES the old orchestrator-host stack (the sibling
+# deploy/compose*.yml files) — staged here under deploy/incus/ so it doesn't
+# clobber the running prod config until cutover. At cutover this becomes the
+# flake's `compose = ./deploy/incus/compose.yml` target.
+#
+# WHAT CHANGED vs the old orchestrator stack (see README.md for the full map):
+#   * Temporal is NO LONGER in-stack — we consume krg-prod's shared cluster
+#     (krg-prod.ucsd.edu:7233, namespace `fishsense`, mTLS). The `temporal`
+#     + `temporal-ui` services and the `workflows.` subdomain are gone.
+#   * Postgres no longer hosts temporal_db / temporal_visibility_db — only
+#     `fishsense` + `superset` remain in-slot.
+#   * Routing flips from the shared host Traefik (docker-label provider +
+#     letsencrypt certresolver + authentik@docker) to OUR OWN inner Traefik
+#     using the FILE provider, serving the vault-agent-minted `fishsense.vm`
+#     cert on :443 (the edge re-encrypts to us and verifies that serverName).
+#     All per-service `traefik.*` labels are gone; routing lives in
+#     traefik-dynamic.yml.
+#   * The qcomm docs static file server is dropped (out of tenant scope).
+#
+# INGRESS CONTRACT (wired admin-side — do not change the shape):
+#   public → e4e-prod edge (prod LE cert, TLS-terminate)
+#          → re-encrypt HTTPS, verify serverName=fishsense.vm vs the fleet CA
+#          → krg-nat:30443 → incus_network_forward → 10.100.0.10:443 (traefik below)
+
+services:
+  # ── inner edge: TLS on :443 with fishsense.vm, route Host → containers ─────────────────
+  traefik:
+    image: traefik:3.7.6
+    restart: unless-stopped
+    command:
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --providers.file.watch=true
+      - --entrypoints.websecure.address=:443
+      # - --api.dashboard=true   # enable only behind an auth'd route if ever wanted
+    ports:
+      - "0.0.0.0:443:443" # the incus_network_forward targets :443 on the instance NIC
+    volumes:
+      - /run/tenant/tls:/etc/traefik/tls:ro          # fishsense.vm.{crt,key} — vault-agent (#428)
+      - ./traefik-dynamic.yml:/etc/traefik/dynamic.yml:ro
+    depends_on: [web, fishsense-api, superset, authentik-outpost]
+    networks: [interior]
+
+  # ── co-located Authentik proxy outpost (gates the API route) — HANDOFF §7 / #440 ───────
+  # Dials OUT to krg-prod Authentik over the API websocket (egress open) and serves
+  # /outpost.goauthentik.io/* LOCALLY — so the api forward-auth sign-in/callback completes
+  # on api.fishsense's own domain (cookie domain correct, no cross-host proxy). The
+  # fishsense_orchestrator provider is registered (platform IaC) on a dedicated
+  # `fishsense_proxy` outpost whose API token is written to
+  # secret/tenants/fishsense/oidc/proxy-outpost-token.
+  authentik-outpost:
+    image: ghcr.io/goauthentik/proxy:2026.2   # keep in step with krg-prod's Authentik server version
+    restart: unless-stopped
+    environment:
+      AUTHENTIK_HOST: https://auth.krg.ucsd.edu
+      AUTHENTIK_INSECURE: "false"
+    env_file:
+      # AUTHENTIK_TOKEN=… — soft vault-agent render (errorOnMissingKey=false; secrets.nix).
+      - /run/tenant/outpost/token.env
+    expose: ["9000"]   # interior only — do NOT publish
+    networks: [interior]
+
+  # ── web portal → fishsense.e4e.ucsd.edu ────────────────────────────────────────────────
+  web:
+    image: ghcr.io/ucsd-e4e/fishsense-lite-web:v0.7.0
+    restart: unless-stopped
+    # Non-secret config inline (committed IaC); secrets from the vault-agent render
+    # (AUTH_SECRET, AUTH_AUTHENTIK_{ID,SECRET,ISSUER}, FISHSENSE_API_{USERNAME,PASSWORD},
+    # LABEL_STUDIO_API_KEY — see secrets.nix). FISHSENSE_API_URL stays the interior
+    # host so SSR bypasses our traefik + the API forwardAuth gate.
+    environment:
+      FISHSENSE_API_URL: http://fishsense-api:8000
+      LABEL_STUDIO_URL: https://labeler.e4e.ucsd.edu
+      AUTH_URL: https://fishsense.e4e.ucsd.edu
+    env_file:
+      - /run/tenant/secrets/app.env
+    expose: ["3000"]
+    networks: [interior]
+
+  # ── API → api.fishsense.e4e.ucsd.edu (forwardAuth-gated) ───────────────────────────────
+  fishsense-api:
+    image: ghcr.io/ucsd-e4e/fishsense-api:v1.28.0
+    restart: unless-stopped
+    # DB password (admin role) as E4EFS_POSTGRES__PASSWORD from the render.
+    env_file:
+      - /run/tenant/secrets/app.env
+    volumes:
+      - ./fishsense_api_volumes/config:/e4efs/config:ro  # committed settings.toml ([postgres] host=postgres)
+    expose: ["8000"]
+    depends_on: [postgres]
+    networks: [interior]
+    # NOTE: plain `docker compose up` ignores `deploy.replicas` (swarm-only).
+    # The old stack declared replicas: 4 but ran 1 under compose. If we ever
+    # need real horizontal scale here, either move to swarm or add explicit
+    # replica hostnames to the traefik-dynamic.yml api service. Traefik points
+    # at the service DNS name `fishsense-api:8000` for now.
+
+  # ── analytics → analytics.fishsense.e4e.ucsd.edu (in-app OIDC) ─────────────────────────
+  superset:
+    image: &superset-image apache/superset:6.0.0
+    container_name: fishsense_superset
+    command: ["/app/docker/docker-bootstrap.sh", "app-gunicorn"]
+    user: "root"
+    restart: unless-stopped
+    env_file:
+      - path: ./superset_volumes/docker/.env   # committed non-secret superset config (repo IaC)
+        required: true
+      - path: /run/tenant/secrets/app.env      # vault-agent render — SUPERSET_SECRET_KEY, SUPERSET_OIDC_* (secrets.nix)
+        required: true
+    volumes: &superset-volumes
+      - ./superset_volumes/docker:/app/docker   # committed bootstrap scripts/config (repo IaC)
+      - superset_home:/app/superset_home        # named volume — persistent, docker-owned
+    expose: ["8088"]
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    networks: [interior]
+
+  superset-init:
+    image: *superset-image
+    container_name: superset_init
+    command: ["/app/docker/docker-init.sh"]
+    user: "root"
+    env_file:
+      - path: ./superset_volumes/docker/.env
+        required: true
+      - path: /run/tenant/secrets/app.env
+        required: true
+    volumes: *superset-volumes
+    depends_on:
+      postgres:
+        condition: service_started
+      valkey:
+        condition: service_started
+    healthcheck:
+      disable: true
+    networks: [interior]
+
+  superset-worker:
+    image: *superset-image
+    container_name: superset_worker
+    command: ["/app/docker/docker-bootstrap.sh", "worker"]
+    user: "root"
+    restart: unless-stopped
+    env_file:
+      - path: ./superset_volumes/docker/.env
+        required: true
+      - path: /run/tenant/secrets/app.env
+        required: true
+    volumes: *superset-volumes
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "celery -A superset.tasks.celery_app:app inspect ping -d celery@$$HOSTNAME",
+        ]
+    networks: [interior]
+
+  superset-worker-beat:
+    image: *superset-image
+    container_name: superset_worker_beat
+    command: ["/app/docker/docker-bootstrap.sh", "beat"]
+    user: "root"
+    restart: unless-stopped
+    env_file:
+      - path: ./superset_volumes/docker/.env
+        required: true
+      - path: /run/tenant/secrets/app.env
+        required: true
+    volumes: *superset-volumes
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    healthcheck:
+      disable: true
+    networks: [interior]
+
+  # Valkey — the BSD-licensed OSS fork of Redis (post-2024 relicense); a drop-in,
+  # protocol-compatible replacement for superset's cache + celery broker.
+  valkey:
+    image: valkey/valkey:9.1.0
+    container_name: superset_cache
+    restart: unless-stopped
+    volumes:
+      - valkey_data:/data   # named volume — persistent, docker-owned
+    networks: [interior]
+
+  # ── api-side Temporal worker (hourly schedules, LS sync, preprocess parents) ───────────
+  fishsense-api-workflow-worker:
+    image: ghcr.io/ucsd-e4e/fishsense-api-workflow-worker:v1.35.3
+    restart: unless-stopped
+    # Secrets as dynaconf E4EFS_* env overrides from the vault-agent render
+    # (API basic-auth, Garage keys, LS key, NAS creds — see secrets.nix).
+    env_file:
+      - /run/tenant/secrets/app.env
+    volumes:
+      # settings.toml here is non-secret config, [temporal] → krg-prod.
+      - ./worker_volumes/api_worker/config:/e4efs/config:ro
+      - ./worker_volumes/api_worker/logs:/e4efs/logs:rw
+      # krg-prod Temporal mTLS client identity — vault-agent render (temporal opt-in
+      # in flake.nix; krg-infra #435).
+      - /run/tenant/temporal:/run/tenant/temporal:ro
+    networks: [interior]
+
+  # ── nightly Postgres → NAS backups ─────────────────────────────────────────────────────
+  fishsense-backup-worker:
+    image: ghcr.io/ucsd-e4e/fishsense-backup-worker:v0.3.1
+    restart: unless-stopped
+    env_file:
+      - /run/tenant/secrets/app.env            # shared secrets
+      - /run/tenant/secrets/backup-postgres.env # overrides E4EFS_POSTGRES__PASSWORD → `backup` role (last wins)
+    volumes:
+      - ./worker_volumes/backup_worker/config:/e4efs/config:ro
+      - ./worker_volumes/backup_worker/logs:/e4efs/logs:rw
+      - /run/tenant/temporal:/run/tenant/temporal:ro
+    networks: [interior]
+
+  # ── in-slot Postgres: `fishsense` + `superset` DBs only (temporal_db moved to krg-prod) ─
+  postgres:
+    image: postgres:17.10
+    restart: unless-stopped
+    shm_size: 128mb
+    # POSTGRES_PASSWORD comes from the vault-agent render (secret/tenants/fishsense/postgres).
+    env_file:
+      - /run/tenant/secrets/app.env
+    volumes:
+      - pgdata:/var/lib/postgresql/data:rw       # named volume — persistent, docker-owned
+      - ./pg_volumes/config:/etc/postgresql:ro   # committed postgres.conf (repo IaC)
+      - ./pg_volumes/scripts:/docker-entrypoint-initdb.d:ro  # committed initdb scripts (repo IaC)
+    command: --config_file=/etc/postgresql/postgres.conf
+    expose: ["5432"]
+    networks: [interior]
+
+# Persistent data stores as named volumes (docker-created + owned) rather than
+# host binds — survive restarts, nothing to seed, cleanest fit for repo-owns-deploy.
+# Config/secret dirs stay binds: repo-committed IaC (postgres.conf, superset docker,
+# initdb scripts, traefik-dynamic.yml) or vault-agent renders (/run/tenant/*).
+volumes:
+  pgdata:
+  superset_home:
+  valkey_data:
+
+networks:
+  interior:
+    driver: bridge

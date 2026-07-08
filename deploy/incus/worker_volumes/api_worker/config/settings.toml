@@ -1,0 +1,53 @@
+# fishsense-api-workflow-worker — Incus interior settings.
+#
+# Non-secret config only. Secrets (.secrets.toml, nrp.kubeconfig) are rendered
+# alongside this file by the in-instance vault-agent from secret/tenants/fishsense/*.
+#
+# DIFF vs the old orchestrator settings.toml: [temporal] now points at the
+# shared krg-prod cluster instead of the in-stack `fishsense-temporal`.
+
+[general]
+max_workers = 8
+
+# krg-prod shared Temporal (HANDOFF §6). mTLS-only; the gRPC TLS server-name is
+# overridden to workflows.krg.ucsd.edu even though we dial krg-prod.ucsd.edu.
+# The client cert/key/CA are rendered by the in-instance vault-agent.
+# PLATFORM TODO: `temporal-client` cert delivery is not wired yet — our AppRole
+# only grants `tenant-internal` (fishsense.vm) today. The worker will fail to
+# connect until these three files exist. See README §Temporal.
+[temporal]
+host = "krg-prod.ucsd.edu"
+port = "7233"
+tls = true
+client_cert = "/run/tenant/temporal/tls.crt"
+client_private_key = "/run/tenant/temporal/tls.key"
+domain = "workflows.krg.ucsd.edu"           # TLS server-name override (SNI)
+server_root_ca_cert = "/run/tenant/temporal/ca.crt"
+
+[label_studio]
+url = "https://labeler.e4e.ucsd.edu"
+
+[e4e_nas]
+url = "https://e4e-nas.ucsd.edu:6021"
+
+# Interior-network URL for SDK calls into fishsense-api — same compose network,
+# bypasses our traefik + the API forwardAuth gate.
+[fishsense_api]
+url = "http://fishsense-api:8000"
+
+# Hosted Garage (S3-compatible) object store on the NAS. S3 keys authenticate
+# from any IP (open egress NAT reaches it). access_key/secret_key in .secrets.toml.
+[object_store]
+endpoint_url = "https://garage.fishsense.e4e.ucsd.edu"
+region = "garage"
+bucket = "fishsense"
+
+# NRP data-worker scale-to-zero. Enabled here because the data-worker runs on
+# NRP/Kubernetes and the api-worker owns its replica count. The kubeconfig is
+# rendered by vault-agent next to this file.
+[kubernetes]
+kubeconfig_path = "/e4efs/config/nrp.kubeconfig"
+namespace = "fishsense"
+deployment_name = "fishsense-data-processing-workflow-worker"
+active_replicas = 1
+idle_cooldown_minutes = 15
