@@ -125,6 +125,14 @@ jobs:
         working-directory: apps/fishsense-lite-web
         run: npm ci --no-audit --no-fund
 
+      - name: Alias `garage` to loopback for host-side S3 clients
+        # The object-store endpoint (below) is `http://garage:3900` so the Label
+        # Studio *container* can reach it via docker DNS. This maps the same name
+        # to the host's published :3900 port so the pytest/worker S3 clients that
+        # run on the runner host resolve it too — one endpoint string that works
+        # from both sides. See tests/_object_store_itest.py + populate_utils.
+        run: echo "127.0.0.1 garage" | sudo tee -a /etc/hosts
+
       - name: Run integration suite
         env:
           # Map the docker-internal hostnames the test fixtures fall
@@ -146,11 +154,15 @@ jobs:
           # CLAUDE.md "Worker config validation gotcha").
           E4EFS_LABEL_STUDIO__URL: http://localhost:8082
           E4EFS_LABEL_STUDIO__API_KEY: fishsense_local_test_token_42
-          # Garage object store via its published port. Creds match the
-          # fixed key garage-init imports. The data-worker integration
-          # tests (tests/_object_store_itest.py) and the api-worker's
-          # eager config validation both read these.
-          E4EFS_OBJECT_STORE__ENDPOINT_URL: http://localhost:3900
+          # Garage object store. Use the docker-network name `garage:3900`, NOT
+          # `localhost:3900`: this endpoint is handed to the Label Studio
+          # *container* (populate_utils.ensure_label_studio_s3_storage passes it
+          # as the storage `s3endpoint`, which LS validates with `head_bucket`),
+          # and a container can't reach the host's localhost. The "Alias garage to
+          # loopback" step above lets the host-side pytest/worker S3 clients
+          # resolve the same name to the published :3900 port. Creds match the
+          # fixed key garage-init imports.
+          E4EFS_OBJECT_STORE__ENDPOINT_URL: http://garage:3900
           E4EFS_OBJECT_STORE__REGION: garage
           E4EFS_OBJECT_STORE__BUCKET: fishsense
           E4EFS_OBJECT_STORE__ACCESS_KEY: GK31c2f3a4b5c6d7e8f9a0b1c2

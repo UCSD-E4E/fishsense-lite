@@ -7,8 +7,10 @@ addressing, as Garage requires) and seed the worker's
 bucket.
 
 Defaults match the `garage` service + the fixed key imported by
-`garage-init` in compose.local.yml (in-cluster hostname). CI overrides
-`E4EFS_OBJECT_STORE__ENDPOINT_URL` to the host-published `localhost:3900`.
+`garage-init` in compose.local.yml (in-cluster hostname). CI sets
+`E4EFS_OBJECT_STORE__ENDPOINT_URL` to `http://garage:3900` and aliases
+`garage` → 127.0.0.1 on the runner (so the same endpoint string resolves
+from both the host and the Label Studio container — see integration.yml).
 """
 
 from __future__ import annotations
