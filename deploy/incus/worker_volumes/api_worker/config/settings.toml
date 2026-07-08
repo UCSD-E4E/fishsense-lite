@@ -25,7 +25,8 @@ domain = "workflows.krg.ucsd.edu"           # TLS server-name override (SNI)
 server_root_ca_cert = "/run/tenant/temporal/ca.crt"
 
 [label_studio]
-url = "https://labeler.e4e.ucsd.edu"
+# Hosted Label Studio (HumanSignal) — the self-hosted labeler.e4e.ucsd.edu was retired.
+url = "https://app.heartex.com"
 
 [e4e_nas]
 url = "https://e4e-nas.ucsd.edu:6021"
