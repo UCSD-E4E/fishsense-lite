@@ -75,6 +75,7 @@
           krg.oecQualysTrellix.enable = lib.mkForce false;
         })
         ./deploy/incus/secrets.nix # extends krg.vaultAgent.renders → /run/tenant/secrets/app.env (HANDOFF §9)
+        ./deploy/incus/workdir.nix # populate /var/lib/krg/fishsense so the compose's relative binds resolve
       ];
     };
 
