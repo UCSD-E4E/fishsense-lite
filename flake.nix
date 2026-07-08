@@ -57,7 +57,23 @@
       modules = [
         krg-infra.nixosModules.tenant
         {krg.tenant = tenant;}
-        ./deploy/incus/hardware-configuration.nix # captured on-box 2026-07-07; ⚠ instance-specific disk UUIDs (re-capture if the slot is reprovisioned)
+        # Incus VM plumbing — the SAME module the krg-golden image builds from
+        # (nix/golden): systemd-boot bootloader + ESP/root fileSystems (by label) +
+        # incus-agent (keeps `incus exec` working after the switch) + serial console +
+        # growPartition. This is why the golden template needs no hardware-configuration.nix;
+        # the captured-UUID approach both missed the bootloader and would drop the
+        # incus-agent. Robust across reprovision (label-based — ADR 0022 §4).
+        ({modulesPath, ...}: {
+          imports = [(modulesPath + "/virtualisation/incus-virtual-machine.nix")];
+        })
+        # Ephemeral VM tier is OEC-exempt — matches krg-golden (nix/golden), which
+        # forces this off. base.nix hard-enables OEC (and its module needs an `inputs`
+        # specialArg); nixosModules.tenant sets `isVM = true` but does NOT force OEC off,
+        # so a tenant converging via its own flake must. (Flagged upstream — this belongs
+        # in nixosModules.tenant for isVM tenants.)
+        ({lib, ...}: {
+          krg.oecQualysTrellix.enable = lib.mkForce false;
+        })
         ./deploy/incus/secrets.nix # extends krg.vaultAgent.renders → /run/tenant/secrets/app.env (HANDOFF §9)
       ];
     };
