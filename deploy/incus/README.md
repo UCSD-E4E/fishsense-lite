@@ -2,16 +2,19 @@
 
 This directory is the **repo-owned interior** for fishsense as tenant #1 on the
 KRG Incus platform (ADR 0017 / 0020). The platform runs this compose stack on
-our Incus slot (`10.100.0.10`); a merged `auto-deploy/*` PR converges the
-instance via `fishsense-selfupdate` → `nixos-rebuild switch --flake
-github:UCSD-E4E/fishsense-lite#fishsense`.
+our Incus slot (`10.100.0.10`); `fishsense-selfupdate` converges the instance via
+`nixos-rebuild switch --flake github:UCSD-E4E/fishsense-lite#fishsense`, reading
+the repo-root [`flake.nix`](../../flake.nix) which imports this directory.
 
 Upstream hand-off:
 <https://github.com/KastnerRG/krg-infra/tree/main/docs/handoff/fishsense-lite>
 
-> **Status: skeleton / staging.** Staged under `deploy/incus/` so it does not
-> clobber the running orchestrator-host stack (the sibling `deploy/compose*.yml`)
-> before cutover. At cutover the flake's `mkTenant` `compose = ` points here.
+> **Status: activated flake, pre-bootstrap.** The `flake.nix` is at the repo root
+> (activation done); `compose.yml` + config + `secrets.nix` + `hardware-configuration.nix`
+> live here and are referenced by root-relative paths. `auto-deploy.yml` is **not**
+> wired into `.github/workflows/` yet — its trigger needs to not collide with the
+> existing `auto-deploy/*` deploy pipeline (see the status section). First bring-up
+> is the admin's one-time `nixos-rebuild switch`, which doesn't need it.
 
 ## What runs here
 
@@ -75,10 +78,10 @@ backup-worker alike).
 ## Secrets (HANDOFF §9 — vault-agent renders, `secret/tenants/fishsense/*`)
 
 Nothing secret is committed. `nixosModules.tenant` renders only the **certs**;
-`secrets.nix` (in the companion pipeline PR — `deploy/incus/secrets.nix`, moved to
-repo-root `secrets.nix` at activation) extends `krg.vaultAgent.renders` to produce
-one consolidated **`/run/tenant/secrets/app.env`**, `env_file`-mounted into the
-services that need it. Vault-agent is **fail-closed** — seed every referenced
+`deploy/incus/secrets.nix` (imported by the repo-root `flake.nix`) extends
+`krg.vaultAgent.renders` to produce one consolidated
+**`/run/tenant/secrets/app.env`**, `env_file`-mounted into the services that need
+it. Vault-agent is **fail-closed** — seed every referenced
 path before the first converge or the stack won't start.
 
 **Vault-agent render targets:**
@@ -126,11 +129,17 @@ into the `pgdata` volume (roles + passwords come from the dump); seed OpenBao to
 ## Status — resolved vs. remaining
 
 **Resolved (baked into these files):**
-- ✅ `flake.nix` — pinned rev `2554daa` (incl. #435–#440, #443), `temporal` opt-in, quota 6/12.
+- ✅ `flake.nix` — **at the repo root** (activation done), pinned rev `2554daa`
+  (incl. #435–#440, #443), `temporal` opt-in, quota 6/12; imports this dir by root-relative paths.
 - ✅ `hardware-configuration.nix` — captured on-box, imported by the flake.
   (⚠️ instance-specific disk UUIDs; durable fix = label-keyed golden profile, ADR 0022 §4.)
 - ✅ `secrets.nix` — §9 app-secret renders (`app.env` + `backup-postgres.env` + soft `token.env`).
-- ✅ `auto-deploy.yml` — runner trigger, `runs-on: [self-hosted, fishsense]`.
+- ⏸️ `auto-deploy.yml` — **not yet wired into `.github/workflows/`.** The handoff's
+  `on: push: auto-deploy/**` collides with this monorepo's existing deploy pipeline
+  (`deploy.yml` fires on `auto-deploy/*`; `promote.yml` *creates* those branches), so
+  it would converge the incus instance on unrelated releases. Needs a scoped trigger
+  (or `workflow_dispatch`) — decision pending. Not needed for first bring-up (admin
+  bootstraps manually).
 - ✅ **Option A co-located outpost** (`authentik-outpost`, image `2026.2`) — matches HANDOFF §7.
   Platform IaC **landed** (#440): dedicated `fishsense_proxy` outpost, token →
   `oidc/proxy-outpost-token`, soft-rendered (`errorOnMissingKey=false`).
