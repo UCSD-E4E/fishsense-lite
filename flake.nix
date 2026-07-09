@@ -14,9 +14,12 @@
     #   #436 quota 6/12   #437 api.fishsense SANs + external_host rename
     #   #438 OIDC secrets → tenant KV + §9 app-secret render pattern
     #   #439 root disk 50 GiB   #440 co-located proxy outpost (Option A)   #443 OIDC writer glob
+    #   #447 krg-deploy runner-repo-tag read fix (mints+pushes our runner token)
+    #   #453 create the github-runner workDir (fixes the 226/NAMESPACE start failure
+    #        that kept our runner from registering — the workaround we handed upstream)
     # This rev IS our stable contract (ADR 0020 §5); bump deliberately to pick up
     # platform-seam changes.
-    krg-infra.url = "github:KastnerRG/krg-infra/2554daa6f026fee17f34827e5bd4e3712dcec3fd?dir=nix";
+    krg-infra.url = "github:KastnerRG/krg-infra/c29ab5f735102e5bf37cdb6ecf8ec1458c6a1daa?dir=nix";
     nixpkgs.follows = "krg-infra/nixpkgs";
   };
 
