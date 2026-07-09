@@ -105,11 +105,10 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install uv
-        run: pip install uv
-
-      - name: Sync workspace (all packages, all groups)
-        run: uv sync --all-packages --all-groups
+      - name: Setup uv + sync (cached, retried)
+        uses: ./.github/actions/setup-uv-sync
+        with:
+          args: --all-packages --all-groups
 
       # Node + npm install must precede `./check.sh integration` because
       # check.sh's run_npm_integration step calls `npm run test:integration`
