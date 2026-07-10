@@ -661,23 +661,28 @@ name:
   `[self-hosted, fishsense]` — the slot's own runner, auto-provisioned
   and auto-registered by the platform because the tenant flake sets
   `repo = "UCSD-E4E/fishsense-lite"` (ADR 0022). Its one step is
-  `systemctl start fishsense-selfupdate` (polkit-authorized for the
-  non-admin `gh-runner` user). The unit runs `nixos-rebuild switch
-  --flake github:UCSD-E4E/fishsense-lite#fishsense --refresh`, so the
-  slot pulls the flake from GitHub itself — nothing is checked out onto
-  it. The `deploy-incus` job carries a `concurrency: deploy-incus` group
-  (`cancel-in-progress: false`) so two pin-bump PRs merged back to back
-  converge in sequence rather than the second cancelling the first.
+  `systemctl start --no-block fishsense-selfupdate` (polkit-authorized
+  for the non-admin `gh-runner` user). The unit runs `nixos-rebuild
+  switch --flake github:UCSD-E4E/fishsense-lite#fishsense --refresh`, so
+  the slot pulls the flake from GitHub itself — nothing is checked out
+  onto it. The `deploy-incus` job carries a `concurrency: deploy-incus`
+  group (`cancel-in-progress: false`) so two pin-bump PRs merged back to
+  back converge in sequence rather than the second cancelling the first.
 
 Never give a job a bare `runs-on: self-hosted` — the `fishsense` label
 is what keeps GitHub-hosted work (the NRP deploy) off the tenant slot.
 
 **The converge is a trigger, not a clean CI gate.** `fishsense-selfupdate`
-stops the GitHub runner mid-switch and restarts it after, so
-`deploy-incus` often reports cancelled/interrupted even on success; and
-a zero exit only means `docker compose up -d` was *issued*, not that
-containers came up healthy. Verify on-box (`systemctl status
-fishsense-selfupdate`) or add a post-converge HTTP health probe.
+restarts the very runner executing the job (its first action is
+`systemctl stop github-runner-fishsense`). The step therefore uses
+`systemctl start --no-block`: it returns 0 the instant the converge is
+*enqueued*, so the job's green means "converge fired", never "containers
+are healthy". Without `--no-block` a blocking `systemctl start` gets
+SIGINT'd (exit 130, false red) whenever `nixos-rebuild` outlives the
+runner's graceful-stop window — observed live on PR #238 (red at ~6min)
+vs #240 (green at 34s), same code path, non-deterministic. Verify a real
+converge on-box (`systemctl status fishsense-selfupdate`) or add a
+post-converge HTTP health probe.
 
 Until the slot is bootstrapped the converge job fails; the
 `deploy-data-worker` job runs but fails fast until `NRP_KUBECONFIG` is
