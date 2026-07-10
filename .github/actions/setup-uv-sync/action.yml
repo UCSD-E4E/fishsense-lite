@@ -1,0 +1,57 @@
+name: Setup uv + sync (cached, retried)
+description: >-
+  Install a pinned uv with its download cache enabled, then run
+  `uv sync <args>` with retry-on-transient-failure backoff.
+
+  Hardens every CI job that resolves the workspace against GitHub's
+  release-asset CDN. Two of our deps — fishsense-core and
+  synology-filestation — are wheels hosted as GitHub release assets
+  (see [tool.uv.sources] in the root pyproject.toml), and that CDN
+  intermittently returns 504 Gateway Timeout. uv only retries a fetch
+  3× before failing the whole sync, so a single blip used to red-X the
+  entire test matrix (it did, 3× in a row, 2026-07-09).
+
+  Mitigations layered here:
+    1. enable-cache keyed on uv.lock — on a cache hit the two wheels
+       are served from the runner cache and never fetched from GitHub,
+       so reruns and same-lock matrix jobs skip the CDN entirely.
+    2. retry loop — on a cold cache (new lock after a dep bump) the
+       sync still hits the CDN; retrying with backoff rides out a
+       transient 504 instead of failing the job on the first one.
+
+inputs:
+  args:
+    description: >-
+      Arguments passed verbatim to `uv sync` (e.g.
+      `--all-packages --all-groups` or
+      `--frozen --no-dev --no-editable --package fishsense-api`).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Pins the uv version (reproducibility win over floating
+    # `pip install uv`) and caches uv's download cache keyed on
+    # uv.lock. setup-uv auto-detects the repo-root uv.lock.
+    - uses: astral-sh/setup-uv@v6
+      with:
+        enable-cache: true
+
+    - name: Sync workspace (retry on transient CDN 504s)
+      shell: bash
+      # 5 attempts, linear backoff (15s, 30s, 45s, 60s between tries →
+      # ~2.5 min of resilience). A warm cache makes attempt 1 succeed
+      # without touching the CDN; a cold cache rides out a blip.
+      run: |
+        attempts=5
+        for i in $(seq 1 $attempts); do
+          if uv sync ${{ inputs.args }}; then
+            exit 0
+          fi
+          if [ "$i" -lt "$attempts" ]; then
+            echo "::warning::uv sync attempt $i failed (likely transient GitHub CDN 504); retrying..."
+            sleep $((i * 15))
+          fi
+        done
+        echo "::error::uv sync failed after $attempts attempts"
+        exit 1

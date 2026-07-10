@@ -82,10 +82,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Install uv
-        run: pip install uv
-      - name: Sync workspace (all packages, all groups)
-        run: uv sync --all-packages --all-groups
+      - name: Setup uv + sync (cached, retried)
+        uses: ./.github/actions/setup-uv-sync
+        with:
+          args: --all-packages --all-groups
 
       - name: Run the k8s scaling integration tests
         # KUBECONFIG (set above) points pytest at the kind cluster.

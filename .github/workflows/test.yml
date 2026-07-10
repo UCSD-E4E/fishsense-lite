@@ -26,10 +26,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Install uv
-        run: pip install uv
-      - name: Sync workspace (all packages, all groups)
-        run: uv sync --all-packages --all-groups
+      - name: Setup uv + sync (cached, retried)
+        uses: ./.github/actions/setup-uv-sync
+        with:
+          args: --all-packages --all-groups
       - name: Run pytest with coverage
         run: |
           uv run --directory ${{ matrix.package }} pytest -v \
@@ -96,17 +96,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Install uv
-        run: pip install uv
       - name: Install system libs (mirror Dockerfile)
         if: matrix.apt != ''
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ${{ matrix.apt }}
-      - name: Sync runtime-only env (mirrors Dockerfile)
-        # `--frozen --no-dev --no-editable --package <name>` matches
-        # the install line in services/<name>/Dockerfile exactly, so a
-        # runtime/dev dep drift surfaces with the same import error
-        # the container would crash on at startup.
-        run: uv sync --frozen --no-dev --no-editable --package ${{ matrix.package }}
+      # Sync the runtime-only env (mirrors the Dockerfile). The
+      # `--frozen --no-dev --no-editable --package <name>` args match
+      # the install line in services/<name>/Dockerfile exactly, so a
+      # runtime/dev dep drift surfaces with the same import error the
+      # container would crash on at startup.
+      - name: Setup uv + sync (cached, retried)
+        uses: ./.github/actions/setup-uv-sync
+        with:
+          args: --frozen --no-dev --no-editable --package ${{ matrix.package }}
       - name: Import entry-point module
         # If a runtime module imports something declared only in
         # `[dependency-groups.dev]`, this exits non-zero with
