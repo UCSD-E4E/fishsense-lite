@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.7.0...fishsense-lite-web-v0.7.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* **web:** add LABEL_STUDIO_ENABLED kill-switch, default off ([#236](https://github.com/UCSD-E4E/fishsense-lite/issues/236)) ([a68a5e8](https://github.com/UCSD-E4E/fishsense-lite/commit/a68a5e8a5bdb3eeecf16fcbc3a3845e60269869b))
+
 ## [0.7.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.6.2...fishsense-lite-web-v0.7.0) (2026-05-11)
 
 
