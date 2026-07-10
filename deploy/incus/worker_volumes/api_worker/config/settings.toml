@@ -1,7 +1,9 @@
 # fishsense-api-workflow-worker — Incus interior settings.
 #
-# Non-secret config only. Secrets (.secrets.toml, nrp.kubeconfig) are rendered
-# alongside this file by the in-instance vault-agent from secret/tenants/fishsense/*.
+# Non-secret config only. Secrets are rendered to WRITABLE runtime paths by the
+# in-instance vault-agent from secret/tenants/fishsense/* (e.g. the temporal
+# client cert trio under /run/tenant/temporal/) — NOT into this dir, which is a
+# read-only store bind. The NRP kubeconfig is not delivered yet; see [kubernetes].
 #
 # DIFF vs the old orchestrator settings.toml: [temporal] now points at the
 # shared krg-prod cluster instead of the in-stack `fishsense-temporal`.
@@ -11,10 +13,9 @@ max_workers = 8
 
 # krg-prod shared Temporal (HANDOFF §6). mTLS-only; the gRPC TLS server-name is
 # overridden to workflows.krg.ucsd.edu even though we dial krg-prod.ucsd.edu.
-# The client cert/key/CA are rendered by the in-instance vault-agent.
-# PLATFORM TODO: `temporal-client` cert delivery is not wired yet — our AppRole
-# only grants `tenant-internal` (fishsense.vm) today. The worker will fail to
-# connect until these three files exist. See README §Temporal.
+# The client cert/key/CA are rendered by the in-instance vault-agent to
+# /run/tenant/temporal/ (wired by krg-infra #435; the trio is present on the
+# slot). The CN switches to `fishsense-worker` once #435's grant is live.
 [temporal]
 host = "krg-prod.ucsd.edu"
 port = "7233"
@@ -43,11 +44,23 @@ endpoint_url = "https://garage.fishsense.e4e.ucsd.edu"
 region = "garage"
 bucket = "fishsense"
 
-# NRP data-worker scale-to-zero. Enabled here because the data-worker runs on
-# NRP/Kubernetes and the api-worker owns its replica count. The kubeconfig is
-# rendered by vault-agent next to this file.
+# NRP data-worker scale-to-zero — DISABLED until the NRP kubeconfig is
+# delivered to the slot.
+#
+# `kubeconfig_path` must point at a file that EXISTS: config.py validates it
+# with a `path_validator`, and Dynaconf runs every validator eagerly on first
+# settings access, so a dangling path crash-loops the worker at startup before
+# it can even connect to Temporal. With `kubeconfig_path` unset the scaling
+# activity no-ops (`resolve_scaling_config` returns disabled) and the
+# data-worker is assumed always-on — the supported pre-NRP mode.
+#
+# Re-enabling is NOT just uncommenting: this config dir is a read-only store
+# bind (workdir.nix symlinks it from the flake store), so vault-agent can't
+# render a secret kubeconfig here. It must render to a writable path (as it
+# does for the temporal certs under /run/tenant/temporal/), and this line must
+# then point there. The NRP kubeconfig delivery is still an open operator item.
 [kubernetes]
-kubeconfig_path = "/e4efs/config/nrp.kubeconfig"
+# kubeconfig_path = "/run/tenant/<writable>/nrp.kubeconfig"
 namespace = "fishsense"
 deployment_name = "fishsense-data-processing-workflow-worker"
 active_replicas = 1
