@@ -37,10 +37,10 @@ name: Deploy
 #     -> this workflow converges the slot
 #
 # The converge is a TRIGGER, not a clean CI gate. `fishsense-selfupdate`
-# stops the GitHub runner mid-switch and restarts it after, so this job
-# often reports cancelled/interrupted even on a successful converge; and
-# a zero exit only means `docker compose up -d` was *issued*, not that
-# the containers came up healthy. Verify on-box with
+# stops the GitHub runner mid-switch and restarts it after, so the job
+# starts the unit with `--no-block` (see the step comment) and reports
+# success as soon as the converge is *enqueued* — its green means
+# "converge fired", never "containers are healthy". Verify on-box with
 # `systemctl status fishsense-selfupdate`, or add a post-converge HTTP
 # health probe.
 #
@@ -105,7 +105,18 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Converge the instance
-        run: systemctl start fishsense-selfupdate # polkit-authorized on the slot
+        # --no-block: enqueue the converge and return 0 immediately, rather
+        # than blocking on the oneshot. `fishsense-selfupdate`'s first action
+        # is `systemctl stop github-runner-fishsense` — it restarts the very
+        # runner executing this job. A blocking `systemctl start` is therefore
+        # SIGINT'd (exit 130, false red) whenever `nixos-rebuild` outlives the
+        # runner's graceful-stop window; a fast converge finishes inside the
+        # window and passes, so the same command reports non-deterministic
+        # red/green (observed: PR #238 red at ~6min, #240 green at 34s, same
+        # code). This job can only honestly assert "converge fired" anyway —
+        # its exit 0 never meant the containers came up healthy (see header).
+        # Convergence health belongs in a separate post-converge probe.
+        run: systemctl start --no-block fishsense-selfupdate # polkit-authorized on the slot
 
   deploy-data-worker:
     # Fires on:
