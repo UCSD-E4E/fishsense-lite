@@ -9,112 +9,103 @@ name: Deploy
 #     `kubectl apply -k deploy/k8s/data-worker` against NRP using the
 #     `NRP_KUBECONFIG` repo secret. The data-worker is a stateless
 #     Kubernetes Deployment — the kustomization is self-contained, so
-#     no persistent ops-managed dir is needed (unlike the orchestrator
-#     route below). See deploy/k8s/data-worker/README.md.
+#     there's nothing to bootstrap on the target host.
+#     See deploy/k8s/data-worker/README.md.
 #
-#   - any other auto-deploy/*  -> `deploy-orchestrator`: the
-#     `fishsense-prod` self-hosted runner runs `docker compose pull &&
-#     up -d` against `compose.yml` (which include:s the four
-#     orchestrator-stack siblings).
+#   - any other auto-deploy/*  -> `deploy-incus`: the fishsense Incus
+#     slot's own self-hosted runner starts `fishsense-selfupdate`, which
+#     runs
+#       nixos-rebuild switch --flake github:UCSD-E4E/fishsense-lite#fishsense --refresh
+#     converging the slot onto the committed root flake.nix +
+#     deploy/incus/ interior — including the `image:` pins in
+#     deploy/incus/compose.yml that the merged PR just bumped.
+#     See deploy/incus/README.md.
 #
-# CRITICAL (orchestrator route only): the `deploy-orchestrator` job
-# runs against a **persistent ops-managed deploy directory** on the
-# host (path in repo variable `DEPLOY_DIR`), NOT the runner's default
-# `_work` checkout. `deploy/compose*.yml` uses relative bind mounts —
-# `./pg_volumes`, `./worker_volumes`, `./.secrets/...`,
-# `./temporal_volumes/certs` — for postgres data, worker config,
-# secrets, certs, none tracked in git. The persistent dir holds them,
-# managed manually by ops; compose against a fresh `_work` checkout
-# would silently start postgres with an empty data dir.
+# WHY THE PIN-BUMP PR MERGE IS THE TRIGGER, and not the release-please
+# merge: `fishsense-selfupdate` converges the slot to whatever is on
+# main. At the moment the release-please PR merges, main's
+# deploy/incus/compose.yml still pins the *previous* versions and the
+# `:v<new>` images don't exist yet — promote.yml retags them minutes
+# later on `release: published`, and only then opens the pin-bump PR.
+# Converging any earlier would redeploy the old images. The full chain:
+#
+#   release-please PR merged to main
+#     -> release.yml cuts the GitHub release
+#     -> promote.yml retags :sha-<short> to :v<version> + :latest, then
+#        opens auto-deploy/<pkg>-<version> bumping the incus pin
+#     -> a human merges that PR
+#     -> this workflow converges the slot
+#
+# The converge is a TRIGGER, not a clean CI gate. `fishsense-selfupdate`
+# stops the GitHub runner mid-switch and restarts it after, so this job
+# often reports cancelled/interrupted even on a successful converge; and
+# a zero exit only means `docker compose up -d` was *issued*, not that
+# the containers came up healthy. Verify on-box with
+# `systemctl status fishsense-selfupdate`, or add a post-converge HTTP
+# health probe.
 #
 # Prereqs:
-#   - orchestrator: a self-hosted runner labelled `fishsense-prod`;
-#     repo variable `DEPLOY_DIR` = the absolute path of a persistent
-#     git checkout of this repo on that host (auth configured for a
-#     non-interactive `git pull origin main`); the untracked sibling
-#     dirs under `deploy/` populated by ops (see deploy/README.md).
+#   - incus: nothing to configure here. The `[self-hosted, fishsense]`
+#     runner is auto-provisioned and auto-registered by the platform
+#     because the tenant flake sets `repo = "UCSD-E4E/fishsense-lite"`
+#     (ADR 0022) — there is no runner token to manage. The label is
+#     opt-in: jobs that must stay GitHub-hosted (the NRP data-worker
+#     deploy below) use `runs-on: ubuntu-latest` and are NEVER given a
+#     bare `runs-on: self-hosted`.
 #   - data-worker: repo secret `NRP_KUBECONFIG` = a token kubeconfig
 #     for the NRP namespace (the same one the api-worker uses to scale
 #     the Deployment). NRP tokens expire — rotate it. The namespace,
 #     Secrets, etc. are bootstrapped per deploy/k8s/data-worker/README.md.
 #
-# Until the `fishsense-prod` runner / `NRP_KUBECONFIG` exist, the
-# matching job fails (or sits in queue) — visible in the Actions UI.
+# Until the slot is bootstrapped / `NRP_KUBECONFIG` exists, the matching
+# job fails (or sits in queue) — visible in the Actions UI.
 
 on:
   pull_request:
     types: [closed]
     branches: [main]
-  # Manual re-deploy without bumping a pin — handy after a crash-loop
-  # or a kubeconfig rotation.
+  # Manual re-deploy without bumping a pin — handy after a crash-loop, a
+  # kubeconfig rotation, or to converge a config-only change under
+  # deploy/incus/ that promote.yml never touches.
   workflow_dispatch:
     inputs:
       target:
         description: "Which target to redeploy"
         required: true
         type: choice
-        default: orchestrator
+        default: incus
         options:
-          - orchestrator
+          - incus
           - data-worker
 
-permissions:
-  contents: read
-  packages: read
+# Least privilege, granted per job (CodeQL actions/missing-workflow-permissions).
+# The incus job never touches the GitHub API nor checks out code, so it
+# gets no token scopes at all.
+permissions: {}
 
 jobs:
-  deploy-orchestrator:
+  deploy-incus:
     # Fires on:
     #   - merge of an auto-deploy/* PR that is NOT the data-worker
-    #   - manual workflow_dispatch with target=orchestrator
+    #   - manual workflow_dispatch with target=incus
     if: |
-      (github.event_name == 'workflow_dispatch' && inputs.target == 'orchestrator') ||
+      (github.event_name == 'workflow_dispatch' && inputs.target == 'incus') ||
       (github.event.pull_request.merged == true &&
        startsWith(github.head_ref, 'auto-deploy/') &&
        !startsWith(github.head_ref, 'auto-deploy/fishsense-data-processing-workflow-worker-'))
-    runs-on: [self-hosted, fishsense-prod]
+    runs-on: [self-hosted, fishsense] # the label the platform sets on our runner
+    permissions: {}
+    # Two packages released together (e.g. api + web) produce two pin-bump
+    # PRs and therefore two converges. Queue them rather than cancelling:
+    # a cancelled converge would leave the slot on the older main, and the
+    # surviving run would have started `nixos-rebuild` before the second
+    # pin landed.
+    concurrency:
+      group: deploy-incus
+      cancel-in-progress: false
     steps:
-      - name: Validate DEPLOY_DIR is configured + bootstrapped
-        env:
-          DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
-        run: |
-          if [ -z "$DEPLOY_DIR" ]; then
-            echo "::error::repo variable DEPLOY_DIR is not set."
-            echo "Set it under Settings -> Secrets and variables -> Actions -> Variables"
-            echo "to the absolute path of the persistent deploy checkout on this host"
-            echo "(e.g. /srv/fishsense). See .github/workflows/deploy.yml header."
-            exit 1
-          fi
-          if [ ! -d "$DEPLOY_DIR/.git" ]; then
-            echo "::error::$DEPLOY_DIR is not a git checkout. Bootstrap the host first:"
-            echo "  git clone https://github.com/${{ github.repository }} $DEPLOY_DIR"
-            exit 1
-          fi
-          if [ ! -f "$DEPLOY_DIR/deploy/compose.yml" ]; then
-            echo "::error::$DEPLOY_DIR/deploy/compose.yml not found. DEPLOY_DIR may be wrong."
-            exit 1
-          fi
-
-      - name: Sync deploy checkout to latest main
-        working-directory: ${{ vars.DEPLOY_DIR }}
-        run: |
-          git fetch --quiet origin main
-          git checkout --quiet main
-          git pull --ff-only origin main
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull updated images
-        working-directory: ${{ vars.DEPLOY_DIR }}/deploy
-        run: docker compose pull
-
-      - name: Recreate services with changed images
-        working-directory: ${{ vars.DEPLOY_DIR }}/deploy
-        run: docker compose up -d --remove-orphans
+      - name: Converge the instance
+        run: systemctl start fishsense-selfupdate # polkit-authorized on the slot
 
   deploy-data-worker:
     # Fires on:
@@ -132,6 +123,8 @@ jobs:
       (github.event.pull_request.merged == true &&
        startsWith(github.head_ref, 'auto-deploy/fishsense-data-processing-workflow-worker-'))
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # actions/checkout
     env:
       # NRP issues a token kubeconfig per namespace; this is the same
       # one the api-worker uses to scale the Deployment. Empty when the

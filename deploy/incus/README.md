@@ -11,9 +11,9 @@ Upstream hand-off:
 
 > **Status: activated, pre-bootstrap.** The `flake.nix` is at the repo root;
 > `compose.yml` + config + `secrets.nix` + `hardware-configuration.nix` live here and
-> are referenced by root-relative paths. `.github/workflows/auto-deploy.yml` is wired
-> with a manual `workflow_dispatch` trigger (see the status section for why not
-> `auto-deploy/**`). First bring-up is the admin's one-time `nixos-rebuild switch`.
+> are referenced by root-relative paths. `.github/workflows/deploy.yml` converges the
+> slot when a `promote.yml`-generated `auto-deploy/*` pin-bump PR merges, and on manual
+> `workflow_dispatch`. First bring-up is the admin's one-time `nixos-rebuild switch`.
 
 ## What runs here
 
@@ -136,12 +136,15 @@ into the `pgdata` volume (roles + passwords come from the dump); seed OpenBao to
   the flake also forces OEC off (ephemeral VM tier). *Both belong in `nixosModules.tenant`
   for isVM tenants — flagged upstream; the handoff/template flakes omit them.*
 - ✅ `secrets.nix` — §9 app-secret renders (`app.env` + `backup-postgres.env` + soft `token.env`).
-- ✅ `.github/workflows/auto-deploy.yml` — wired with a **`workflow_dispatch`** (manual)
-  trigger. The handoff's `on: push: auto-deploy/**` would collide with this monorepo's
-  existing deploy pipeline (`deploy.yml` fires on `auto-deploy/*`; `promote.yml` *creates*
-  those branches) and converge the incus instance on unrelated releases — so it's manual
-  for now; a scoped auto-trigger can be added later. First bring-up doesn't use it (admin
-  bootstraps manually).
+- ✅ `.github/workflows/deploy.yml` — the converge job (formerly its own `auto-deploy.yml`)
+  now lives in the repo's one deploy workflow, routed by branch name: merging a
+  `promote.yml`-generated `auto-deploy/<pkg>-<version>` PR converges the slot; the
+  `auto-deploy/fishsense-data-processing-workflow-worker-*` prefix routes to NRP instead.
+  A `workflow_dispatch` with `target: incus` re-converges without a pin bump. The
+  handoff's `on: push: auto-deploy/**` is deliberately not used — it would fire on the
+  *branch push* that opens the PR, converging before a human reviews the pin diff, and on
+  the data-worker's branch too. First bring-up doesn't use any of this (admin bootstraps
+  manually).
 - ✅ **Option A co-located outpost** (`authentik-outpost`, image `2026.5.3` — matches
   krg-prod's Authentik server per krg-infra `compose.authentik.yml`) — HANDOFF §7.
   Platform IaC **landed** (#440): dedicated `fishsense_proxy` outpost, token →
@@ -168,7 +171,7 @@ into the `pgdata` volume (roles + passwords come from the dump); seed OpenBao to
    `fishsense-worker` after #435's grant is live.
 
 **Notes (not blockers):**
-- **auto-deploy is a trigger, not a clean CI gate.** `fishsense-selfupdate` is a
+- **the converge is a trigger, not a clean CI gate.** `fishsense-selfupdate` is a
   oneshot that propagates `nixos-rebuild`'s exit, but it stops the runner mid-switch
   (the Actions job may report cancelled/interrupted) and exit 0 only means `compose up -d`
   was *issued*, not that containers are healthy. Verify on-box (`systemctl status

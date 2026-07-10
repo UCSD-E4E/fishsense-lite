@@ -18,11 +18,10 @@ name: fishsense-local
 
 services:
   postgres:
-    # Bumped past the prod compose.yml's pin (16.11) because the prod backup
-    # uses pg_dump custom format v1.16, which only Postgres 17+ pg_restore can
-    # read. Prod itself is presumably already on PG17 (otherwise it couldn't
-    # produce that format) — deploy/compose.yml's pin is just stale. Local
-    # tracks the dump.
+    # The prod backup uses pg_dump custom format v1.16, which only Postgres 17+
+    # pg_restore can read, so local tracks the dump. (The retired orchestrator
+    # compose pinned 16.11 yet produced v1.16 dumps — that pin was stale.
+    # deploy/incus/compose.yml pins postgres:17.10.)
     image: postgres:17
     restart: on-failure:15
     shm_size: 256mb

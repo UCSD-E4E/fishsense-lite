@@ -22,7 +22,8 @@ Apps (Node/Next.js workspace, separate from the Python services):
   app at `fishsense.e4e.ucsd.edu`. Public landing page (SSR LS-project
   link cards). Authenticated `/portal/*` gated by Auth.js (next-auth v5)
   with Authentik OIDC; app-owned JWT session. Configure with the four
-  `AUTH_*` env vars in `web_volumes/.env` (see `.env.example`).
+  `AUTH_*` env vars (see `.env.example`); in prod they're rendered by
+  vault-agent into `/run/tenant/secrets/app.env`.
 
 Libraries (workspace members, not published separately):
 
@@ -32,10 +33,12 @@ Libraries (workspace members, not published separately):
 
 Deploy:
 
-- `deploy/compose.yml` + `compose.{orchestrator,superset,temporal,workers}.yml`
-  — prod docker-compose stack (formerly the `fishsense-lite-web-services` repo)
+- `deploy/incus/` — prod stack: the KRG Incus tenant interior (compose +
+  config + `secrets.nix`), converged by `nixos-rebuild` from the
+  repo-root `flake.nix`
+- `deploy/k8s/data-worker/` — the data-processing worker on NRP/Kubernetes
 - `deploy/compose.local.yml` — self-contained local devcontainer stack
-  (postgres + temporal + fishsense-api + nginx static_file_server)
+  (postgres + temporal + fishsense-api + Garage)
 
 ## Local development
 
@@ -78,9 +81,11 @@ push to main         → build.yml    (image -> :sha-<short> + :main)
 release-please merge → release.yml  (cuts GitHub release + tag)
 release: published   → promote.yml  (:sha-<short> -> :v<version>; opens
                                       auto-deploy/* PR bumping deploy/
-                                      compose*.yml pin)
-auto-deploy PR merge → deploy.yml   (docker compose pull && up -d on
-                                      self-hosted [fishsense-prod] runner)
+                                      incus/compose.yml pin)
+auto-deploy PR merge → deploy.yml   (systemctl start fishsense-selfupdate
+                                      on the Incus slot's runner; or
+                                      kubectl apply -k for the NRP
+                                      data-worker)
 ```
 
 Build-once / promote-tag means every release ships the *exact* image that
@@ -88,10 +93,11 @@ was built from the release commit, regardless of any newer non-release
 commits that landed on main. Deploy is intentional — a human reviews the
 version-pin diff in the auto-deploy PR before prod restarts.
 
-`deploy.yml` operates on a persistent ops-managed deploy directory on the
-host (path supplied via repo variable `DEPLOY_DIR`); volumes and secrets
-sit there as untracked siblings of the compose files. See
-`.github/workflows/deploy.yml` header for the host-bootstrap steps.
+The **pin-bump PR merge**, not the release-please merge, is what fires
+the deploy: `fishsense-selfupdate` converges the slot to whatever
+`deploy/incus/compose.yml` says *on main*, and promote.yml only writes
+the new pin (and retags the `:v<version>` image) after the release is
+published. See the `.github/workflows/deploy.yml` header.
 
 ## External dependencies
 

@@ -8,14 +8,19 @@ name: Promote
 #    the release commit, regardless of any newer commits that landed.
 #
 # 2. Opens a deploy PR bumping the package's image pin. Merging it
-#    triggers deploy.yml. For the orchestrator-stack services that's a
-#    bump to `deploy/compose*.yml` -> `docker compose pull && up -d` on
-#    the `fishsense-prod` self-hosted runner. For the data-processing
-#    worker (which now runs on NRP/Kubernetes, not a self-hosted host)
-#    it's a bump to the `newTag:` in
-#    `deploy/k8s/data-worker/kustomization.yaml` -> `kubectl apply -k`
-#    from a GitHub-hosted runner. Either way the deploy is intentional
-#    — humans review the diff before prod changes.
+#    triggers deploy.yml. For the in-slot services that's a bump to
+#    `deploy/incus/compose.yml` -> `fishsense-selfupdate` converges the
+#    Incus slot onto the new main. For the data-processing worker (which
+#    runs on NRP/Kubernetes, not in the slot) it's a bump to the
+#    `newTag:` in `deploy/k8s/data-worker/kustomization.yaml` ->
+#    `kubectl apply -k` from a GitHub-hosted runner. Either way the
+#    deploy is intentional — humans review the diff before prod changes.
+#
+#    The pin bump is what makes the converge meaningful:
+#    `fishsense-selfupdate` builds the flake from main, so the version a
+#    release actually deploys is whatever `deploy/incus/compose.yml` says
+#    on main at converge time. `deploy/compose*.yml` (the retired
+#    orchestrator host) is deliberately NOT bumped — nothing deploys it.
 
 on:
   release:
@@ -116,7 +121,7 @@ jobs:
             "$SRC"
           echo "promoted $SRC -> $DST_VERSION and $DST_LATEST"
 
-      - name: Bump image pin (compose for orchestrator stack, kustomize for the NRP data-worker)
+      - name: Bump image pin (incus compose for in-slot services, kustomize for the NRP data-worker)
         if: steps.parse.outputs.deployable == 'true'
         id: bump
         env:
@@ -145,13 +150,14 @@ jobs:
             exit 0
           fi
 
-          # Orchestrator-stack services: bump the `image: ...:vX.Y.Z`
-          # pin wherever it lives (compose.yml or any include:d file).
+          # In-slot services: bump the `image: ...:vX.Y.Z` pin in the
+          # Incus interior's compose stack. That file is what
+          # `fishsense-selfupdate` converges the slot onto.
           pin_re="image: ${{ env.REGISTRY }}/${owner_lc}/${PKG}:v[0-9]+\.[0-9]+\.[0-9]+"
-          files="$(grep -lE "$pin_re" deploy/compose*.yml 2>/dev/null || true)"
+          files="$(grep -lE "$pin_re" deploy/incus/compose.yml 2>/dev/null || true)"
 
           if [ -z "$files" ]; then
-            echo "::notice::no compose pin found for $PKG; PR will not be opened. Add a service stanza to deploy/compose*.yml first if you want auto-rollout."
+            echo "::notice::no image pin found for $PKG in deploy/incus/compose.yml; PR will not be opened. Add a service stanza there first if you want auto-rollout."
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -182,10 +188,11 @@ jobs:
             - **Source SHA**: `${{ steps.parse.outputs.short_sha }}`
 
             Merging this PR triggers `.github/workflows/deploy.yml` —
-            `docker compose pull && up -d` on the `fishsense-prod`
-            self-hosted runner for the orchestrator stack, or
-            `kubectl apply -k deploy/k8s/data-worker` from a
-            GitHub-hosted runner (NRP) for the data-processing worker.
+            `systemctl start fishsense-selfupdate` on the Incus slot's
+            self-hosted runner (`nixos-rebuild switch` onto this commit)
+            for the in-slot services, or `kubectl apply -k
+            deploy/k8s/data-worker` from a GitHub-hosted runner (NRP)
+            for the data-processing worker.
           commit-message: "chore(deploy): bump ${{ steps.parse.outputs.package }} to ${{ steps.parse.outputs.version }}"
           labels: |
             deploy

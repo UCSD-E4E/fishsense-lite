@@ -96,7 +96,6 @@ $RECYCLE.BIN/
 
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode,windows,macos,linux
 .secrets/
-spider_volumes/config/.secrets.toml
 label_studio_reporter/config/config.toml
 label_studio_reporter/config/gcloud_credentials.json
 label_studio_reporter/cache

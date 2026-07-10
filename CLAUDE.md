@@ -566,16 +566,28 @@ push to main         → build.yml    (image -> :sha-<short> + :main)
 release-please merge → release.yml  (cuts GitHub release + tag)
 release: published   → promote.yml  (:sha-<short> -> :v<version> + :latest;
                                       opens auto-deploy/* PR bumping the
-                                      image pin — deploy/compose*.yml for
-                                      orchestrator-stack services, or the
-                                      newTag in deploy/k8s/data-worker/
+                                      image pin — deploy/incus/compose.yml
+                                      for in-slot services, or the newTag
+                                      in deploy/k8s/data-worker/
                                       kustomization.yaml for the data-worker)
-auto-deploy PR merge → deploy.yml   (orchestrator stack: docker compose
-                                      pull && up -d on [fishsense-prod];
-                                      data-worker: kubectl apply -k
+auto-deploy PR merge → deploy.yml   (in-slot: systemctl start
+                                      fishsense-selfupdate on the Incus
+                                      slot's [self-hosted, fishsense]
+                                      runner; data-worker: kubectl apply -k
                                       deploy/k8s/data-worker from a
                                       GitHub-hosted runner, NRP)
 ```
+
+**Why the pin-bump PR merge is the deploy trigger, not the
+release-please merge.** `fishsense-selfupdate` runs `nixos-rebuild
+switch --flake github:UCSD-E4E/fishsense-lite#fishsense --refresh`, so
+the slot converges to whatever is *on main* — including
+`deploy/incus/compose.yml`'s `image:` pins. When the release-please PR
+merges, main still carries the previous pins and the `:v<new>` images
+don't exist yet (promote.yml retags them minutes later, on
+`release: published`). A converge fired then would redeploy the old
+images. promote.yml's pin-bump PR is the first point at which main
+describes the release, so its merge is the trigger.
 
 `.github/workflows/build.yml` runs on **every push to main + every PR**.
 On push to main it pushes to GHCR tagged by the commit SHA
@@ -598,11 +610,17 @@ rebuild — (a) retags the SHA-tagged image to `:v<version>` and
 `:latest` via `docker buildx imagetools create` (manifest-only push,
 no layer transfer); (b) opens an auto-deploy PR bumping the package's
 image pin. For most packages that's the `image: ...:v*` pin in
-`deploy/compose*.yml`; for `fishsense-data-processing-workflow-worker`
-(which runs on NRP/Kubernetes, not compose) it's the `newTag:` in
+`deploy/incus/compose.yml`; for `fishsense-data-processing-workflow-worker`
+(which runs on NRP/Kubernetes, not in the slot) it's the `newTag:` in
 `deploy/k8s/data-worker/kustomization.yaml`. Branch name pattern:
 `auto-deploy/<package>-<version>` either way (deploy.yml routes by
 prefix).
+
+The legacy `deploy/compose*.yml` pins are **not** bumped — nothing
+deploys that host anymore. Adding a new in-slot service means giving it
+a stanza in `deploy/incus/compose.yml` *and* adding it to promote.yml's
+`deployable` case list, or its release will silently never roll out
+(promote logs a `::notice::` and opens no PR).
 
 **SDK consumer cascade (release.yml `auto-bump-sdk-consumers` job).**
 `fishsense-api-sdk` is a workspace dep, not published — workers
@@ -628,8 +646,9 @@ built-in Python-workspace-aware plugin (unlike `node-workspace` /
 
 `.github/workflows/deploy.yml` runs when an `auto-deploy/*` PR is
 merged (via `pull_request: types:[closed]` + branch-prefix filter, so
-unrelated edits don't trigger it). Plus a `workflow_dispatch` for
-manual re-deploys. Two jobs route by branch name:
+unrelated edits don't trigger it). Plus a `workflow_dispatch` (`target`:
+`incus` | `data-worker`) for manual re-deploys. Two jobs route by branch
+name:
 
 - `auto-deploy/fishsense-data-processing-workflow-worker-*` ->
   `deploy-data-worker` on `ubuntu-latest` (GitHub-hosted; kubectl is
@@ -638,49 +657,35 @@ manual re-deploys. Two jobs route by branch name:
   `kubectl rollout status`. No persistent ops dir, no docker — the
   kustomization is self-contained and config/certs live in cluster
   ConfigMaps/Secrets.
-- any other `auto-deploy/*` -> `deploy-orchestrator` on
-  `[self-hosted, fishsense-prod]`, repo variable `DEPLOY_DIR`,
-  `compose.yml` (which `include:`s the four orchestrator-stack
-  siblings).
+- any other `auto-deploy/*` -> `deploy-incus` on
+  `[self-hosted, fishsense]` — the slot's own runner, auto-provisioned
+  and auto-registered by the platform because the tenant flake sets
+  `repo = "UCSD-E4E/fishsense-lite"` (ADR 0022). Its one step is
+  `systemctl start fishsense-selfupdate` (polkit-authorized for the
+  non-admin `gh-runner` user). The unit runs `nixos-rebuild switch
+  --flake github:UCSD-E4E/fishsense-lite#fishsense --refresh`, so the
+  slot pulls the flake from GitHub itself — nothing is checked out onto
+  it. The `deploy-incus` job carries a `concurrency: deploy-incus` group
+  (`cancel-in-progress: false`) so two pin-bump PRs merged back to back
+  converge in sequence rather than the second cancelling the first.
 
-**The `fishsense-prod` runner doesn't exist yet** — until it's
-registered the orchestrator deploy job sits in queue; the
-`deploy-data-worker` job runs but fails fast until `NRP_KUBECONFIG`
-is set.
+Never give a job a bare `runs-on: self-hosted` — the `fishsense` label
+is what keeps GitHub-hosted work (the NRP deploy) off the tenant slot.
 
-The `deploy-orchestrator` job operates on a **persistent ops-managed
-deploy directory** on the host (path in `DEPLOY_DIR`), NOT the
-runner's default `_work` checkout, because `deploy/compose*.yml` uses
-relative bind mounts (`./pg_volumes`, `./worker_volumes`,
-`./.secrets/...`, `./temporal_volumes/certs`) for postgres data,
-worker config, secrets, and Temporal mTLS certs — none tracked in git.
-Running compose against a fresh `_work` checkout would silently start
-postgres with an empty data dir. The data-worker k8s deploy has no
-such issue.
+**The converge is a trigger, not a clean CI gate.** `fishsense-selfupdate`
+stops the GitHub runner mid-switch and restarts it after, so
+`deploy-incus` often reports cancelled/interrupted even on success; and
+a zero exit only means `docker compose up -d` was *issued*, not that
+containers came up healthy. Verify on-box (`systemctl status
+fishsense-selfupdate`) or add a post-converge HTTP health probe.
 
-Host bootstrap (one-time, per host):
-
-Orchestrator:
-1. Register a runner with `--labels fishsense-prod`.
-2. `git clone` the repo to a persistent path (e.g. `/srv/fishsense`).
-3. Set repo variable `DEPLOY_DIR` to that path under Settings ->
-   Secrets and variables -> Actions -> Variables.
-4. Restore `pg_volumes/`, `worker_volumes/`, `temporal_volumes/`,
-   and `.secrets/` (untracked siblings of the compose files) from
-   existing prod state. Populate `web_volumes/.env` (untracked) per
-   the canonical shape in `deploy/web_volumes/.env.example` —
-   fishsense-lite-web reads it via `env_file:` and throws on first request
-   if any of the nine required keys are missing — five for the public
-   landing page (FISHSENSE_API_*, LABEL_STUDIO_*) plus four for the
-   Authentik OIDC gate on `/portal` (AUTH_SECRET, AUTH_AUTHENTIK_ID,
-   AUTH_AUTHENTIK_SECRET, AUTH_AUTHENTIK_ISSUER). Landing stays up when
-   AUTH_* are missing because the gate lives in app/portal/page.tsx,
-   not on the landing route; `/portal` itself 500s. A tenth key,
-   `AUTH_URL=https://fishsense.e4e.ucsd.edu`, is technically optional
-   but strongly recommended — without it next-auth derives URLs from
-   request headers, and the OAuth post-sign-in redirect lands at
-   `http://0.0.0.0:3000/...` (the container's internal listen address)
-   instead of the public hostname.
+Until the slot is bootstrapped the converge job fails; the
+`deploy-data-worker` job runs but fails fast until `NRP_KUBECONFIG` is
+set. The retired `deploy-orchestrator` job (docker compose on a
+`fishsense-prod` runner that was never registered) was folded away when
+`auto-deploy.yml` merged into `deploy.yml`; `deploy/compose*.yml` was
+deleted with it, and the repo variable `DEPLOY_DIR` is now unused —
+delete it from Settings -> Secrets and variables -> Actions.
 
 Data-worker (NRP/Kubernetes): no runner, no deploy dir. Bootstrap is
 NRP-side — namespace + permanent-service exception, the three Secrets
@@ -731,14 +736,22 @@ exceptions list — the bootstrap requests a permanent-service
 exception. The worker's pods are ReplicaSet-owned so the 6-hour
 bare-pod rule never applies; ConfigMaps/Secrets aren't time-GC'd.
 
-`deploy/compose.workers.yml` is the home for `fishsense-*` worker
-services running on the orchestrator host. Currently has
-`fishsense-api-workflow-worker` (moved out of `compose.temporal.yml`
-on 2026-04-29 — workers consume Temporal but aren't part of the
-cluster) and `fishsense-backup-worker`. The backup worker reads its
-postgres + NAS credentials from `./worker_volumes/backup_worker/config/`
-(`settings.toml` + `.secrets.toml`); that directory must be
-populated on the host before the service will start successfully.
+`deploy/incus/compose.yml` is the home for the `fishsense-*` worker
+services that run in the slot: `fishsense-api-workflow-worker` and
+`fishsense-backup-worker`. (Workers consume Temporal — now krg-prod's,
+over mTLS — but aren't part of the cluster.) The backup worker reads
+its non-secret config from the committed
+`deploy/incus/worker_volumes/backup_worker/config/settings.toml`; its
+postgres + NAS credentials come from the vault-agent render
+(`/run/tenant/secrets/backup-postgres.env`, see
+`deploy/incus/secrets.nix`), so OpenBao must be seeded before the
+service will start successfully.
+
+The pre-Incus orchestrator host's compose files (`deploy/compose.yml` +
+`compose.orchestrator/temporal/workers/superset.yml`) and their
+bind-mount `*_volumes/` dirs were deleted when that host was
+decommissioned. `git log --diff-filter=D -- deploy/compose.yml` recovers
+them.
 
 Race guard: promote.yml polls for the `:sha-<short>` image to appear
 (up to 20 min) before retagging. build.yml is triggered by the same
@@ -809,20 +822,21 @@ Implications when changing prod-touching code:
 
 ### Authentik fronts the public API — SDK basic auth gets 302'd
 
-`orchestrator.fishsense.e4e.ucsd.edu` is fronted by Traefik with the
-`authentik@docker` middleware (see
-[deploy/compose.orchestrator.yml](deploy/compose.orchestrator.yml)).
+`api.fishsense.e4e.ucsd.edu` (renamed from `orchestrator.` at the Incus
+migration) is fronted by the slot's inner Traefik with a `forwardAuth`
+middleware pointing at the co-located authentik outpost (see
+[deploy/incus/compose.yml](deploy/incus/compose.yml)).
 `fishsense-api-sdk.Client` uses HTTP Basic auth, so a request from a
 dev box gets a 302 redirect to authentik's OAuth flow and
 `raise_for_status()` blows up — even with valid credentials. Workers
-running on the orchestrator host hit fishsense-api on the internal
-docker network and skip the proxy entirely.
+running in the slot hit fishsense-api on the interior docker network
+and skip the proxy entirely.
 
 For dev access, in rough order of effort:
-1. ssh / port-forward into the orchestrator's docker network and
-   point `fishsense_api.url` at the internal address.
+1. `incus exec` into the slot and point `fishsense_api.url` at the
+   interior address.
 2. Bypass the API and read Postgres directly (host is in
-   `deploy/fishsense_api_volumes/config/settings.toml`).
+   `deploy/incus/fishsense_api_volumes/config/settings.toml`).
 3. Have ops add an authentik basic-auth-passthrough policy for the
    service user on the relevant API paths.
 4. Modify the SDK to do `client_credentials` against authentik.
