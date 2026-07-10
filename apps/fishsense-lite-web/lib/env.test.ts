@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { __test, env } from "./env";
+import { __test, env, labelStudioEnabled } from "./env";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -59,5 +59,44 @@ describe("env proxy", () => {
     expect(env.fishsenseApiUrl).toBe("http://first");
     vi.stubEnv("FISHSENSE_API_URL", "http://second");
     expect(env.fishsenseApiUrl).toBe("http://second");
+  });
+});
+
+describe("labelStudioEnabled", () => {
+  it("defaults to false when LABEL_STUDIO_ENABLED is unset", () => {
+    expect(labelStudioEnabled()).toBe(false);
+  });
+
+  it("is false when set to an empty string", () => {
+    vi.stubEnv("LABEL_STUDIO_ENABLED", "");
+    expect(labelStudioEnabled()).toBe(false);
+  });
+
+  // The E4EFS_DOCKER footgun, restated: a naive `Boolean(process.env.X)`
+  // reads the literal string "false" as true. These two cases pin the
+  // explicitly-truthy semantics so nobody "simplifies" it back.
+  it("is false for the literal string 'false'", () => {
+    vi.stubEnv("LABEL_STUDIO_ENABLED", "false");
+    expect(labelStudioEnabled()).toBe(false);
+  });
+
+  it("is false for an arbitrary non-truthy string", () => {
+    vi.stubEnv("LABEL_STUDIO_ENABLED", "maybe");
+    expect(labelStudioEnabled()).toBe(false);
+  });
+
+  it.each(["true", "TRUE", "True", "1", "yes", "YES"])(
+    "is true for the explicitly-truthy value %j",
+    (value) => {
+      vi.stubEnv("LABEL_STUDIO_ENABLED", value);
+      expect(labelStudioEnabled()).toBe(true);
+    },
+  );
+
+  it("re-reads on each call (no stale cache)", () => {
+    vi.stubEnv("LABEL_STUDIO_ENABLED", "true");
+    expect(labelStudioEnabled()).toBe(true);
+    vi.stubEnv("LABEL_STUDIO_ENABLED", "false");
+    expect(labelStudioEnabled()).toBe(false);
   });
 });
