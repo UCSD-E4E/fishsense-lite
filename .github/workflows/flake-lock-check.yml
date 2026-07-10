@@ -1,0 +1,57 @@
+name: Flake lock check
+
+# Fails when `flake.lock` disagrees with `flake.nix`.
+#
+# The repo-root flake is what `fishsense-selfupdate` builds on the Incus
+# slot. The `--refresh` in
+#   nixos-rebuild switch --flake github:UCSD-E4E/fishsense-lite#fishsense --refresh
+# only busts nix's tarball-TTL cache for the *top-level* repo ref; every
+# transitive input is resolved from the committed lock. So bumping the
+# `krg-infra.url` rev in flake.nix without re-locking is a silent no-op:
+# the slot keeps building the old krg-infra, and nix can't write the
+# corrected lock back because the flake source is read-only in the store.
+#
+# `nix flake lock --no-update-lock-file` re-resolves every input against
+# flake.nix and exits non-zero if the lock would have to change. It never
+# writes.
+#
+# NOT an updater. `krg-infra` is pinned to an explicit rev — ADR 0020 §5
+# calls that rev our stable contract with the platform, bumped
+# deliberately — and `nixpkgs` follows it, so there is no input for a
+# `nix flake update` to move. To bump: edit the rev in flake.nix and run
+#   nix flake update krg-infra
+# in the same PR. This check is what catches forgetting the second half.
+
+on:
+  pull_request:
+    paths:
+      - flake.nix
+      - flake.lock
+      - .github/workflows/flake-lock-check.yml
+  push:
+    branches: [main]
+    paths:
+      - flake.nix
+      - flake.lock
+      - .github/workflows/flake-lock-check.yml
+
+permissions:
+  contents: read # actions/checkout
+
+jobs:
+  flake-lock-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@v22
+
+      # krg-infra is public, so no token is needed to resolve it.
+      - name: flake.lock is in sync with flake.nix
+        run: |
+          if ! nix flake lock --no-update-lock-file; then
+            echo "::error::flake.lock is out of sync with flake.nix."
+            echo "Re-lock in this PR, then commit flake.lock:"
+            echo "  nix flake update krg-infra"
+            exit 1
+          fi

@@ -36,10 +36,14 @@ types/next-auth.d.ts             # session.accessToken + session.user.groups
 
 ## Required env
 
-All env vars are required (the `env` proxy in [lib/env.ts](lib/env.ts)
-throws on first access if any are missing). Canonical shape lives in
-[.env.example](.env.example); on prod hosts the file is
-`web_volumes/.env` (untracked, populated by ops).
+Every var below is required except the Label Studio pair, which is read
+only when `LABEL_STUDIO_ENABLED` is truthy (the `env` proxy in
+[lib/env.ts](lib/env.ts) throws on first access if a required one is
+missing). Canonical shape lives in [.env.example](.env.example); in prod
+the secret-bearing ones are rendered by vault-agent into
+`/run/tenant/secrets/app.env` and `env_file`-mounted into the container,
+while the non-secret ones are inline `environment:` keys in
+`deploy/incus/compose.yml`.
 
 | Var | Purpose |
 |---|---|
@@ -52,17 +56,18 @@ throws on first access if any are missing). Canonical shape lives in
 
 ## Deploying
 
-This is a workspace member of the prod orchestrator stack
-(`deploy/compose.yml`). Deploy is automated:
+This runs in the Incus slot's interior stack
+(`deploy/incus/compose.yml`). Deploy is automated:
 
 1. Land changes on `main` → `build.yml` ships
    `ghcr.io/ucsd-e4e/fishsense-lite-web:sha-<short>`.
 2. release-please opens a release PR; merging it triggers `promote.yml`
    which retags to `:v<version>` and opens an `auto-deploy/*` PR
-   bumping the image pin in `deploy/compose.yml`.
-3. Merging the auto-deploy PR triggers `deploy.yml` on the
-   `fishsense-prod` self-hosted runner, which `git pull`s + `docker
-   compose pull && up -d`s the orchestrator host.
+   bumping the image pin in `deploy/incus/compose.yml`.
+3. Merging the auto-deploy PR triggers `deploy.yml` on the slot's own
+   self-hosted runner, which starts `fishsense-selfupdate` —
+   `nixos-rebuild switch` onto that commit, bringing the compose stack
+   with it.
 
 See [../../README.md](../../README.md) and
 [../../deploy/README.md](../../deploy/README.md) for the full pipeline.
@@ -81,10 +86,12 @@ Before the portal can authenticate users:
 2. Create an **Application** bound to that provider (slug
    `fishsense-lite-web`). The issuer URL it exposes is what goes into
    `AUTH_AUTHENTIK_ISSUER` (with the slug, no trailing slash).
-3. Add the four `AUTH_*` keys to `web_volumes/.env` on the orchestrator
-   host. Generate `AUTH_SECRET` with `openssl rand -base64 32`.
-4. Restart the container:
-   `docker compose -f deploy/compose.yml up -d fishsense-lite-web`.
+3. Seed the four `AUTH_*` values in OpenBao under
+   `secret/tenants/fishsense/{web,oidc/web}` — vault-agent renders them
+   into `/run/tenant/secrets/app.env` (see `deploy/incus/secrets.nix`).
+   Generate `auth_secret` with `openssl rand -base64 32`.
+4. Converge the slot so the render + container restart pick it up:
+   run `deploy.yml` via `workflow_dispatch` with `target: incus`.
 5. Smoke-test: hit `/`, click **Sign in**, complete the Authentik
    flow, land on `/portal` showing your name/email/groups.
 
@@ -151,5 +158,5 @@ narrow exception; extract logic into a unit and cover it there.
   listen address (`http://0.0.0.0:3000/...`) — which 500s the OAuth
   callback and sends the browser somewhere unreachable. Set
   `AUTH_URL=https://fishsense.e4e.ucsd.edu` to bypass header
-  detection entirely. See `deploy/web_volumes/.env.example` and the
-  orchestrator-bootstrap section of the repo's `CLAUDE.md`.
+  detection entirely — it's an inline `environment:` key on the `web`
+  service in `deploy/incus/compose.yml`.

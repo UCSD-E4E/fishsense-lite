@@ -1,34 +1,31 @@
 # deploy/
 
-Deployment config for FishSense Lite — docker-compose stacks for the
-local devcontainer and the prod **orchestrator host**, plus Kubernetes
-manifests (`k8s/data-worker/`) for the **data-processing worker**,
-which runs on Kubernetes rather than a docker host (NRP/Nautilus is
-the current target; the Junkyard and Qualcomm clusters are future
-ones, not ready yet).
+Deployment config for FishSense Lite — the prod **Incus slot** interior
+(`incus/`), Kubernetes manifests (`k8s/data-worker/`) for the
+**data-processing worker**, which runs on Kubernetes rather than a
+docker host (NRP/Nautilus is the current target; the Junkyard and
+Qualcomm clusters are future ones, not ready yet), and a self-contained
+compose stack for the local devcontainer.
 
 ## Compose layout
 
 | File | Purpose |
 |---|---|
-| `compose.yml` | Top-level prod orchestrator stack. `include:`s the four siblings below + defines `postgres`, `qcomm-static-file-server`, `fishsense-lite-web` (public landing + Authentik-OIDC-gated `/portal/*`). Pulls `prometheus_network` and `traefik_proxy` as external networks. |
-| `compose.orchestrator.yml` | `fishsense-api`. Behind Traefik + `authentik@docker` middleware. (The nginx `static_file_server` file-exchange was removed — storage moved to the hosted Garage object store; see the workers' `[object_store]` settings.) |
-| `compose.temporal.yml` | Temporal cluster (history, frontend, matching, worker, UI). |
-| `compose.workers.yml` | `fishsense-*` workers running on the orchestrator host: `fishsense-api-workflow-worker`, `fishsense-backup-worker`. (Workers consume Temporal but aren't part of the cluster.) |
-| `compose.superset.yml` | Superset + redis + worker / beat. |
+| `incus/compose.yml` | Prod stack, run inside the KRG Incus tenant slot: `traefik` (inner edge), `postgres`, `fishsense-api`, `fishsense-lite-web`, `fishsense-api-workflow-worker`, `fishsense-backup-worker`, the co-located authentik outpost, and Superset behind an off-by-default profile. Converged by `nixos-rebuild`, not by hand — see [`incus/`](incus/README.md). |
 | `k8s/data-worker/` | `fishsense-data-processing-workflow-worker` on NRP/Kubernetes (image preprocessing + laser calibration + measurement). **Not** a compose file — `kubectl apply -k k8s/data-worker`; the api-worker scales it to zero when idle. |
-| `compose.local.yml` | Self-contained local devcontainer stack — postgres, temporal, fishsense-api (pinned image), Garage (single-node, same engine as prod) + one-shot bootstrap, label-studio, dev container. **Not** layered on `compose.yml`; prod's authentik / mTLS / letsencrypt coupling is intentionally absent. |
-| `compose.dev.yml` | Dev-only compose extras (used inside the devcontainer for tooling). |
+| `compose.local.yml` | Self-contained local devcontainer stack — postgres, temporal, fishsense-api (pinned image), Garage (single-node, same engine as prod) + one-shot bootstrap, label-studio, dev container. **Not** layered on the prod stack; prod's authentik / mTLS / letsencrypt coupling is intentionally absent. |
 
-`fishsense-data-processing-workflow-worker` (image preprocessing +
-laser calibration + measurement) is **not** a compose service — it's a
-Kubernetes Deployment on NRP, see [`k8s/data-worker/`](k8s/data-worker/README.md).
-The api-worker scales it to zero when idle and back up on demand.
+The pre-Incus orchestrator host's compose files (`compose.yml` and its
+`compose.orchestrator/temporal/workers/superset.yml` siblings) and their
+bind-mount volume dirs were removed once that host was decommissioned —
+`git log --diff-filter=D -- deploy/compose.yml` finds them if you need
+the history. Temporal now lives on krg-prod (mTLS, `/run/tenant/temporal`),
+not in this repo's stack.
 
-`compose.local.yml` and the prod stack are intentionally separate
-files. Prod is fronted by Traefik + authentik + letsencrypt + mTLS to
-Temporal; trying to make a single set of compose files that boots both
-on a laptop and on the orchestrator was messier than splitting them.
+`compose.local.yml` and the prod stack are intentionally separate files.
+Prod is fronted by Traefik + authentik + letsencrypt + mTLS to Temporal;
+trying to make a single set of compose files that boots both on a laptop
+and in the slot was messier than splitting them.
 
 ## Local development (devcontainer)
 
@@ -66,67 +63,28 @@ containers.
 
 ## Production deploy
 
-Two targets: the **orchestrator host** runs `compose.yml` (which
-`include:`s the four sibling files), and the **data-processing worker**
-runs as a Kubernetes Deployment on NRP (see
+Two targets: the **Incus slot** runs [`incus/compose.yml`](incus/README.md)
+as the tenant interior, and the **data-processing worker** runs as a
+Kubernetes Deployment on NRP (see
 [`k8s/data-worker/`](k8s/data-worker/README.md)). **Bringing either up
 by hand is not the steady-state path** — the auto-deploy pipeline
-handles version bumps via reviewable PRs, then `.github/workflows/deploy.yml`
-either `docker compose pull && up -d` on the `fishsense-prod` runner
-or `kubectl apply -k deploy/k8s/data-worker` from a GitHub-hosted
+handles version bumps via reviewable PRs, then
+`.github/workflows/deploy.yml` either starts `fishsense-selfupdate` on
+the slot's own runner (`nixos-rebuild switch` onto the merged commit) or
+runs `kubectl apply -k deploy/k8s/data-worker` from a GitHub-hosted
 runner. See the "CI pipeline" section of [CLAUDE.md](../CLAUDE.md).
 
-The **orchestrator** deploy job does **not** check the repo out into
-the runner's default `_work` directory — it operates on a persistent
-ops-managed directory on the host, because `compose*.yml` uses relative
-bind mounts (`./pg_volumes/`, `./worker_volumes/`, `./.secrets/`,
-`./temporal_volumes/certs`, etc.) for postgres data, worker config,
-secrets, and Temporal mTLS certs — none tracked in git. Running compose
-against a fresh `_work` checkout would silently start postgres with an
-empty data dir. The **data-worker** k8s deploy has no such issue — the
-kustomization is self-contained and config/certs live in cluster
-ConfigMaps/Secrets.
+### Incus slot (prod)
 
-### Orchestrator host bootstrap (one-time, ops)
+Nothing is checked out onto the slot — `fishsense-selfupdate` runs
+`nixos-rebuild switch --flake github:UCSD-E4E/fishsense-lite#fishsense
+--refresh`, pulling this repo from GitHub and bringing the compose stack
+with it. State lives in named volumes; secrets are rendered by
+vault-agent to `/run/tenant/secrets/app.env` (see `incus/secrets.nix`),
+so there are no untracked `.secrets/` or `*_volumes/` dirs to restore.
 
-1. Register a self-hosted GitHub runner with `--labels fishsense-prod`,
-   co-located with the docker engine that will run the stack.
-2. `git clone` this repo to a persistent path (e.g. `/srv/fishsense`).
-3. Set repo variable `DEPLOY_DIR` (Settings → Secrets and variables →
-   Actions → Variables) to that absolute path.
-4. Restore the untracked sibling directories from existing prod state:
-   - `pg_volumes/data/` — postgres data dir.
-   - `pg_volumes/config/` — `postgres.conf`, etc.
-   - `pg_volumes/scripts/` — init scripts.
-   - `temporal_volumes/certs/` — mTLS certs (read by workers too).
-   - `worker_volumes/api_worker/config/.secrets.toml` — basic auth /
-     LS API token / etc. for `fishsense-api-workflow-worker`. The
-     paired `settings.toml` is tracked in repo.
-   - `worker_volumes/api_worker/config/nrp.kubeconfig` — **only if**
-     NRP data-worker scaling is enabled (uncomment the `[kubernetes]`
-     block in `worker_volumes/api_worker/config/settings.toml`); the
-     same token kubeconfig used by the `NRP_KUBECONFIG` CI secret.
-   - `worker_volumes/api_worker/logs/` — log volume.
-   - `worker_volumes/backup_worker/config/.secrets.toml` — same shape
-     for `fishsense-backup-worker` (paired `settings.toml` tracked).
-   - `worker_volumes/backup_worker/logs/` — log volume.
-   - `web_volumes/.env` — `fishsense-lite-web` runtime env file (9
-     required keys: 5 for fishsense-api / Label Studio access + 4
-     `AUTH_*` for Authentik OIDC gating of `/portal/*`. Generate
-     `AUTH_SECRET` with `openssl rand -base64 32`. See
-     `apps/fishsense-lite-web/.env.example` for the canonical shape).
-   - `superset_volumes/`, `qcomm_static_file_server_volumes/`,
-     `static_file_server_volumes/`, `fishsense_api_volumes/` — see the
-     respective compose files for the bind-mount paths.
-   - `.secrets/postgres_admin_password.txt`
-   - `.secrets/temporal_database_password.env` (sets `POSTGRES_PWD`)
-   - `.secrets/temporal_ui.env` (sets `TEMPORAL_AUTH_CLIENT_ID` /
-     `_SECRET`)
-   - `.secrets/superset-env` (optional Superset overrides)
-5. Ensure the external networks `traefik_proxy` and `prometheus_network`
-   exist on the host.
-6. Set `USER_ID` / `GROUP_ID` in `.env` so the postgres container runs
-   as the host owner of `pg_volumes/data/`.
+Bootstrap and the remaining operator actions (seed OpenBao, file CNAMEs,
+NRP Temporal cert) are in [`incus/README.md`](incus/README.md).
 
 ### Data-processing worker (Kubernetes)
 
@@ -145,15 +103,18 @@ in [`k8s/data-worker/README.md`](k8s/data-worker/README.md).
 
 #### Settings-file changes ride the deploy atomically
 
-`deploy.yml` does `git pull --ff-only origin main` BEFORE
-`docker compose pull && up -d`. Schema changes to the in-repo
-`worker_volumes/<svc>/config/settings.toml` files flow to the host
-atomically with the image-pin bump — no drift window where the
-new image runs against the old settings or vice versa.
+`fishsense-selfupdate` rebuilds from the repo at main, so schema changes
+to the in-repo `incus/worker_volumes/<svc>/config/settings.toml` files
+flow to the slot atomically with the image-pin bump in the same commit —
+no drift window where the new image runs against the old settings or
+vice versa.
 
-Caveat: `--ff-only` will refuse if ops manually edited the host's
-checkout (e.g. tweaked `settings.toml` directly). Always commit
-config changes through PRs and let auto-deploy carry them in.
+Corollary: a config-only change to `incus/` produces no release and
+therefore no `auto-deploy/*` PR, so nothing converges it. Land it on
+main, then run `deploy.yml` by hand (`workflow_dispatch`, `target: incus`).
+
+Editing files inside the slot doesn't survive a converge — `nixos-rebuild`
+rebuilds the interior from the flake. Always commit config changes.
 
 #### Temporal schedules are idempotent-as-create
 
@@ -319,22 +280,18 @@ changes won't reach prod.
 
 ## Where things live
 
-Orchestrator host (one runner: `fishsense-prod`):
+Incus slot (one runner, auto-registered, labelled `fishsense`):
 
 ```
-compose.yml
-├── postgres (PG 16, password file via docker secret)
-├── qcomm-static-file-server (Traefik + authentik)
-├── fishsense-lite-web (homepage + /portal at fishsense.e4e.ucsd.edu;
-│     /portal/* auth via Authentik OIDC, app-owned NextAuth session)
-├── include: compose.orchestrator.yml
-│     ├── fishsense-api
-│     └── static_file_server (nginx DAV — the /api/v1/exchange/ routes)
-├── include: compose.superset.yml
-├── include: compose.temporal.yml
-└── include: compose.workers.yml
-      ├── fishsense-api-workflow-worker (× 2 replicas)
-      └── fishsense-backup-worker
+incus/compose.yml                (converged by nixos-rebuild, not by hand)
+├── traefik (inner edge :443, fishsense.vm)
+├── authentik-outpost (forwardAuth for the API route)
+├── postgres (fishsense + superset DBs, vault-agent password)
+├── fishsense-lite-web (landing + /portal at fishsense.e4e.ucsd.edu)
+├── fishsense-api (api.fishsense.e4e.ucsd.edu, forwardAuth-gated)
+├── fishsense-api-workflow-worker  ─┐ krg-prod Temporal over mTLS
+├── fishsense-backup-worker        ─┘
+└── superset + valkey (profile: superset — off by default)
 ```
 
 Data-processing worker (NRP/Kubernetes, **not** a compose service):

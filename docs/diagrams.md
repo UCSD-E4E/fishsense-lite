@@ -83,24 +83,25 @@ in [deploy/](../deploy/).
 
 ```mermaid
 flowchart TB
-    subgraph PROD["Prod orchestrator host"]
+    subgraph PROD["Prod Incus slot - deploy/incus/compose.yml"]
         direction TB
-        subgraph C_BASE["compose.yml + compose.orchestrator.yml"]
+        subgraph C_BASE["edge + core"]
+            P_TRAEFIK["traefik (inner edge)"]
+            P_AUTHENTIK["Authentik outpost (forwardAuth)"]
             P_API["fishsense-api"]
+            P_WEB["fishsense-lite-web"]
             P_PG[("PostgreSQL 17")]
-            P_AUTHENTIK["Authentik OAuth proxy"]
         end
-        subgraph C_TEMPORAL["compose.temporal.yml"]
-            P_TEMPORAL["Temporal cluster"]
-        end
-        subgraph C_WORKERS["compose.workers.yml"]
+        subgraph C_WORKERS["workers"]
             P_APIWW["fishsense-api-workflow-worker"]
             P_BUW["fishsense-backup-worker"]
         end
-        subgraph C_SUPERSET["compose.superset.yml"]
+        subgraph C_SUPERSET["profile: superset (off by default)"]
             P_SUP["Superset"]
         end
     end
+
+    P_TEMPORAL["Temporal cluster<br/>krg-prod, mTLS - not in this repo's stack"]
 
     GAR["Garage (hosted S3 object store)<br/>not in this repo's compose"]
 
@@ -135,9 +136,9 @@ flowchart TB
     GH_REL     -->|release published event| CI_PROMOTE
     CI_PROMOTE --> GHCR
     CI_PROMOTE -->|opens image-pin PR| AUTO_PR
-    AUTO_PR    -->|merge: orchestrator pin| CI_DEPLOY
+    AUTO_PR    -->|merge: incus compose pin| CI_DEPLOY
     AUTO_PR    -->|merge: data-worker pin| CI_DEPLOY
-    CI_DEPLOY  -->|docker compose up -d| PROD
+    CI_DEPLOY  -->|systemctl start fishsense-selfupdate<br/>nixos-rebuild switch| PROD
     CI_DEPLOY  -->|kubectl apply -k| NRP
 
     P_APIWW -.->|k8s scale 0..N| D_DPW
@@ -146,16 +147,18 @@ flowchart TB
 Notes:
 
 - The deploy PR is intentional — a human reviews the image-pin diff
-  (compose `image:` for the orchestrator stack, kustomize `newTag:` for
-  the data-worker) before any prod change. See
+  (compose `image:` in `deploy/incus/compose.yml` for the slot,
+  kustomize `newTag:` for the data-worker) before any prod change. See
   [.github/workflows/deploy.yml](../.github/workflows/deploy.yml).
-- The orchestrator deploy job uses a persistent ops-managed checkout
-  (path passed via repo variable `DEPLOY_DIR`); volumes/secrets sit
-  beside the compose files as untracked siblings. The data-worker
-  deploy job is a GitHub-hosted `kubectl apply -k` using the
-  `NRP_KUBECONFIG` secret — no persistent dir; config/certs live in
-  cluster ConfigMaps/Secrets.
-- The local stack does **not** layer onto `compose.yml` — Authentik /
+  It's also what makes the converge meaningful: the slot rebuilds from
+  main, so the pin on main *is* the deployed version.
+- Neither deploy job checks the repo out onto its target. The slot
+  pulls the flake from GitHub (`nixos-rebuild --flake github:...
+  --refresh`) and renders secrets via vault-agent; the data-worker
+  deploy is a GitHub-hosted `kubectl apply -k` using the
+  `NRP_KUBECONFIG` secret, with config/certs in cluster
+  ConfigMaps/Secrets.
+- The local stack does **not** layer onto the prod stack — Authentik /
   mTLS / letsencrypt aren't bootable on a laptop.
 
 ## 3. Domain class diagram (Postgres tables)
@@ -462,7 +465,7 @@ decode.
 ## 6. Sequence — api-worker label sync
 
 Hourly `SyncLabelStudioLaserLabelsWorkflow` (the head/tail variant is
-isomorphic). Runs entirely on the orchestrator host.
+isomorphic). Runs entirely in the Incus slot, on the api-worker.
 
 ```mermaid
 sequenceDiagram
@@ -589,9 +592,10 @@ stateDiagram-v2
     end note
 
     note right of AutoDeployPR
-        Orchestrator-stack services: bumps the
-        image: pin in deploy/compose*.yml, deploy.yml
-        runs docker compose up -d on fishsense-prod.
+        In-slot services: bumps the image: pin in
+        deploy/incus/compose.yml, deploy.yml starts
+        fishsense-selfupdate on the slot's runner
+        (nixos-rebuild switch onto the merged commit).
         data-processing-workflow-worker: bumps the
         newTag: in deploy/k8s/data-worker/kustomization.yaml,
         deploy.yml runs kubectl apply -k on NRP.
