@@ -17,9 +17,13 @@ const projectsMock = vi.mocked(getProjects);
 beforeEach(() => {
   idsMock.mockReset();
   projectsMock.mockReset();
+  // The Label Studio path is off by default (see labelStudioEnabled).
+  // These tests cover the enabled path, so opt in explicitly.
+  vi.stubEnv("LABEL_STUDIO_ENABLED", "true");
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
@@ -74,5 +78,56 @@ describe("getActiveProjects", () => {
     const result = await getActiveProjects(60);
 
     expect(result).toEqual({ laser: [], species: [], headtail: [], slate: [] });
+  });
+});
+
+// Kill-switch behavior. With LABEL_STUDIO_ENABLED off (the default), the
+// landing page must render without touching Label Studio at all: a single
+// unresolvable project ID used to throw out of SSR and 500 the whole page.
+// buildSections() drops any kind with zero projects, so empty buckets
+// collapse the four labeling sections and leave Results + Administration.
+describe("getActiveProjects (Label Studio disabled)", () => {
+  beforeEach(() => {
+    vi.stubEnv("LABEL_STUDIO_ENABLED", "false");
+  });
+
+  it("returns an empty four-bucket map", async () => {
+    const result = await getActiveProjects(60);
+
+    expect(result).toEqual({ laser: [], species: [], headtail: [], slate: [] });
+  });
+
+  it("does not call Label Studio", async () => {
+    await getActiveProjects(60);
+
+    expect(projectsMock).not.toHaveBeenCalled();
+  });
+
+  it("does not even fetch project IDs from fishsense-api", async () => {
+    await getActiveProjects(60);
+
+    expect(idsMock).not.toHaveBeenCalled();
+  });
+
+  it("resolves rather than throwing when Label Studio would 401", async () => {
+    // Guards the actual prod failure: getProject threw on a 401 and the
+    // rejection propagated through Promise.all out of the server component.
+    projectsMock.mockRejectedValue(new Error("401 Unauthorized"));
+
+    await expect(getActiveProjects(60)).resolves.toEqual({
+      laser: [],
+      species: [],
+      headtail: [],
+      slate: [],
+    });
+  });
+
+  it("is disabled when LABEL_STUDIO_ENABLED is unset entirely", async () => {
+    vi.unstubAllEnvs();
+
+    await getActiveProjects(60);
+
+    expect(idsMock).not.toHaveBeenCalled();
+    expect(projectsMock).not.toHaveBeenCalled();
   });
 });
