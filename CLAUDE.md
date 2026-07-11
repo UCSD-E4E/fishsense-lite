@@ -672,6 +672,22 @@ name:
 Never give a job a bare `runs-on: self-hosted` — the `fishsense` label
 is what keeps GitHub-hosted work (the NRP deploy) off the tenant slot.
 
+**Two other convergence paths beyond the pin-bump PR merge.** (1) A
+manual `deploy.yml` `workflow_dispatch` (`target: incus`) — for
+config-only `deploy/incus/` changes, which cut no release and so open no
+`auto-deploy/*` PR. (2) The **nightly `system.autoUpgrade`** (04:00,
+krg-infra #460) rebuilds the slot from `github:UCSD-E4E/fishsense-lite#fishsense`,
+so anything on main rolls out within a day unattended (`allowReboot=false`).
+
+**Committed config applies only because the converge force-recreates.**
+The composeStack unit runs `up -d --force-recreate` (krg-infra
+`recreateOnConfigChange`, their #459 / our krg-infra#458). A bind-mounted
+config file is a project-dir store symlink whose target changes on edit,
+but plain `up -d` sees no compose-spec change and won't re-read it — a
+stale bind mount once crash-looped the api-worker on old config while the
+fix "deployed" with no effect. Force-recreate fixes that, at the cost of
+recreating the whole stack (postgres included) on any changed converge.
+
 **The converge is a trigger, not a clean CI gate.** `fishsense-selfupdate`
 restarts the very runner executing the job (its first action is
 `systemctl stop github-runner-fishsense`). The step therefore uses

@@ -9,11 +9,16 @@ the repo-root [`flake.nix`](../../flake.nix) which imports this directory.
 Upstream hand-off:
 <https://github.com/KastnerRG/krg-infra/tree/main/docs/handoff/fishsense-lite>
 
-> **Status: activated, pre-bootstrap.** The `flake.nix` is at the repo root;
-> `compose.yml` + config + `secrets.nix` + `hardware-configuration.nix` live here and
-> are referenced by root-relative paths. `.github/workflows/deploy.yml` converges the
-> slot when a `promote.yml`-generated `auto-deploy/*` pin-bump PR merges, and on manual
-> `workflow_dispatch`. First bring-up is the admin's one-time `nixos-rebuild switch`.
+> **Status: live.** The slot is bootstrapped and serving (web + API up). The
+> `flake.nix` is at the repo root; `compose.yml` + config + `secrets.nix` +
+> `hardware-configuration.nix` live here and are referenced by root-relative paths.
+> Three convergence paths: a `promote.yml`-generated `auto-deploy/*` pin-bump PR
+> merge (`.github/workflows/deploy.yml`), a manual `workflow_dispatch` (`target: incus`,
+> for config-only changes that cut no release), and the **nightly `system.autoUpgrade`**
+> (04:00, rebuilds from main — krg-infra #460). The composeStack runs
+> `up -d --force-recreate` (krg-infra #459 / our krg-infra#458) so committed config
+> changes actually apply on converge. First bring-up was the admin's one-time
+> `nixos-rebuild switch`.
 
 ## What runs here
 
@@ -128,8 +133,11 @@ into the `pgdata` volume (roles + passwords come from the dump); seed OpenBao to
 ## Status — resolved vs. remaining
 
 **Resolved (baked into these files):**
-- ✅ `flake.nix` — **at the repo root** (activation done), pinned rev `2554daa`
-  (incl. #435–#440, #443), `temporal` opt-in, quota 6/12; imports this dir by root-relative paths.
+- ✅ `flake.nix` — **at the repo root** (activation done), tracks krg-infra `main`
+  with the exact rev pinned in `flake.lock` (currently `4c10ed3e`: #435–#440, #443,
+  #453, #459 compose force-recreate, #460 nightly auto-upgrade). `temporal` opt-in,
+  quota 6/12; imports this dir by root-relative paths. The pin is advanced weekly by
+  `.github/workflows/update-flake.yml` (Axis B — committed straight to `main`).
 - ✅ **Disk/boot via `incus-virtual-machine.nix`** (the same module the krg-golden image
   builds from) — systemd-boot + ESP/root fileSystems **by label** + `incus-agent` (keeps
   `incus exec` working post-switch). Replaces the fragile captured-UUID hardware-config;
@@ -171,11 +179,18 @@ into the `pgdata` volume (roles + passwords come from the dump); seed OpenBao to
    `fishsense-worker` after #435's grant is live.
 
 **Notes (not blockers):**
-- **the converge is a trigger, not a clean CI gate.** `fishsense-selfupdate` is a
-  oneshot that propagates `nixos-rebuild`'s exit, but it stops the runner mid-switch
-  (the Actions job may report cancelled/interrupted) and exit 0 only means `compose up -d`
-  was *issued*, not that containers are healthy. Verify on-box (`systemctl status
-  fishsense-selfupdate`) or add a post-converge HTTP health probe.
+- **the converge is a trigger, not a clean CI gate.** `fishsense-selfupdate` stops the
+  runner mid-switch, so `deploy.yml` starts it with `systemctl start --no-block` (PR #241)
+  and reports success as soon as the converge is *enqueued* — green means "converge
+  fired", not "containers healthy". Verify on-box (`systemctl status fishsense-selfupdate`)
+  or add a post-converge HTTP health probe.
+- **committed config applies only via force-recreate.** The composeStack runs
+  `up -d --force-recreate` (krg-infra #459, from our krg-infra#458): plain `up -d` doesn't
+  re-read a bind-mounted config file whose store-symlink target changed, so a config edit
+  would "deploy" with no effect — it once crash-looped the api-worker on a stale
+  `settings.toml`. Trade-off: a *changed* converge recreates the whole stack (brief
+  restart of postgres et al.). The **nightly `system.autoUpgrade`** (04:00, #460) means
+  any main change also rolls out unattended within a day.
 - **Observability — deferred, tracked.** Central tenant metrics are **held** (ours:
   **#220**, upstream krg-infra **#441** — push-based Alloy → mTLS `remote_write` → central
   Grafana, fishsense pilot). No alerting exists yet (ours: **#221**, upstream krg-infra
