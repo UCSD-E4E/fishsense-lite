@@ -133,9 +133,11 @@ into the `pgdata` volume (roles + passwords come from the dump); seed OpenBao to
 ## Status — resolved vs. remaining
 
 **Resolved (baked into these files):**
-- ✅ `flake.nix` — **at the repo root** (activation done), pinned rev `4c10ed3e`
-  (incl. #435–#440, #443, #453, #459 compose force-recreate, #460 nightly auto-upgrade),
-  `temporal` opt-in, quota 6/12; imports this dir by root-relative paths.
+- ✅ `flake.nix` — **at the repo root** (activation done), tracks krg-infra `main`
+  with the exact rev pinned in `flake.lock` (currently `4c10ed3e`: #435–#440, #443,
+  #453, #459 compose force-recreate, #460 nightly auto-upgrade). `temporal` opt-in,
+  quota 6/12; imports this dir by root-relative paths. The pin is advanced weekly by
+  `.github/workflows/update-flake.yml` (Axis B — committed straight to `main`).
 - ✅ **Disk/boot via `incus-virtual-machine.nix`** (the same module the krg-golden image
   builds from) — systemd-boot + ESP/root fileSystems **by label** + `incus-agent` (keeps
   `incus exec` working post-switch). Replaces the fragile captured-UUID hardware-config;

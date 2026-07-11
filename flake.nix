@@ -8,24 +8,22 @@
   description = "fishsense-lite — KRG Incus platform tenant #1";
 
   inputs = {
-    # Pinned to a merged krg-infra main SHA that includes:
-    #   #431 vault-agent fishsense.vm cert + repo-owns-deploy runner
-    #   #435 ADR 0023 in-slot Temporal client-cert render
-    #   #436 quota 6/12   #437 api.fishsense SANs + external_host rename
-    #   #438 OIDC secrets → tenant KV + §9 app-secret render pattern
-    #   #439 root disk 50 GiB   #440 co-located proxy outpost (Option A)   #443 OIDC writer glob
-    #   #447 krg-deploy runner-repo-tag read fix (mints+pushes our runner token)
-    #   #453 create the github-runner workDir (fixes the 226/NAMESPACE start failure
-    #        that kept our runner from registering — the workaround we handed upstream)
-    #   #459 composeStack force-recreates on converge so committed config actually
-    #        applies (our issue #458 — a stale bind mount crash-looped the api-worker);
-    #        tenant.nix turns it on for repo-owns-deploy tenants. TRADE-OFF: a changed
-    #        converge now recreates the WHOLE stack (brief restart of postgres et al.).
-    #   #460 nightly system.autoUpgrade (04:00) rebuilds from THIS flake — the slot
-    #        self-heals/updates from main without an auto-deploy PR; allowReboot=false.
-    # This rev IS our stable contract (ADR 0020 §5); bump deliberately to pick up
-    # platform-seam changes.
-    krg-infra.url = "github:KastnerRG/krg-infra/4c10ed3e09095c1792709d8e7cf252f15f894a06?dir=nix";
+    # Tracks krg-infra `main`; the EXACT rev is pinned in `flake.lock`, not here.
+    # That lock rev is our stable contract (ADR 0020 §5): every converge builds from
+    # the committed lock, so `main` moving doesn't touch the slot until the lock is
+    # advanced — the deliberate act being a merge to our `main`.
+    #
+    # Advancing the pin is "Axis B" (krg-infra docs/tenant-updates.md) and it's OURS:
+    # `nixpkgs.follows = "krg-infra/nixpkgs"`, so bumping krg-infra drags in new
+    # nixpkgs (kernel / bash / openssl / CVE fixes). `.github/workflows/update-flake.yml`
+    # does it weekly — `nix flake update krg-infra`, committed straight to `main` — and
+    # the nightly `system.autoUpgrade` (#460) rolls it out. Skip it and the slot freezes
+    # on old, unpatched packages. A new kernel needs a manual `incus restart` (allowReboot=false).
+    #
+    # The lock currently carries krg-infra @ 4c10ed3e (incl. #435–#440/#443/#453,
+    # #459 compose force-recreate, #460 nightly auto-upgrade). `git log -p flake.lock`
+    # is the real history of what shipped.
+    krg-infra.url = "github:KastnerRG/krg-infra?dir=nix";
     nixpkgs.follows = "krg-infra/nixpkgs";
   };
 

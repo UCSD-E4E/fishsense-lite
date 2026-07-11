@@ -1,26 +1,20 @@
 name: Flake lock check
 
-# Fails when `flake.lock` disagrees with `flake.nix`.
+# Fails when `flake.lock` disagrees with `flake.nix` inputs.
 #
-# The repo-root flake is what `fishsense-selfupdate` builds on the Incus
-# slot. The `--refresh` in
-#   nixos-rebuild switch --flake github:UCSD-E4E/fishsense-lite#fishsense --refresh
-# only busts nix's tarball-TTL cache for the *top-level* repo ref; every
-# transitive input is resolved from the committed lock. So bumping the
-# `krg-infra.url` rev in flake.nix without re-locking is a silent no-op:
-# the slot keeps building the old krg-infra, and nix can't write the
-# corrected lock back because the flake source is read-only in the store.
+# The repo-root flake is what the slot builds every converge, from the
+# committed `flake.lock` — `--refresh` only re-fetches the top-level repo
+# ref, never re-resolves transitive inputs. So a `flake.nix` that names an
+# input the lock doesn't match would silently build the wrong thing.
 #
 # `nix flake lock --no-update-lock-file` re-resolves every input against
 # flake.nix and exits non-zero if the lock would have to change. It never
-# writes.
+# writes and never advances an already-locked input.
 #
-# NOT an updater. `krg-infra` is pinned to an explicit rev — ADR 0020 §5
-# calls that rev our stable contract with the platform, bumped
-# deliberately — and `nixpkgs` follows it, so there is no input for a
-# `nix flake update` to move. To bump: edit the rev in flake.nix and run
-#   nix flake update krg-infra
-# in the same PR. This check is what catches forgetting the second half.
+# NOT an updater. flake.nix tracks krg-infra `main`; the rev is pinned in
+# flake.lock and advanced deliberately — weekly by update-flake.yml, or by
+# hand with `nix flake update krg-infra`. This check just guards that a
+# hand-edit to a `flake.nix` input is accompanied by a matching re-lock.
 
 on:
   pull_request:

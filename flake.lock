@@ -132,7 +132,6 @@
         "dir": "nix",
         "owner": "KastnerRG",
         "repo": "krg-infra",
-        "rev": "4c10ed3e09095c1792709d8e7cf252f15f894a06",
         "type": "github"
       }
     },
