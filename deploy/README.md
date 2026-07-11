@@ -109,9 +109,21 @@ flow to the slot atomically with the image-pin bump in the same commit —
 no drift window where the new image runs against the old settings or
 vice versa.
 
+For a bind-mounted config change to actually take effect, the converge
+must **recreate** the container: the config is a project-dir store
+symlink whose target changes, but `docker compose up -d` alone doesn't
+re-read it (a plain `up -d` sees no compose-spec change). The tenant
+stack runs `up -d --force-recreate` (krg-infra `recreateOnConfigChange`,
+their #459 / our krg-infra#458 — a stale bind mount once crash-looped
+the api-worker), so a *changed* converge recreates the whole stack and
+committed config applies. Cost: a brief restart of every service
+(postgres included) on a converge that changed anything.
+
 Corollary: a config-only change to `incus/` produces no release and
-therefore no `auto-deploy/*` PR, so nothing converges it. Land it on
-main, then run `deploy.yml` by hand (`workflow_dispatch`, `target: incus`).
+therefore no `auto-deploy/*` PR, so no PR-merge converge fires. It still
+rolls out on the **nightly `system.autoUpgrade`** (04:00, rebuilds from
+main — krg-infra #460); to apply it immediately, run `deploy.yml` by
+hand (`workflow_dispatch`, `target: incus`).
 
 Editing files inside the slot doesn't survive a converge — `nixos-rebuild`
 rebuilds the interior from the flake. Always commit config changes.
