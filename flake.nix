@@ -17,9 +17,15 @@
     #   #447 krg-deploy runner-repo-tag read fix (mints+pushes our runner token)
     #   #453 create the github-runner workDir (fixes the 226/NAMESPACE start failure
     #        that kept our runner from registering — the workaround we handed upstream)
+    #   #459 composeStack force-recreates on converge so committed config actually
+    #        applies (our issue #458 — a stale bind mount crash-looped the api-worker);
+    #        tenant.nix turns it on for repo-owns-deploy tenants. TRADE-OFF: a changed
+    #        converge now recreates the WHOLE stack (brief restart of postgres et al.).
+    #   #460 nightly system.autoUpgrade (04:00) rebuilds from THIS flake — the slot
+    #        self-heals/updates from main without an auto-deploy PR; allowReboot=false.
     # This rev IS our stable contract (ADR 0020 §5); bump deliberately to pick up
     # platform-seam changes.
-    krg-infra.url = "github:KastnerRG/krg-infra/c29ab5f735102e5bf37cdb6ecf8ec1458c6a1daa?dir=nix";
+    krg-infra.url = "github:KastnerRG/krg-infra/4c10ed3e09095c1792709d8e7cf252f15f894a06?dir=nix";
     nixpkgs.follows = "krg-infra/nixpkgs";
   };
 
