@@ -18,6 +18,9 @@
 #   label_studio  { api_key }
 #   object_store  { access_key, secret_key }   # Garage S3
 #   nas           { username, password }        # Synology FileStation
+#   nrp           { kubeconfig }                # NRP token kubeconfig — api-worker scales the
+#                                               # data-worker Deployment (ns e4e-fishsense). SOFT
+#                                               # render (below); token expires — reseed on rotation.
 # PLATFORM writes (tofu — do NOT seed):
 #   oidc/web                 { client_id, client_secret, issuer_url }   (#438)
 #   oidc/analytics           { client_id, client_secret, issuer_url }   (#438)
@@ -72,6 +75,29 @@
       destination = "/run/tenant/secrets/backup-postgres.env";
       contents = ''
         {{ with secret "secret/data/tenants/fishsense/postgres" }}E4EFS_POSTGRES__PASSWORD={{ .Data.data.backup_password }}{{ end }}
+      '';
+    }
+    {
+      # NRP token kubeconfig — the api-worker uses it to scale the data-worker
+      # Deployment on NRP (ns e4e-fishsense) via the k8s API. Rendered to a
+      # WRITABLE runtime path (the committed config dir is a read-only store
+      # bind) and mounted into the api-worker container (compose.yml);
+      # settings.toml `[kubernetes].kubeconfig_path` points at it.
+      #
+      # SOFT render (errorOnMissingKey=false) — same reasoning as the outpost
+      # token: an un-seeded kubeconfig must NOT fail-close the whole agent (that
+      # would also block the fishsense.vm cert → inner Traefik → the entire
+      # stack). If unseeded, the file renders empty and only api-worker scaling
+      # is affected, not the slot.
+      #
+      # ORDERING: seed `nrp.kubeconfig` in OpenBao BEFORE merging/converging the
+      # matching `kubeconfig_path` in settings.toml — otherwise the api-worker's
+      # path_validator sees a missing/empty kubeconfig (isolated to that worker,
+      # recoverable by seeding + reconverge; the rest of the slot stays up).
+      destination = "/run/tenant/nrp/kubeconfig";
+      errorOnMissingKey = false;
+      contents = ''
+        {{ with secret "secret/data/tenants/fishsense/nrp" }}{{ .Data.data.kubeconfig }}{{ end }}
       '';
     }
     {

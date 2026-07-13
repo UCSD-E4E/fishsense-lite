@@ -214,6 +214,10 @@ services:
       # krg-prod Temporal mTLS client identity — vault-agent render (temporal opt-in
       # in flake.nix; krg-infra #435).
       - /run/tenant/temporal:/run/tenant/temporal:ro
+      # NRP kubeconfig for scaling the data-worker Deployment (vault-agent
+      # SOFT render — secrets.nix). Only this worker scales k8s; the backup
+      # worker doesn't get it. [kubernetes].kubeconfig_path points here.
+      - /run/tenant/nrp:/run/tenant/nrp:ro
     networks: [interior]
 
   # ── nightly Postgres → NAS backups ─────────────────────────────────────────────────────
