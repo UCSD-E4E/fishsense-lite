@@ -75,7 +75,8 @@ async def _laser_ids(session, *, incomplete=False):
         get_laser_label_studio_project_ids,
     )
 
-    return sorted(await get_laser_label_studio_project_ids(incomplete=incomplete, session=session))
+    ids = await get_laser_label_studio_project_ids(incomplete=incomplete, session=session)
+    return sorted(ids)
 
 
 async def _headtail_ids(session, *, incomplete=False):
@@ -83,7 +84,8 @@ async def _headtail_ids(session, *, incomplete=False):
         get_headtail_label_studio_project_ids,
     )
 
-    return sorted(await get_headtail_label_studio_project_ids(incomplete=incomplete, session=session))
+    ids = await get_headtail_label_studio_project_ids(incomplete=incomplete, session=session)
+    return sorted(ids)
 
 
 # ── laser ──────────────────────────────────────────────────────────────────
