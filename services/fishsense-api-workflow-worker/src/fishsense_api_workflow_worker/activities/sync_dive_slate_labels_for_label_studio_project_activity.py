@@ -189,8 +189,11 @@ async def _update_slate_label(
         return
 
     if task.annotators:
+        # Unmapped annotator (get_by_label_studio_id 404s -> None) mustn't
+        # crash the task sync — skip attribution instead.
         user = await fs.users.get_by_label_studio_id(task.annotators[-1])
-        slate_label.user_id = user.id
+        if user is not None:
+            slate_label.user_id = user.id
 
     slate_label.label_studio_json = json.loads(task.json())
     slate_label.completed = task.is_labeled

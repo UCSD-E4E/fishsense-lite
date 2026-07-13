@@ -32,10 +32,15 @@ from fishsense_api_workflow_worker.activities import (
 )
 
 
-def _make_task(task_id: int, *, annotations: List[dict] | None = None) -> Any:
+def _make_task(
+    task_id: int,
+    *,
+    annotations: List[dict] | None = None,
+    annotators: List[int] | None = None,
+) -> Any:
     return SimpleNamespace(
         id=task_id,
-        annotators=[],
+        annotators=annotators or [],
         annotations=annotations or [],
         is_labeled=False,
         updated_at="2026-05-01T00:00:00Z",
@@ -59,6 +64,9 @@ def _make_fs_client(label_lookup, *, cursor=None):
     fs.labels.put_species_label = AsyncMock()
     fs.labels.get_sync_cursor = AsyncMock(side_effect=_get_cursor)
     fs.labels.put_sync_cursor = AsyncMock()
+    # Default: the annotator isn't user-synced yet -> None.
+    fs.users = MagicMock()
+    fs.users.get_by_label_studio_id = AsyncMock(return_value=None)
     return fs
 
 
@@ -234,6 +242,29 @@ async def test_skips_tasks_with_no_existing_label(monkeypatch):
 
     assert fs.labels.get_species_label.await_count == 3
     fs.labels.put_species_label.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_unmapped_annotator_does_not_crash_sync(monkeypatch):
+    """A task annotated by someone not yet user-synced (get_by_label_studio_id
+    -> None) must sync without crashing; user_id is simply left unset. Happens
+    during a Label-Studio-instance transition."""
+    task = _make_task(1, annotators=[999])
+    label = _empty_species_label(11)
+    fs = _make_fs_client(label_lookup={1: label})  # annotator maps to None
+    ls = _make_ls_client([task])
+
+    monkeypatch.setattr(sut_utils, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "get_ls_client", lambda: ls)
+
+    await ActivityEnvironment().run(
+        sut.sync_species_labels_for_label_studio_project_activity, 1
+    )
+
+    fs.users.get_by_label_studio_id.assert_awaited_once_with(999)
+    written = fs.labels.put_species_label.await_args_list
+    assert len(written) == 1
+    assert written[0].args[1].user_id is None
 
 
 @pytest.mark.asyncio
