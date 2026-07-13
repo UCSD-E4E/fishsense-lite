@@ -34,6 +34,7 @@ def _label(image_id: int, *, grouping: str | None = None) -> SpeciesLabel:
         image_url=None,
         updated_at=None,
         completed=True,
+        superseded=False,
         grouping=grouping,
         top_three_photos_of_group=None,
         slate_upside_down=None,

@@ -44,8 +44,11 @@ async def get_dive_slate_label_studio_project_ids(
         "(incomplete=%s)",
         incomplete,
     )
-    query = select(DiveSlateLabel.label_studio_project_id).where(
-        DiveSlateLabel.label_studio_project_id != None
+    query = (
+        select(DiveSlateLabel.label_studio_project_id)
+        .where(DiveSlateLabel.label_studio_project_id != None)
+        # Exclude dead-lettered rows — parity with every other read.
+        .where(DiveSlateLabel.superseded == False)
     )
     if incomplete:
         query = query.where(
@@ -62,7 +65,11 @@ async def get_dive_slate_label(
     """Retrieve slate label for a given image ID."""
     logger.debug("Retrieving dive slate label for image with id=%d", image_id)
 
-    query = select(DiveSlateLabel).where(DiveSlateLabel.image_id == image_id)
+    query = (
+        select(DiveSlateLabel)
+        .where(DiveSlateLabel.image_id == image_id)
+        .where(DiveSlateLabel.superseded == False)
+    )
 
     return (await session.exec(query)).first()
 
@@ -78,6 +85,7 @@ async def get_dive_slate_labels_for_dive(
         .join_from(DiveSlateLabel, Image, DiveSlateLabel.image_id == Image.id)
         .join_from(Image, Dive, Image.dive_id == Dive.id)
         .where(Dive.id == dive_id)
+        .where(DiveSlateLabel.superseded == False)
     )
 
     labels = (await session.exec(query)).all()
@@ -114,8 +122,10 @@ async def get_dive_slate_label_by_label_studio_id(
     logger.debug(
         "Retrieving dive-slate label for Label Studio id=%d", label_studio_id
     )
-    query = select(DiveSlateLabel).where(
-        DiveSlateLabel.label_studio_task_id == label_studio_id
+    query = (
+        select(DiveSlateLabel)
+        .where(DiveSlateLabel.label_studio_task_id == label_studio_id)
+        .where(DiveSlateLabel.superseded == False)
     )
 
     label = (await session.exec(query)).first()
@@ -430,6 +440,7 @@ async def get_species_labels_for_dive(
         .join_from(SpeciesLabel, Image, SpeciesLabel.image_id == Image.id)
         .join_from(Image, Dive, Image.dive_id == Dive.id)
         .where(Dive.id == dive_id)
+        .where(SpeciesLabel.superseded == False)
     )
 
     labels = (await session.exec(query)).all()
@@ -460,8 +471,11 @@ async def get_species_label_studio_project_ids(
         "(incomplete=%s)",
         incomplete,
     )
-    query = select(SpeciesLabel.label_studio_project_id).where(
-        SpeciesLabel.label_studio_project_id != None
+    query = (
+        select(SpeciesLabel.label_studio_project_id)
+        .where(SpeciesLabel.label_studio_project_id != None)
+        # Exclude dead-lettered rows — parity with every other read.
+        .where(SpeciesLabel.superseded == False)
     )
     if incomplete:
         query = query.where(
@@ -477,7 +491,11 @@ async def get_species_label(
 ) -> SpeciesLabel | None:
     """Retrieve a species label for a given image ID."""
     logger.debug("Retrieving species label for image with id=%d", image_id)
-    query = select(SpeciesLabel).where(SpeciesLabel.image_id == image_id)
+    query = (
+        select(SpeciesLabel)
+        .where(SpeciesLabel.image_id == image_id)
+        .where(SpeciesLabel.superseded == False)
+    )
 
     label = (await session.exec(query)).first()
     if label is None:
@@ -513,8 +531,10 @@ async def get_species_label_by_label_studio_id(
     logger.debug(
         "Retrieving species label for Label Studio id=%d", label_studio_id
     )
-    query = select(SpeciesLabel).where(
-        SpeciesLabel.label_studio_task_id == label_studio_id
+    query = (
+        select(SpeciesLabel)
+        .where(SpeciesLabel.label_studio_task_id == label_studio_id)
+        .where(SpeciesLabel.superseded == False)
     )
 
     label = (await session.exec(query)).first()

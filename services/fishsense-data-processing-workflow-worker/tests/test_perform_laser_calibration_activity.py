@@ -163,6 +163,7 @@ def _build_synthetic_scene(
                 skipped_points=None,
                 updated_at=None,
                 completed=True,
+                superseded=False,
                 label_studio_json=None,
                 image_id=image_id,
                 user_id=None,

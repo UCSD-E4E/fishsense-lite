@@ -120,6 +120,7 @@ def _species(
         image_url=f"http://example.com/{image_id}.JPG",
         updated_at=None,
         completed=completed,
+        superseded=False,
         label_studio_json={},
         user_id=None,
         grouping=None,

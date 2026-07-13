@@ -311,6 +311,9 @@ async def select_next_for_laser_calibration(
         .join(Image, Image.id == DiveSlateLabel.image_id)
         .where(Image.dive_id == Dive.id)
         .where(DiveSlateLabel.completed == True)
+        # A dead-lettered slate label doesn't count toward the calibration
+        # readiness gate — same validity convention laser calibration uses.
+        .where(DiveSlateLabel.superseded == False)
         .scalar_subquery()
     )
     query = (
