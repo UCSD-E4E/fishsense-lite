@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActiveProjects } from "./active-projects";
 import { buildSections } from "./sections";
 import type { StaticLink } from "./static-links";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 const EMPTY_ACTIVE: ActiveProjects = {
   laser: [],
@@ -32,9 +36,28 @@ describe("buildSections", () => {
       {
         title: "REEF Laser High",
         description: "REEF Laser High labeling project",
-        href: "https://labeler.e4e.ucsd.edu/projects/42",
+        // Default hosted-LS base when no env is set.
+        href: "https://app.heartex.com/projects/42",
       },
     ]);
+  });
+
+  it("derives the project link base from LABEL_STUDIO_URL, overridable by LABELER_BASE", () => {
+    vi.stubEnv("LABEL_STUDIO_URL", "https://ls.example.com");
+    expect(
+      buildSections(
+        { ...EMPTY_ACTIVE, laser: [{ id: 42, title: "P" }] },
+        NO_STATIC,
+      )[0].links[0].href,
+    ).toBe("https://ls.example.com/projects/42");
+
+    vi.stubEnv("LABELER_BASE", "https://override.example.com");
+    expect(
+      buildSections(
+        { ...EMPTY_ACTIVE, laser: [{ id: 42, title: "P" }] },
+        NO_STATIC,
+      )[0].links[0].href,
+    ).toBe("https://override.example.com/projects/42");
   });
 
   it("emits sections in the canonical order: Laser, Head/Tail, Species, Slate, Results, Administration", () => {

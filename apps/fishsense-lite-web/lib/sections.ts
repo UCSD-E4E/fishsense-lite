@@ -1,5 +1,17 @@
 import type { ActiveProjects } from "./active-projects";
-import { LABELER_BASE, type StaticLink } from "./static-links";
+import type { StaticLink } from "./static-links";
+
+// User-facing base for Label Studio project links. Derived from the LS
+// instance URL (LABEL_STUDIO_URL, e.g. https://app.heartex.com) so the
+// cards point at the same instance the API resolves names from; overridable
+// via LABELER_BASE. Read at call time so it tracks the runtime env.
+function labelerBase(): string {
+  return (
+    process.env.LABELER_BASE ??
+    process.env.LABEL_STUDIO_URL ??
+    "https://app.heartex.com"
+  );
+}
 
 export type SectionLink = {
   title: string;
@@ -24,6 +36,7 @@ export function buildSections(
   staticLinks: { results: StaticLink[]; admin: StaticLink[] },
 ): Section[] {
   const sections: Section[] = [];
+  const base = labelerBase();
 
   for (const { key, title } of LABELING_KINDS) {
     const projects = active[key];
@@ -33,7 +46,7 @@ export function buildSections(
       links: projects.map((p) => ({
         title: p.title,
         description: `${p.title} labeling project`,
-        href: `${LABELER_BASE}/projects/${p.id}`,
+        href: `${base}/projects/${p.id}`,
       })),
     });
   }
