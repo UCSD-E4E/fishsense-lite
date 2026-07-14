@@ -53,23 +53,27 @@ jobs:
           # `kind create cluster` writes the kubeconfig + sets the
           # current context here; expose the path to the pytest step.
           echo "KUBECONFIG=$HOME/.kube/config" >> "$GITHUB_ENV"
+          # The kustomization pins `namespace: e4e-fishsense`, so the
+          # ephemeral cluster must have it before the Secrets + apply.
+          kubectl create namespace e4e-fishsense
 
       - name: Create stub Secrets the Deployment references
         # Real values don't matter — the pod won't pull the private
         # image and we never wait for it to be Ready; this just lets
         # `kubectl apply -k` resolve the secretKeyRef / imagePullSecrets
-        # so the apply is a faithful server-side validation.
+        # so the apply is a faithful server-side validation. Secrets go
+        # in the pinned namespace so the secretKeyRefs resolve.
         run: |
-          kubectl create secret generic fishsense-data-worker-secrets \
+          kubectl create secret generic fishsense-data-worker-secrets -n e4e-fishsense \
             --from-literal=fishsense_api_username=ci \
             --from-literal=fishsense_api_password=ci \
             --from-literal=object_store_access_key=ci \
             --from-literal=object_store_secret_key=ci
-          kubectl create secret generic fishsense-data-worker-temporal-certs \
+          kubectl create secret generic fishsense-data-worker-temporal-certs -n e4e-fishsense \
             --from-literal=client.pem=ci \
             --from-literal=client.key=ci \
             --from-literal=root-ca.pem=ci
-          kubectl create secret docker-registry ghcr-pull \
+          kubectl create secret docker-registry ghcr-pull -n e4e-fishsense \
             --docker-server=ghcr.io \
             --docker-username=ci \
             --docker-password=ci
@@ -77,7 +81,7 @@ jobs:
       - name: Apply the data-worker manifests (server-side validation)
         run: |
           kubectl apply -k deploy/k8s/data-worker
-          kubectl get deployment fishsense-data-processing-workflow-worker -o yaml
+          kubectl get deployment fishsense-data-processing-workflow-worker -n e4e-fishsense -o yaml
 
       - uses: actions/setup-python@v5
         with:
@@ -89,4 +93,8 @@ jobs:
 
       - name: Run the k8s scaling integration tests
         # KUBECONFIG (set above) points pytest at the kind cluster.
+        # K8S_NAMESPACE matches the namespace the kustomization pins, so
+        # the scaling test finds the Deployment it just applied.
+        env:
+          K8S_NAMESPACE: e4e-fishsense
         run: uv run --directory services/fishsense-api-workflow-worker pytest -v -m k8s

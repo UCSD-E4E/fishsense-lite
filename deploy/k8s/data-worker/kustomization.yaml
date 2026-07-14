@@ -7,10 +7,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# NRP assigns you a namespace. Either uncomment + pin it here, or pass
-# `-n <namespace>` / rely on the kubeconfig context default at apply
-# time. CI's deploy.yml does the latter via the NRP_KUBECONFIG context.
-# namespace: fishsense-...
+# NRP-assigned namespace. Pinned so both a manual `kubectl apply -k` and
+# CI's deploy.yml target it deterministically, regardless of the
+# NRP_KUBECONFIG context's default.
+namespace: e4e-fishsense
 
 resources:
   - deployment.yaml

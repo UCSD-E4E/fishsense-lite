@@ -10,9 +10,11 @@
 # README.md). Dynaconf reads `E4EFS_<SECTION>__<KEY>`, so e.g.
 # `E4EFS_FISHSENSE_API__USERNAME` populates `fishsense_api.username`.
 #
-# Networking: the data-worker runs off the orchestrator's docker
-# network (NRP pods, no stable egress IP), so every URL must be
-# publicly routable. Storage is the hosted Garage (S3-compatible)
+# Networking: the data-worker runs on NRP (no stable egress IP) — off
+# the fishsense Incus slot entirely — so every URL must be publicly
+# routable. Temporal is the shared krg-prod cluster (mTLS), matching the
+# api-worker; fishsense-api is the public `api.` route (behind authentik
+# basic-auth-passthrough — see README). Storage is the hosted Garage (S3-compatible)
 # object store — Garage S3 access keys authenticate from any IP, so
 # there's no IP allowlist / forward-auth to survive (this is what lets
 # the worker run on NRP with no stable egress IP). The api-worker
@@ -23,19 +25,29 @@
 [general]
 max_workers = 8
 
+# Shared krg-prod Temporal (mTLS). MUST match the api-worker's cluster +
+# TLS server-name — the two workers share the `fishsense_data_processing_queue`
+# (api-worker dispatches, this worker polls), and neither passes a namespace
+# to `Client.connect`, so cluster membership is entirely host/domain/cert.
+# The old in-orchestrator `workflows.fishsense.e4e.ucsd.edu` cluster is gone.
 [temporal]
-host = "workflows.fishsense.e4e.ucsd.edu"
+host = "krg-prod.ucsd.edu"
 port = "7233"
 tls = true
-# Data-worker's own mTLS client identity (distinct from the api-worker's).
+# Data-worker's own mTLS client identity (distinct from the api-worker's),
+# authorized for the fishsense tenant on krg-prod (CN `fishsense-worker`).
 # Mounted from the `fishsense-data-worker-temporal-certs` Secret at /certs.
 client_cert = "/certs/client/fishsense-data-processing-workflow-worker.pem"
 client_private_key = "/certs/client/fishsense-data-processing-workflow-worker.key"
-domain = "workflows.fishsense.e4e.ucsd.edu"
+domain = "workflows.krg.ucsd.edu"           # TLS server-name override (SNI), matches api-worker
 server_root_ca_cert = "/certs/ca/root-ca.pem"
 
+# Public API route (the worker is off-slot, so no internal fishsense-api
+# host). Renamed from `orchestrator.` at the Incus migration; the old host
+# is decommissioned. The SDK's HTTP Basic creds pass through authentik's
+# basic-auth-passthrough policy on this route (README, orchestrator-side prereq).
 [fishsense_api]
-url = "https://orchestrator.fishsense.e4e.ucsd.edu"
+url = "https://api.fishsense.e4e.ucsd.edu"
 
 # Hosted Garage (S3-compatible) object store. The data-worker reads
 # staged raw `.ORF` + slate PDFs and writes processed JPEGs back. S3
