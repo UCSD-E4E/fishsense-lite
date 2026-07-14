@@ -152,8 +152,11 @@ async def get_headtail_label_studio_project_ids(
         "(incomplete=%s)",
         incomplete,
     )
-    query = select(HeadTailLabel.label_studio_project_id).where(
-        HeadTailLabel.label_studio_project_id != None
+    query = (
+        select(HeadTailLabel.label_studio_project_id)
+        .where(HeadTailLabel.label_studio_project_id != None)
+        # Parity with laser + every other headtail read — exclude superseded.
+        .where(HeadTailLabel.superseded == False)
     )
     if incomplete:
         query = query.where(
@@ -271,8 +274,13 @@ async def get_laser_label_studio_project_ids(
         "(incomplete=%s)",
         incomplete,
     )
-    query = select(LaserLabel.label_studio_project_id).where(
-        LaserLabel.label_studio_project_id != None
+    query = (
+        select(LaserLabel.label_studio_project_id)
+        .where(LaserLabel.label_studio_project_id != None)
+        # Dead-lettered rows aren't live labeling work — mirror every other
+        # laser read so a superseded-only project drops off the landing page
+        # and the sync enumeration.
+        .where(LaserLabel.superseded == False)
     )
     if incomplete:
         query = query.where(
