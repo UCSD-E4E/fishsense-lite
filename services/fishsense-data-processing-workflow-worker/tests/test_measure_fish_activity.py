@@ -80,6 +80,7 @@ def _species_label(
         image_url=None,
         updated_at=None,
         completed=True,
+        superseded=False,
         grouping="Not part of current group",
         top_three_photos_of_group=True,
         slate_upside_down=False,

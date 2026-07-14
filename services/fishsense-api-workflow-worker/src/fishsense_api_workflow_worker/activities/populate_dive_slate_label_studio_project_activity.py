@@ -70,13 +70,8 @@ async def populate_dive_slate_label_studio_project_activity(
         existing_slate = await fs.labels.get_dive_slate_labels(dive_id) or []
 
         target_ids = _select_target_image_ids(species_labels, existing_slate)
-        if not target_ids:
-            activity.logger.info(
-                "Dive %d has no slate-marked images needing labels; skipping",
-                dive_id,
-            )
-            return 0
 
+        new_count = 0
         images: List[Image] = []
         for image_id in target_ids:
             image = await fs.images.get(image_id=image_id)
@@ -84,32 +79,47 @@ async def populate_dive_slate_label_studio_project_activity(
                 images.append(image)
             activity.heartbeat()
 
-        if not images:
-            return 0
+        if images:
+            tasks = [_build_task(image) for image in images]
 
-        tasks = [_build_task(image) for image in images]
+            async def _record(image: Image, task_id: int) -> None:
+                label = DiveSlateLabel(
+                    id=None,
+                    image_id=image.id,
+                    label_studio_task_id=task_id,
+                    label_studio_project_id=project_id,
+                    image_url=build_image_url(DIVE_SLATE_FOLDER, image.checksum),
+                    upside_down=None,
+                    reference_points=None,
+                    slate_rectangle=None,
+                    skipped_points=None,
+                    updated_at=None,
+                    completed=False,
+                    superseded=False,
+                    label_studio_json={},
+                    user_id=None,
+                )
+                await fs.labels.put_dive_slate_label(image.id, label)
 
-        async def _record(image: Image, task_id: int) -> None:
-            label = DiveSlateLabel(
-                id=None,
-                image_id=image.id,
-                label_studio_task_id=task_id,
-                label_studio_project_id=project_id,
-                image_url=build_image_url(DIVE_SLATE_FOLDER, image.checksum),
-                upside_down=None,
-                reference_points=None,
-                slate_rectangle=None,
-                skipped_points=None,
-                updated_at=None,
-                completed=False,
-                label_studio_json={},
-                user_id=None,
+            new_count = await import_tasks_and_record_labels(
+                project_id=project_id,
+                tasks=tasks,
+                record_label=_record,
+                items=images,
             )
-            await fs.labels.put_dive_slate_label(image.id, label)
+        else:
+            activity.logger.info(
+                "Dive %d has no slate-marked images needing labels; skipping",
+                dive_id,
+            )
 
-        return await import_tasks_and_record_labels(
-            project_id=project_id,
-            tasks=tasks,
-            record_label=_record,
-            items=images,
-        )
+        # Supersede pass: retire previously-incomplete slate rows so new ones
+        # are canonical (mirrors headtail/species). Only already-persisted rows.
+        for old in existing_slate:
+            if old.completed or old.superseded or old.id is None:
+                continue
+            old.superseded = True
+            await fs.labels.put_dive_slate_label(old.image_id, old)
+            activity.heartbeat()
+
+        return new_count

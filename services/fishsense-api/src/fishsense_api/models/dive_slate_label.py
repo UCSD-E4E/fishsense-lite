@@ -34,6 +34,7 @@ class DiveSlateLabel(ModelBase, table=True):
     image_url: str | None = Field(default=None)
     updated_at: datetime | None = Field(sa_type=DateTime(timezone=True), default=None)
     completed: bool | None = Field(default=False)
+    superseded: bool | None = Field(default=False)
     label_studio_json: Dict[str, Any] | None = Field(
         default=None, sa_column=Column(JSON)
     )

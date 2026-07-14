@@ -159,19 +159,21 @@ SELECT
            )
      )) AS dive_images_preprocessed,
 
-    -- Species labeling: ≥1 completed AND zero incomplete. (No
-    -- superseded column on SpeciesLabel — the model doesn't carry
-    -- one; the existing cohort selectors don't filter on it either.)
+    -- Species labeling: ≥1 completed-non-superseded AND zero
+    -- incomplete-non-superseded (mirrors laser/headtail — a superseded
+    -- row is dead-lettered, so it neither satisfies nor blocks completion).
     (EXISTS (
          SELECT 1 FROM specieslabel sl
          JOIN image i ON i.id = sl.image_id
          WHERE i.dive_id = d.id
+           AND sl.superseded = FALSE
            AND sl.completed = TRUE
      )
      AND NOT EXISTS (
          SELECT 1 FROM specieslabel sl
          JOIN image i ON i.id = sl.image_id
          WHERE i.dive_id = d.id
+           AND sl.superseded = FALSE
            AND (sl.completed = FALSE OR sl.completed IS NULL)
      )) AS species_labeling_complete,
 
@@ -200,18 +202,20 @@ SELECT
            )
      )) AS slate_preprocessed,
 
-    -- Slate labeling: ≥1 completed AND zero incomplete. (No
-    -- superseded column on DiveSlateLabel — same as species.)
+    -- Slate labeling: ≥1 completed-non-superseded AND zero
+    -- incomplete-non-superseded (mirrors laser/headtail/species).
     (EXISTS (
          SELECT 1 FROM diveslatelabel dsl
          JOIN image i ON i.id = dsl.image_id
          WHERE i.dive_id = d.id
+           AND dsl.superseded = FALSE
            AND dsl.completed = TRUE
      )
      AND NOT EXISTS (
          SELECT 1 FROM diveslatelabel dsl
          JOIN image i ON i.id = dsl.image_id
          WHERE i.dive_id = d.id
+           AND dsl.superseded = FALSE
            AND (dsl.completed = FALSE OR dsl.completed IS NULL)
      )) AS slate_labeling_complete,
 

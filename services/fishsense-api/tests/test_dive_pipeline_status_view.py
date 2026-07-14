@@ -393,6 +393,58 @@ async def test_headtail_labeling_complete_false_when_zero_labels(session):
     assert (await _row(session, 1))["headtail_labeling_complete"] is False
 
 
+async def test_species_labeling_complete_ignores_superseded(session):
+    """A superseded incomplete species row must not block completion —
+    the new `superseded` column on SpeciesLabel."""
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1)])
+    await session.flush()
+    session.add_all(
+        [
+            SpeciesLabel(
+                image_id=11, completed=True, superseded=False,
+                label_studio_project_id=70,
+            ),
+            SpeciesLabel(
+                image_id=12, completed=False, superseded=True,
+                label_studio_project_id=70,
+            ),
+        ]
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["species_labeling_complete"] is True
+
+
+async def test_slate_labeling_complete_ignores_superseded(session):
+    """A superseded incomplete slate row must not block completion —
+    the new `superseded` column on DiveSlateLabel."""
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1)])
+    await session.flush()
+    session.add_all(
+        [
+            DiveSlateLabel(
+                image_id=11, completed=True, superseded=False,
+                label_studio_project_id=66,
+            ),
+            DiveSlateLabel(
+                image_id=12, completed=False, superseded=True,
+                label_studio_project_id=66,
+            ),
+        ]
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["slate_labeling_complete"] is True
+
+
 # ---------- has_prediction_clusters / dive_images_preprocessed (stage 2) ----------
 
 

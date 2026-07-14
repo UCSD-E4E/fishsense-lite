@@ -80,6 +80,7 @@ def _species_label(
         image_url=None,
         updated_at=None,
         completed=completed,
+        superseded=False,
         label_studio_json={},
         image_id=image_id,
         user_id=None,
@@ -208,13 +209,19 @@ async def test_imports_targets_and_writes_new_labels(monkeypatch):
     assert n == 3
 
     written = [c.args[1] for c in fs.labels.put_species_label.await_args_list]
-    assert all(w.id is None for w in written)
-    assert {w.image_id for w in written} == {2, 3, 4}
+    # Fresh task rows for the laser-valid, not-yet-completed images.
+    new_writes = [w for w in written if w.id is None]
+    assert {w.image_id for w in new_writes} == {2, 3, 4}
+    # Supersede pass retires the pre-existing incomplete-with-id row (image 2);
+    # the completed row (image 1) and the id-less row (image 4) are untouched.
+    superseded_writes = [w for w in written if w.superseded]
+    assert {w.image_id for w in superseded_writes} == {2}
 
 
 @pytest.mark.asyncio
-async def test_no_valid_laser_targets_is_a_no_op(monkeypatch):
-    """No laser-valid images -> no task import, no label writes."""
+async def test_no_valid_laser_targets_skips_import_but_supersedes_stale(monkeypatch):
+    """No laser-valid images -> no task import, but the supersede pass still
+    retires a pre-existing incomplete-with-id species row."""
     laser = [_laser(1, completed=False)]
     images_by_id = {1: _image(1, "a")}
     existing = [_species_label(1, completed=False, has_id=True)]
@@ -231,7 +238,8 @@ async def test_no_valid_laser_targets_is_a_no_op(monkeypatch):
 
     assert n == 0
     ls.projects.import_tasks.assert_not_called()
-    fs.labels.put_species_label.assert_not_called()
+    written = [c.args[1] for c in fs.labels.put_species_label.await_args_list]
+    assert [(w.image_id, w.superseded) for w in written] == [(1, True)]
 
 
 @pytest.mark.asyncio

@@ -9,13 +9,10 @@ validator's `_positive_xy` already use as "usable laser." Cascading
 from lasers lets species labeling kick off in parallel with head/tail
 (stage 5.1) as soon as laser labelers + the validator sign off.
 
-There is no supersede pass here — `SpeciesLabel` has no `superseded`
-column (intentional, see CLAUDE.md `dive_pipeline_status` view). In
-practice the cohort selector drops a dive the moment any image gets
-a non-sentinel species row, so a re-fire on the same dive doesn't
-re-import. Stale incomplete rows from a partial prior run will
-linger visibly to downstream readers; an operator must drop them
-manually if needed.
+A supersede pass at the end marks previously-incomplete species rows
+for the dive as `superseded=True` so newly-created rows are canonical
+(mirrors headtail). `SpeciesLabel` gained a `superseded` column for
+uniform dead-letter semantics across all four label types.
 """
 
 from typing import List
@@ -123,6 +120,7 @@ async def populate_species_label_studio_project_activity(
                     image_url=build_image_url(SPECIES_FOLDER, image.checksum),
                     updated_at=None,
                     completed=False,
+                    superseded=False,
                     label_studio_json={},
                     user_id=None,
                     grouping=None,
@@ -150,5 +148,16 @@ async def populate_species_label_studio_project_activity(
                 "labels; skipping task import",
                 dive_id,
             )
+
+        # Supersede pass: mark previously-incomplete species labels for this
+        # dive as superseded so newly-created rows are canonical. Mirrors the
+        # headtail activity. Only acts on already-persisted rows (id set); the
+        # fresh rows from _record above aren't in `existing_species`.
+        for old in existing_species:
+            if old.completed or old.superseded or old.id is None:
+                continue
+            old.superseded = True
+            await fs.labels.put_species_label(old.image_id, old)
+            activity.heartbeat()
 
         return new_count

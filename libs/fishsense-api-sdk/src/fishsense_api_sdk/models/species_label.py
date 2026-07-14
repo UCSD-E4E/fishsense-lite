@@ -16,6 +16,7 @@ class SpeciesLabel(ModelBase):
     image_url: str | None
     updated_at: datetime | None
     completed: bool | None
+    superseded: bool | None
     grouping: str | None
     top_three_photos_of_group: bool | None
     slate_upside_down: bool | None

@@ -82,6 +82,7 @@ class DiveSlateLabel(BaseModel):
     image_url: str | None = Field(None, title='Image Url')
     updated_at: AwareDatetime | None = Field(None, title='Updated At')
     completed: bool | None = Field(False, title='Completed')
+    superseded: bool | None = Field(False, title='Superseded')
     label_studio_json: dict[str, Any] | None = Field(None, title='Label Studio Json')
     image_id: int | None = Field(None, title='Image Id')
     user_id: int | None = Field(None, title='User Id')
@@ -214,6 +215,7 @@ class SpeciesLabel(BaseModel):
     image_url: str | None = Field(None, title='Image Url')
     updated_at: AwareDatetime | None = Field(None, title='Updated At')
     completed: bool | None = Field(False, title='Completed')
+    superseded: bool | None = Field(False, title='Superseded')
     grouping: str | None = Field(None, title='Grouping')
     top_three_photos_of_group: bool | None = Field(
         None, title='Top Three Photos Of Group'

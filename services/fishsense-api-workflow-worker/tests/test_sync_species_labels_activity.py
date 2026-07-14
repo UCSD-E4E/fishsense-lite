@@ -79,6 +79,7 @@ def _empty_species_label(image_id: int) -> SpeciesLabel:
         image_url=None,
         updated_at=None,
         completed=False,
+        superseded=False,
         grouping=None,
         top_three_photos_of_group=None,
         slate_upside_down=None,

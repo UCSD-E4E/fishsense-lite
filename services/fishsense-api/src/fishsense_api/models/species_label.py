@@ -26,6 +26,7 @@ class SpeciesLabel(ModelBase, table=True):
     image_url: str | None = Field(default=None)
     updated_at: datetime | None = Field(sa_type=DateTime(timezone=True), default=None)
     completed: bool | None = Field(default=False)
+    superseded: bool | None = Field(default=False)
     grouping: str | None = Field(default=None)
     top_three_photos_of_group: bool | None = Field(default=None)
     slate_upside_down: bool | None = Field(default=None)
