@@ -40,9 +40,10 @@ name: Deploy
 # stops the GitHub runner mid-switch and restarts it after, so the job
 # starts the unit with `--no-block` (see the step comment) and reports
 # success as soon as the converge is *enqueued* — its green means
-# "converge fired", never "containers are healthy". Verify on-box with
-# `systemctl status fishsense-selfupdate`, or add a post-converge HTTP
-# health probe.
+# "converge fired", never "containers are healthy". The `verify-incus` job
+# below is the health signal — a GitHub-hosted, report-only probe that polls
+# the public endpoints after the converge. For the ground truth, verify
+# on-box with `systemctl status fishsense-selfupdate` + `docker compose ps`.
 #
 # Prereqs:
 #   - incus: nothing to configure here. The `[self-hosted, fishsense]`
@@ -117,6 +118,52 @@ jobs:
         # its exit 0 never meant the containers came up healthy (see header).
         # Convergence health belongs in a separate post-converge probe.
         run: systemctl start --no-block fishsense-selfupdate # polkit-authorized on the slot
+
+  verify-incus:
+    # Report-only post-converge health probe — the "separate probe" the
+    # deploy-incus comment refers to. deploy-incus is --no-block, so its green
+    # only means "converge fired"; this turns that into a health signal.
+    # GitHub-hosted (ubuntu-latest) on purpose: the slot's runner is restarted
+    # mid-`nixos-rebuild`, so a check on it would be interrupted — polling the
+    # PUBLIC endpoints from off-box isn't. A miss annotates a warning but does
+    # NOT fail the run: the converge is async + the slot is preemptible, so a
+    # transient miss isn't a failed deploy (choose the gate variant only if
+    # false-reds are acceptable).
+    needs: deploy-incus
+    if: needs.deploy-incus.result == 'success'
+    runs-on: ubuntu-latest
+    permissions: {}
+    timeout-minutes: 15
+    steps:
+      - name: Poll public endpoints until healthy (or warn)
+        run: |
+          landing="https://fishsense.e4e.ucsd.edu"
+          api="https://api.fishsense.e4e.ucsd.edu"
+          # Give nixos-rebuild + `docker compose up -d --force-recreate` time to
+          # start, then poll. Healthy = landing serves 200 (edge + web up) and
+          # the API route 302s to authentik (fishsense-api + forwardAuth up).
+          echo "waiting for the converge to take effect..."
+          sleep 60
+          l=000; a=000
+          for i in $(seq 1 20); do
+            l=$(curl -sS -o /dev/null -m 15 -w '%{http_code}' "$landing" 2>/dev/null || echo 000)
+            a=$(curl -sS -o /dev/null -m 15 -w '%{http_code}' "$api" 2>/dev/null || echo 000)
+            echo "[$i/20] landing=$l api=$a"
+            if [ "$l" = "200" ] && [ "$a" = "302" ]; then break; fi
+            sleep 30
+          done
+          if [ "$l" = "200" ] && [ "$a" = "302" ]; then
+            echo "### ✅ slot healthy after converge — landing 200, api 302" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning title=Incus health probe::slot not observed healthy after ~10min (landing=$l expected 200, api=$a expected 302). Converge is async — verify on-box: 'systemctl status fishsense-selfupdate' + 'docker compose ps'. Not failing the run."
+            {
+              echo "### ⚠️ post-converge health probe: not healthy (report-only)"
+              echo "- landing \`$landing\` = \`$l\` (expected 200)"
+              echo "- api \`$api\` = \`$a\` (expected 302)"
+              echo ""
+              echo "The converge is async + the slot is preemptible; verify on-box before treating as a real failure."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   deploy-data-worker:
     # Fires on:
