@@ -2,6 +2,18 @@
 
 <!-- version list -->
 
+## [1.37.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.36.0...fishsense-api-workflow-worker-v1.37.0) (2026-07-14)
+
+
+### Features
+
+* **labels:** give SpeciesLabel + DiveSlateLabel a `superseded` dead-letter flag ([#247](https://github.com/UCSD-E4E/fishsense-lite/issues/247)) ([f851e93](https://github.com/UCSD-E4E/fishsense-lite/commit/f851e933d4e3b2c8f596b945d43b9fd0124241b6))
+
+
+### Bug Fixes
+
+* **worker:** label sync tolerates an unmapped annotator (don't crash) ([#249](https://github.com/UCSD-E4E/fishsense-lite/issues/249)) ([c446d14](https://github.com/UCSD-E4E/fishsense-lite/commit/c446d14ab9f3685d3570024bac0324b62db157a0))
+
 ## [1.36.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.35.3...fishsense-api-workflow-worker-v1.36.0) (2026-07-10)
 
 

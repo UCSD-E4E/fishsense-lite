@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.7.1...fishsense-lite-web-v0.7.2) (2026-07-14)
+
+
+### Bug Fixes
+
+* **web:** env-drive the migration-stale landing-page links ([#248](https://github.com/UCSD-E4E/fishsense-lite/issues/248)) ([4731a50](https://github.com/UCSD-E4E/fishsense-lite/commit/4731a50351836c6e1a90cb1a9de85e05c08f813b))
+
 ## [0.7.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.7.0...fishsense-lite-web-v0.7.1) (2026-07-10)
 
 
