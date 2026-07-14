@@ -64,7 +64,7 @@ services:
 
   # ── web portal → fishsense.e4e.ucsd.edu ────────────────────────────────────────────────
   web:
-    image: ghcr.io/ucsd-e4e/fishsense-lite-web:v0.7.1
+    image: ghcr.io/ucsd-e4e/fishsense-lite-web:v0.7.2
     restart: unless-stopped
     # Non-secret config inline (committed IaC); secrets from the vault-agent render
     # (AUTH_SECRET, AUTH_AUTHENTIK_{ID,SECRET,ISSUER}, FISHSENSE_API_{USERNAME,PASSWORD},
