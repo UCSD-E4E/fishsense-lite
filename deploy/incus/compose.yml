@@ -28,7 +28,7 @@
 services:
   # ── inner edge: TLS on :443 with fishsense.vm, route Host → containers ─────────────────
   traefik:
-    image: traefik:3.7.6
+    image: traefik:3.7.7
     restart: unless-stopped
     command:
       - --providers.file.filename=/etc/traefik/dynamic.yml
