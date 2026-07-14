@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.28.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.28.0...fishsense-api-v1.28.1) (2026-07-14)
+
+
+### Bug Fixes
+
+* **api:** exclude superseded from laser/headtail label-studio-project-ids ([#246](https://github.com/UCSD-E4E/fishsense-lite/issues/246)) ([1354abc](https://github.com/UCSD-E4E/fishsense-lite/commit/1354abcbca27e34b87a4a65f44367d3670edeefd))
+
 ## [1.28.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.27.3...fishsense-api-v1.28.0) (2026-05-06)
 
 
