@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.29.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.28.1...fishsense-api-v1.29.0) (2026-07-14)
+
+
+### Features
+
+* **labels:** give SpeciesLabel + DiveSlateLabel a `superseded` dead-letter flag ([#247](https://github.com/UCSD-E4E/fishsense-lite/issues/247)) ([f851e93](https://github.com/UCSD-E4E/fishsense-lite/commit/f851e933d4e3b2c8f596b945d43b9fd0124241b6))
+
 ## [1.28.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.28.0...fishsense-api-v1.28.1) (2026-07-14)
 
 
