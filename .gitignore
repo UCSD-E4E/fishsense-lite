@@ -66,3 +66,6 @@ services/fishsense-data-processing-workflow-worker/scripts/dry_run_stage13_*.jso
 # Claude Code local session state (lock file with sessionId/pid — not
 # repo content; committing it churns diffs across sessions)
 .claude/scheduled_tasks.lock
+
+# direnv (nix-direnv cache)
+.direnv/
