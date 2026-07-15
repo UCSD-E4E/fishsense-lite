@@ -27,7 +27,10 @@ metadata:
 # Exactly the surface the two non-interactive consumers need:
 #  - CI (deploy.yml) `kubectl apply -k`: get/list/create/update/patch on
 #    deployments + configmaps (the ConfigMap the kustomization generates).
-#  - api-worker scaling: patch on deployments/scale (ensure_data_worker_
+#  - CI `kubectl rollout status`: WATCH on deployments — client-go watches the
+#    Deployment object to observe rollout progress. Without it the apply
+#    succeeds but `rollout status` fails "cannot watch resource deployments".
+#  - api-worker scaling: get/patch on deployments/scale (ensure_data_worker_
 #    running_activity scales up; ScaleDownIdleDataWorkerWorkflow to 0).
 # No secrets, no serviceaccounts, no cluster-scoped verbs — least privilege.
 apiVersion: rbac.authorization.k8s.io/v1
@@ -37,8 +40,11 @@ metadata:
   namespace: e4e-fishsense
 rules:
   - apiGroups: ["apps"]
-    resources: ["deployments", "deployments/scale"]
-    verbs: ["get", "list", "create", "update", "patch"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    verbs: ["get", "patch"]
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "list", "create", "update", "patch"]
