@@ -28,7 +28,7 @@
 services:
   # ── inner edge: TLS on :443 with fishsense.vm, route Host → containers ─────────────────
   traefik:
-    image: traefik:3.7.7
+    image: traefik:3.7.8
     restart: unless-stopped
     command:
       - --providers.file.filename=/etc/traefik/dynamic.yml
@@ -40,7 +40,7 @@ services:
     volumes:
       - /run/tenant/tls:/etc/traefik/tls:ro          # fishsense.vm.{crt,key} — vault-agent (#428)
       - ./traefik-dynamic.yml:/etc/traefik/dynamic.yml:ro
-    depends_on: [web, fishsense-api, authentik-outpost]   # superset is profile-gated off (analytics route 502s until re-enabled)
+    depends_on: [web, fishsense-api, authentik-outpost]   # traefik's analytics route → superset, started separately below (not a depends_on so init delay can't block traefik)
     networks: [interior]
 
   # ── co-located Authentik proxy outpost (gates the API route) — HANDOFF §7 / #440 ───────
@@ -98,14 +98,16 @@ services:
     # at the service DNS name `fishsense-api:8000` for now.
 
   # ── analytics → analytics.fishsense.e4e.ucsd.edu (in-app OIDC) ─────────────────────────
-  # DISABLED BY DEFAULT via the `superset` compose profile: the composeStack runner does a
-  # plain `docker compose up -d` (no --profile), so superset + valkey don't start. Re-enable
-  # by adding `superset` to COMPOSE_PROFILES (composeStack envFile) or `--profile superset`.
-  # Requires the superset DB/role + restore before it will come up (see README).
+  # Superset + valkey run by default (enabled 2026-07-15; #233 had profile-gated them off
+  # while the metadata DB was sorted out). Metadata = the in-slot `superset` Postgres DB,
+  # accessed as the least-priv `superset` role (secret_key / db_password / analytics-OIDC come
+  # from the vault-agent app.env render). `superset-init` runs `db upgrade` + creates the local
+  # `admin` user on startup; the `superset` DB must be OWNED BY the `superset` role or the
+  # upgrade can't ALTER its tables (the original init failure). Fresh/new setup:
+  #   DROP DATABASE superset; CREATE DATABASE superset OWNER superset;   -- then converge
   superset:
     image: &superset-image apache/superset:6.0.0
     container_name: fishsense_superset
-    profiles: ["superset"]
     command: ["/app/docker/docker-bootstrap.sh", "app-gunicorn"]
     user: "root"
     restart: unless-stopped
@@ -126,7 +128,6 @@ services:
   superset-init:
     image: *superset-image
     container_name: superset_init
-    profiles: ["superset"]
     command: ["/app/docker/docker-init.sh"]
     user: "root"
     env_file:
@@ -147,7 +148,6 @@ services:
   superset-worker:
     image: *superset-image
     container_name: superset_worker
-    profiles: ["superset"]
     command: ["/app/docker/docker-bootstrap.sh", "worker"]
     user: "root"
     restart: unless-stopped
@@ -171,7 +171,6 @@ services:
   superset-worker-beat:
     image: *superset-image
     container_name: superset_worker_beat
-    profiles: ["superset"]
     command: ["/app/docker/docker-bootstrap.sh", "beat"]
     user: "root"
     restart: unless-stopped
@@ -192,8 +191,7 @@ services:
   # protocol-compatible replacement for superset's cache + celery broker.
   valkey:
     image: valkey/valkey:9.1.0
-    container_name: superset_cache
-    profiles: ["superset"]   # only superset uses it — off with the superset profile
+    container_name: superset_cache   # only superset uses it (cache + celery broker)
     restart: unless-stopped
     volumes:
       - valkey_data:/data   # named volume — persistent, docker-owned
