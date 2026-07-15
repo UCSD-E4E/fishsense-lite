@@ -12,9 +12,13 @@ we relax strictness, we do NOT disable verification.
 
 from __future__ import annotations
 
+# Tests exercise an internal helper and pass stub callbacks whose signatures
+# must match `load_kube_config` (so some args are intentionally unused).
+# pylint: disable=protected-access,unused-argument
+
 import ssl
 
-from kubernetes import client as k8s_client, config as k8s_config
+from kubernetes import config as k8s_config
 
 from fishsense_api_workflow_worker.activities import k8s_scaling
 
@@ -24,7 +28,7 @@ def test_relaxed_verification_clears_strict_but_keeps_verification():
     k8s_scaling._apply_relaxed_verification(ctx)
 
     # the whole point: strict off...
-    assert not (ctx.verify_flags & ssl.VERIFY_X509_STRICT)
+    assert not ctx.verify_flags & ssl.VERIFY_X509_STRICT
     # ...but still verifying the peer cert + hostname (NOT insecure).
     assert ctx.verify_mode == ssl.CERT_REQUIRED
     assert ctx.check_hostname is True
@@ -34,7 +38,7 @@ def test_apps_v1_api_injects_nonstrict_verifying_context(monkeypatch):
     """The context reaches the urllib3 pool, and ca_certs/cert_reqs are
     dropped so the injected context owns verification (no urllib3 ambiguity)."""
 
-    def fake_load(config_file, client_configuration):  # noqa: ARG001
+    def fake_load(config_file, client_configuration):
         client_configuration.verify_ssl = True
         client_configuration.ssl_ca_cert = "/ignored/by/the/stub"
         client_configuration.cert_file = None
@@ -54,7 +58,7 @@ def test_apps_v1_api_injects_nonstrict_verifying_context(monkeypatch):
     assert pool_kw["ssl_context"] is sentinel_ctx
     assert "ca_certs" not in pool_kw
     assert "cert_reqs" not in pool_kw
-    assert not (sentinel_ctx.verify_flags & ssl.VERIFY_X509_STRICT)
+    assert not sentinel_ctx.verify_flags & ssl.VERIFY_X509_STRICT
     assert sentinel_ctx.verify_mode == ssl.CERT_REQUIRED
     assert sentinel_ctx.check_hostname is True
 
@@ -63,7 +67,7 @@ def test_apps_v1_api_leaves_insecure_kubeconfigs_alone(monkeypatch):
     """If verification is already off (verify_ssl False), don't build a
     context — nothing to relax, and we must not silently re-enable it."""
 
-    def fake_load(config_file, client_configuration):  # noqa: ARG001
+    def fake_load(config_file, client_configuration):
         client_configuration.verify_ssl = False
         client_configuration.ssl_ca_cert = None
         client_configuration.cert_file = None
@@ -72,7 +76,7 @@ def test_apps_v1_api_leaves_insecure_kubeconfigs_alone(monkeypatch):
 
     monkeypatch.setattr(k8s_config, "load_kube_config", fake_load)
 
-    def _boom(cafile=None):  # noqa: ARG001
+    def _boom(cafile=None):
         raise AssertionError("must not build a context when verify_ssl is False")
 
     monkeypatch.setattr(k8s_scaling.ssl, "create_default_context", _boom)
