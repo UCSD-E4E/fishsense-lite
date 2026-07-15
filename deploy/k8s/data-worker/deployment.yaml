@@ -55,8 +55,9 @@ spec:
       # The data-worker never talks to the k8s API (only the api-worker
       # does, from outside the cluster) — don't mount a SA token.
       automountServiceAccountToken: false
-      imagePullSecrets:
-        - name: ghcr-pull
+      # No imagePullSecrets: the GHCR image is public, so kubelet pulls it
+      # anonymously. (A dead pull-secret ref isn't fatal — it just logs a
+      # FailedToRetrieveImagePullSecret warning on every pod create.)
       securityContext:
         seccompProfile:
           type: RuntimeDefault

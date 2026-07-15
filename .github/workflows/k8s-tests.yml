@@ -58,11 +58,11 @@ jobs:
           kubectl create namespace e4e-fishsense
 
       - name: Create stub Secrets the Deployment references
-        # Real values don't matter — the pod won't pull the private
-        # image and we never wait for it to be Ready; this just lets
-        # `kubectl apply -k` resolve the secretKeyRef / imagePullSecrets
-        # so the apply is a faithful server-side validation. Secrets go
-        # in the pinned namespace so the secretKeyRefs resolve.
+        # Real values don't matter — we never wait for the pod to be Ready;
+        # this just lets `kubectl apply -k` resolve the secretKeyRefs so the
+        # apply is a faithful server-side validation. Secrets go in the
+        # pinned namespace so the secretKeyRefs resolve. No ghcr-pull stub —
+        # the Deployment has no imagePullSecrets (the GHCR image is public).
         run: |
           kubectl create secret generic fishsense-data-worker-secrets -n e4e-fishsense \
             --from-literal=fishsense_api_username=ci \
@@ -73,10 +73,6 @@ jobs:
             --from-literal=client.pem=ci \
             --from-literal=client.key=ci \
             --from-literal=root-ca.pem=ci
-          kubectl create secret docker-registry ghcr-pull -n e4e-fishsense \
-            --docker-server=ghcr.io \
-            --docker-username=ci \
-            --docker-password=ci
 
       - name: Apply the data-worker manifests (server-side validation)
         run: |
