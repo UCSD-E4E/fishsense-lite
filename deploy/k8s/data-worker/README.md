@@ -16,6 +16,7 @@ differs.
 | `deployment.yaml` | The Deployment. `replicas` is **omitted** — the api-worker owns the count (scales it up on demand, back to 0 when idle; see below). amd64 nodeSelector, resource requests/limits, `maxSurge: 0`, no PDB, emptyDir scratch, no PVC/GPU/NAS. |
 | `settings.toml` | Source for the `fishsense-data-worker-settings` ConfigMap (built by kustomize's `configMapGenerator`; mounted at `/e4efs/config/settings.toml`). Credentials are **not** here — they're env vars from a Secret. |
 | `kustomization.yaml` | `kubectl apply -k` entrypoint. Holds the overridable image tag (CI bumps it). |
+| `deployer-rbac.yaml` | The **deploy identity**: ServiceAccount `fishsense-deployer` + a least-privilege Role (deployments/scale/configmaps) + RoleBinding + a token-minting Secret. **Not** in `kustomization.yaml` — operator-applied out-of-band (the SA can't create its own RBAC). Credential-free: the token controller populates the Secret's `.data.token` in-cluster; the JWT never enters git. |
 
 ## Who scales it
 
@@ -52,15 +53,53 @@ what CI uses to `kubectl apply` (repo secret `NRP_KUBECONFIG`).
    policy, and our pods are owned by a ReplicaSet so the 6-hour
    bare-pod rule doesn't apply either; the Deployment itself is the
    only thing that needs the exception.)
-2. Get a (token) kubeconfig for `e4e-fishsense`. It's used in two
-   places — the repo secret `NRP_KUBECONFIG` (CI deploys) and the
-   api-worker on the Incus slot (scaling). The slot's copy is **not**
-   a mounted file: seed it into OpenBao at
-   `secret/tenants/fishsense/nrp { kubeconfig }` and vault-agent renders
-   it to `/run/tenant/nrp/kubeconfig` in the slot (see
-   `deploy/incus/secrets.nix` + the api-worker's `[kubernetes].kubeconfig_path`;
-   wired by #245). The token **expires** — reseed OpenBao + rotate
-   `NRP_KUBECONFIG` on renewal.
+2. Build a **static-token kubeconfig** for `e4e-fishsense`. NRP's own
+   kubeconfig uses interactive `kubelogin`/OIDC (CILogon browser flow),
+   which can't run in CI or the api-worker — so both non-interactive
+   consumers authenticate as the `fishsense-deployer` ServiceAccount
+   instead. One human, once, with an interactive kubeconfig:
+
+   ```sh
+   # a. Create the deploy identity (SA + Role + RoleBinding + token Secret).
+   #    Declarative + credential-free; idempotent (adopts anything you
+   #    created imperatively).
+   kubectl apply -f deploy/k8s/data-worker/deployer-rbac.yaml
+
+   # b. Read back the token + CA the token controller populated. If TOKEN
+   #    is empty after ~10s, NRP policy stripped the long-lived Secret —
+   #    fall back to: kubectl -n e4e-fishsense create token \
+   #      fishsense-deployer --duration=168h  (expires; needs re-mint).
+   TOKEN=$(kubectl -n e4e-fishsense get secret fishsense-deployer-token \
+     -o jsonpath='{.data.token}' | base64 -d)
+   CA=$(kubectl -n e4e-fishsense get secret fishsense-deployer-token \
+     -o jsonpath='{.data.ca\.crt}')            # already base64
+   SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
+
+   # c. Assemble a kubeconfig with NO exec block (that is what makes it
+   #    non-interactive). This file DOES carry the token — keep it out of
+   #    git; it only goes into the two secret stores in step (d).
+   cat > nrp.kubeconfig <<KUBECONFIG
+   apiVersion: v1
+   kind: Config
+   clusters: [{name: nrp, cluster: {server: $SERVER, certificate-authority-data: $CA}}]
+   users: [{name: fishsense-deployer, user: {token: $TOKEN}}]
+   contexts: [{name: fishsense, context: {cluster: nrp, user: fishsense-deployer, namespace: e4e-fishsense}}]
+   current-context: fishsense
+   KUBECONFIG
+
+   # d. Verify it in isolation, then seed both consumers.
+   KUBECONFIG=./nrp.kubeconfig kubectl -n e4e-fishsense auth can-i patch deployments/scale  # -> yes
+   ```
+
+   The verified `nrp.kubeconfig` is used in two places — the repo secret
+   `NRP_KUBECONFIG` (CI deploys) and the api-worker on the Incus slot
+   (scaling). The slot's copy is **not** a mounted file: seed it into
+   OpenBao at `secret/tenants/fishsense/nrp { kubeconfig }` and
+   vault-agent renders it to `/run/tenant/nrp/kubeconfig` in the slot
+   (see `deploy/incus/secrets.nix` + the api-worker's
+   `[kubernetes].kubeconfig_path`; wired by #245). A long-lived
+   SA-token Secret does not expire, but a **bound** token (the fallback)
+   does — on renewal, reseed OpenBao + rotate `NRP_KUBECONFIG`.
 3. Create the three Secrets the Deployment references:
 
    ```sh

@@ -1,0 +1,75 @@
+# The CI/api-worker deploy identity for the e4e-fishsense namespace.
+#
+# This is OPERATOR bootstrap, applied out-of-band with an interactive
+# (kubelogin/OIDC) kubeconfig — NOT part of `kustomization.yaml`. It is
+# deliberately excluded because the ServiceAccount it defines can only
+# touch deployments/scale/configmaps (see the Role below); it cannot
+# create serviceaccounts, roles, or secrets, so CI (which authenticates
+# AS this SA) could never apply this file. Chicken-and-egg: a human with
+# cluster-admin applies this once, then everything else is non-interactive.
+#
+#   kubectl apply -f deploy/k8s/data-worker/deployer-rbac.yaml
+#
+# NOTHING here contains a credential. The token Secret at the bottom has
+# no `data:` field — the Kubernetes token controller populates
+# `.data.token` (+ `.data["ca.crt"]`) inside the cluster at apply time.
+# The JWT never lands in git. Read it back out to build the static-token
+# kubeconfig (see README "One-time bootstrap"); THAT kubeconfig — which
+# does carry the token — is the thing that must stay out of the repo
+# (goes into the NRP_KUBECONFIG CI secret + OpenBao nrp.kubeconfig seed).
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fishsense-deployer
+  namespace: e4e-fishsense
+---
+# Exactly the surface the two non-interactive consumers need:
+#  - CI (deploy.yml) `kubectl apply -k`: get/list/create/update/patch on
+#    deployments + configmaps (the ConfigMap the kustomization generates).
+#  - api-worker scaling: patch on deployments/scale (ensure_data_worker_
+#    running_activity scales up; ScaleDownIdleDataWorkerWorkflow to 0).
+# No secrets, no serviceaccounts, no cluster-scoped verbs — least privilege.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: fishsense-deployer
+  namespace: e4e-fishsense
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "list", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fishsense-deployer
+  namespace: e4e-fishsense
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: fishsense-deployer
+subjects:
+  - kind: ServiceAccount
+    name: fishsense-deployer
+    namespace: e4e-fishsense
+---
+# Requests a long-lived token for the ServiceAccount. Since Kubernetes
+# 1.24 the SA no longer auto-mints one, so we ask for it explicitly.
+# The token controller fills in `.data.token` + `.data["ca.crt"]` after
+# apply — this manifest stays credential-free. If NRP policy strips
+# `kubernetes.io/service-account-token` Secrets (check: the Secret comes
+# back with an empty `.data.token`), fall back to a bound token
+# (`kubectl -n e4e-fishsense create token fishsense-deployer --duration=168h`)
+# and plan periodic re-mint of the NRP_KUBECONFIG + OpenBao seed.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: fishsense-deployer-token
+  namespace: e4e-fishsense
+  annotations:
+    kubernetes.io/service-account.name: fishsense-deployer
+type: kubernetes.io/service-account-token
