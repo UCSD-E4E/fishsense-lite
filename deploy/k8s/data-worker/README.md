@@ -100,16 +100,19 @@ what CI uses to `kubectl apply` (repo secret `NRP_KUBECONFIG`).
    `[kubernetes].kubeconfig_path`; wired by #245). A long-lived
    SA-token Secret does not expire, but a **bound** token (the fallback)
    does — on renewal, reseed OpenBao + rotate `NRP_KUBECONFIG`.
-3. Create the three Secrets the Deployment references:
+3. Create the two Secrets the Deployment references. (No image pull
+   secret — the GHCR image is public, so the Deployment has no
+   `imagePullSecrets` and kubelet pulls it anonymously.)
 
    ```sh
    # (all in the e4e-fishsense namespace — the kubeconfig context or -n)
 
-   # 1. Service-account creds (SDK HTTP Basic, via authentik passthrough)
-   #    + Garage S3 access key/secret for the object store
+   # 1. Service-account creds (SDK HTTP Basic — the password is the authentik
+   #    app-password from `secret/tenants/fishsense/oidc/data-worker-apppw`,
+   #    NOT the raw AD password; see krg-infra #484) + Garage S3 key/secret.
    kubectl create secret generic fishsense-data-worker-secrets -n e4e-fishsense \
      --from-literal=fishsense_api_username='<svc>' \
-     --from-literal=fishsense_api_password='<svc-pw>' \
+     --from-literal=fishsense_api_password='<app-password>' \
      --from-literal=object_store_access_key='<garage-access-key>' \
      --from-literal=object_store_secret_key='<garage-secret-key>'
 
@@ -123,12 +126,6 @@ what CI uses to `kubectl apply` (repo secret `NRP_KUBECONFIG`).
      --from-file=client.pem=/path/to/fishsense-data-processing-workflow-worker.pem \
      --from-file=client.key=/path/to/fishsense-data-processing-workflow-worker.key \
      --from-file=root-ca.pem=/path/to/root-ca.pem
-
-   # 3. Pull secret for the private GHCR image
-   kubectl create secret docker-registry ghcr-pull -n e4e-fishsense \
-     --docker-server=ghcr.io \
-     --docker-username='<github-user>' \
-     --docker-password='<PAT with read:packages on UCSD-E4E>'
    ```
 
    (Credentials in git are out of scope here — if you want them
