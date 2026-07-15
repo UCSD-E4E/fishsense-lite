@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.38.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.38.0...fishsense-api-workflow-worker-v1.38.1) (2026-07-15)
+
+
+### Bug Fixes
+
+* **scaling:** verify NRP apiserver TLS without OpenSSL 3.x strict mode ([#273](https://github.com/UCSD-E4E/fishsense-lite/issues/273)) ([8b23a64](https://github.com/UCSD-E4E/fishsense-lite/commit/8b23a645ab745138cc89c28291c086fba24cd77f))
+
 ## [1.38.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.37.1...fishsense-api-workflow-worker-v1.38.0) (2026-07-15)
 
 
