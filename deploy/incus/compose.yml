@@ -81,7 +81,7 @@ services:
 
   # ── API → api.fishsense.e4e.ucsd.edu (forwardAuth-gated) ───────────────────────────────
   fishsense-api:
-    image: ghcr.io/ucsd-e4e/fishsense-api:v1.28.1
+    image: ghcr.io/ucsd-e4e/fishsense-api:v1.29.0
     restart: unless-stopped
     # DB password (admin role) as E4EFS_POSTGRES__PASSWORD from the render.
     env_file:
