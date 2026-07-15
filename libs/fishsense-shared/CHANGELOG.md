@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.4.1...fishsense-shared-v0.5.0) (2026-07-15)
+
+
+### Features
+
+* **temporal:** connect all workers to the `fishsense` namespace ([#266](https://github.com/UCSD-E4E/fishsense-lite/issues/266)) ([10a2823](https://github.com/UCSD-E4E/fishsense-lite/commit/10a28232378f862f855ec4ef2fd0db5354c0882d))
+
 ## [0.4.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.4.0...fishsense-shared-v0.4.1) (2026-05-07)
 
 

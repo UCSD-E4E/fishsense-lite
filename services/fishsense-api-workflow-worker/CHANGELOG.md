@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.38.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.37.1...fishsense-api-workflow-worker-v1.38.0) (2026-07-15)
+
+
+### Features
+
+* **temporal:** connect all workers to the `fishsense` namespace ([#266](https://github.com/UCSD-E4E/fishsense-lite/issues/266)) ([10a2823](https://github.com/UCSD-E4E/fishsense-lite/commit/10a28232378f862f855ec4ef2fd0db5354c0882d))
+
 ## [1.37.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.37.0...fishsense-api-workflow-worker-v1.37.1) (2026-07-15)
 
 
