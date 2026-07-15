@@ -26,4 +26,4 @@ configMapGenerator:
 
 images:
   - name: ghcr.io/ucsd-e4e/fishsense-data-processing-workflow-worker
-    newTag: v2.6.1
+    newTag: v2.7.0
