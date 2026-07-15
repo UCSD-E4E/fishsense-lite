@@ -25,6 +25,7 @@ accident:
 
 from __future__ import annotations
 
+import ssl
 from dataclasses import dataclass
 
 from fishsense_api_workflow_worker.config import settings
@@ -103,7 +104,54 @@ def apps_v1_api(kubeconfig_path: str):
     k8s_config.load_kube_config(
         config_file=kubeconfig_path, client_configuration=configuration
     )
-    return k8s_client.AppsV1Api(k8s_client.ApiClient(configuration))
+    api_client = k8s_client.ApiClient(configuration)
+    _relax_x509_strict_verification(api_client, configuration)
+    return k8s_client.AppsV1Api(api_client)
+
+
+def _apply_relaxed_verification(ctx: ssl.SSLContext) -> None:
+    """Clear OpenSSL 3.x strict mode on ``ctx`` — nothing else.
+
+    Verification stays fully on (``CERT_REQUIRED`` + hostname check); we only
+    drop the ``VERIFY_X509_STRICT`` flag that Python 3.13 enabled by default.
+    Kept separate so the security-critical invariant is unit-testable.
+    """
+    ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
+
+
+def _relax_x509_strict_verification(api_client, configuration) -> None:
+    """Verify NRP's apiserver cert fully, minus OpenSSL 3.x strict mode.
+
+    Python 3.13 turned on ``ssl.VERIFY_X509_STRICT`` by default, which enforces
+    RFC 5280 to the letter — including a mandatory Authority Key Identifier on
+    leaf certs. NRP/Nautilus's kubeadm-generated kube-apiserver cert omits AKI,
+    so the (otherwise valid) cert is rejected with "Missing Authority Key
+    Identifier" and every scale call fails the TLS handshake.
+
+    The kubernetes 36.x client's ``Configuration`` exposes no ``ssl_context``;
+    it builds its own strict urllib3 context from ``ca_certs``/``cert_reqs``.
+    We swap in a context that keeps full verification — ``CERT_REQUIRED``
+    against the pinned cluster CA plus hostname/IP checking — and clears ONLY
+    the strict flag. This is emphatically NOT ``insecure-skip-tls-verify``: it
+    restores the verification level Python used by default through 3.12.
+
+    No-op when the kubeconfig disables verification (``verify_ssl`` False) —
+    there's nothing to relax and we must not silently re-enable it.
+    """
+    if not (configuration.verify_ssl and configuration.ssl_ca_cert):
+        return
+    ctx = ssl.create_default_context(cafile=configuration.ssl_ca_cert)
+    _apply_relaxed_verification(ctx)
+    # Client-cert kubeconfigs (not our token-based one, but stay correct):
+    # the context now owns the whole client-side of the handshake.
+    if configuration.cert_file and configuration.key_file:
+        ctx.load_cert_chain(configuration.cert_file, configuration.key_file)
+    # urllib3 gets ambiguous if both ssl_context and ca_certs/cert_reqs are
+    # set — hand verification entirely to our context.
+    pool_kw = api_client.rest_client.pool_manager.connection_pool_kw
+    pool_kw["ssl_context"] = ctx
+    for key in ("ca_certs", "cert_reqs", "cert_file", "key_file"):
+        pool_kw.pop(key, None)
 
 
 def set_deployment_replicas(api, namespace: str, name: str, replicas: int) -> None:
