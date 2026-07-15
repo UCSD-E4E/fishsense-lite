@@ -23,7 +23,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from fishsense_shared import build_tls_config
+from fishsense_shared import build_tls_config, temporal_namespace
 from temporalio import activity
 from temporalio.client import Client
 
@@ -62,6 +62,7 @@ async def _data_worker_task_queue_busy(cooldown_minutes: int) -> bool:
     client = await Client.connect(
         f"{settings.temporal.host}:{settings.temporal.port}",
         tls=build_tls_config(settings.temporal),
+        namespace=temporal_namespace(settings.temporal),
     )
     async for _ in client.list_workflows(query=query):
         return True

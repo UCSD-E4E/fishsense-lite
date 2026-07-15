@@ -20,6 +20,10 @@ max_workers = 8
 host = "krg-prod.ucsd.edu"
 port = "7233"
 tls = true
+# Tenant namespace on the shared krg-prod cluster (krg-infra terraform/temporal).
+# OSS mTLS authenticates the client but does NOT pin it to a namespace (ADR 0023),
+# so it must be requested explicitly — omitting it lands workflows in `default`.
+namespace = "fishsense"
 client_cert = "/run/tenant/temporal/tls.crt"
 client_private_key = "/run/tenant/temporal/tls.key"
 domain = "workflows.krg.ucsd.edu"           # TLS server-name override (SNI)

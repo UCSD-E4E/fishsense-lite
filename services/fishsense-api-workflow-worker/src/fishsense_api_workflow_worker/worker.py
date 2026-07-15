@@ -10,6 +10,7 @@ from fishsense_shared import (
     ExceptionGroupErrorLogging,
     build_tls_config,
     ensure_schedule,
+    temporal_namespace,
 )
 from temporalio.client import (
     Client,
@@ -410,7 +411,9 @@ async def main():
         bool(tls_config),
     )
     client = await Client.connect(
-        f"{settings.temporal.host}:{settings.temporal.port}", tls=tls_config
+        f"{settings.temporal.host}:{settings.temporal.port}",
+        tls=tls_config,
+        namespace=temporal_namespace(settings.temporal),
     )
 
     with ThreadPoolExecutor(max_workers=settings.general.max_workers) as executor:

@@ -26,7 +26,7 @@ from fishsense_api_workflow_worker.activities.scale_down_data_worker_if_idle_act
     _data_worker_task_queue_busy,
 )
 from fishsense_api_workflow_worker.config import settings
-from fishsense_shared import build_tls_config
+from fishsense_shared import build_tls_config, temporal_namespace
 from temporalio.client import Client
 
 pytestmark = pytest.mark.integration
@@ -68,6 +68,7 @@ async def _connect() -> Client:
     return await Client.connect(
         f"{settings.temporal.host}:{settings.temporal.port}",
         tls=build_tls_config(settings.temporal),
+        namespace=temporal_namespace(settings.temporal),
     )
 
 
