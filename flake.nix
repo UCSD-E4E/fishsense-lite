@@ -33,6 +33,7 @@
     nixpkgs,
   }: let
     system = "x86_64-linux";
+    pkgs = nixpkgs.legacyPackages.${system};
 
     tenant = krg-infra.lib.mkTenant {
       name = "fishsense"; # Incus project + OpenBao role + runner scope (provisioned)
@@ -89,5 +90,24 @@
     # Reproducible boundary projection (admin copies into terraform/incus):
     #   nix eval .#krgTenant.terraformTenant --json
     krgTenant = tenant;
+
+    # Dev shell (`nix develop`, or auto via direnv + .envrc). Cluster tooling
+    # for the NRP/Nautilus data-worker: `kubectl`, the OIDC `kubelogin`
+    # (int128/kubelogin → `kubectl oidc-login`, which NRP's CILogon kubeconfig
+    # requires — NOT the Azure `kubelogin`), and `kustomize` for
+    # `deploy/k8s/data-worker`. Pinned to the same nixpkgs the slot builds from
+    # (nixpkgs.follows = krg-infra/nixpkgs), so it advances with the weekly
+    # flake bump.
+    devShells.${system}.default = pkgs.mkShell {
+      packages = [
+        pkgs.kubectl
+        pkgs.kubelogin-oidc
+        pkgs.kustomize
+      ];
+      shellHook = ''
+        echo "fishsense dev shell: kubectl + kubelogin-oidc (kubectl oidc-login) + kustomize"
+        echo "NRP login: kubectl get pods  (opens a CILogon browser window the first time)"
+      '';
+    };
   };
 }
