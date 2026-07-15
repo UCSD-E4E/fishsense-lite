@@ -17,7 +17,11 @@ from fishsense_shared.preprocess_contracts import (
     PreprocessSlateImagesInput,
     PreprocessSpeciesImagesInput,
 )
-from fishsense_shared.temporal import build_tls_config, ensure_schedule
+from fishsense_shared.temporal import (
+    build_tls_config,
+    ensure_schedule,
+    temporal_namespace,
+)
 
 __all__ = [
     "IS_DOCKER",
@@ -35,5 +39,6 @@ __all__ = [
     "get_config_path",
     "get_log_path",
     "path_validator",
+    "temporal_namespace",
     "url_condition",
 ]

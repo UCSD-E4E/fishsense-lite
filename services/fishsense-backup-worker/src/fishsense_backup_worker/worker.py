@@ -10,7 +10,7 @@ import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
-from fishsense_shared import build_tls_config, ensure_schedule
+from fishsense_shared import build_tls_config, ensure_schedule, temporal_namespace
 from temporalio.client import Client
 from temporalio.worker import Worker
 
@@ -35,7 +35,9 @@ async def main() -> None:
     tls_config = build_tls_config(settings.temporal)
 
     client = await Client.connect(
-        f"{settings.temporal.host}:{settings.temporal.port}", tls=tls_config
+        f"{settings.temporal.host}:{settings.temporal.port}",
+        tls=tls_config,
+        namespace=temporal_namespace(settings.temporal),
     )
 
     schedule = build_backup_schedule(

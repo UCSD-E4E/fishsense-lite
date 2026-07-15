@@ -29,6 +29,10 @@ _VALIDATORS = [
     Validator("temporal.client_cert", cast=str, condition=path_validator),
     Validator("temporal.client_private_key", cast=str, condition=path_validator),
     Validator("temporal.domain", cast=str),
+    # Which Temporal namespace to connect to. OSS mTLS doesn't pin the client
+    # to one (krg-infra ADR 0023), so it MUST be requested explicitly; prod
+    # settings.toml sets `fishsense`. Defaults to `default` for local dev/tests.
+    Validator("temporal.namespace", cast=str, default="default"),
     Validator("temporal.server_root_ca_cert", cast=str, condition=path_validator),
     Validator("label_studio.url", required=True, condition=url_condition),
     Validator("label_studio.api_key", required=True, cast=str),

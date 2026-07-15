@@ -45,6 +45,23 @@ def build_tls_config(temporal_settings) -> TLSConfig | None:
     )
 
 
+def temporal_namespace(temporal_settings) -> str:
+    """Return the configured Temporal namespace, defaulting to ``default``.
+
+    OSS Temporal mTLS authenticates the client but does NOT pin it to a
+    namespace (krg-infra ADR 0023 — "namespace isolation is by convention,
+    not enforced"). A worker that omits ``namespace=`` on ``Client.connect``
+    silently lands in ``default`` instead of the tenant's ``fishsense``
+    namespace, so every worker threads this in. Tolerant of an unset key the
+    same way ``build_tls_config`` is for ``domain`` — falls back rather than
+    raising, so local dev / tests that don't set it match temporalio's own
+    ``default``.
+    """
+    if "namespace" in temporal_settings:
+        return temporal_settings.namespace
+    return "default"
+
+
 async def ensure_schedule(
     client: Client,
     *,

@@ -4,7 +4,7 @@ import signal
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
-from fishsense_shared import build_tls_config
+from fishsense_shared import build_tls_config, temporal_namespace
 from temporalio.client import Client
 from temporalio.worker import Worker
 
@@ -129,7 +129,9 @@ async def main():
         bool(tls_config),
     )
     client = await Client.connect(
-        f"{settings.temporal.host}:{settings.temporal.port}", tls=tls_config
+        f"{settings.temporal.host}:{settings.temporal.port}",
+        tls=tls_config,
+        namespace=temporal_namespace(settings.temporal),
     )
 
     interrupt_event = asyncio.Event()

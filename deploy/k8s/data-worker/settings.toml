@@ -34,6 +34,11 @@ max_workers = 8
 host = "krg-prod.ucsd.edu"
 port = "7233"
 tls = true
+# Tenant namespace on the shared krg-prod cluster (krg-infra terraform/temporal),
+# matching the api-worker. OSS mTLS authenticates but does NOT pin the namespace
+# (ADR 0023); the child workflows the api-worker dispatches run here, so a
+# mismatch means they'd never be picked up. Must equal the api-worker's value.
+namespace = "fishsense"
 # Data-worker's own mTLS client identity (distinct from the api-worker's),
 # authorized for the fishsense tenant on krg-prod (CN `fishsense-worker`).
 # Mounted from the `fishsense-data-worker-temporal-certs` Secret at /certs.
