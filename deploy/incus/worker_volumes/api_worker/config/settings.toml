@@ -44,24 +44,23 @@ endpoint_url = "https://garage.fishsense.e4e.ucsd.edu"
 region = "garage"
 bucket = "fishsense"
 
-# NRP data-worker scale-to-zero — DISABLED until the NRP kubeconfig is
-# delivered to the slot.
+# NRP data-worker scale-to-zero. The api-worker scales the data-worker
+# Deployment (ns `e4e-fishsense`) 0 <-> active_replicas on demand.
 #
-# `kubeconfig_path` must point at a file that EXISTS: config.py validates it
-# with a `path_validator`, and Dynaconf runs every validator eagerly on first
-# settings access, so a dangling path crash-loops the worker at startup before
-# it can even connect to Temporal. With `kubeconfig_path` unset the scaling
-# activity no-ops (`resolve_scaling_config` returns disabled) and the
-# data-worker is assumed always-on — the supported pre-NRP mode.
+# `kubeconfig_path` points at a vault-agent SOFT render (secrets.nix →
+# /run/tenant/nrp/kubeconfig, mounted into this worker by compose.yml) — the
+# committed config dir is a read-only store bind, so the secret kubeconfig
+# can't live here. config.py validates the path with a `path_validator` that
+# runs eagerly at startup, so the file MUST exist: seed `nrp.kubeconfig` in
+# OpenBao BEFORE this converges, or the worker crash-loops (isolated to this
+# worker; the slot stays up because the render is soft). With `kubeconfig_path`
+# absent the scaling activity no-ops (data-worker assumed always-on).
 #
-# Re-enabling is NOT just uncommenting: this config dir is a read-only store
-# bind (workdir.nix symlinks it from the flake store), so vault-agent can't
-# render a secret kubeconfig here. It must render to a writable path (as it
-# does for the temporal certs under /run/tenant/temporal/), and this line must
-# then point there. The NRP kubeconfig delivery is still an open operator item.
+# `namespace` MUST match the NRP namespace + the kustomization pin in
+# deploy/k8s/data-worker (e4e-fishsense) — it's where the scale patch is applied.
 [kubernetes]
-# kubeconfig_path = "/run/tenant/<writable>/nrp.kubeconfig"
-namespace = "fishsense"
+kubeconfig_path = "/run/tenant/nrp/kubeconfig"
+namespace = "e4e-fishsense"
 deployment_name = "fishsense-data-processing-workflow-worker"
 active_replicas = 1
 idle_cooldown_minutes = 15
