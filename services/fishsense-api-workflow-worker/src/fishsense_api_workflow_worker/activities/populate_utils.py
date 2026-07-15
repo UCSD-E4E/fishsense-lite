@@ -114,10 +114,20 @@ async def create_or_get_label_studio_project(
     `build_per_dive_title`.
     """
     ls = _get_ls_client()
+    workspace_id = await asyncio.to_thread(_resolve_workspace_id, ls)
 
-    matches = await asyncio.to_thread(
-        lambda: [p for p in ls.projects.list() if p.title == project_title]
-    )
+    def _list_titled():
+        # Scope the idempotency lookup to the target workspace so a same-
+        # titled project in another workspace can't shadow it. `workspaces`
+        # (plural) is a server-side filter; None means "all workspaces".
+        projects = (
+            ls.projects.list(workspaces=[workspace_id])
+            if workspace_id is not None
+            else ls.projects.list()
+        )
+        return [p for p in projects if p.title == project_title]
+
+    matches = await asyncio.to_thread(_list_titled)
     if matches:
         if len(matches) > 1:
             activity.logger.warning(
@@ -141,6 +151,7 @@ async def create_or_get_label_studio_project(
         ls.projects.create,
         title=project_title,
         label_config=labeling_config_xml,
+        workspace=workspace_id,
     )
     activity.logger.info(
         "Created LS project %r (id=%d)", project_title, project.id
@@ -231,3 +242,25 @@ def _get_ls_client() -> LabelStudio:
     both `create_or_get_label_studio_project` and
     `import_tasks_and_record_labels` pick up the fake client."""
     return get_ls_client()
+
+
+def _resolve_workspace_id(ls: LabelStudio) -> int | None:
+    """Resolve the configured `label_studio.workspace` name to its LS id.
+
+    LS Enterprise groups projects into workspaces; new per-dive projects
+    should be created in the tenant's workspace (`FishSense` in prod) rather
+    than the caller's personal one. Returns ``None`` when unset (OSS LS /
+    local dev / tests) so project creation falls back to the default
+    workspace. Raises if a name is configured but no such workspace exists —
+    a silent fallback would scatter projects into the wrong workspace.
+    """
+    name = (settings.label_studio.get("workspace") or "").strip()
+    if not name:
+        return None
+    matches = [w for w in ls.workspaces.list() if w.title == name]
+    if not matches:
+        raise RuntimeError(
+            f"Label Studio workspace {name!r} not found "
+            "(settings.label_studio.workspace) — create it or fix the config."
+        )
+    return matches[0].id

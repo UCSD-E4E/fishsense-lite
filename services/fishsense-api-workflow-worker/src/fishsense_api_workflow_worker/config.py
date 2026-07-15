@@ -36,6 +36,9 @@ _VALIDATORS = [
     Validator("temporal.server_root_ca_cert", cast=str, condition=path_validator),
     Validator("label_studio.url", required=True, condition=url_condition),
     Validator("label_studio.api_key", required=True, cast=str),
+    # LS Enterprise workspace new per-dive projects are created in. Empty =
+    # personal/default workspace (back-compat for OSS LS / local dev / tests).
+    Validator("label_studio.workspace", cast=str, default=""),
     Validator("e4e_nas.url", required=True, cast=str, condition=url_condition),
     Validator("e4e_nas.username", required=True, cast=str),
     Validator("e4e_nas.password", required=True, cast=str),
