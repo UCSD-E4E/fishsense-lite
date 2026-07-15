@@ -100,6 +100,7 @@ async def test_creates_project_when_no_match_and_xml_present(monkeypatch):
     ls.projects.create.assert_called_once_with(
         title=expected_title,
         label_config="<View><Image/></View>",
+        workspace=None,
     )
 
 
@@ -143,6 +144,7 @@ async def test_falls_back_to_dive_id_when_name_missing(monkeypatch):
     ls.projects.create.assert_called_once_with(
         title=expected_title,
         label_config="<View/>",
+        workspace=None,
     )
 
 
@@ -173,6 +175,7 @@ async def test_falls_back_to_dive_id_when_name_too_long(monkeypatch):
     ls.projects.create.assert_called_once_with(
         title=expected_title,
         label_config="<View/>",
+        workspace=None,
     )
 
 

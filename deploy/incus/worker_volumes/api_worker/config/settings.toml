@@ -32,6 +32,9 @@ server_root_ca_cert = "/run/tenant/temporal/ca.crt"
 [label_studio]
 # Hosted Label Studio (HumanSignal) — the self-hosted labeler.e4e.ucsd.edu was retired.
 url = "https://app.heartex.com"
+# LS Enterprise workspace new per-dive projects are created in. Resolved to
+# its numeric id at runtime via workspaces.list(). Empty = personal/default.
+workspace = "FishSense"
 
 [e4e_nas]
 url = "https://e4e-nas.ucsd.edu:6021"
