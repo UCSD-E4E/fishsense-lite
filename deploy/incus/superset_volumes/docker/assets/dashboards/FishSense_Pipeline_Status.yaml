@@ -55,6 +55,9 @@ position:
       - GRID_ID
       - ROW-queue
     meta:
+      # `chartId` must be present — the importer's build_uuid_to_id_map reads it
+      # (KeyError otherwise); the value is a placeholder remapped via `uuid`.
+      chartId: 1
       uuid: 66666666-6666-4666-8666-666666666666
       sliceName: Labeling queue (HIGH priority)
       width: 5
@@ -68,6 +71,7 @@ position:
       - GRID_ID
       - ROW-partial
     meta:
+      chartId: 2
       uuid: 77777777-7777-4777-8777-777777777777
       sliceName: Partially-done dives (HIGH priority)
       width: 12
