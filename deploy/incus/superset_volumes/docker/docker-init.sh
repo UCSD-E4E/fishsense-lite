@@ -97,13 +97,21 @@ if [ -d "$ASSETS_SRC" ]; then
     (
         set +e
         BUNDLE="$(mktemp -d)"
-        cp -r "$ASSETS_SRC"/. "$BUNDLE"/
+        # Superset's v1 importer runs remove_root() on every zip path (strips the
+        # top-level folder) and then requires metadata.yaml, so the assets MUST
+        # live under one. Without it every path is mangled, metadata.yaml is
+        # never found, v1 raises IncorrectVersionError, and the dispatcher
+        # silently falls back to the legacy v0 JSON importer — which then chokes
+        # on our YAML ("Expecting value: line 1 column 1").
+        ROOT="$BUNDLE/fishsense_assets"
+        mkdir -p "$ROOT"
+        cp -r "$ASSETS_SRC"/. "$ROOT"/
         # nix-store bind mounts carry 1970 mtimes and `zip` rejects timestamps
         # before 1980 ("ZIP does not support timestamps before 1980"), so bump
         # every copied file to now before archiving.
         find "$BUNDLE" -exec touch {} +
         # Inject the superset DB-role password into the FishSense connection URI.
-        sed -i "s|__DB_PASSWORD__|${DATABASE_PASSWORD}|g" "$BUNDLE"/databases/*.yaml
+        sed -i "s|__DB_PASSWORD__|${DATABASE_PASSWORD}|g" "$ROOT"/databases/*.yaml
         ZIP=/tmp/fishsense-assets.zip
         python -c "import shutil,sys; shutil.make_archive('/tmp/fishsense-assets','zip',sys.argv[1])" "$BUNDLE"
         # `import-dashboards` (not `import-assets`, which doesn't exist in 6.0.0)
