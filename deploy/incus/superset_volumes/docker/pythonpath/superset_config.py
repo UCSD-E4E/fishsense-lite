@@ -177,7 +177,10 @@ OAUTH_PROVIDERS = [
             'client_secret': os.environ.get('AUTHENTIK_SECRET'),
             'api_base_url': AUTHENTIK_ISSUER,
             'client_kwargs':{
-              'scope': 'email profile'
+              # `openid` for the userinfo endpoint; `groups` carries the user's
+              # Authentik groups (requires a matching scope/property mapping on
+              # the analytics OIDC app in Authentik — see krg spec / PR notes).
+              'scope': 'openid email profile groups'
             },
             'jwks_uri': f'{AUTHENTIK_ISSUER}jwks/',
             'request_token_url': None,
@@ -191,8 +194,57 @@ OAUTH_PROVIDERS = [
 AUTH_USER_REGISTRATION = True
 ALLOW_LOCAL_USER_LOGIN = True 
 
-# The default user self registration role
+# The default user self registration role — the fallback for anyone who logs
+# in via OIDC but is in none of the mapped groups below (Public = no access).
 AUTH_USER_REGISTRATION_ROLE = "Public"
+
+# ── OIDC identity + group→role mapping ─────────────────────────────────────
+# Authentik is NOT a Flask-AppBuilder built-in OAuth provider, so FAB's default
+# `get_oauth_user_info` returns {} — OIDC login can't extract the user and
+# silently fails, and since AUTH_OAUTH also hides the local login form there is
+# no way in at all (exactly what happened on first bring-up). This custom
+# SecurityManager pulls the identity + Authentik groups from the userinfo
+# endpoint; FAB maps the group names to Superset roles via AUTH_ROLES_MAPPING.
+from superset.security import SupersetSecurityManager  # noqa: E402  pylint: disable=wrong-import-position
+
+
+class AuthentikSecurityManager(SupersetSecurityManager):
+    """Extract identity + groups from Authentik's OIDC userinfo endpoint.
+
+    `role_keys` = the user's Authentik group names, which FAB matches against
+    AUTH_ROLES_MAPPING (re-applied every login via AUTH_ROLES_SYNC_AT_LOGIN).
+    """
+
+    def get_oauth_user_info(self, provider, response=None):
+        if provider != "authentik":
+            return {}
+        userinfo = self.appbuilder.sm.oauth_remotes[provider].get(
+            f"{_AUTHENTIK_ROOT}/application/o/userinfo/"
+        )
+        userinfo.raise_for_status()
+        data = userinfo.json()
+        return {
+            "username": data.get("preferred_username") or data.get("email"),
+            "email": data.get("email"),
+            "first_name": data.get("given_name", ""),
+            "last_name": data.get("family_name", ""),
+            "role_keys": data.get("groups", []),
+        }
+
+
+CUSTOM_SECURITY_MANAGER = AuthentikSecurityManager
+
+# Authentik group name → Superset role(s). Membership lives in Authentik
+# (terraform / the Samba-LDAP source), so granting access = adding someone to a
+# group here; nothing to click in Superset. Roles re-sync on every login, so
+# removing a user from a group revokes the role too. Users in no mapped group
+# get AUTH_USER_REGISTRATION_ROLE (Public).
+AUTH_ROLES_MAPPING = {
+    "fishsense-superset-admin": ["Admin"],
+    "fishsense-superset-editor": ["Alpha"],
+    "fishsense-superset-viewer": ["Gamma"],
+}
+AUTH_ROLES_SYNC_AT_LOGIN = True
 
 WEBDRIVER_AUTH = {"username": os.getenv("WEBDRIVER_AUTH_USERNAME", ""), "password":  os.getenv("WEBDRIVER_AUTH_PASSWORD", "")}
 
