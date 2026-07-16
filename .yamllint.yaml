@@ -1,0 +1,24 @@
+# Repo YAML lint. Deliberately relaxed: the goal is catching real breakage
+# (syntax errors, duplicate keys, broken/inconsistent indentation) — NOT style
+# nits — so existing compose / k8s / workflow YAML passes unchanged. The payoff
+# is guarding hand-authored YAML we can't otherwise validate in CI, e.g. the
+# Superset dashboard asset bundle (deploy/incus/superset_volumes/docker/assets).
+#
+# `extends: relaxed` keeps key-duplicates + syntax as errors (CI-failing) while
+# downgrading cosmetic rules; the disables below silence the purely-stylistic
+# ones the repo doesn't observe.
+extends: relaxed
+
+# Templates aren't valid standalone YAML (placeholder/interpolation syntax), so
+# they can't be parsed — exclude them rather than lint them.
+ignore: |
+  *config_template*
+  *.template.yaml
+  *.template.yml
+
+rules:
+  line-length: disable
+  trailing-spaces: disable
+  empty-lines: disable
+  comments: disable
+  document-start: disable

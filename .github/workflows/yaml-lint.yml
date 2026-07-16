@@ -1,0 +1,17 @@
+name: YAML Lint
+
+# Catches malformed YAML (syntax, duplicate keys, broken indentation) across the
+# repo — most valuable for hand-authored bundles we can't otherwise validate,
+# like the Superset dashboard assets. Config + rule rationale in .yamllint.yaml.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  yamllint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: yamllint (config in .yamllint.yaml)
+        run: pipx run yamllint .
