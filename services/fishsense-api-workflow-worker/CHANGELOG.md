@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.39.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.38.1...fishsense-api-workflow-worker-v1.39.0) (2026-07-16)
+
+
+### Features
+
+* **labels:** create per-dive LS projects in a configured workspace ([#276](https://github.com/UCSD-E4E/fishsense-lite/issues/276)) ([47fdf02](https://github.com/UCSD-E4E/fishsense-lite/commit/47fdf02229cff43b79c08e60a5668b2d2e18aee8))
+
 ## [1.38.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.38.0...fishsense-api-workflow-worker-v1.38.1) (2026-07-15)
 
 
