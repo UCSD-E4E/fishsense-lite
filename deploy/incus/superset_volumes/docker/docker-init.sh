@@ -90,16 +90,24 @@ fi
 ASSETS_SRC=/app/docker/assets
 if [ -d "$ASSETS_SRC" ]; then
     echo_step "5" "Starting" "Importing committed dashboard assets"
-    BUNDLE="$(mktemp -d)"
-    cp -a "$ASSETS_SRC"/. "$BUNDLE"/
-    # Inject the superset DB-role password into the FishSense connection URI.
-    sed -i "s|__DB_PASSWORD__|${DATABASE_PASSWORD}|g" "$BUNDLE"/databases/*.yaml 2>/dev/null || true
-    ZIP=/tmp/fishsense-assets.zip
-    python -c "import shutil,sys; shutil.make_archive('/tmp/fishsense-assets','zip',sys.argv[1])" "$BUNDLE"
-    if superset import-assets -p "$ZIP"; then
-        echo_step "5" "Complete" "Importing committed dashboard assets"
-    else
-        echo "WARN: superset import-assets failed — dashboards not applied (init continues)"
-    fi
-    rm -rf "$BUNDLE" "$ZIP"
+    # Whole block runs in a subshell with `set +e` and a trailing `|| echo` so a
+    # bad bundle can NEVER fail init — Superset (which depends on init completing
+    # successfully) must still come up. The script runs under `set -e`, so
+    # without this containment a single failed command here takes Superset down.
+    (
+        set +e
+        BUNDLE="$(mktemp -d)"
+        cp -r "$ASSETS_SRC"/. "$BUNDLE"/
+        # nix-store bind mounts carry 1970 mtimes and `zip` rejects timestamps
+        # before 1980 ("ZIP does not support timestamps before 1980"), so bump
+        # every copied file to now before archiving.
+        find "$BUNDLE" -exec touch {} +
+        # Inject the superset DB-role password into the FishSense connection URI.
+        sed -i "s|__DB_PASSWORD__|${DATABASE_PASSWORD}|g" "$BUNDLE"/databases/*.yaml
+        ZIP=/tmp/fishsense-assets.zip
+        python -c "import shutil,sys; shutil.make_archive('/tmp/fishsense-assets','zip',sys.argv[1])" "$BUNDLE"
+        superset import-assets -p "$ZIP"
+        rm -rf "$BUNDLE" "$ZIP"
+    ) || echo "WARN: dashboard asset import failed — Superset still starts (fix the bundle + re-converge)"
+    echo_step "5" "Complete" "Importing committed dashboard assets"
 fi
