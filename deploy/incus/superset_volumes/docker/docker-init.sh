@@ -106,7 +106,9 @@ if [ -d "$ASSETS_SRC" ]; then
         sed -i "s|__DB_PASSWORD__|${DATABASE_PASSWORD}|g" "$BUNDLE"/databases/*.yaml
         ZIP=/tmp/fishsense-assets.zip
         python -c "import shutil,sys; shutil.make_archive('/tmp/fishsense-assets','zip',sys.argv[1])" "$BUNDLE"
-        superset import-assets -p "$ZIP"
+        # `import-dashboards` (not `import-assets`, which doesn't exist in 6.0.0)
+        # imports the whole export bundle — databases/datasets/charts/dashboards.
+        superset import-dashboards -p "$ZIP" -u admin
         rm -rf "$BUNDLE" "$ZIP"
     ) || echo "WARN: dashboard asset import failed — Superset still starts (fix the bundle + re-converge)"
     echo_step "5" "Complete" "Importing committed dashboard assets"
