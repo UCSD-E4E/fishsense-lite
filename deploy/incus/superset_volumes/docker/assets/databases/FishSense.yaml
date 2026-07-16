@@ -1,0 +1,16 @@
+# __DB_PASSWORD__ is replaced with $DATABASE_PASSWORD by docker-init.sh at
+# import time (the superset DB role can read the fishsense DB) — the secret is
+# never committed. Same role/password Superset uses for its own metadata DB.
+database_name: FishSense
+sqlalchemy_uri: postgresql+psycopg2://superset:__DB_PASSWORD__@postgres:5432/fishsense
+cache_timeout: null
+expose_in_sqllab: true
+allow_run_async: true
+allow_ctas: false
+allow_cvas: false
+allow_dml: false
+allow_file_upload: false
+extra:
+  allows_virtual_table_explore: true
+uuid: 11111111-1111-4111-8111-111111111111
+version: 1.0.0

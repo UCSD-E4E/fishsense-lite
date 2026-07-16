@@ -79,3 +79,27 @@ if [ "$SUPERSET_LOAD_EXAMPLES" = "yes" ]; then
     fi
     echo_step "4" "Complete" "Loading examples"
 fi
+
+# ── Step 5: import committed dashboard assets (IaC) ──────────────────────────
+# Superset dashboards-as-code: databases/datasets/charts/dashboards live as YAML
+# under docker/assets/ and are re-imported on every converge (idempotent —
+# import overwrites by UUID). The FishSense DB connection's password is injected
+# from $DATABASE_PASSWORD at import time via a placeholder, so the secret never
+# lives in git. A failed import must NOT fail init (Superset still comes up), so
+# this is best-effort.
+ASSETS_SRC=/app/docker/assets
+if [ -d "$ASSETS_SRC" ]; then
+    echo_step "5" "Starting" "Importing committed dashboard assets"
+    BUNDLE="$(mktemp -d)"
+    cp -a "$ASSETS_SRC"/. "$BUNDLE"/
+    # Inject the superset DB-role password into the FishSense connection URI.
+    sed -i "s|__DB_PASSWORD__|${DATABASE_PASSWORD}|g" "$BUNDLE"/databases/*.yaml 2>/dev/null || true
+    ZIP=/tmp/fishsense-assets.zip
+    python -c "import shutil,sys; shutil.make_archive('/tmp/fishsense-assets','zip',sys.argv[1])" "$BUNDLE"
+    if superset import-assets -p "$ZIP"; then
+        echo_step "5" "Complete" "Importing committed dashboard assets"
+    else
+        echo "WARN: superset import-assets failed — dashboards not applied (init continues)"
+    fi
+    rm -rf "$BUNDLE" "$ZIP"
+fi
