@@ -207,16 +207,35 @@ jobs:
 
           # Every pin must match. A stale slot differs here even though the
           # containers are happily serving the old version.
-          if ! diff -u /tmp/expected-pins.txt /tmp/deployed-pins.txt; then
-            echo "::error title=Deploy verify::the slot is NOT running the versions on main (-expected/+deployed above). The converge did not land; check 'journalctl -u fishsense-selfupdate' on the slot."
+          #
+          # Compared as strings, and reported with `comm`, because the slot's
+          # runner has NO diffutils: its PATH is bash/coreutils/findutils/git/
+          # gnugrep/gnused/gnutar/gzip/nix/openssh/systemd, so `diff` AND `cmp`
+          # are both absent. `if ! diff ...` there is a trap — the missing
+          # binary exits non-zero, which reads as "pins differ" and reds every
+          # deploy no matter what is on the slot (it did exactly that on this
+          # job's first live run). `comm` and `sort` are coreutils, so they are
+          # present. Anything added here must be checked against that PATH, not
+          # against a dev box.
+          if [ "$(cat /tmp/expected-pins.txt)" != "$(cat /tmp/deployed-pins.txt)" ]; then
+            echo "::error title=Deploy verify::the slot is NOT running the versions on main (see the expected/deployed lists above). The converge did not land; check 'journalctl -u fishsense-selfupdate' on the slot."
             {
               echo "### ❌ deploy did not land"
               echo "The compose spec the slot deployed does not match main's pins."
               echo ""
-              echo '```diff'
-              diff -u /tmp/expected-pins.txt /tmp/deployed-pins.txt || true
+              echo "**On main but not deployed:**"
+              echo '```'
+              comm -23 /tmp/expected-pins.txt /tmp/deployed-pins.txt
+              echo '```'
+              echo "**Deployed but not on main:**"
+              echo '```'
+              comm -13 /tmp/expected-pins.txt /tmp/deployed-pins.txt
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
+            echo "--- on main but not deployed ---"
+            comm -23 /tmp/expected-pins.txt /tmp/deployed-pins.txt
+            echo "--- deployed but not on main ---"
+            comm -13 /tmp/expected-pins.txt /tmp/deployed-pins.txt
             exit 1
           fi
 
