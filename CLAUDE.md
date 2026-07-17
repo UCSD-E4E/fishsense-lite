@@ -63,7 +63,7 @@ DB (negligible). To add or remove, override
 | 11  | populate_label_studio_project | api-worker | ported |
 | 12  | sync_slate_label | api-worker | ported (hourly) |
 | 13  | perform_laser_calibration | api-worker (parent) + data-worker (child) | ported (hourly, +50min offset) |
-| 14  | measure_fish | api-worker (parent) + data-worker (child) | ported (on-demand; idempotency caveat — see notes) |
+| 14  | measure_fish | api-worker (parent) + data-worker (child) | ported (on-demand; idempotent as of 2026-07-17) |
 
 Create and populate are split into separate workflows per stage. LS
 projects are now **per-dive**: each dive gets its own LS project
@@ -218,7 +218,7 @@ registered but not scheduled (see notes below). Per-stage cohort:
 | 5.1 | HIGH-priority + at least one image with a *valid* `LaserLabel` whose image carries no non-sentinel `HeadTailLabel` row |
 | 9   | HIGH-priority + `dive_slate_id` set + at least one `SpeciesLabel.content_of_image='Slate, Laser on slate'` whose image carries no `DiveSlateLabel` row at all |
 | 13  | HIGH-priority + `dive_slate_id` set + no `LaserExtrinsics` + ≥2 completed `DiveSlateLabel` rows (matches the data-worker activity's `MIN_LASER_POINTS=2` precondition) |
-| 14  | HIGH-priority + has `LaserExtrinsics` + has LABEL_STUDIO clusters with at least one `fish_id is None` |
+| 14  | HIGH-priority + has `LaserExtrinsics` + at least one *measurable* image with no `Measurement` (same predicate as the view's `measured`; keep the two in step) |
 
 Stages 1, 2, and 5.1 all cascade from the same "valid laser" gate.
 Stage 1 lands PREDICTION clusters that stage 2 then consumes; stage
@@ -305,7 +305,7 @@ Backs Superset dashboards reading the fishsense Postgres connection.
 | `slate_preprocessed` | every image with `SpeciesLabel.content_of_image='Slate, Laser on slate'` has a non-sentinel `DiveSlateLabel` row |
 | `slate_labeling_complete` | ≥1 completed `DiveSlateLabel` AND zero incomplete |
 | `calibrated` | dive has a `LaserExtrinsics` row |
-| `measured` | ≥1 LABEL_STUDIO `DiveFrameCluster` AND zero LABEL_STUDIO clusters with `fish_id IS NULL` |
+| `measured` | ≥1 `Measurement` for the dive AND zero *measurable* images without one. "Measurable" = a `top_three_photos_of_group` `SpeciesLabel` whose image has a valid laser label, a valid head/tail label, and a LABEL_STUDIO cluster — i.e. what `measure_fish_activity` actually attempts. Rescoped 2026-07-17; see the stage-14 notes. |
 
 **"Complete" semantics throughout** mirror
 `get_dives_with_complete_laser_labeling`: vacuous truth (zero rows of
@@ -353,13 +353,25 @@ keeps SDK fetches inline because the math kernels need opencv +
 fishsense-core, so splitting fetch/math across workers would add 5+
 activity handoffs per dive for no gain.
 
-**Stage 14 deliberately is not scheduled.** `measure_fish_activity` is
-non-idempotent (`post_measurement` is a POST and the SDK has no
-per-image measurement query), so a re-run on a partially-failed dive
-would duplicate measurements on already-bound clusters. Until that's
-resolved (likely by adding a `get_measurements` SDK method and
-per-image filtering in the activity), `MeasureFishParentWorkflow` is
-operator-triggered:
+**Stage 14 is idempotent as of 2026-07-17, but still not scheduled.**
+It used to be non-idempotent — `post_measurement` was a plain POST and
+the SDK had no per-image measurement query, so a re-run on a
+partially-failed dive duplicated measurements on already-bound
+clusters. Both halves are fixed:
+
+* `POST /api/v1/fish/{fish_id}/measurements` upserts on the natural key
+  `(image_id, fish_id)`, backed by a `uq_measurement_image_fish`
+  constraint. The key is the pair, not `image_id` alone — one frame can
+  hold two fish.
+* `measure_fish_activity` fetches `fish.get_measurements(dive_id)` once
+  per dive and skips already-measured images *before* `_ensure_fish`,
+  so a re-run causes no species/fish churn. Surfaced as
+  `MeasureFishResult.skipped_already_measured`.
+
+It stays operator-triggered for now so the first drains can be watched
+on real dives; the cohort can now go empty (see the `measured` rescope
+below), so scheduling it is a live option rather than a hazard.
+`MeasureFishParentWorkflow`:
 
 ```
 temporal workflow start \
