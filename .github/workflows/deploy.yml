@@ -41,9 +41,17 @@ name: Deploy
 # starts the unit with `--no-block` (see the step comment) and reports
 # success as soon as the converge is *enqueued* — its green means
 # "converge fired", never "containers are healthy". The `verify-incus` job
-# below is the health signal — a GitHub-hosted, report-only probe that polls
-# the public endpoints after the converge. For the ground truth, verify
-# on-box with `systemctl status fishsense-selfupdate` + `docker compose ps`.
+# below is the deploy gate: it asserts the pins the slot actually deployed
+# match the pins on main, and fails the run when they don't.
+#
+# Do NOT "verify" a deploy with `systemctl status fishsense-selfupdate` —
+# its exit code is not a deploy signal. `switch-to-configuration` applies
+# the whole config and THEN exits 4 if any unit is `failed`, including one
+# it never touched, so a converge routinely deploys correctly and reports
+# failure (observed 2026-07-17: containers up at 04:09:51, exit 4 at
+# 04:10:32, over an unrelated github-runner registration failure). Ground
+# truth is what is running: `docker ps` image tags vs the pins on main.
+# See CLAUDE.md, "The converge is a trigger, not a clean CI gate".
 #
 # Prereqs:
 #   - incus: nothing to configure here. The `[self-hosted, fishsense]`

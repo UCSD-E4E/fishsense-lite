@@ -721,9 +721,94 @@ restarts the very runner executing the job (its first action is
 are healthy". Without `--no-block` a blocking `systemctl start` gets
 SIGINT'd (exit 130, false red) whenever `nixos-rebuild` outlives the
 runner's graceful-stop window — observed live on PR #238 (red at ~6min)
-vs #240 (green at 34s), same code path, non-deterministic. Verify a real
-converge on-box (`systemctl status fishsense-selfupdate`) or add a
-post-converge HTTP health probe.
+vs #240 (green at 34s), same code path, non-deterministic.
+
+**`fishsense-selfupdate`'s exit code does NOT mean the deploy failed.**
+Do not "verify the converge" with `systemctl status fishsense-selfupdate`
+— an earlier revision of this file said to, and it is wrong.
+`switch-to-configuration`'s `get_active_units` keeps every unit whose
+`state != "inactive"` and exits **4** if any of them is `failed` — even a
+unit the switch never touched, and even though it has *already applied
+the whole configuration*. Measured during the 2026-07-17 outage:
+
+```
+api-worker container started:   04:09:51Z   <- new config live
+switch-to-configuration exit 4: 04:10:32Z   <- 41s later, "failed"
+```
+
+The pin at the built commit was the version that ended up running, so
+that converge deployed correctly and then reported failure, purely
+because `github-runner-fishsense` was in a failed state. One lingering
+failed unit therefore poisons every subsequent switch on the slot
+(krg-infra#496 traced this through `switch-to-configuration-ng`; a real
+fix needs the unit to never *end* a switch failed, and is still open).
+
+Consequences, both counter-intuitive:
+
+* A **red** converge does not mean nothing deployed. Check what is
+  actually running (`docker ps` image tags vs the pin on main), not the
+  exit code.
+* Gating CI on `systemctl show fishsense-selfupdate -p Result` is
+  therefore NOT the fix for the false green — it would false-red every
+  working deploy for as long as any unit is failed (which is the state
+  the slot is in whenever the runner can't register).
+
+**`verify-incus` is the deploy gate** (#297). It used to poll the public
+endpoints, which answer from the OLD containers when a converge fails —
+so it went green on a deploy that never happened, alongside a green
+`deploy-incus`. It now asserts every `ghcr.io/ucsd-e4e/*` pin the slot
+deployed matches the pin on main, and fails the run otherwise. All must
+match; a partial match is a failed deploy.
+
+The signal is the compose spec the stack unit actually deployed:
+`fishsense.service`'s `ExecStart` names its `/nix/store` path (world-
+readable), and the unit only reaches `Result=success` if
+`up -d --force-recreate` brought that spec up — both are checked, since
+a spec can land on disk while the containers crash-loop. Not `docker ps`:
+`/var/run/docker.sock` is `0660 root:docker` and `gh-runner` isn't in
+that group (adding it is root-equivalent, and the runner is platform-
+provisioned anyway).
+
+It runs on the slot's runner deliberately. The converge stops that runner
+gracefully — after `deploy-incus`'s job ends — and restarts it on the way
+out, so the gate can't be dispatched mid-converge; and a converge that
+dies leaving the runner down never lets it start, so the run times out.
+That is the correct signal: nothing can deploy until the runner returns.
+This reverses the earlier "report-only, false-reds not acceptable"
+stance — a false red is loud and gets investigated, the false green
+quietly asserted a deploy that hadn't happened.
+
+**If the runner is down, deploys queue — converge by hand.** The
+`deploy-incus` job needs the slot's own runner, so a downed runner
+blocks the pipeline; but a converge does not need the job. Run what the
+job would have run:
+
+```
+ssh krg-admin@krg-nat.ucsd.edu \
+  'incus exec fishsense --project fishsense -- \
+     systemctl start --no-block fishsense-selfupdate'
+```
+
+It pulls current main and deploys normally. Verified 2026-07-17: with
+the runner failed, this shipped `api-workflow-worker` v1.39.0 → v1.40.0
+and registered the stage-14 schedule, while `fishsense-selfupdate`
+reported `Result=exit-code ExecMainStatus=4`. Confirm with `docker ps`
+image tags, not the exit code. The nightly `autoUpgrade` does the same
+thing unattended, so waiting a day also works.
+
+**Runner registration is the usual reason a converge exits 4** (and the
+usual reason deploys then queue forever: the failed switch leaves the
+runner down, and the runner is what picks up the next deploy job).
+krg-infra minted a fresh registration token per fleet deploy and pushed
+it to the tenant; the upstream module diffs the token file's *contents*,
+so a fresh token guaranteed "Config has changed, removing old runner
+state" → re-register → any GitHub hiccup fails activation. Registration
+tokens live ~1h, so converges shortly after a krg deploy registered fine
+and converges long after got `404 Not Found` — which reads as a random
+flake but is a clock. Fixed fleet-side by krg-infra#496 (push a token
+only when `.credentials` is absent). If the runner is down: it is
+platform-provisioned (ADR 0022), so don't hand-register it — a krg fleet
+deploy re-mints for any instance missing `.credentials`.
 
 Until the slot is bootstrapped the converge job fails; the
 `deploy-data-worker` job runs but fails fast until `NRP_KUBECONFIG` is
