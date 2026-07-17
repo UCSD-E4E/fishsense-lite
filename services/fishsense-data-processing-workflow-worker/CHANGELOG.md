@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.7.0...fishsense-data-processing-workflow-worker-v2.7.1) (2026-07-17)
+
+
+### Bug Fixes
+
+* **stage14:** make fish measurement idempotent and unstick `measured` ([#287](https://github.com/UCSD-E4E/fishsense-lite/issues/287)) ([d57fdec](https://github.com/UCSD-E4E/fishsense-lite/commit/d57fdec7782febcfc9e42894efa7d86d340c420e))
+
 ## [2.7.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.6.1...fishsense-data-processing-workflow-worker-v2.7.0) (2026-07-15)
 
 
