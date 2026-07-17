@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.7.2...fishsense-lite-web-v0.7.3) (2026-07-17)
+
+
+### Bug Fixes
+
+* **web:** point landing dashboard links at the live Superset slugs + krg Temporal ([#301](https://github.com/UCSD-E4E/fishsense-lite/issues/301)) ([4e29fea](https://github.com/UCSD-E4E/fishsense-lite/commit/4e29fea5331378aa78008873b9b7b1a59a4602f0))
+
 ## [0.7.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.7.1...fishsense-lite-web-v0.7.2) (2026-07-14)
 
 
