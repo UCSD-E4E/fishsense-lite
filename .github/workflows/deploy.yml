@@ -120,50 +120,117 @@ jobs:
         run: systemctl start --no-block fishsense-selfupdate # polkit-authorized on the slot
 
   verify-incus:
-    # Report-only post-converge health probe — the "separate probe" the
-    # deploy-incus comment refers to. deploy-incus is --no-block, so its green
-    # only means "converge fired"; this turns that into a health signal.
-    # GitHub-hosted (ubuntu-latest) on purpose: the slot's runner is restarted
-    # mid-`nixos-rebuild`, so a check on it would be interrupted — polling the
-    # PUBLIC endpoints from off-box isn't. A miss annotates a warning but does
-    # NOT fail the run: the converge is async + the slot is preemptible, so a
-    # transient miss isn't a failed deploy (choose the gate variant only if
-    # false-reds are acceptable).
+    # The deploy gate. deploy-incus is `--no-block`, so its green only ever
+    # meant "converge fired" — this asserts the converge actually landed the
+    # versions main asked for, and fails the run if not.
+    #
+    # Why not assert the converge's own exit code: it is not a deploy signal.
+    # `switch-to-configuration` applies the whole config and THEN exits 4 if
+    # any unit is `failed` — even one it never touched. On 2026-07-17 a
+    # converge deployed correctly (containers up at 04:09:51) and reported
+    # exit 4 forty-one seconds later because the github-runner unit couldn't
+    # register. Gating on that would false-red every working deploy for as
+    # long as any unit lingers failed. See CLAUDE.md, "The converge is a
+    # trigger, not a clean CI gate", and krg-infra#496.
+    #
+    # Why not poll the public endpoints (what this job used to do): they stay
+    # up on the OLD containers when a converge fails, so the probe went green
+    # on a deploy that never happened — the false green this replaces.
+    #
+    # Why not `docker ps`: /var/run/docker.sock is 0660 root:docker and
+    # gh-runner is not in that group. Adding it would be root-equivalent, and
+    # the runner is platform-provisioned (ADR 0022) anyway. Instead we read
+    # the compose spec the stack unit actually deployed — its ExecStart names
+    # the nix-store path, /nix/store is world-readable, and the unit only
+    # reaches Result=success if `up -d --force-recreate` brought that spec up.
+    #
+    # Runs on the slot's own runner on purpose. The converge stops the runner
+    # (gracefully, after deploy-incus's job ends) and starts it again on the
+    # way out, so this job cannot be dispatched until the converge is done —
+    # and if the converge dies leaving the runner down, this job never starts
+    # and times out, which is exactly the state a deploy should go red in.
     needs: deploy-incus
     if: needs.deploy-incus.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, fishsense]
     permissions: {}
-    timeout-minutes: 15
+    timeout-minutes: 25
+    concurrency:
+      group: verify-incus
+      cancel-in-progress: false
     steps:
-      - name: Poll public endpoints until healthy (or warn)
+      - uses: actions/checkout@v4
+
+      - name: Assert every pin main asked for is the pin that deployed
         run: |
-          landing="https://fishsense.e4e.ucsd.edu"
-          api="https://api.fishsense.e4e.ucsd.edu"
-          # Give nixos-rebuild + `docker compose up -d --force-recreate` time to
-          # start, then poll. Healthy = landing serves 200 (edge + web up) and
-          # the API route 302s to authentik (fishsense-api + forwardAuth up).
-          echo "waiting for the converge to take effect..."
-          sleep 60
-          l=000; a=000
-          for i in $(seq 1 20); do
-            l=$(curl -sS -o /dev/null -m 15 -w '%{http_code}' "$landing" 2>/dev/null || echo 000)
-            a=$(curl -sS -o /dev/null -m 15 -w '%{http_code}' "$api" 2>/dev/null || echo 000)
-            echo "[$i/20] landing=$l api=$a"
-            if [ "$l" = "200" ] && [ "$a" = "302" ]; then break; fi
-            sleep 30
+          set -euo pipefail
+          SYSTEMCTL=/run/current-system/sw/bin/systemctl
+
+          # The converge may still be running when the runner returns.
+          for i in $(seq 1 40); do
+            state=$("$SYSTEMCTL" is-active fishsense-selfupdate 2>/dev/null || true)
+            [ "$state" != "activating" ] && break
+            echo "[$i/40] converge still running..."
+            sleep 15
           done
-          if [ "$l" = "200" ] && [ "$a" = "302" ]; then
-            echo "### ✅ slot healthy after converge — landing 200, api 302" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "::warning title=Incus health probe::slot not observed healthy after ~10min (landing=$l expected 200, api=$a expected 302). Converge is async — verify on-box: 'systemctl status fishsense-selfupdate' + 'docker compose ps'. Not failing the run."
-            {
-              echo "### ⚠️ post-converge health probe: not healthy (report-only)"
-              echo "- landing \`$landing\` = \`$l\` (expected 200)"
-              echo "- api \`$api\` = \`$a\` (expected 302)"
-              echo ""
-              echo "The converge is async + the slot is preemptible; verify on-box before treating as a real failure."
-            } >> "$GITHUB_STEP_SUMMARY"
+
+          # Which compose spec did the stack unit actually deploy? ExecStart
+          # names it; the store path changes with every flake revision.
+          deployed_compose=$("$SYSTEMCTL" show fishsense.service -p ExecStart --value \
+            | grep -oE '/nix/store/[a-z0-9]{32}-source/deploy/incus/compose.yml' \
+            | head -1)
+          if [ -z "$deployed_compose" ] || [ ! -r "$deployed_compose" ]; then
+            echo "::error title=Deploy verify::could not read the deployed compose spec from fishsense.service ExecStart"
+            "$SYSTEMCTL" show fishsense.service -p ExecStart --value || true
+            exit 1
           fi
+          echo "deployed compose spec: $deployed_compose"
+
+          pins() { grep -oE 'ghcr\.io/ucsd-e4e/[a-z-]+:v[0-9]+\.[0-9]+\.[0-9]+' "$1" | sort -u; }
+          pins "$deployed_compose" > /tmp/deployed-pins.txt
+          pins deploy/incus/compose.yml   > /tmp/expected-pins.txt
+
+          if [ ! -s /tmp/expected-pins.txt ]; then
+            echo "::error title=Deploy verify::no ghcr pins found in deploy/incus/compose.yml — parser is wrong, refusing to pass vacuously"
+            exit 1
+          fi
+
+          echo "--- expected (main) ---"; cat /tmp/expected-pins.txt
+          echo "--- deployed (slot) ---"; cat /tmp/deployed-pins.txt
+
+          # Every pin must match. A stale slot differs here even though the
+          # containers are happily serving the old version.
+          if ! diff -u /tmp/expected-pins.txt /tmp/deployed-pins.txt; then
+            echo "::error title=Deploy verify::the slot is NOT running the versions on main (-expected/+deployed above). The converge did not land; check 'journalctl -u fishsense-selfupdate' on the slot."
+            {
+              echo "### ❌ deploy did not land"
+              echo "The compose spec the slot deployed does not match main's pins."
+              echo ""
+              echo '```diff'
+              diff -u /tmp/expected-pins.txt /tmp/deployed-pins.txt || true
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          # Pins match — but the spec is only live if the stack unit brought
+          # it up. `up -d --force-recreate` failing (bad pull, crash-loop)
+          # leaves the unit failed with the right spec on disk.
+          stack_result=$("$SYSTEMCTL" show fishsense.service -p Result --value)
+          stack_state=$("$SYSTEMCTL" show fishsense.service -p ActiveState --value)
+          echo "fishsense.service: ActiveState=$stack_state Result=$stack_result"
+          if [ "$stack_result" != "success" ]; then
+            echo "::error title=Deploy verify::pins match but the compose stack unit is $stack_state/$stack_result — containers did not come up"
+            exit 1
+          fi
+
+          {
+            echo "### ✅ deploy verified"
+            echo "All $(wc -l < /tmp/expected-pins.txt) pinned images on the slot match main, and the compose stack is \`$stack_state/$stack_result\`."
+            echo ""
+            echo '```'
+            cat /tmp/deployed-pins.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   deploy-data-worker:
     # Fires on:
