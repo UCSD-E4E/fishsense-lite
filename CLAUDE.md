@@ -810,6 +810,36 @@ only when `.credentials` is absent). If the runner is down: it is
 platform-provisioned (ADR 0022), so don't hand-register it — a krg fleet
 deploy re-mints for any instance missing `.credentials`.
 
+**A pushed token is inert until the runner restarts to consume it**, and
+that is the half that is *ours*. krg stages the token to
+`/var/lib/krg/github-runner/registration-token`; the runner reads it on
+start. Nothing reads it on its own — upstream's module hardcodes
+`Restart = "no"`, so a runner that 404'd once stays dead while perfectly
+good tokens pile up underneath it. krg-infra#496 adds
+`Restart = lib.mkForce "on-failure"` + `RestartSec = 30`, but that lives
+in `nix/modules/tenant.nix` — Axis B, so it only reaches the slot when
+`flake.lock`'s krg-infra pin moves (`nix flake update krg-infra`;
+`update-flake.yml` does it Mondays 08:00 UTC). On an old pin, a token
+delivery fixes nothing.
+
+To recover a dead runner: converge (see the hand-converge box above)
+*within the token's ~1h life*. Verified 2026-07-17 — token staged 06:12,
+converge at 06:53, `Listening for Jobs` at 06:54, and the converge itself
+went back to `Result=success` because the failed unit was the only thing
+producing exit 4. Waiting for the 11:00 nightly would have found the
+token expired and 404'd again.
+
+**Check the right file.** `$STATE_DIRECTORY/.new-token`
+(`/var/lib/github-runner/fishsense/.new-token`) is the *module's* copy,
+written by its own `copy_tokens()` when the runner **starts** — krg never
+writes it. Its mtime tracks the last runner start, not the last push, so
+on a dead runner it is frozen and cannot tell you whether a token was
+delivered. Ask `/var/lib/krg/github-runner/registration-token` instead.
+(Learned the hard way: an entire "their fix isn't pushing to us"
+diagnosis was built on the wrong file's mtime, plus a fleet-deploy run's
+*start* time misread as its finish — the push lands in a later job,
+~10min in.)
+
 Until the slot is bootstrapped the converge job fails; the
 `deploy-data-worker` job runs but fails fast until `NRP_KUBECONFIG` is
 set. The retired `deploy-orchestrator` job (docker compose on a
@@ -883,6 +913,14 @@ The pre-Incus orchestrator host's compose files (`deploy/compose.yml` +
 bind-mount `*_volumes/` dirs were deleted when that host was
 decommissioned. `git log --diff-filter=D -- deploy/compose.yml` recovers
 them.
+
+**Don't use `git merge-base --is-ancestor` to check whether a fix
+shipped.** Squash merges are enabled here, so a merged PR's *content* is
+in main under a new commit while its original commits are not ancestors
+of anything — the ancestry test returns a false negative. Same trap in
+reverse when checking a release tag: ask whether the *content* is there
+(`git show <tag>:<path> | grep`, or diff the file), not whether a commit
+is reachable.
 
 Race guard: promote.yml polls for the `:sha-<short>` image to appear
 (up to 20 min) before retagging. build.yml is triggered by the same
