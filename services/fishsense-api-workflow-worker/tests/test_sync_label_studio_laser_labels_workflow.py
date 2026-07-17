@@ -470,4 +470,4 @@ async def test_workflow_does_not_wake_data_worker_when_no_dives_complete():
                 task_queue="test-laser-sync-no-wake",
             )
 
-    assert ensure_calls == []
+    assert not ensure_calls
