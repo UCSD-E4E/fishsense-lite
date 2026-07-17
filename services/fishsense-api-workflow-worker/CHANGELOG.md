@@ -2,6 +2,18 @@
 
 <!-- version list -->
 
+## [1.40.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.39.0...fishsense-api-workflow-worker-v1.40.0) (2026-07-17)
+
+
+### Features
+
+* **stage14:** schedule fish measurement hourly at +40 ([#293](https://github.com/UCSD-E4E/fishsense-lite/issues/293)) ([574c44f](https://github.com/UCSD-E4E/fishsense-lite/commit/574c44f3a5ac64ec5036aca5c783dfd658cbe4f8))
+
+
+### Bug Fixes
+
+* **deps:** pin fishsense-api-sdk&gt;=1.36.1 ([#289](https://github.com/UCSD-E4E/fishsense-lite/issues/289)) ([45f73ac](https://github.com/UCSD-E4E/fishsense-lite/commit/45f73ac7e7f915b636c0e038fe56f0d633a86665))
+
 ## [1.39.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.38.1...fishsense-api-workflow-worker-v1.39.0) (2026-07-16)
 
 
