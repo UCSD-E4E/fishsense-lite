@@ -1,6 +1,6 @@
 [project]
 name = "fishsense-data-processing-workflow-worker"
-version = "2.7.1"
+version = "2.7.2"
 description = "Add your description here"
 readme = "README.md"
 # Upper-bounded because fishsense-core only publishes wheels for cp313 + cp314.
