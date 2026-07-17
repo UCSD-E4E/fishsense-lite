@@ -1,13 +1,16 @@
 """Fish controller for the FishSense API."""
 
 import logging
+from typing import List
 
 from fastapi import Depends, HTTPException
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from fishsense_api.database import get_async_session
+from fishsense_api.models.dive import Dive
 from fishsense_api.models.fish import Fish
+from fishsense_api.models.image import Image
 from fishsense_api.models.measurement import Measurement
 from fishsense_api.models.species import Species
 from fishsense_api.server import app
@@ -56,15 +59,59 @@ async def post_fish(
     return fish_id
 
 
+@app.get("/api/v1/dives/{dive_id}/measurements")
+async def get_measurements_for_dive(
+    dive_id: int, session: AsyncSession = Depends(get_async_session)
+) -> List[Measurement]:
+    """Retrieve all measurements for a given dive ID.
+
+    Stage 14 reads this once per dive to skip images it has already
+    measured, which is what makes a re-run on a partially-measured dive
+    safe.
+    """
+    logger.debug("Retrieving measurements for dive with id=%d", dive_id)
+    query = (
+        select(Measurement)
+        .join_from(Measurement, Image, Measurement.image_id == Image.id)
+        .join_from(Image, Dive, Image.dive_id == Dive.id)
+        .where(Dive.id == dive_id)
+    )
+
+    measurements = (await session.exec(query)).all()
+    if not measurements:
+        logger.warning("Measurements for dive with id=%d not found", dive_id)
+        raise HTTPException(status_code=404, detail="Measurements not found")
+    return measurements
+
+
 @app.post("/api/v1/fish/{fish_id}/measurements", status_code=201)
 async def post_measurement(
     fish_id: int,
     measurement: Measurement,
     session: AsyncSession = Depends(get_async_session),
 ) -> int:
-    """Create a new measurement for a specific fish."""
+    """Create or update the measurement for a specific fish.
+
+    Upserts on `(image_id, fish_id)`. `session.merge` keys on the primary
+    key alone, so a body with `id=None` always INSERTed — which is how a
+    re-run of stage 14 duplicated measurements on already-measured
+    images. Resolving the natural key to an existing row id first turns
+    the merge into an UPDATE.
+    """
     logger.debug("Creating a new measurement for fish with id=%d", fish_id)
     measurement.fish_id = fish_id
+
+    if measurement.id is None and measurement.image_id is not None:
+        existing = (
+            await session.exec(
+                select(Measurement)
+                .where(Measurement.image_id == measurement.image_id)
+                .where(Measurement.fish_id == fish_id)
+            )
+        ).first()
+        if existing is not None:
+            measurement.id = existing.id
+
     measurement = await session.merge(measurement)
     await session.flush()
 

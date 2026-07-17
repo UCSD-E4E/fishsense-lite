@@ -55,6 +55,31 @@ class FishClient(ClientBase):
         response.raise_for_status()
         return response.json()
 
+    async def get_measurements(self, dive_id: int) -> list[Measurement] | None:
+        """Get every measurement recorded for the images in a dive.
+
+        Stage 14 reads this once per dive so it can skip images it has
+        already measured — `post_measurement` is a create, so without
+        this filter a re-run on a partially-measured dive would record
+        the same fish twice.
+
+        Args:
+            dive_id (int): The ID of the dive to retrieve measurements for.
+
+        Returns:
+            list[Measurement] | None: The measurements for the dive, or
+            None when the dive has none yet.
+        """
+        response = await self._get(f"/api/v1/dives/{dive_id}/measurements")
+        if response.status_code == 404:
+            self.logger.debug("No measurements found for dive ID %s", dive_id)
+            return None
+        response.raise_for_status()
+        json = response.json()
+        if json is None:
+            return None
+        return [Measurement.model_validate(m) for m in json]
+
     async def post_measurement(self, fish_id: int, measurement: Measurement) -> int:
         """Create a new measurement entry for a fish in the Fishsense API.
 

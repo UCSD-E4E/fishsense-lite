@@ -25,6 +25,27 @@ DIVE_PIPELINE_STATUS_VIEW_NAME = "dive_pipeline_status"
 # get this string before the FastAPI app is initialized).
 _SLATE_CONTENT_MARKER = "Slate, Laser on slate"
 
+# A *valid* laser label: the labeler placed a point, the validator signed
+# off, and `ValidateLaserLabelsForDiveWorkflow`'s RANSAC fit hasn't
+# superseded it. This is the gate stages 1, 2, 5.1 and 14 all cascade
+# from, so it's spelled once here rather than five times inline. Assumes
+# the enclosing subquery aliases laserlabel as `ll`.
+_VALID_LASER_SQL = """ll.completed = TRUE
+           AND ll.superseded = FALSE
+           AND ll.x IS NOT NULL
+           AND ll.y IS NOT NULL"""
+
+# A *valid* head/tail label: both keypoints fully placed. Only stage 14
+# needs this — every other stage only cares that a HeadTailLabel row
+# exists — but it mirrors `_VALID_LASER_SQL` so the pair reads together.
+# Assumes the enclosing subquery aliases headtaillabel as `htl`.
+_VALID_HEADTAIL_SQL = """htl.completed = TRUE
+                 AND htl.superseded = FALSE
+                 AND htl.head_x IS NOT NULL
+                 AND htl.head_y IS NOT NULL
+                 AND htl.tail_x IS NOT NULL
+                 AND htl.tail_y IS NOT NULL"""
+
 # "Complete" everywhere = ≥1 completed-non-superseded row AND zero
 # incomplete-non-superseded rows. Mirrors
 # `get_dives_with_complete_laser_labeling`'s semantics so a dive with
@@ -74,19 +95,13 @@ SELECT
          SELECT 1 FROM laserlabel ll
          JOIN image i ON i.id = ll.image_id
          WHERE i.dive_id = d.id
-           AND ll.completed = TRUE
-           AND ll.superseded = FALSE
-           AND ll.x IS NOT NULL
-           AND ll.y IS NOT NULL
+           AND {_VALID_LASER_SQL}
      )
      AND NOT EXISTS (
          SELECT 1 FROM laserlabel ll
          JOIN image i ON i.id = ll.image_id
          WHERE i.dive_id = d.id
-           AND ll.completed = TRUE
-           AND ll.superseded = FALSE
-           AND ll.x IS NOT NULL
-           AND ll.y IS NOT NULL
+           AND {_VALID_LASER_SQL}
            AND NOT EXISTS (
                SELECT 1 FROM headtaillabel htl
                WHERE htl.image_id = i.id
@@ -139,19 +154,13 @@ SELECT
          SELECT 1 FROM laserlabel ll
          JOIN image i ON i.id = ll.image_id
          WHERE i.dive_id = d.id
-           AND ll.completed = TRUE
-           AND ll.superseded = FALSE
-           AND ll.x IS NOT NULL
-           AND ll.y IS NOT NULL
+           AND {_VALID_LASER_SQL}
      )
      AND NOT EXISTS (
          SELECT 1 FROM laserlabel ll
          JOIN image i ON i.id = ll.image_id
          WHERE i.dive_id = d.id
-           AND ll.completed = TRUE
-           AND ll.superseded = FALSE
-           AND ll.x IS NOT NULL
-           AND ll.y IS NOT NULL
+           AND {_VALID_LASER_SQL}
            AND NOT EXISTS (
                SELECT 1 FROM specieslabel sl
                WHERE sl.image_id = i.id
@@ -225,19 +234,52 @@ SELECT
         WHERE le.dive_id = d.id
     ) AS calibrated,
 
-    -- Stage 14: ≥1 LABEL_STUDIO cluster AND zero LABEL_STUDIO clusters
-    -- with fish_id NULL (every cluster bound to a fish via stage-14
-    -- measurement).
+    -- Stage 14: ≥1 measurement for the dive AND no measurable image left
+    -- unmeasured. "Measurable" mirrors what measure_fish_activity
+    -- actually attempts: a top-three species label whose image carries a
+    -- valid laser label, a valid headtail label, and a LABEL_STUDIO
+    -- cluster.
+    --
+    -- Rescoped 2026-07-17. The predicate used to be "≥1 LABEL_STUDIO
+    -- cluster AND zero with fish_id NULL", which was unreachable: a
+    -- cluster is only bound to a fish through a measurable image, so any
+    -- cluster without one held the dive at measured=false forever. Prod
+    -- had all 8 calibrated dives pinned that way (dive 466: 1632 unbound
+    -- clusters vs 24 measurable images, the residue of repeated stage-6.1
+    -- POSTs). Because the stage-14 cohort mirrors this predicate, a
+    -- scheduled stage 14 would also have re-selected the same dives
+    -- forever.
     (EXISTS (
-         SELECT 1 FROM diveframecluster dfc
-         WHERE dfc.dive_id = d.id
-           AND dfc.data_source = 'LABEL_STUDIO'
+         SELECT 1 FROM measurement m
+         JOIN image i ON i.id = m.image_id
+         WHERE i.dive_id = d.id
      )
      AND NOT EXISTS (
-         SELECT 1 FROM diveframecluster dfc
-         WHERE dfc.dive_id = d.id
-           AND dfc.data_source = 'LABEL_STUDIO'
-           AND dfc.fish_id IS NULL
+         SELECT 1 FROM specieslabel sl
+         JOIN image i ON i.id = sl.image_id
+         WHERE i.dive_id = d.id
+           AND sl.top_three_photos_of_group = TRUE
+           AND EXISTS (
+               SELECT 1 FROM laserlabel ll
+               WHERE ll.image_id = i.id
+                 AND {_VALID_LASER_SQL}
+           )
+           AND EXISTS (
+               SELECT 1 FROM headtaillabel htl
+               WHERE htl.image_id = i.id
+                 AND {_VALID_HEADTAIL_SQL}
+           )
+           AND EXISTS (
+               SELECT 1 FROM diveframeclusterimagemapping mm
+               JOIN diveframecluster dfc
+                 ON dfc.id = mm.dive_frame_cluster_id
+               WHERE mm.image_id = i.id
+                 AND dfc.data_source = 'LABEL_STUDIO'
+           )
+           AND NOT EXISTS (
+               SELECT 1 FROM measurement m
+               WHERE m.image_id = i.id
+           )
      )) AS measured
 
 FROM dive d

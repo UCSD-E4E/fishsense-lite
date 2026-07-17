@@ -1261,50 +1261,113 @@ async def test_laser_calibration_requires_dive_slate_id(session):
 
 
 # ---------- stage 14: measure-fish ----------
+#
+# Cohort mirrors dive_pipeline_status.measured: a dive is selected iff it
+# has extrinsics and at least one *measurable* image with no measurement.
+# It used to key on "has a LABEL_STUDIO cluster with fish_id IS NULL",
+# which never goes false — a cluster is only bound through a measurable
+# image, so clusters without one kept every dive in the cohort forever.
+# Prod dive 466 carried 1632 such clusters against 24 measurable images.
 
 
-async def test_measure_fish_requires_extrinsics_and_unbound_label_studio_cluster(
+def _measurable_image(session, image_id: int, dive_id: int, *, cluster_id: int):
+    """An image stage 14 would attempt: top-three species label + valid
+    laser + valid headtail + a LABEL_STUDIO cluster."""
+    from fishsense_api.models.data_source import DataSource  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive_frame_cluster import (  # pylint: disable=import-outside-toplevel
+        DiveFrameCluster,
+        DiveFrameClusterImageMapping,
+    )
+    from fishsense_api.models.head_tail_label import HeadTailLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_image(image_id, dive_id))
+    session.add(
+        DiveFrameCluster(
+            id=cluster_id, dive_id=dive_id, data_source=DataSource.LABEL_STUDIO
+        )
+    )
+    session.add(
+        LaserLabel(image_id=image_id, completed=True, superseded=False, x=1.0, y=2.0)
+    )
+    session.add(
+        HeadTailLabel(
+            image_id=image_id, completed=True, superseded=False,
+            head_x=1.0, head_y=2.0, tail_x=3.0, tail_y=4.0,
+        )
+    )
+    session.add(
+        SpeciesLabel(
+            image_id=image_id, top_three_photos_of_group=True,
+            completed=True, superseded=False, label_studio_project_id=70,
+        )
+    )
+    return DiveFrameClusterImageMapping(
+        dive_frame_cluster_id=cluster_id, image_id=image_id
+    )
+
+
+def _measurement(image_id: int, fish_id: int = 100):
+    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
+
+    return Measurement(image_id=image_id, fish_id=fish_id, length_m=0.3)
+
+
+async def test_measure_fish_requires_extrinsics_and_an_unmeasured_measurable_image(
     session,
 ):
     from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_measure_fish,
     )
-    from fishsense_api.models.data_source import DataSource  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.dive_frame_cluster import (  # pylint: disable=import-outside-toplevel
-        DiveFrameCluster,
-    )
     from fishsense_api.models.laser_extrinsics import (  # pylint: disable=import-outside-toplevel
         LaserExtrinsics,
     )
 
-    # dive 1: no extrinsics -> excluded.
-    # dive 2: extrinsics + LABEL_STUDIO cluster all bound -> excluded.
-    # dive 3: extrinsics + unbound LABEL_STUDIO cluster -> picked.
-    # dive 4: extrinsics + only PREDICTION clusters -> excluded.
-    session.add_all([_dive(1), _dive(2), _dive(3), _dive(4)])
+    # dive 1: measurable image but no extrinsics -> excluded.
+    # dive 2: extrinsics + measurable image already measured -> excluded.
+    # dive 3: extrinsics + unmeasured measurable image -> picked.
+    session.add_all([_dive(1), _dive(2), _dive(3)])
     await session.flush()
     session.add_all(
-        [
-            LaserExtrinsics(dive_id=2, camera_id=1),
-            LaserExtrinsics(dive_id=3, camera_id=1),
-            LaserExtrinsics(dive_id=4, camera_id=1),
-            DiveFrameCluster(
-                dive_id=2, data_source=DataSource.LABEL_STUDIO, fish_id=42
-            ),
-            DiveFrameCluster(
-                dive_id=3, data_source=DataSource.LABEL_STUDIO, fish_id=None
-            ),
-            DiveFrameCluster(
-                dive_id=4, data_source=DataSource.PREDICTION, fish_id=None
-            ),
-        ]
+        [LaserExtrinsics(dive_id=2, camera_id=1), LaserExtrinsics(dive_id=3, camera_id=1)]
     )
+    m1 = _measurable_image(session, 11, 1, cluster_id=1)
+    m2 = _measurable_image(session, 21, 2, cluster_id=2)
+    m3 = _measurable_image(session, 31, 3, cluster_id=3)
+    await session.flush()
+    session.add_all([m1, m2, m3])
+    session.add(_measurement(21))
     await session.flush()
 
     assert await select_next_for_measure_fish(session=session) == 3
 
 
-async def test_measure_fish_returns_none_when_all_clusters_bound(session):
+async def test_measure_fish_returns_none_when_everything_measurable_is_measured(
+    session,
+):
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_measure_fish,
+    )
+    from fishsense_api.models.laser_extrinsics import (  # pylint: disable=import-outside-toplevel
+        LaserExtrinsics,
+    )
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(LaserExtrinsics(dive_id=1, camera_id=1))
+    mapping = _measurable_image(session, 11, 1, cluster_id=1)
+    await session.flush()
+    session.add(mapping)
+    session.add(_measurement(11))
+    await session.flush()
+
+    assert await select_next_for_measure_fish(session=session) is None
+
+
+async def test_measure_fish_ignores_unbound_clusters_with_no_measurable_image(session):
+    """The regression: an unbound cluster stage 14 can never touch must
+    not keep the dive in the cohort forever."""
     from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_measure_fish,
     )
@@ -1318,13 +1381,15 @@ async def test_measure_fish_returns_none_when_all_clusters_bound(session):
 
     session.add(_dive(1))
     await session.flush()
-    session.add_all(
-        [
-            LaserExtrinsics(dive_id=1, camera_id=1),
-            DiveFrameCluster(
-                dive_id=1, data_source=DataSource.LABEL_STUDIO, fish_id=42
-            ),
-        ]
+    session.add(LaserExtrinsics(dive_id=1, camera_id=1))
+    mapping = _measurable_image(session, 11, 1, cluster_id=1)
+    await session.flush()
+    session.add(mapping)
+    session.add(_measurement(11))
+    session.add(
+        DiveFrameCluster(
+            id=99, dive_id=1, data_source=DataSource.LABEL_STUDIO, fish_id=None
+        )
     )
     await session.flush()
 
