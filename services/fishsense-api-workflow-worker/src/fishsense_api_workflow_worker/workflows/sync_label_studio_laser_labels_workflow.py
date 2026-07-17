@@ -9,6 +9,11 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from fishsense_shared import ExceptionGroupErrorLogging
 
+with workflow.unsafe.imports_passed_through():
+    from fishsense_api_workflow_worker.workflows._retry_policies import (
+        SCALING_RETRY_POLICY,
+    )
+
 PROJECT_CONCURRENCY = 4
 
 # Bound on concurrent per-dive validation child workflows. Each child
@@ -73,6 +78,22 @@ class SyncLabelStudioLaserLabelsWorkflow:
             args=(),
             schedule_to_close_timeout=timedelta(minutes=10),
         )
+
+        # Wake the NRP data-worker before fanning out validation children.
+        # The validation children run on `fishsense_data_processing_queue`,
+        # which scales to zero when idle; unlike every other data-worker
+        # parent, this workflow used to dispatch without scaling the pod
+        # up first, so the children sat unpolled and hit their 20-minute
+        # execution_timeout. Only wake when there's real work (mirrors the
+        # "never wake on a quiet hour" contract in
+        # ensure_data_worker_running_activity).
+        if complete_dive_ids:
+            await workflow.execute_activity(
+                "ensure_data_worker_running_activity",
+                args=(),
+                schedule_to_close_timeout=timedelta(minutes=5),
+                retry_policy=SCALING_RETRY_POLICY,
+            )
 
         validation_sem = asyncio.Semaphore(VALIDATION_CONCURRENCY)
 

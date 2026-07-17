@@ -174,6 +174,10 @@ async def test_workflow_dispatches_validation_child_per_complete_dive():
     async def stub_get_complete_dives() -> List[int]:
         return [10, 20, 30]
 
+    @activity.defn(name="ensure_data_worker_running_activity")
+    async def stub_ensure() -> int:
+        return 1
+
     @activity.defn(name="validate_laser_labels_for_dive_activity")
     async def stub_validate(dive_id: int) -> int:
         validated.append(dive_id)
@@ -190,6 +194,7 @@ async def test_workflow_dispatches_validation_child_per_complete_dive():
                 stub_get_ids,
                 stub_sync_project,
                 stub_get_complete_dives,
+                stub_ensure,
             ],
         ):
             async with Worker(
@@ -303,6 +308,10 @@ async def test_workflow_completes_when_validation_children_fail():
     async def stub_get_complete_dives() -> List[int]:
         return [1, 2, 3]
 
+    @activity.defn(name="ensure_data_worker_running_activity")
+    async def stub_ensure() -> int:
+        return 1
+
     @activity.defn(name="validate_laser_labels_for_dive_activity")
     async def stub_validate_fails(dive_id: int) -> int:
         raise ApplicationError(
@@ -321,6 +330,7 @@ async def test_workflow_completes_when_validation_children_fail():
                 stub_get_ids,
                 stub_sync_project,
                 stub_get_complete_dives,
+                stub_ensure,
             ],
         ):
             async with Worker(
@@ -340,3 +350,124 @@ async def test_workflow_completes_when_validation_children_fail():
                     ),
                     timeout=30.0,
                 )
+
+
+@pytest.mark.asyncio
+async def test_workflow_wakes_data_worker_before_dispatching_validation():
+    """Regression: the validation children run on the scale-to-zero
+    data-worker queue, so the parent must scale the pod up
+    (`ensure_data_worker_running_activity`) before fanning them out —
+    otherwise they sit unpolled and hit their execution_timeout. The wake
+    must happen before any validation child runs."""
+    events: List[str] = []
+
+    @activity.defn(name="sync_users_label_studio_activity")
+    async def stub_sync_users() -> None:
+        return None
+
+    @activity.defn(name="get_laser_label_studio_project_ids_activity")
+    async def stub_get_ids() -> List[int]:
+        return []
+
+    @activity.defn(name="sync_laser_labels_for_label_studio_project_activity")
+    async def stub_sync_project(_: int) -> None:
+        return None
+
+    @activity.defn(name="get_dives_with_complete_laser_labeling_activity")
+    async def stub_get_complete_dives() -> List[int]:
+        return [10, 20, 30]
+
+    @activity.defn(name="ensure_data_worker_running_activity")
+    async def stub_ensure() -> int:
+        events.append("ensure")
+        return 1
+
+    @activity.defn(name="validate_laser_labels_for_dive_activity")
+    async def stub_validate(dive_id: int) -> int:
+        events.append(f"validate-{dive_id}")
+        return 0
+
+    queue_parent = "test-laser-sync-wake-parent"
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
+            task_queue=queue_parent,
+            workflows=[SyncLabelStudioLaserLabelsWorkflow],
+            activities=[
+                stub_sync_users,
+                stub_get_ids,
+                stub_sync_project,
+                stub_get_complete_dives,
+                stub_ensure,
+            ],
+        ):
+            async with Worker(
+                env.client,
+                task_queue=DATA_PROCESSING_TASK_QUEUE,
+                workflows=[_StubValidateChildWorkflow],
+                activities=[stub_validate],
+            ):
+                await env.client.execute_workflow(
+                    SyncLabelStudioLaserLabelsWorkflow.run,
+                    id=f"test-laser-sync-wake-{uuid.uuid4()}",
+                    task_queue=queue_parent,
+                )
+
+    # Woken exactly once, and strictly before any validation child ran.
+    assert events.count("ensure") == 1
+    assert events[0] == "ensure"
+    assert {e for e in events if e.startswith("validate-")} == {
+        "validate-10",
+        "validate-20",
+        "validate-30",
+    }
+
+
+@pytest.mark.asyncio
+async def test_workflow_does_not_wake_data_worker_when_no_dives_complete():
+    """The wake is guarded on there being real work: when no dives are
+    complete, the parent must not scale the data-worker up (mirrors the
+    'never wake on a quiet hour' contract)."""
+    ensure_calls: List[str] = []
+
+    @activity.defn(name="sync_users_label_studio_activity")
+    async def stub_sync_users() -> None:
+        return None
+
+    @activity.defn(name="get_laser_label_studio_project_ids_activity")
+    async def stub_get_ids() -> List[int]:
+        return []
+
+    @activity.defn(name="sync_laser_labels_for_label_studio_project_activity")
+    async def stub_sync_project(_: int) -> None:
+        return None
+
+    @activity.defn(name="get_dives_with_complete_laser_labeling_activity")
+    async def stub_get_complete_dives() -> List[int]:
+        return []
+
+    @activity.defn(name="ensure_data_worker_running_activity")
+    async def stub_ensure() -> int:
+        ensure_calls.append("ensure")
+        return 1
+
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
+            task_queue="test-laser-sync-no-wake",
+            workflows=[SyncLabelStudioLaserLabelsWorkflow],
+            activities=[
+                stub_sync_users,
+                stub_get_ids,
+                stub_sync_project,
+                stub_get_complete_dives,
+                stub_ensure,
+            ],
+        ):
+            await env.client.execute_workflow(
+                SyncLabelStudioLaserLabelsWorkflow.run,
+                id=f"test-laser-sync-no-wake-{uuid.uuid4()}",
+                task_queue="test-laser-sync-no-wake",
+            )
+
+    assert ensure_calls == []
