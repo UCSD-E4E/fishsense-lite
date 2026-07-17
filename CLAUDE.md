@@ -63,7 +63,7 @@ DB (negligible). To add or remove, override
 | 11  | populate_label_studio_project | api-worker | ported |
 | 12  | sync_slate_label | api-worker | ported (hourly) |
 | 13  | perform_laser_calibration | api-worker (parent) + data-worker (child) | ported (hourly, +50min offset) |
-| 14  | measure_fish | api-worker (parent) + data-worker (child) | ported (on-demand; idempotent as of 2026-07-17) |
+| 14  | measure_fish | api-worker (parent) + data-worker (child) | ported (hourly, +40min offset; idempotent as of 2026-07-17) |
 
 Create and populate are split into separate workflows per stage. LS
 projects are now **per-dive**: each dive gets its own LS project
@@ -204,11 +204,13 @@ one replica):
 * Per-image activities are idempotent: S3 PutObject overwrites,
   SDK upserts.
 
-Applied to stages 0.1, 1, 2, 5.1, 9, 13 — each parent runs hourly.
-Schedule slots: 0.1 at +0, 1 at +5, 2 at +15, 5.1 at +30, 9 at +45,
-13 at +50 min — staggered so their selectors don't all hit
-`dives.get()` at the top of the hour. Stage 14 measurement is
-registered but not scheduled (see notes below). Per-stage cohort:
+Applied to stages 0.1, 1, 2, 5.1, 9, 13, 14 — each parent runs hourly.
+Schedule slots: 0.1 at +0, 1 at +5, 2 at +15, 5.1 at +30, 14 at +40,
+9 at +45, 13 at +50 min — staggered so their selectors don't all hit
+`dives.get()` at the top of the hour. The scale-to-zero sweeper takes
++55. `test_schedule_registration.py` pins the stagger (the four
+label-studio sync schedules deliberately share +0 — they select no
+dives). Per-stage cohort:
 
 | Stage | Parent cohort definition |
 |---|---|
@@ -353,9 +355,9 @@ keeps SDK fetches inline because the math kernels need opencv +
 fishsense-core, so splitting fetch/math across workers would add 5+
 activity handoffs per dive for no gain.
 
-**Stage 14 is idempotent as of 2026-07-17, but still not scheduled.**
-It used to be non-idempotent — `post_measurement` was a plain POST and
-the SDK had no per-image measurement query, so a re-run on a
+**Stage 14 became idempotent and got a schedule on 2026-07-17** (hourly,
++40 min). It used to be non-idempotent — `post_measurement` was a plain
+POST and the SDK had no per-image measurement query, so a re-run on a
 partially-failed dive duplicated measurements on already-bound
 clusters. Both halves are fixed:
 
@@ -368,10 +370,21 @@ clusters. Both halves are fixed:
   so a re-run causes no species/fish churn. Surfaced as
   `MeasureFishResult.skipped_already_measured`.
 
-It stays operator-triggered for now so the first drains can be watched
-on real dives; the cohort can now go empty (see the `measured` rescope
-below), so scheduling it is a live option rather than a hazard.
-`MeasureFishParentWorkflow`:
+Scheduling was blocked on *both* halves, not just idempotency: the old
+cohort predicate could never go false, so an hourly stage 14 would have
+re-selected the same dives forever. With the `measured` rescope (below)
+the cohort drains, so the schedule is safe. Validated on 2026-07-17
+against dive 466 — 23 already-measured images skipped, 1 measured, 0
+duplicates, and the dive dropped out of the cohort.
+
++40 rather than after calibration (+50) despite depending on it: that
+would leave <5 min before the +55 scale-down sweeper. A dive calibrated
+at :50 is measured at :40 the next hour, which is irrelevant at this
+cadence. Each run still drains exactly one dive, so a backlog clears one
+dive per hour.
+
+Still runnable on demand for backfill — use a non-colliding workflow id
+so the schedule's own id stays free. `MeasureFishParentWorkflow`:
 
 ```
 temporal workflow start \

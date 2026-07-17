@@ -11,12 +11,18 @@ data-worker activity does its own SDK fetches inline (per CLAUDE.md,
 stages 13 and 14 keep SDK fetches in the data-worker because the math
 kernels need fishsense-core anyway).
 
-**Deliberately not scheduled.** `measure_fish_activity` is non-idempotent
-(`post_measurement` is a POST and the SDK has no per-image measurement
-query), so a re-run on a partially-failed dive will duplicate
-measurements on already-bound clusters. Until that's resolved
-(probably by adding an SDK get-measurements query and per-image
-filtering in the activity), this parent is invoked on-demand:
+**Scheduled hourly at +40 min** (2026-07-17). It was operator-triggered
+for a long time because `measure_fish_activity` was non-idempotent
+(`post_measurement` was a plain POST with no per-image filter), so a
+re-run on a partially-measured dive duplicated measurements — and
+because the cohort predicate never went false, a schedule would have
+re-measured the same dives every hour forever. Both are fixed:
+measurement upserts on `(image_id, fish_id)`, the activity skips
+already-measured images, and the cohort is scoped to images that can
+actually be measured, so it drains to empty.
+
+Still runnable on demand for backfill; use a non-colliding workflow id
+so the schedule's own id stays free:
 
 ```
 temporal workflow start \
@@ -26,9 +32,12 @@ temporal workflow start \
 ```
 
 The selector activity returns the next eligible dive_id (HIGH priority
-+ has laser_extrinsics + has LABEL_STUDIO clusters with at least one
-unbound `fish_id`); the parent then dispatches the child and returns
-the dive_id processed.
++ has laser_extrinsics + at least one *measurable* image with no
+`Measurement` — "measurable" being a top-three species label whose image
+has a valid laser label, a valid head/tail label and a LABEL_STUDIO
+cluster). The parent then dispatches the child and returns the dive_id
+processed. Each run drains exactly one dive, so a backlog clears one
+dive per hour.
 
 Cluster-correctness invariants — relevant once the data-worker scales
 beyond a single replica:
@@ -38,8 +47,10 @@ beyond a single replica:
   `id_reuse_policy=ALLOW_DUPLICATE_FAILED_ONLY`; a duplicate parent
   run targeting the same dive hits `WorkflowAlreadyStarted` (whether
   the prior child is still running or completed successfully) and
-  the parent catches it — duplicate dispatch can't double-write
-  measurements.
+  the parent catches it. This is now a don't-redo-work guard rather
+  than a correctness one — a duplicate dispatch would be harmless
+  since measurement is idempotent at both the write layer and in the
+  activity's skip.
 * Per-cluster `fish_id` rebinds via `put_cluster` on the activity side
   are idempotent under retry within a single child run.
 """
@@ -104,10 +115,14 @@ class MeasureFishParentWorkflow:
                 id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
             )
         except WorkflowAlreadyStartedError:
+            # Not a safety gate any more — measurement is idempotent as of
+            # 2026-07-17 (`post_measurement` upserts on (image_id, fish_id)
+            # and the activity skips already-measured images), so a
+            # duplicate dispatch would be harmless. This just avoids
+            # re-doing work already done for this dive.
             workflow.logger.info(
                 "measure-fish-%d already ran successfully; skipping "
-                "duplicate dispatch (re-run requires manual cleanup of "
-                "existing measurements per the stage-14 idempotency note)",
+                "duplicate dispatch (no re-work needed)",
                 dive_id,
             )
 
