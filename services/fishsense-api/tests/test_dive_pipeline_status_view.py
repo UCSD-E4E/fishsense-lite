@@ -851,60 +851,142 @@ async def test_calibrated_false_when_no_laser_extrinsics(session):
 
 
 # ---------- measured (stage 14) ----------
+#
+# `measured` is scoped to what stage 14 can actually measure. The prior
+# definition ("every LABEL_STUDIO cluster has a fish_id") was
+# unreachable: a cluster only gets a fish via a top-three species label
+# whose image has a valid laser + headtail, so any cluster without such
+# an image kept the dive unmeasured forever. In prod that pinned all 8
+# calibrated dives at measured=false permanently — and, because the
+# stage-14 cohort mirrors this predicate, would have made a scheduled
+# stage 14 re-select the same dives every hour.
+#
+# "Measurable" here mirrors measure_fish_activity: a top-three species
+# label whose image has a valid laser label, a valid headtail label, and
+# a LABEL_STUDIO cluster.
 
 
-async def test_measured_true_when_every_label_studio_cluster_has_fish_id(session):
-    from fishsense_api.models.dive_frame_cluster import DiveFrameCluster  # pylint: disable=import-outside-toplevel
+def _measurable_image(session, image_id: int, dive_id: int, *, cluster_id: int):
+    """Seed an image that stage 14 would attempt: top-three species label
+    + valid laser + valid headtail + a LABEL_STUDIO cluster."""
+    from fishsense_api.models.dive_frame_cluster import (  # pylint: disable=import-outside-toplevel
+        DiveFrameCluster,
+        DiveFrameClusterImageMapping,
+    )
+    from fishsense_api.models.head_tail_label import HeadTailLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
 
+    session.add(_image(image_id, dive_id))
+    session.add(
+        DiveFrameCluster(id=cluster_id, dive_id=dive_id, data_source="LABEL_STUDIO")
+    )
+    session.add(
+        LaserLabel(image_id=image_id, completed=True, superseded=False, x=1.0, y=2.0)
+    )
+    session.add(
+        HeadTailLabel(
+            image_id=image_id, completed=True, superseded=False,
+            head_x=1.0, head_y=2.0, tail_x=3.0, tail_y=4.0,
+        )
+    )
+    session.add(
+        SpeciesLabel(
+            image_id=image_id, top_three_photos_of_group=True,
+            completed=True, superseded=False, label_studio_project_id=70,
+        )
+    )
+    return DiveFrameClusterImageMapping(
+        dive_frame_cluster_id=cluster_id, image_id=image_id
+    )
+
+
+def _measurement(image_id: int, fish_id: int = 100):
+    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
+
+    return Measurement(image_id=image_id, fish_id=fish_id, length_m=0.3)
+
+
+async def test_measured_true_when_every_measurable_image_has_a_measurement(session):
     session.add(_dive(1))
     await session.flush()
-    session.add_all(
-        [
-            DiveFrameCluster(
-                dive_id=1, data_source="LABEL_STUDIO", index=0, fish_id=100,
-            ),
-            DiveFrameCluster(
-                dive_id=1, data_source="LABEL_STUDIO", index=1, fish_id=101,
-            ),
-        ]
-    )
+    mapping = _measurable_image(session, 11, 1, cluster_id=1)
+    await session.flush()
+    session.add(mapping)
+    session.add(_measurement(11))
     await session.flush()
 
     assert (await _row(session, 1))["measured"] is True
 
 
-async def test_measured_false_when_any_label_studio_cluster_unbound(session):
-    from fishsense_api.models.dive_frame_cluster import DiveFrameCluster  # pylint: disable=import-outside-toplevel
-
+async def test_measured_false_when_a_measurable_image_is_unmeasured(session):
     session.add(_dive(1))
     await session.flush()
-    session.add_all(
-        [
-            DiveFrameCluster(
-                dive_id=1, data_source="LABEL_STUDIO", index=0, fish_id=100,
-            ),
-            DiveFrameCluster(
-                dive_id=1, data_source="LABEL_STUDIO", index=1, fish_id=None,
-            ),
-        ]
-    )
+    m1 = _measurable_image(session, 11, 1, cluster_id=1)
+    m2 = _measurable_image(session, 12, 1, cluster_id=2)
+    await session.flush()
+    session.add_all([m1, m2])
+    session.add(_measurement(11))  # 12 left unmeasured
     await session.flush()
 
     assert (await _row(session, 1))["measured"] is False
 
 
-async def test_measured_false_when_no_label_studio_clusters(session):
-    """Vacuous-truth guard: zero LABEL_STUDIO clusters -> not measured."""
+async def test_measured_false_when_dive_has_no_measurements(session):
+    """Vacuous-truth guard: nothing measured -> not measured."""
+    session.add(_dive(1))
+    await session.flush()
+    mapping = _measurable_image(session, 11, 1, cluster_id=1)
+    await session.flush()
+    session.add(mapping)
+    await session.flush()
+
+    assert (await _row(session, 1))["measured"] is False
+
+
+async def test_measured_ignores_unbound_clusters_with_no_measurable_image(session):
+    """The regression this rescope exists for.
+
+    A LABEL_STUDIO cluster with no measurable image can never be bound to
+    a fish. Under the old predicate its NULL fish_id pinned the dive at
+    measured=false forever. In prod dive 466 carried 1632 such clusters
+    against only 24 measurable images.
+    """
     from fishsense_api.models.dive_frame_cluster import DiveFrameCluster  # pylint: disable=import-outside-toplevel
 
     session.add(_dive(1))
     await session.flush()
-    # PREDICTION-only cluster; no LABEL_STUDIO ones.
+    mapping = _measurable_image(session, 11, 1, cluster_id=1)
+    await session.flush()
+    session.add(mapping)
+    session.add(_measurement(11))
+    # Unbound cluster carrying no measurable image — stage 14 can never
+    # touch it, so it must not hold the dive back.
+    session.add(DiveFrameCluster(id=99, dive_id=1, data_source="LABEL_STUDIO", fish_id=None))
+    await session.flush()
+
+    assert (await _row(session, 1))["measured"] is True
+
+
+async def test_measured_ignores_non_top_three_images(session):
+    """Stage 14 only measures top-three photos, so others can't block."""
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    mapping = _measurable_image(session, 11, 1, cluster_id=1)
+    await session.flush()
+    session.add(mapping)
+    session.add(_measurement(11))
+    # A second image that is NOT top-three and has no measurement.
+    session.add(_image(12, 1))
+    await session.flush()
     session.add(
-        DiveFrameCluster(
-            dive_id=1, data_source="PREDICTION", index=0,
+        SpeciesLabel(
+            image_id=12, top_three_photos_of_group=False,
+            completed=True, superseded=False, label_studio_project_id=70,
         )
     )
     await session.flush()
 
-    assert (await _row(session, 1))["measured"] is False
+    assert (await _row(session, 1))["measured"] is True

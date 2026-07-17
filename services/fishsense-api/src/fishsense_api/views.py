@@ -225,19 +225,60 @@ SELECT
         WHERE le.dive_id = d.id
     ) AS calibrated,
 
-    -- Stage 14: ≥1 LABEL_STUDIO cluster AND zero LABEL_STUDIO clusters
-    -- with fish_id NULL (every cluster bound to a fish via stage-14
-    -- measurement).
+    -- Stage 14: ≥1 measurement for the dive AND no measurable image left
+    -- unmeasured. "Measurable" mirrors what measure_fish_activity
+    -- actually attempts: a top-three species label whose image carries a
+    -- valid laser label, a valid headtail label, and a LABEL_STUDIO
+    -- cluster.
+    --
+    -- Rescoped 2026-07-17. The predicate used to be "≥1 LABEL_STUDIO
+    -- cluster AND zero with fish_id NULL", which was unreachable: a
+    -- cluster is only bound to a fish through a measurable image, so any
+    -- cluster without one held the dive at measured=false forever. Prod
+    -- had all 8 calibrated dives pinned that way (dive 466: 1632 unbound
+    -- clusters vs 24 measurable images, the residue of repeated stage-6.1
+    -- POSTs). Because the stage-14 cohort mirrors this predicate, a
+    -- scheduled stage 14 would also have re-selected the same dives
+    -- forever.
     (EXISTS (
-         SELECT 1 FROM diveframecluster dfc
-         WHERE dfc.dive_id = d.id
-           AND dfc.data_source = 'LABEL_STUDIO'
+         SELECT 1 FROM measurement m
+         JOIN image i ON i.id = m.image_id
+         WHERE i.dive_id = d.id
      )
      AND NOT EXISTS (
-         SELECT 1 FROM diveframecluster dfc
-         WHERE dfc.dive_id = d.id
-           AND dfc.data_source = 'LABEL_STUDIO'
-           AND dfc.fish_id IS NULL
+         SELECT 1 FROM specieslabel sl
+         JOIN image i ON i.id = sl.image_id
+         WHERE i.dive_id = d.id
+           AND sl.top_three_photos_of_group = TRUE
+           AND EXISTS (
+               SELECT 1 FROM laserlabel ll
+               WHERE ll.image_id = i.id
+                 AND ll.completed = TRUE
+                 AND ll.superseded = FALSE
+                 AND ll.x IS NOT NULL
+                 AND ll.y IS NOT NULL
+           )
+           AND EXISTS (
+               SELECT 1 FROM headtaillabel htl
+               WHERE htl.image_id = i.id
+                 AND htl.completed = TRUE
+                 AND htl.superseded = FALSE
+                 AND htl.head_x IS NOT NULL
+                 AND htl.head_y IS NOT NULL
+                 AND htl.tail_x IS NOT NULL
+                 AND htl.tail_y IS NOT NULL
+           )
+           AND EXISTS (
+               SELECT 1 FROM diveframeclusterimagemapping mm
+               JOIN diveframecluster dfc
+                 ON dfc.id = mm.dive_frame_cluster_id
+               WHERE mm.image_id = i.id
+                 AND dfc.data_source = 'LABEL_STUDIO'
+           )
+           AND NOT EXISTS (
+               SELECT 1 FROM measurement m
+               WHERE m.image_id = i.id
+           )
      )) AS measured
 
 FROM dive d

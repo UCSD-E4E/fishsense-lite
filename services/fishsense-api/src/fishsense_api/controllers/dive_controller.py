@@ -13,12 +13,16 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from fishsense_api.database import get_async_session
 from fishsense_api.models.data_source import DataSource
 from fishsense_api.models.dive import Dive
-from fishsense_api.models.dive_frame_cluster import DiveFrameCluster
+from fishsense_api.models.dive_frame_cluster import (
+    DiveFrameCluster,
+    DiveFrameClusterImageMapping,
+)
 from fishsense_api.models.dive_slate_label import DiveSlateLabel
 from fishsense_api.models.head_tail_label import HeadTailLabel
 from fishsense_api.models.image import Image
 from fishsense_api.models.laser_extrinsics import LaserExtrinsics
 from fishsense_api.models.laser_label import LaserLabel
+from fishsense_api.models.measurement import Measurement
 from fishsense_api.models.priority import Priority
 from fishsense_api.models.species_label import SpeciesLabel
 from fishsense_api.server import app
@@ -337,30 +341,76 @@ async def select_next_for_measure_fish(
     session: AsyncSession = Depends(get_async_session),
 ) -> int | None:
     """Stage 14: HIGH-priority + has LaserExtrinsics + has at least one
-    LABEL_STUDIO cluster with fish_id IS NULL.
+    *measurable* image with no Measurement.
 
-    First-run gate, not a strict idempotency gate — measure_fish_activity
-    is non-idempotent (POST measurement, no per-image filter), so a
-    partially-failed run will re-fire and duplicate measurements on
-    already-bound clusters. Caller (parent workflow) is operator-
-    triggered, not scheduled."""
+    "Measurable" mirrors what measure_fish_activity attempts, and this
+    predicate mirrors `dive_pipeline_status.measured` — keep the two in
+    step.
+
+    Previously keyed on "has a LABEL_STUDIO cluster with fish_id IS
+    NULL", which never went false: a cluster is only bound to a fish
+    through a measurable image, so any cluster without one kept the dive
+    in the cohort permanently (prod dive 466 carried 1632 such clusters
+    against 24 measurable images). Combined with the old non-idempotent
+    write, a scheduled stage 14 would have re-measured the same dives
+    every hour. Both halves are fixed now — measurement upserts on
+    (image_id, fish_id) and the activity skips already-measured images —
+    so this cohort drains and the workflow is safe to schedule.
+    """
     has_laser_extrinsics = (
         select(LaserExtrinsics.id)
         .where(LaserExtrinsics.dive_id == Dive.id)
         .exists()
     )
-    has_unbound_label_studio_cluster = (
-        select(DiveFrameCluster.id)
-        .where(DiveFrameCluster.dive_id == Dive.id)
+    valid_laser = (
+        select(LaserLabel.id)
+        .where(LaserLabel.image_id == Image.id)
+        .where(LaserLabel.completed == True)
+        .where(LaserLabel.superseded == False)
+        .where(LaserLabel.x != None)
+        .where(LaserLabel.y != None)
+        .exists()
+    )
+    valid_headtail = (
+        select(HeadTailLabel.id)
+        .where(HeadTailLabel.image_id == Image.id)
+        .where(HeadTailLabel.completed == True)
+        .where(HeadTailLabel.superseded == False)
+        .where(HeadTailLabel.head_x != None)
+        .where(HeadTailLabel.head_y != None)
+        .where(HeadTailLabel.tail_x != None)
+        .where(HeadTailLabel.tail_y != None)
+        .exists()
+    )
+    in_label_studio_cluster = (
+        select(DiveFrameClusterImageMapping.image_id)
+        .join(
+            DiveFrameCluster,
+            DiveFrameCluster.id == DiveFrameClusterImageMapping.dive_frame_cluster_id,
+        )
+        .where(DiveFrameClusterImageMapping.image_id == Image.id)
         .where(DiveFrameCluster.data_source == DataSource.LABEL_STUDIO)
-        .where(DiveFrameCluster.fish_id == None)
+        .exists()
+    )
+    is_measured = (
+        select(Measurement.id).where(Measurement.image_id == Image.id).exists()
+    )
+    has_unmeasured_measurable_image = (
+        select(SpeciesLabel.id)
+        .join(Image, Image.id == SpeciesLabel.image_id)
+        .where(Image.dive_id == Dive.id)
+        .where(SpeciesLabel.top_three_photos_of_group == True)
+        .where(valid_laser)
+        .where(valid_headtail)
+        .where(in_label_studio_cluster)
+        .where(~is_measured)
         .exists()
     )
     query = (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
         .where(has_laser_extrinsics)
-        .where(has_unbound_label_studio_cluster)
+        .where(has_unmeasured_measurable_image)
         .order_by(Dive.id)
         .limit(1)
     )
