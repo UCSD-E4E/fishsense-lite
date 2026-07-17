@@ -377,6 +377,33 @@ async def schedule_workflows(client: Client):
                     overlap=ScheduleOverlapPolicy.SKIP,
                 )
             )
+            # Stage 14 measurement: hourly at +40 min, in the gap between
+            # the headtail (+30) and slate (+45) parents. Scheduled as of
+            # 2026-07-17 — it was operator-only while `post_measurement`
+            # was a plain POST (a re-run duplicated measurements) and
+            # while the cohort predicate could never go false (a schedule
+            # would have re-measured the same dives every hour forever).
+            # Both are fixed, and the cohort now drains to empty.
+            #
+            # Not slotted after calibration (+50) despite depending on it:
+            # that would leave <5 min before the +55 scale-down sweeper.
+            # A dive calibrated at :50 is instead measured at :40 the
+            # following hour, which is irrelevant at this pipeline's
+            # cadence — calibration is one-shot per dive and dives sit for
+            # days. Each run drains exactly one dive.
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "measure-fish-workflow-schedule",
+                    MeasureFishParentWorkflow,
+                    timedelta(hours=1),
+                    offset=timedelta(minutes=40),
+                    # Child `execution_timeout` is 1h; add margin for the
+                    # selector + data-worker scale-up activities.
+                    run_timeout=timedelta(hours=1, minutes=30),
+                    overlap=ScheduleOverlapPolicy.SKIP,
+                )
+            )
             # Scale-to-zero sweeper for the NRP data-worker: hourly at
             # +55 min, after the last preprocess/calibration parent
             # firing, so it never races a parent that's still scaling
