@@ -20,9 +20,17 @@
     # the nightly `system.autoUpgrade` (#460) rolls it out. Skip it and the slot freezes
     # on old, unpatched packages. A new kernel needs a manual `incus restart` (allowReboot=false).
     #
-    # The lock currently carries krg-infra @ 4c10ed3e (incl. #435–#440/#443/#453,
-    # #459 compose force-recreate, #460 nightly auto-upgrade). `git log -p flake.lock`
-    # is the real history of what shipped.
+    # The lock currently carries krg-infra @ 309364df (incl. #435–#440/#443/#453,
+    # #459 compose force-recreate, #460 nightly auto-upgrade, #496 runner
+    # registration-token churn gate + `Restart = "on-failure"` on the runner).
+    # `git log -p flake.lock` is the real history of what shipped.
+    #
+    # #496 is why this axis being ours is not academic: krg fixed the runner
+    # fleet-side, but the half that keeps a dead runner from staying dead
+    # (`Restart = lib.mkForce "on-failure"` in nix/modules/tenant.nix) only
+    # reaches the slot when this pin moves. Sit on an old pin and the module
+    # keeps upstream's `Restart = "no"` — the platform can hand us a perfectly
+    # good token and nothing will ever pick it up.
     krg-infra.url = "github:KastnerRG/krg-infra?dir=nix";
     nixpkgs.follows = "krg-infra/nixpkgs";
   };
