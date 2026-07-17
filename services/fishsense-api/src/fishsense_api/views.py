@@ -25,6 +25,27 @@ DIVE_PIPELINE_STATUS_VIEW_NAME = "dive_pipeline_status"
 # get this string before the FastAPI app is initialized).
 _SLATE_CONTENT_MARKER = "Slate, Laser on slate"
 
+# A *valid* laser label: the labeler placed a point, the validator signed
+# off, and `ValidateLaserLabelsForDiveWorkflow`'s RANSAC fit hasn't
+# superseded it. This is the gate stages 1, 2, 5.1 and 14 all cascade
+# from, so it's spelled once here rather than five times inline. Assumes
+# the enclosing subquery aliases laserlabel as `ll`.
+_VALID_LASER_SQL = """ll.completed = TRUE
+           AND ll.superseded = FALSE
+           AND ll.x IS NOT NULL
+           AND ll.y IS NOT NULL"""
+
+# A *valid* head/tail label: both keypoints fully placed. Only stage 14
+# needs this — every other stage only cares that a HeadTailLabel row
+# exists — but it mirrors `_VALID_LASER_SQL` so the pair reads together.
+# Assumes the enclosing subquery aliases headtaillabel as `htl`.
+_VALID_HEADTAIL_SQL = """htl.completed = TRUE
+                 AND htl.superseded = FALSE
+                 AND htl.head_x IS NOT NULL
+                 AND htl.head_y IS NOT NULL
+                 AND htl.tail_x IS NOT NULL
+                 AND htl.tail_y IS NOT NULL"""
+
 # "Complete" everywhere = ≥1 completed-non-superseded row AND zero
 # incomplete-non-superseded rows. Mirrors
 # `get_dives_with_complete_laser_labeling`'s semantics so a dive with
@@ -74,19 +95,13 @@ SELECT
          SELECT 1 FROM laserlabel ll
          JOIN image i ON i.id = ll.image_id
          WHERE i.dive_id = d.id
-           AND ll.completed = TRUE
-           AND ll.superseded = FALSE
-           AND ll.x IS NOT NULL
-           AND ll.y IS NOT NULL
+           AND {_VALID_LASER_SQL}
      )
      AND NOT EXISTS (
          SELECT 1 FROM laserlabel ll
          JOIN image i ON i.id = ll.image_id
          WHERE i.dive_id = d.id
-           AND ll.completed = TRUE
-           AND ll.superseded = FALSE
-           AND ll.x IS NOT NULL
-           AND ll.y IS NOT NULL
+           AND {_VALID_LASER_SQL}
            AND NOT EXISTS (
                SELECT 1 FROM headtaillabel htl
                WHERE htl.image_id = i.id
@@ -139,19 +154,13 @@ SELECT
          SELECT 1 FROM laserlabel ll
          JOIN image i ON i.id = ll.image_id
          WHERE i.dive_id = d.id
-           AND ll.completed = TRUE
-           AND ll.superseded = FALSE
-           AND ll.x IS NOT NULL
-           AND ll.y IS NOT NULL
+           AND {_VALID_LASER_SQL}
      )
      AND NOT EXISTS (
          SELECT 1 FROM laserlabel ll
          JOIN image i ON i.id = ll.image_id
          WHERE i.dive_id = d.id
-           AND ll.completed = TRUE
-           AND ll.superseded = FALSE
-           AND ll.x IS NOT NULL
-           AND ll.y IS NOT NULL
+           AND {_VALID_LASER_SQL}
            AND NOT EXISTS (
                SELECT 1 FROM specieslabel sl
                WHERE sl.image_id = i.id
@@ -253,20 +262,12 @@ SELECT
            AND EXISTS (
                SELECT 1 FROM laserlabel ll
                WHERE ll.image_id = i.id
-                 AND ll.completed = TRUE
-                 AND ll.superseded = FALSE
-                 AND ll.x IS NOT NULL
-                 AND ll.y IS NOT NULL
+                 AND {_VALID_LASER_SQL}
            )
            AND EXISTS (
                SELECT 1 FROM headtaillabel htl
                WHERE htl.image_id = i.id
-                 AND htl.completed = TRUE
-                 AND htl.superseded = FALSE
-                 AND htl.head_x IS NOT NULL
-                 AND htl.head_y IS NOT NULL
-                 AND htl.tail_x IS NOT NULL
-                 AND htl.tail_y IS NOT NULL
+                 AND {_VALID_HEADTAIL_SQL}
            )
            AND EXISTS (
                SELECT 1 FROM diveframeclusterimagemapping mm

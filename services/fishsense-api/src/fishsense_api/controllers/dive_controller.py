@@ -29,6 +29,44 @@ from fishsense_api.server import app
 
 logger = logging.getLogger(__name__)
 
+
+def _valid_laser_conditions():
+    """The repo-wide definition of a *valid* laser label.
+
+    The labeler placed a point, the validator signed off, and
+    `ValidateLaserLabelsForDiveWorkflow`'s RANSAC fit hasn't superseded
+    it. Stages 1, 2, 5.1 and 14 all cascade from this gate, so it's
+    spelled once. Splat into a select: `.where(*_valid_laser_conditions())`.
+
+    Mirrors `views._VALID_LASER_SQL` — the view and these selectors are
+    two representations of the same predicate and must stay in step.
+    """
+    return (
+        LaserLabel.completed == True,
+        LaserLabel.superseded == False,
+        LaserLabel.x != None,
+        LaserLabel.y != None,
+    )
+
+
+def _valid_headtail_conditions():
+    """The repo-wide definition of a *valid* head/tail label.
+
+    Both keypoints fully placed. Only stage 14 needs this — every other
+    stage only cares that a HeadTailLabel row exists at all — but it
+    mirrors `_valid_laser_conditions` so the pair reads together.
+
+    Mirrors `views._VALID_HEADTAIL_SQL`.
+    """
+    return (
+        HeadTailLabel.completed == True,
+        HeadTailLabel.superseded == False,
+        HeadTailLabel.head_x != None,
+        HeadTailLabel.head_y != None,
+        HeadTailLabel.tail_x != None,
+        HeadTailLabel.tail_y != None,
+    )
+
 # Stage-13 cohort threshold; matches the data-worker calibration
 # activity's `MIN_LASER_POINTS = 2` precondition. Selecting a dive with
 # fewer than two completed slate labels would dispatch a child that
@@ -142,10 +180,7 @@ async def select_next_for_dive_frame_clustering(
         select(LaserLabel.id)
         .join(Image, Image.id == LaserLabel.image_id)
         .where(Image.dive_id == Dive.id)
-        .where(LaserLabel.completed == True)
-        .where(LaserLabel.superseded == False)
-        .where(LaserLabel.x != None)
-        .where(LaserLabel.y != None)
+        .where(*_valid_laser_conditions())
         .exists()
     )
     has_prediction_cluster = (
@@ -200,10 +235,7 @@ async def select_next_for_species_preprocessing(
         select(LaserLabel.id)
         .join(Image, Image.id == LaserLabel.image_id)
         .where(Image.dive_id == Dive.id)
-        .where(LaserLabel.completed == True)
-        .where(LaserLabel.superseded == False)
-        .where(LaserLabel.x != None)
-        .where(LaserLabel.y != None)
+        .where(*_valid_laser_conditions())
         .where(
             ~select(SpeciesLabel.id)
             .where(SpeciesLabel.image_id == Image.id)
@@ -247,10 +279,7 @@ async def select_next_for_headtail_preprocessing(
         select(LaserLabel.id)
         .join(Image, Image.id == LaserLabel.image_id)
         .where(Image.dive_id == Dive.id)
-        .where(LaserLabel.completed == True)
-        .where(LaserLabel.superseded == False)
-        .where(LaserLabel.x != None)
-        .where(LaserLabel.y != None)
+        .where(*_valid_laser_conditions())
         .where(
             ~select(HeadTailLabel.id)
             .where(HeadTailLabel.image_id == Image.id)
@@ -365,21 +394,13 @@ async def select_next_for_measure_fish(
     valid_laser = (
         select(LaserLabel.id)
         .where(LaserLabel.image_id == Image.id)
-        .where(LaserLabel.completed == True)
-        .where(LaserLabel.superseded == False)
-        .where(LaserLabel.x != None)
-        .where(LaserLabel.y != None)
+        .where(*_valid_laser_conditions())
         .exists()
     )
     valid_headtail = (
         select(HeadTailLabel.id)
         .where(HeadTailLabel.image_id == Image.id)
-        .where(HeadTailLabel.completed == True)
-        .where(HeadTailLabel.superseded == False)
-        .where(HeadTailLabel.head_x != None)
-        .where(HeadTailLabel.head_y != None)
-        .where(HeadTailLabel.tail_x != None)
-        .where(HeadTailLabel.tail_y != None)
+        .where(*_valid_headtail_conditions())
         .exists()
     )
     in_label_studio_cluster = (
