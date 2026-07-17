@@ -45,17 +45,17 @@ describe("fishsense-lite-web SSR (against the local stack)", () => {
     expect(body).toContain("Lengths");
     expect(body).toContain("Metrics");
     expect(body).toContain(
-      "https://analytics.fishsense.e4e.ucsd.edu/superset/dashboard/reef-smile-lengths",
+      "https://analytics.fishsense.e4e.ucsd.edu/superset/dashboard/fishsense-fish-measurements",
     );
     expect(body).toContain(
-      "https://analytics.fishsense.e4e.ucsd.edu/superset/dashboard/reef-smile-metrics",
+      "https://analytics.fishsense.e4e.ucsd.edu/superset/dashboard/fishsense-pipeline-status",
     );
   });
 
   it("renders the Administration section with the Temporal Workflows link", () => {
     expect(body).toContain("Administration");
     expect(body).toContain("Workflows");
-    expect(body).toContain("https://workflows.fishsense.e4e.ucsd.edu/");
+    expect(body).toContain("https://workflows.krg.ucsd.edu/namespaces/fishsense");
   });
 
   it("collapses labeling sections when the local DB has no LS-attributed labels", () => {

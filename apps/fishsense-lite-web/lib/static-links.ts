@@ -10,22 +10,25 @@ const ANALYTICS_BASE =
   "https://analytics.fishsense.e4e.ucsd.edu/superset/dashboard";
 
 // Temporal moved to the shared krg-prod cluster at the Incus migration; the
-// old in-orchestrator `workflows.fishsense.e4e.ucsd.edu` UI is gone. Set
-// WORKFLOWS_URL to the current UI (if any is exposed to tenants) — the
-// default below is the retired host and only a placeholder.
+// old in-orchestrator `workflows.fishsense.e4e.ucsd.edu` UI is gone. The krg
+// Temporal Web UI is namespace-scoped — the default deep-links to the
+// fishsense namespace. Override with WORKFLOWS_URL if the host/path changes.
 const WORKFLOWS_URL =
-  process.env.WORKFLOWS_URL ?? "https://workflows.fishsense.e4e.ucsd.edu/";
+  process.env.WORKFLOWS_URL ?? "https://workflows.krg.ucsd.edu/namespaces/fishsense";
 
+// Superset dashboard slugs (from the committed asset bundle under
+// deploy/incus/superset_volumes/docker/assets/dashboards/). These replaced the
+// retired hosted-Superset `reef-smile-*` slugs at the Incus migration.
 export const RESULTS_LINKS: StaticLink[] = [
   {
     title: "Lengths",
-    description: "Lengths dashboard from Apache Superset",
-    href: `${ANALYTICS_BASE}/reef-smile-lengths`,
+    description: "Fish length measurements dashboard from Apache Superset",
+    href: `${ANALYTICS_BASE}/fishsense-fish-measurements`,
   },
   {
     title: "Metrics",
-    description: "Metrics dashboard from Apache Superset",
-    href: `${ANALYTICS_BASE}/reef-smile-metrics`,
+    description: "Pipeline status dashboard from Apache Superset",
+    href: `${ANALYTICS_BASE}/fishsense-pipeline-status`,
   },
 ];
 
