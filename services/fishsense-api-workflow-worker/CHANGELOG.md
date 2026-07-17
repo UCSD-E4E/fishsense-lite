@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.40.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.40.0...fishsense-api-workflow-worker-v1.40.1) (2026-07-17)
+
+
+### Bug Fixes
+
+* **api-worker:** wake NRP data-worker before laser-label validation fan-out ([#303](https://github.com/UCSD-E4E/fishsense-lite/issues/303)) ([354a75f](https://github.com/UCSD-E4E/fishsense-lite/commit/354a75f4f9c997b0c06338fe3d7e5dea44e44cac))
+
 ## [1.40.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.39.0...fishsense-api-workflow-worker-v1.40.0) (2026-07-17)
 
 
