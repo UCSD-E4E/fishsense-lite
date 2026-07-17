@@ -52,6 +52,7 @@ class MeasureFishResult:
     dropped_nan: int
     missing_laser_or_headtail: int
     missing_cluster: int
+    skipped_already_measured: int = 0
 
 
 __all__ = ["MeasureFishResult", "measure_fish_activity"]
@@ -158,6 +159,16 @@ def _filter_top_three(
     ]
 
 
+async def _fetch_measured_image_ids(fs, dive_id: int) -> set[int]:
+    """Image ids in this dive that already carry a Measurement.
+
+    One fetch per dive, not per image — the caller loops over every
+    top-three label. `None` is the SDK's "no measurements yet" signal.
+    """
+    existing = await fs.fish.get_measurements(dive_id) or []
+    return {m.image_id for m in existing if m.image_id is not None}
+
+
 def _has_complete_keypoints(laser_label, headtail_label) -> bool:
     """True iff both labels exist and every keypoint coord is set."""
     if laser_label is None or headtail_label is None:
@@ -174,10 +185,13 @@ def _has_complete_keypoints(laser_label, headtail_label) -> bool:
 
 @activity.defn
 async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
-    # pylint: disable=too-many-locals
+    # pylint: disable=too-many-locals,too-many-statements
     # Orchestration function — gathers dive/camera/laser/cluster/label
     # context plus per-iteration locals. Splitting it would just push
-    # the same state into a parameter list of a helper.
+    # the same state into a parameter list of a helper. The same applies
+    # to the statement count: the body is a flat sequence of guard →
+    # log → count → continue per skip reason, which reads better inline
+    # than dispersed across helpers.
     """Walk the dive's top-three species labels and write a `Measurement`
     for each one whose laser + headtail + cluster context is present and
     whose triangulated length is finite.
@@ -212,15 +226,29 @@ async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
         cluster_by_image = _index_clusters_by_image(clusters)
         top_three = _filter_top_three(species_labels)
 
+        # `post_measurement` upserts on (image_id, fish_id) so a duplicate
+        # can't be recorded, but re-measuring still means re-deriving a
+        # length and re-binding a fish for work already done — skip it.
+        already_measured = await _fetch_measured_image_ids(fs, dive_id)
+
         result = MeasureFishResult(
             measured=0,
             dropped_nan=0,
             missing_laser_or_headtail=0,
             missing_cluster=0,
+            skipped_already_measured=0,
         )
 
         for species_label in top_three:
             image_id = species_label.image_id
+
+            if image_id in already_measured:
+                activity.logger.info(
+                    "dive_id=%d image_id=%d: already measured; skipping",
+                    dive_id, image_id,
+                )
+                result.skipped_already_measured += 1
+                continue
 
             cluster = cluster_by_image.get(image_id)
             if cluster is None:

@@ -309,3 +309,57 @@ class TestFishClient:
                 mock_post.assert_called_once()
                 call_args = mock_post.call_args
                 assert call_args[0][0] == "/api/v1/fish/species"
+
+    async def test_get_measurements_returns_list(self):
+        """Stage 14 reads this per dive to skip already-measured images."""
+        semaphore = asyncio.Semaphore(10)
+        client = FishClient(
+            base_url="http://test.com",
+            username="testuser",
+            password="testpass",
+            timeout=10,
+            semaphore=semaphore,
+        )
+
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {"id": 1, "length_m": 0.3, "image_id": 11, "fish_id": 101},
+            {"id": 2, "length_m": 0.4, "image_id": 12, "fish_id": 102},
+        ]
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            async with client:
+                measurements = await client.get_measurements(1)
+
+        mock_get.assert_awaited_once_with("/api/v1/dives/1/measurements")
+        assert [m.image_id for m in measurements] == [11, 12]
+        assert measurements[0].length_m == 0.3
+
+    async def test_get_measurements_returns_none_on_404(self):
+        """A dive with no measurements yet is not an error."""
+        semaphore = asyncio.Semaphore(10)
+        client = FishClient(
+            base_url="http://test.com",
+            username="testuser",
+            password="testpass",
+            timeout=10,
+            semaphore=semaphore,
+        )
+
+        mock_response = Mock()
+        mock_response.status_code = 404
+        mock_response.raise_for_status = Mock(
+            side_effect=AssertionError(
+                "raise_for_status must not be called for the 404 case"
+            )
+        )
+
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            async with client:
+                assert await client.get_measurements(999) is None

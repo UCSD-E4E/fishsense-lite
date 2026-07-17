@@ -178,6 +178,7 @@ def _make_fs(  # pylint: disable=too-many-arguments
     species_lookup: dict[str, Species] | None = None,
     new_species_id: int = 500,
     new_fish_id: int = 700,
+    existing_measurements: List[Measurement] | None = None,
 ):
     fs = MagicMock()
     fs.__aenter__ = AsyncMock(return_value=fs)
@@ -212,6 +213,8 @@ def _make_fs(  # pylint: disable=too-many-arguments
     fs.fish.get = AsyncMock(return_value=None)
     fs.fish.post = AsyncMock(return_value=new_fish_id)
     fs.fish.post_measurement = AsyncMock(return_value=None)
+    # `None` is the SDK's "dive has no measurements yet" signal (404).
+    fs.fish.get_measurements = AsyncMock(return_value=existing_measurements)
     return fs
 
 
@@ -411,3 +414,131 @@ async def test_existing_species_and_fish_are_reused(monkeypatch):
     fs.images.put_cluster.assert_not_called()
     fish_id_called, _ = fs.fish.post_measurement.call_args.args
     assert fish_id_called == existing_fish.id
+
+
+# ── idempotency: re-running a partially-measured dive ────────────────
+#
+# `post_measurement` upserts on (image_id, fish_id) server-side, but the
+# activity should not get that far: re-measuring means re-deriving a
+# length and re-binding a fish for work already done. These pin the
+# client-side skip. Motivated by real data — 7 of the 8 calibrated dives
+# in prod carry measurements from partial runs.
+
+
+@pytest.mark.asyncio
+async def test_skips_images_that_are_already_measured(monkeypatch):
+    image_id = 100
+    le = _laser_extrinsics()
+    head_pix, tail_pix, laser_pix = _build_observation(
+        le, np.array([-0.10, 0.00, 1.20]), np.array([0.20, 0.00, 1.20]), 1.20
+    )
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_camera_intrinsics(),
+        laser_extrinsics=le,
+        species_labels=[_species_label(image_id)],
+        laser_labels={image_id: _laser_label(image_id, *laser_pix)},
+        headtail_labels={image_id: _headtail_label(image_id, head_pix, tail_pix)},
+        clusters=[_cluster([image_id], fish_id=None)],
+        existing_measurements=[
+            Measurement(id=1, length_m=0.30, image_id=image_id, fish_id=700)
+        ],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(sut.measure_fish_activity, 42)
+
+    fs.fish.post_measurement.assert_not_awaited()
+    assert result.measured == 0
+    assert result.skipped_already_measured == 1
+    # Skipped before _ensure_fish, so no fish/species churn either.
+    fs.fish.post.assert_not_awaited()
+    fs.fish.post_species.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_measures_only_the_unmeasured_images(monkeypatch):
+    img_done, img_todo = 100, 101
+    le = _laser_extrinsics()
+    head_pix, tail_pix, laser_pix = _build_observation(
+        le, np.array([-0.10, 0.00, 1.20]), np.array([0.20, 0.00, 1.20]), 1.20
+    )
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_camera_intrinsics(),
+        laser_extrinsics=le,
+        species_labels=[_species_label(img_done), _species_label(img_todo)],
+        laser_labels={
+            img_done: _laser_label(img_done, *laser_pix),
+            img_todo: _laser_label(img_todo, *laser_pix),
+        },
+        headtail_labels={
+            img_done: _headtail_label(img_done, head_pix, tail_pix),
+            img_todo: _headtail_label(img_todo, head_pix, tail_pix),
+        },
+        clusters=[_cluster([img_done]), _cluster([img_todo], fish_id=None)],
+        existing_measurements=[
+            Measurement(id=1, length_m=0.30, image_id=img_done, fish_id=700)
+        ],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(sut.measure_fish_activity, 42)
+
+    assert result.measured == 1
+    assert result.skipped_already_measured == 1
+    fs.fish.post_measurement.assert_awaited_once()
+    _, measurement = fs.fish.post_measurement.call_args.args
+    assert measurement.image_id == img_todo
+
+
+@pytest.mark.asyncio
+async def test_no_existing_measurements_measures_everything(monkeypatch):
+    """A dive with no measurements (SDK returns None) is unaffected."""
+    image_id = 100
+    le = _laser_extrinsics()
+    head_pix, tail_pix, laser_pix = _build_observation(
+        le, np.array([-0.10, 0.00, 1.20]), np.array([0.20, 0.00, 1.20]), 1.20
+    )
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_camera_intrinsics(),
+        laser_extrinsics=le,
+        species_labels=[_species_label(image_id)],
+        laser_labels={image_id: _laser_label(image_id, *laser_pix)},
+        headtail_labels={image_id: _headtail_label(image_id, head_pix, tail_pix)},
+        clusters=[_cluster([image_id], fish_id=None)],
+        existing_measurements=None,
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(sut.measure_fish_activity, 42)
+
+    assert result.measured == 1
+    assert result.skipped_already_measured == 0
+    fs.fish.post_measurement.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_measurements_are_fetched_once_per_dive(monkeypatch):
+    """Per-dive fetch, not per-image — the loop can run ~50 images."""
+    le = _laser_extrinsics()
+    head_pix, tail_pix, laser_pix = _build_observation(
+        le, np.array([-0.10, 0.00, 1.20]), np.array([0.20, 0.00, 1.20]), 1.20
+    )
+    images = [100, 101, 102]
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_camera_intrinsics(),
+        laser_extrinsics=le,
+        species_labels=[_species_label(i) for i in images],
+        laser_labels={i: _laser_label(i, *laser_pix) for i in images},
+        headtail_labels={i: _headtail_label(i, head_pix, tail_pix) for i in images},
+        clusters=[_cluster([i], fish_id=None) for i in images],
+        existing_measurements=[],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    await ActivityEnvironment().run(sut.measure_fish_activity, 42)
+
+    fs.fish.get_measurements.assert_awaited_once_with(42)
