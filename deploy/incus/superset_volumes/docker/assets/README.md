@@ -13,9 +13,14 @@ assets/
     dive_pipeline_status.yaml        # the physical view — one bool per stage per dive
     pipeline_labeling_queue.yaml     # virtual: count of HIGH dives waiting at each stage
     pipeline_partial_dives.yaml      # virtual: one row per unfinished dive + its blocker
-  charts/                            # Labeling queue + Partially-done dives (table viz)
+    fish_measurements.yaml           # virtual: one row per stage-14 measurement (dive/image/species)
+  charts/                            # Labeling queue + Partially-done dives + fish-measurement tiles
   dashboards/FishSense_Pipeline_Status.yaml
+  dashboards/Fish_Measurements.yaml  # reshaped from the retired hosted "REEF - SMILE Lengths"
 ```
+
+Two dashboards ship in this one bundle — `import-dashboards` imports every
+dashboard/chart/dataset in the zip in one pass.
 
 ## Secret handling
 
