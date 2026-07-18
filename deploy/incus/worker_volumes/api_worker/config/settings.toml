@@ -47,7 +47,7 @@ url = "http://fishsense-api:8000"
 # Hosted Garage (S3-compatible) object store on the NAS. S3 keys authenticate
 # from any IP (open egress NAT reaches it). access_key/secret_key in .secrets.toml.
 [object_store]
-endpoint_url = "https://garage.fishsense.e4e.ucsd.edu"
+endpoint_url = "https://s3.e4e.ucsd.edu"
 region = "garage"
 bucket = "fishsense"
 
