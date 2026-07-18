@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.30.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.29.1...fishsense-api-v1.30.0) (2026-07-18)
+
+
+### Features
+
+* **populate-species:** scheduled populate parent (decoupled, superseded-aware) ([#309](https://github.com/UCSD-E4E/fishsense-lite/issues/309)) ([082b27d](https://github.com/UCSD-E4E/fishsense-lite/commit/082b27de33ab7ccc90081d0daefa92b8596afa20))
+
 ## [1.29.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.29.0...fishsense-api-v1.29.1) (2026-07-17)
 
 
