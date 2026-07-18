@@ -54,7 +54,7 @@ url = "https://api.fishsense.e4e.ucsd.edu"
 # access keys authenticate from any IP, so the worker needs no stable
 # egress IP. `access_key` / `secret_key` are injected from the Secret.
 [object_store]
-endpoint_url = "https://garage.fishsense.e4e.ucsd.edu"
+endpoint_url = "https://s3.e4e.ucsd.edu"
 region = "garage"
 bucket = "fishsense"
 
