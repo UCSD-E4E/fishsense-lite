@@ -29,6 +29,7 @@ _DIVE_SELECTING_PARENT_SCHEDULE_IDS = (
     "preprocess-laser-images-workflow-schedule",
     "cluster-dive-frames-workflow-schedule",
     "preprocess-species-images-workflow-schedule",
+    "populate-species-labels-workflow-schedule",
     "preprocess-headtail-images-workflow-schedule",
     "preprocess-slate-images-workflow-schedule",
     "perform-laser-calibration-workflow-schedule",
@@ -64,6 +65,17 @@ async def test_measure_fish_is_scheduled_hourly_at_40(registered):
 
     assert _every(schedule) == timedelta(hours=1)
     assert _offset(schedule) == timedelta(minutes=40)
+
+
+async def test_species_populate_is_scheduled_hourly_at_20(registered):
+    """The decoupled species-populate parent fires at +20, just after the
+    +15 species-preprocess writes JPEGs, with SKIP overlap like the other
+    dive-selecting parents."""
+    schedule = registered["populate-species-labels-workflow-schedule"]
+
+    assert _every(schedule) == timedelta(hours=1)
+    assert _offset(schedule) == timedelta(minutes=20)
+    assert schedule.policy.overlap is ScheduleOverlapPolicy.SKIP
 
 
 async def test_measure_fish_skips_when_a_run_is_still_in_flight(registered):
