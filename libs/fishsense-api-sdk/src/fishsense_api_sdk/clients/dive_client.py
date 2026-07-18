@@ -113,6 +113,15 @@ class DiveClient(ClientBase):
         """Stage 14 cohort selector. See `select_next_for_laser_preprocessing`."""
         return await self._select_next("measure-fish")
 
+    async def get_dives_needing_species_population(self) -> list[int]:
+        """Every dive needing species LS tasks (re)populated onto a live
+        project — superseded-aware, returns *all* matches (not one), so
+        the scheduled populate parent can fan out one populate child per
+        dive. See the `needing-species-population` endpoint docstring."""
+        response = await self._get("/api/v1/dives/needing-species-population/")
+        response.raise_for_status()
+        return response.json() or []
+
     async def _select_next(self, cohort: str) -> int | None:
         response = await self._get(f"/api/v1/dives/select-next/{cohort}/")
         response.raise_for_status()

@@ -96,9 +96,27 @@ on-demand (`temporal workflow start` with a `dive_id` for populate,
 no args for create). The eight workflows are: Create/Populate ×
 Laser/Species/HeadTail/DiveSlate.
 
-The four populate workflows are also dispatched automatically as
-child workflows from the matching preprocess parent (stages 0.1 →
-laser, 2 → species, 5.1 → headtail, 9 → dive-slate). After
+**Species populate is decoupled (scheduled parent).** As of the
+`PopulateSpeciesLabelStudioProjectParentWorkflow`, the stage-2
+preprocess parent no longer chains into
+`PopulateSpeciesLabelStudioProjectWorkflow` — it only writes JPEGs.
+A dedicated hourly parent (schedule `populate-species-labels-workflow-schedule`,
++20 min, SKIP overlap) selects the **superseded-aware** cohort via
+`GET /api/v1/dives/needing-species-population/` (HIGH + laser-valid
+image with no *non-superseded* real-project species row — so dives
+whose old-project rows were superseded, e.g. post hosted-LS migration,
+re-enter) and fans out the populate child per dive. The populate
+activity is now **idempotent** (skips images already having a
+non-superseded row for the target project; supersede pass only
+dead-letters *other*-project rows) and **JPEG-gated** (per-image
+`ObjectStoreClient.has_processed_jpeg` — never seeds a species row
+before the stage-2 JPEG exists, which would strand the image outside
+the preprocess cohort). Laser/headtail/dive-slate populate are still
+preprocess-dispatched (below); only species is decoupled so far.
+
+The other three populate workflows are still dispatched automatically
+as child workflows from the matching preprocess parent (stages 0.1 →
+laser, 5.1 → headtail, 9 → dive-slate). After
 `cleanup_raw_bytes_for_dive_activity` (Garage raw-scratch eviction),
 the parent runs
 `execute_child_workflow("Populate<Stage>LabelStudioProjectWorkflow",
@@ -205,7 +223,9 @@ one replica):
   SDK upserts.
 
 Applied to stages 0.1, 1, 2, 5.1, 9, 13, 14 — each parent runs hourly.
-Schedule slots: 0.1 at +0, 1 at +5, 2 at +15, 5.1 at +30, 14 at +40,
+Schedule slots: 0.1 at +0, 1 at +5, 2 at +15, species-populate at +20
+(the decoupled `PopulateSpeciesLabelStudioProjectParentWorkflow`, just
+after the +15 species-preprocess writes JPEGs), 5.1 at +30, 14 at +40,
 9 at +45, 13 at +50 min — staggered so their selectors don't all hit
 `dives.get()` at the top of the hour. The scale-to-zero sweeper takes
 +55. `test_schedule_registration.py` pins the stagger (the four

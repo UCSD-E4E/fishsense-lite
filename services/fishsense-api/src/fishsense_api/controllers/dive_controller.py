@@ -255,6 +255,56 @@ async def select_next_for_species_preprocessing(
     return (await session.exec(query)).first()
 
 
+@app.get("/api/v1/dives/needing-species-population/")
+async def select_dives_needing_species_population(
+    session: AsyncSession = Depends(get_async_session),
+) -> List[int]:
+    """Dives that need species LS tasks (re)populated onto a live project.
+
+    Cohort: HIGH priority + at least one image carrying a *valid*
+    LaserLabel (completed, not superseded, both x/y populated) that has
+    no *non-superseded* SpeciesLabel row with a `project_id` — i.e. no
+    live species task. Superseded rows are dead-lettered and don't
+    count, which is exactly what lets a dive whose old-project rows were
+    superseded (e.g. after the hosted-LS migration) re-enter the cohort.
+
+    Unlike `select-next/species-preprocessing`, this is superseded-aware
+    (that endpoint's `project_id IS NOT NULL` check ignores supersede,
+    so it permanently excludes migrated dives) and drops the
+    PREDICTION-cluster gate — populate only needs the species JPEGs to
+    exist, which the populate activity gates per-image against Garage.
+    The activity is idempotent + JPEG-gated, so this coarse candidate
+    set is safe to over-select.
+
+    Returns every matching dive id; the scheduled populate parent fans
+    out one `PopulateSpeciesLabelStudioProjectWorkflow` child per dive.
+    """
+    has_valid_laser_image_without_live_species = (
+        select(LaserLabel.id)
+        .join(Image, Image.id == LaserLabel.image_id)
+        .where(Image.dive_id == Dive.id)
+        .where(LaserLabel.completed == True)
+        .where(LaserLabel.superseded == False)
+        .where(LaserLabel.x != None)
+        .where(LaserLabel.y != None)
+        .where(
+            ~select(SpeciesLabel.id)
+            .where(SpeciesLabel.image_id == Image.id)
+            .where(SpeciesLabel.label_studio_project_id != None)
+            .where(SpeciesLabel.superseded == False)
+            .exists()
+        )
+        .exists()
+    )
+    query = (
+        select(Dive.id)
+        .where(Dive.priority == Priority.HIGH)
+        .where(has_valid_laser_image_without_live_species)
+        .order_by(Dive.id)
+    )
+    return list((await session.exec(query)).all())
+
+
 @app.get("/api/v1/dives/select-next/headtail-preprocessing/")
 async def select_next_for_headtail_preprocessing(
     session: AsyncSession = Depends(get_async_session),

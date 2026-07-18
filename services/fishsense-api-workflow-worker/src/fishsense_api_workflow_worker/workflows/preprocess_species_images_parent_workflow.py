@@ -3,17 +3,21 @@
 Picks the next HIGH-priority dive needing species preprocessing,
 resolves its PREDICTION clusters + camera intrinsics + laser/species
 labels via SDK, and dispatches `PreprocessSpeciesImagesWorkflow` as a
-child on the data-worker (`fishsense_data_processing_queue`). After
-archive+cleanup, chains into `PopulateSpeciesLabelStudioProjectWorkflow`
-so the group-preprocessed JPEGs land in the per-dive species LS
-project in the same hourly run that produced them.
+child on the data-worker (`fishsense_data_processing_queue`). After the
+child writes the group-preprocessed JPEGs to Garage, it cleans up the
+staged raw scratch and stops there.
+
+Species LS-task population is **decoupled** from this workflow — it no
+longer chains into `PopulateSpeciesLabelStudioProjectWorkflow`. The
+hourly `PopulateSpeciesLabelStudioProjectParentWorkflow` (+20 min)
+selects the superseded-aware "needs species population" cohort and fans
+out the idempotent, JPEG-gated populate per dive. Decoupling lets dives
+whose old-project species rows were superseded (post hosted-LS
+migration) get (re)populated without re-preprocessing.
 
 Same cluster-correctness invariants as
 `PreprocessLaserImagesParentWorkflow` — see CLAUDE.md's "Cross-worker
-orchestration pattern" section. The populate child uses a
-deterministic id (`populate-species-{dive_id}`) so subsequent
-re-firings on the same cohort dive no-op via WorkflowAlreadyStarted
-rather than re-importing duplicate LS tasks.
+orchestration pattern" section.
 """
 
 from datetime import timedelta
@@ -119,19 +123,9 @@ class PreprocessSpeciesImagesParentWorkflow:
             heartbeat_timeout=timedelta(minutes=5),
         )
 
-        try:
-            await workflow.execute_child_workflow(
-                "PopulateSpeciesLabelStudioProjectWorkflow",
-                dive_id,
-                id=f"populate-species-{dive_id}",
-                execution_timeout=timedelta(minutes=30),
-                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
-            )
-        except WorkflowAlreadyStartedError:
-            workflow.logger.info(
-                "populate-species-%d already ran in a prior hourly firing; "
-                "skipping LS task import",
-                dive_id,
-            )
-
+        # NOTE: species LS-task population is decoupled from preprocess as
+        # of the scheduled-populate parent — this workflow only writes the
+        # JPEGs. `PopulateSpeciesLabelStudioProjectParentWorkflow`
+        # (hourly, +20 min) selects the superseded-aware cohort and fans
+        # out the idempotent, JPEG-gated populate per dive.
         return inputs.dive_id

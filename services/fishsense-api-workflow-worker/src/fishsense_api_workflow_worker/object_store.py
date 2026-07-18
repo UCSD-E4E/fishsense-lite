@@ -56,6 +56,16 @@ def slate_pdf_key(slate_id: int) -> str:
     return f"{SLATE_PDF_PREFIX}/{slate_id}.pdf"
 
 
+def processed_jpeg_key(folder: str, checksum: str) -> str:
+    """Physical Garage key for a data-worker-written processed JPEG.
+
+    `folder` is the per-stage prefix (`preprocess_groups_jpeg`,
+    `preprocess_jpeg`, `preprocess_headtail_jpeg`,
+    `preprocess_slate_images_jpeg`) — the exact key the JPEG lives at.
+    """
+    return f"{folder}/{checksum}.JPG"
+
+
 def build_s3_client(
     *, endpoint_url: str, region: str, access_key: str, secret_key: str
 ):
@@ -136,6 +146,15 @@ class ObjectStoreClient:
 
     async def has_raw(self, checksum: str) -> bool:
         return await self._exists(raw_key(checksum))
+
+    async def has_processed_jpeg(self, folder: str, checksum: str) -> bool:
+        """True iff the data-worker has already written this stage's
+        processed JPEG to Garage. Used by the scheduled species-populate
+        activity to gate task import on the JPEG existing (a decoupled
+        populate must never seed rows for an image whose JPEG isn't
+        written yet — that would drop the dive out of the preprocess
+        cohort with a broken image)."""
+        return await self._exists(processed_jpeg_key(folder, checksum))
 
     async def upload_raw(self, checksum: str, data: bytes) -> None:
         await self._put(raw_key(checksum), data)

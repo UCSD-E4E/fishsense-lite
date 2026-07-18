@@ -98,6 +98,16 @@ def _species_label(
     )
 
 
+@pytest.fixture(autouse=True)
+def _all_jpegs_present(monkeypatch):
+    """Default the JPEG gate to "present" so activity tests exercise the
+    import path; the gate test overrides this with a selective fake."""
+    store = MagicMock()
+    store.has_processed_jpeg = AsyncMock(return_value=True)
+    monkeypatch.setattr(sut, "open_object_store_client", lambda: store)
+    return store
+
+
 def test_select_targets_filters_by_valid_laser_and_drops_completed():
     laser = [
         _laser(1),                             # valid + completed species -> drop
@@ -258,6 +268,40 @@ async def test_no_valid_laser_targets_skips_import_but_supersedes_stale(monkeypa
     ls.projects.import_tasks.assert_not_called()
     written = [c.args[1] for c in fs.labels.put_species_label.await_args_list]
     assert [(w.image_id, w.superseded) for w in written] == [(1, True)]
+
+
+@pytest.mark.asyncio
+async def test_defers_images_whose_jpeg_is_not_in_garage(monkeypatch):
+    """JPEG gate: an image whose species JPEG isn't in Garage yet is not
+    imported (deferred to a later run), so a scheduled populate never
+    seeds a species row ahead of preprocess writing the JPEG — which
+    would strand the image outside the preprocess cohort."""
+    laser = [_laser(1), _laser(2)]
+    images_by_id = {1: _image(1, "aaa"), 2: _image(2, "bbb")}
+    existing: List[SpeciesLabel] = []
+
+    fs = _make_fs_client(laser, existing, images_by_id)
+    ls = _make_ls_client(returned_task_ids=[9001])  # only image 1 imports
+
+    store = MagicMock()
+
+    async def _has(_folder, checksum):
+        return checksum == "aaa"  # image 2's JPEG (bbb) is missing
+
+    store.has_processed_jpeg = AsyncMock(side_effect=_has)
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+    monkeypatch.setattr(sut, "open_object_store_client", lambda: store)
+
+    n = await ActivityEnvironment().run(
+        sut.populate_species_label_studio_project_activity, 42, 70
+    )
+
+    assert n == 1
+    written = [c.args[1] for c in fs.labels.put_species_label.await_args_list]
+    new_writes = [w for w in written if w.id is None]
+    assert {w.image_id for w in new_writes} == {1}  # image 2 deferred
 
 
 @pytest.mark.asyncio
