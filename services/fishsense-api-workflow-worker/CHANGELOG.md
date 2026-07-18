@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## [1.41.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.40.1...fishsense-api-workflow-worker-v1.41.0) (2026-07-18)
+
+
+### Features
+
+* **populate-species:** make species populate idempotent for scheduling ([#308](https://github.com/UCSD-E4E/fishsense-lite/issues/308)) ([fa76220](https://github.com/UCSD-E4E/fishsense-lite/commit/fa7622030f2771c8ca956bd11673ac952b4d9a49))
+* **populate-species:** scheduled populate parent (decoupled, superseded-aware) ([#309](https://github.com/UCSD-E4E/fishsense-lite/issues/309)) ([082b27d](https://github.com/UCSD-E4E/fishsense-lite/commit/082b27de33ab7ccc90081d0daefa92b8596afa20))
+
+
+### Bug Fixes
+
+* **object-store:** repoint Garage endpoint to s3.e4e.ucsd.edu ([#307](https://github.com/UCSD-E4E/fishsense-lite/issues/307)) ([07b3ea4](https://github.com/UCSD-E4E/fishsense-lite/commit/07b3ea48a709b0b6d15f540a38c808ffe6dda98e))
+
 ## [1.40.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.40.0...fishsense-api-workflow-worker-v1.40.1) (2026-07-17)
 
 
