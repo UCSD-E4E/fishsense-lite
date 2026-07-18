@@ -154,7 +154,10 @@ async def test_dispatches_child_with_deterministic_id_and_clusters():
     assert child_id == "preprocess-species-440"
     assert child_dive_id == 440
     assert flat == ["a", "b", "c"]
-    assert populate_runs == [("populate-species-440", 440)]
+    # Populate is decoupled now — the preprocess parent no longer chains
+    # into PopulateSpeciesLabelStudioProjectWorkflow (the scheduled
+    # PopulateSpeciesLabelStudioProjectParentWorkflow owns it).
+    assert not populate_runs
 
 
 @pytest.mark.asyncio

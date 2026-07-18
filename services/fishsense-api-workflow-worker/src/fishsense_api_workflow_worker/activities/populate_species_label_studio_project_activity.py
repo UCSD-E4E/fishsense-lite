@@ -32,10 +32,40 @@ from fishsense_api_workflow_worker.activities.populate_utils import (
     import_tasks_and_record_labels,
 )
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
+from fishsense_api_workflow_worker.object_store import open_object_store_client
 
 # Physical Garage prefix the data-worker writes species JPEGs to
 # (stage 2). Was the nginx virtual name "groups_jpeg".
 SPECIES_FOLDER = "preprocess_groups_jpeg"
+
+
+async def _gate_on_jpeg_presence(images: List[Image]) -> List[Image]:
+    """Keep only images whose stage-2 species JPEG is already in Garage.
+
+    When populate runs decoupled from preprocess (on its own schedule),
+    seeding a species row for an image whose JPEG isn't written yet would
+    satisfy the preprocess cohort's "has species row" exit — the image
+    would then never get preprocessed and its LS task would point at a
+    missing JPEG forever. Gating on JPEG existence defers those images to
+    a later run (once preprocess has written them); it's a no-op when
+    populate is chained right after preprocess (all JPEGs present).
+    """
+    if not images:
+        return images
+    store = open_object_store_client()
+    present: List[Image] = []
+    for image in images:
+        if await store.has_processed_jpeg(SPECIES_FOLDER, image.checksum):
+            present.append(image)
+        else:
+            activity.logger.info(
+                "species JPEG not yet in Garage for image %d (checksum=%s); "
+                "deferring to a later populate run",
+                image.id,
+                image.checksum,
+            )
+        activity.heartbeat()
+    return present
 
 
 def _is_valid_laser(label: LaserLabel) -> bool:
@@ -129,6 +159,10 @@ async def populate_species_label_studio_project_activity(
         targets = _select_target_images(
             laser_labels, images_by_id, existing_species, project_id
         )
+        # Only import tasks for images whose species JPEG is already in
+        # Garage (see `_gate_on_jpeg_presence`). Deferred images stay in
+        # the cohort and are picked up on a later run.
+        targets = await _gate_on_jpeg_presence(targets)
 
         new_count = 0
         if targets:

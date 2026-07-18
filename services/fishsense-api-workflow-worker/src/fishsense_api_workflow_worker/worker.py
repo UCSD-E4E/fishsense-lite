@@ -96,6 +96,9 @@ from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_species_preprocessing_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_species_preprocessing_activity,
 )
+from fishsense_api_workflow_worker.activities.select_dives_needing_species_population_activity import (  # pylint: disable=line-too-long
+    select_dives_needing_species_population_activity,
+)
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_headtail_preprocessing_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_headtail_preprocessing_activity,
 )
@@ -159,6 +162,9 @@ from fishsense_api_workflow_worker.workflows.populate_laser_label_studio_project
 )
 from fishsense_api_workflow_worker.workflows.populate_species_label_studio_project_workflow import (  # pylint: disable=line-too-long
     PopulateSpeciesLabelStudioProjectWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.populate_species_label_studio_project_parent_workflow import (  # pylint: disable=line-too-long
+    PopulateSpeciesLabelStudioProjectParentWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.cluster_dive_frames_parent_workflow import (  # pylint: disable=line-too-long
     ClusterDiveFramesParentWorkflow,
@@ -339,6 +345,23 @@ async def schedule_workflows(client: Client):
                     overlap=ScheduleOverlapPolicy.SKIP,
                 )
             )
+            # Species populate parent: hourly at +20 min, just after the
+            # +15 species-preprocess firing has written the JPEGs.
+            # Decoupled from preprocess (which no longer chains into
+            # populate). The activity is idempotent + JPEG-gated so
+            # SKIP-overlap hourly firings converge — images whose JPEG
+            # isn't written yet defer to the next run.
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "populate-species-labels-workflow-schedule",
+                    PopulateSpeciesLabelStudioProjectParentWorkflow,
+                    timedelta(hours=1),
+                    offset=timedelta(minutes=20),
+                    run_timeout=timedelta(hours=1),
+                    overlap=ScheduleOverlapPolicy.SKIP,
+                )
+            )
             tg.create_task(
                 schedule_workflow(
                     client,
@@ -458,6 +481,7 @@ async def main():
                 CreateDiveSlateLabelStudioProjectWorkflow,
                 PopulateLaserLabelStudioProjectWorkflow,
                 PopulateSpeciesLabelStudioProjectWorkflow,
+                PopulateSpeciesLabelStudioProjectParentWorkflow,
                 PopulateHeadTailLabelStudioProjectWorkflow,
                 PopulateDiveSlateLabelStudioProjectWorkflow,
                 UpdateDiveImageGroupsWorkflow,
@@ -500,6 +524,7 @@ async def main():
                 select_next_high_priority_dive_for_clustering_activity,
                 select_next_high_priority_dive_for_laser_preprocessing_activity,
                 select_next_high_priority_dive_for_species_preprocessing_activity,
+                select_dives_needing_species_population_activity,
                 select_next_high_priority_dive_for_headtail_preprocessing_activity,
                 select_next_high_priority_dive_for_slate_preprocessing_activity,
                 select_next_high_priority_dive_for_laser_calibration_activity,

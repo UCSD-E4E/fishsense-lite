@@ -248,3 +248,35 @@ class TestDiveClient:
                 assert payload["camera_id"] == 12
                 assert payload["laser_position"] == [1.0, 2.0, 3.0]
                 assert payload["laser_axis"] == [0.0, 0.0, 1.0]
+
+    async def test_get_dives_needing_species_population_returns_list(self):
+        """Returns the full list of dive ids from the population endpoint."""
+        client = _make_client()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [3, 7, 11]
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            async with client:
+                result = await client.get_dives_needing_species_population()
+                assert result == [3, 7, 11]
+                mock_get.assert_awaited_once_with(
+                    "/api/v1/dives/needing-species-population/"
+                )
+
+    async def test_get_dives_needing_species_population_empty_on_null(self):
+        """A null/absent body degrades to an empty list, not None."""
+        client = _make_client()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = None
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            async with client:
+                assert await client.get_dives_needing_species_population() == []
