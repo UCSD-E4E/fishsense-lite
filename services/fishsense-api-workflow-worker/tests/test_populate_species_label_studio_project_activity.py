@@ -5,10 +5,11 @@ images carrying a *valid* LaserLabel (completed=True, superseded=False,
 both x/y populated) are candidates — same gate as head/tail. Cascades
 from laser labelers + the validator signing off.
 
-Unlike head/tail, there is no supersede pass here because
-`SpeciesLabel` has no `superseded` column. The cohort selector's
-"no non-sentinel species row" predicate is what prevents re-imports;
-a partial prior run's stale rows linger until manual cleanup.
+The activity is idempotent so it can run on a schedule: an image that
+already has a non-superseded species row for the target project is not
+re-imported, and the end-of-run supersede pass only dead-letters
+incomplete rows in *other* (stale) projects — never the target
+project's own in-progress rows.
 """
 
 from __future__ import annotations
@@ -116,9 +117,25 @@ def test_select_targets_filters_by_valid_laser_and_drops_completed():
     }
     existing = [_species_label(1, completed=True)]
 
-    selected = sut._select_target_images(laser, images_by_id, existing)  # pylint: disable=protected-access
+    selected = sut._select_target_images(laser, images_by_id, existing, 70)  # pylint: disable=protected-access
 
     assert [img.id for img in selected] == [3]
+
+
+def test_select_targets_skips_images_already_in_this_project():
+    """Idempotency filter: an image with a non-superseded species row for
+    the *target* project is not re-selected, but one whose only row is in
+    a different (stale) project still is."""
+    laser = [_laser(1), _laser(2)]
+    images_by_id = {1: _image(1, "a"), 2: _image(2, "b")}
+    existing = [
+        _species_label(1, completed=False, project_id=70),   # already in target -> skip
+        _species_label(2, completed=False, project_id=99),   # stale old project -> keep
+    ]
+
+    selected = sut._select_target_images(laser, images_by_id, existing, 70)  # pylint: disable=protected-access
+
+    assert [img.id for img in selected] == [2]
 
 
 def test_build_task_uses_groups_jpeg_folder_and_dual_keys(monkeypatch):
@@ -172,12 +189,12 @@ def _make_ls_client(returned_task_ids: List[int]):
 
 @pytest.mark.asyncio
 async def test_imports_targets_and_writes_new_labels(monkeypatch):
-    """Image 1 has a completed old row -> skip. Image 2 has an
-    incomplete old row with id -> get a new task. Image 3 is fresh ->
-    get a new task. Image 4 has an incomplete old row but no id -> get
-    a new task. The activity writes only fresh (id=None) rows; stale
-    incomplete rows are left in place because SpeciesLabel has no
-    `superseded` column."""
+    """Migration path onto a fresh project (70), with stale rows in an
+    old project (99). Image 1 has a completed old row -> skip. Image 2
+    has an incomplete stale-project row with id -> new task + the stale
+    row is superseded. Image 3 is fresh -> new task. Image 4 has an
+    incomplete stale-project row but no id -> new task, stale row left
+    (can't supersede an unpersisted row)."""
     laser = [
         _laser(1),
         _laser(2),
@@ -191,9 +208,9 @@ async def test_imports_targets_and_writes_new_labels(monkeypatch):
         4: _image(4, "d"),
     }
     existing = [
-        _species_label(1, completed=True),
-        _species_label(2, completed=False, has_id=True),
-        _species_label(4, completed=False, has_id=False),
+        _species_label(1, completed=True, project_id=99),
+        _species_label(2, completed=False, has_id=True, project_id=99),
+        _species_label(4, completed=False, has_id=False, project_id=99),
     ]
 
     fs = _make_fs_client(laser, existing, images_by_id)
@@ -221,10 +238,11 @@ async def test_imports_targets_and_writes_new_labels(monkeypatch):
 @pytest.mark.asyncio
 async def test_no_valid_laser_targets_skips_import_but_supersedes_stale(monkeypatch):
     """No laser-valid images -> no task import, but the supersede pass still
-    retires a pre-existing incomplete-with-id species row."""
+    retires a pre-existing incomplete-with-id species row in a stale
+    (different) project."""
     laser = [_laser(1, completed=False)]
     images_by_id = {1: _image(1, "a")}
-    existing = [_species_label(1, completed=False, has_id=True)]
+    existing = [_species_label(1, completed=False, has_id=True, project_id=99)]
 
     fs = _make_fs_client(laser, existing, images_by_id)
     ls = _make_ls_client(returned_task_ids=[])
@@ -240,6 +258,36 @@ async def test_no_valid_laser_targets_skips_import_but_supersedes_stale(monkeypa
     ls.projects.import_tasks.assert_not_called()
     written = [c.args[1] for c in fs.labels.put_species_label.await_args_list]
     assert [(w.image_id, w.superseded) for w in written] == [(1, True)]
+
+
+@pytest.mark.asyncio
+async def test_rerun_is_idempotent_for_same_project(monkeypatch):
+    """Scheduling invariant: a re-run where every laser-valid image
+    already has a non-superseded task row *for this project* imports
+    nothing and supersedes nothing — so the activity can be put on a
+    schedule without churning duplicate LS tasks."""
+    laser = [_laser(1), _laser(2)]
+    images_by_id = {1: _image(1, "a"), 2: _image(2, "b")}
+    # both already have a live (non-superseded, incomplete) task in project 70
+    existing = [
+        _species_label(1, completed=False, project_id=70),
+        _species_label(2, completed=False, project_id=70),
+    ]
+
+    fs = _make_fs_client(laser, existing, images_by_id)
+    ls = _make_ls_client(returned_task_ids=[])
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    n = await ActivityEnvironment().run(
+        sut.populate_species_label_studio_project_activity, 42, 70
+    )
+
+    assert n == 0
+    ls.projects.import_tasks.assert_not_called()
+    # the project's own in-progress rows are left untouched (no supersede churn)
+    assert not fs.labels.put_species_label.await_args_list
 
 
 @pytest.mark.asyncio
