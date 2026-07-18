@@ -9,10 +9,15 @@ validator's `_positive_xy` already use as "usable laser." Cascading
 from lasers lets species labeling kick off in parallel with head/tail
 (stage 5.1) as soon as laser labelers + the validator sign off.
 
-A supersede pass at the end marks previously-incomplete species rows
-for the dive as `superseded=True` so newly-created rows are canonical
-(mirrors headtail). `SpeciesLabel` gained a `superseded` column for
-uniform dead-letter semantics across all four label types.
+The activity is **idempotent** so it can run on a schedule: an image
+that already carries a non-superseded species row for the target
+project is skipped (no duplicate LS task), and the end-of-run supersede
+pass only dead-letters previously-incomplete rows belonging to a
+*different* (stale/old) project — the target project's own in-progress
+rows are left untouched. A re-run with no newly-laser-valid images
+imports nothing and writes nothing. `SpeciesLabel` gained a
+`superseded` column for uniform dead-letter semantics across all four
+label types.
 """
 
 from typing import List
@@ -47,21 +52,39 @@ def _select_target_images(
     laser_labels: List[LaserLabel],
     images_by_id: dict[int, Image],
     existing_species_labels: List[SpeciesLabel],
+    project_id: int,
 ) -> List[Image]:
     """Pick the images that need a fresh species LS task.
 
     Source: laser labels passing `_is_valid_laser`.
-    Filter: drop any image whose existing species label is already
-    completed (so re-running is a no-op for finished work).
+    Filter (idempotent — safe to schedule):
+      - drop any image whose existing species label is already
+        completed (finished work is a no-op on re-run);
+      - drop any image that already carries a *non-superseded* species
+        row for THIS project — a prior run already imported its task, so
+        a scheduled re-run must not re-import a duplicate LS task.
+
+    An image whose only species row is superseded, or belongs to a
+    different (stale/old) project, is still selected: that's the
+    migrate-onto-the-current-project path, and it stays idempotent
+    because the row this run writes then satisfies the second filter on
+    the next run.
     """
     completed_ids = {
         label.image_id for label in existing_species_labels if label.completed
+    }
+    already_in_project_ids = {
+        label.image_id
+        for label in existing_species_labels
+        if label.label_studio_project_id == project_id and not label.superseded
     }
     selected: List[Image] = []
     for label in laser_labels:
         if not _is_valid_laser(label):
             continue
         if label.image_id in completed_ids:
+            continue
+        if label.image_id in already_in_project_ids:
             continue
         image = images_by_id.get(label.image_id)
         if image is not None:
@@ -104,7 +127,7 @@ async def populate_species_label_studio_project_activity(
                 images_by_id[image.id] = image
 
         targets = _select_target_images(
-            laser_labels, images_by_id, existing_species
+            laser_labels, images_by_id, existing_species, project_id
         )
 
         new_count = 0
@@ -149,12 +172,17 @@ async def populate_species_label_studio_project_activity(
                 dive_id,
             )
 
-        # Supersede pass: mark previously-incomplete species labels for this
-        # dive as superseded so newly-created rows are canonical. Mirrors the
-        # headtail activity. Only acts on already-persisted rows (id set); the
-        # fresh rows from _record above aren't in `existing_species`.
+        # Supersede pass: dead-letter previously-incomplete species rows that
+        # belong to a *different* (stale/old) project so the current project's
+        # rows are canonical. Rows already in `project_id` are this project's
+        # live tasks and are left untouched — that's what makes a re-run
+        # idempotent and the activity safe to schedule. Only acts on
+        # already-persisted rows (id set); the fresh rows from _record above
+        # aren't in `existing_species`.
         for old in existing_species:
             if old.completed or old.superseded or old.id is None:
+                continue
+            if old.label_studio_project_id == project_id:
                 continue
             old.superseded = True
             await fs.labels.put_species_label(old.image_id, old)
