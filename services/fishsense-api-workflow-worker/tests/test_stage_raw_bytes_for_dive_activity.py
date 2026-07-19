@@ -434,3 +434,28 @@ def test_stage_raw_retry_policy_is_bounded_and_marks_missing_file_non_retryable(
     assert sut.NAS_FILE_NOT_FOUND_TYPE in (
         STAGE_RAW_RETRY_POLICY.non_retryable_error_types or []
     )
+
+
+def test_stage_concurrency_defaults_to_one(monkeypatch):
+    # FileStation is fragile; default to a single serial download stream.
+    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.delenv("E4EFS_E4E_NAS__STAGE_CONCURRENCY", raising=False)
+    cfg.settings.reload()
+    assert sut._stage_concurrency() == 1  # pylint: disable=protected-access
+
+
+def test_stage_concurrency_reads_config(monkeypatch):
+    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setenv("E4EFS_E4E_NAS__STAGE_CONCURRENCY", "3")
+    cfg.settings.reload()
+    assert sut._stage_concurrency() == 3  # pylint: disable=protected-access
+
+
+def test_stage_concurrency_clamps_to_at_least_one(monkeypatch):
+    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setenv("E4EFS_E4E_NAS__STAGE_CONCURRENCY", "0")
+    cfg.settings.reload()
+    assert sut._stage_concurrency() == 1  # pylint: disable=protected-access

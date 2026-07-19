@@ -27,8 +27,9 @@ re-trying after that. A *permanent* error (Synology 408 "no such file")
 is raised as a non-retryable ApplicationError so Temporal doesn't
 reschedule a doomed staging. Files are never skipped — a silently-missing
 raw would stage the dive incomplete and hide a real NAS/data problem, so
-failures surface. `STAGE_CONCURRENCY` is deliberately low so a backlog of
-dives doesn't saturate FileStation's shared download backend.
+failures surface. Staging concurrency (`e4e_nas.stage_concurrency`, default 1)
+is deliberately low so a backlog of dives doesn't saturate FileStation's
+fragile shared download backend.
 """
 
 from __future__ import annotations
@@ -49,12 +50,24 @@ from fishsense_api_workflow_worker.config import settings
 from fishsense_api_workflow_worker.object_store import open_object_store_client
 from fishsense_api_workflow_worker.nas import NasDownloadClient
 
-# Lowered from 8 → 3: FileStation's download backend (DSM nginx →
-# synoscgi) is a shared per-appliance CGI service that buckles under many
-# concurrent large-`.ORF` transfers and starts returning 502. A handful
-# of streams is what it's sized for; fewer parallel downloads keep us
-# under that threshold and stop the worker tripping the NAS's auto-block.
-STAGE_CONCURRENCY = 3
+# Default max concurrent raw `.ORF` downloads per staging activity, used
+# when `e4e_nas.stage_concurrency` isn't set. FileStation's download backend
+# (DSM nginx → synoscgi) is a fragile shared per-appliance CGI that 502s /
+# falls over under concurrent large transfers, so default to a single serial
+# stream. Override via config to ramp up (1 → 2 → 3) while watching the NAS,
+# without a redeploy. Was a hardcoded 3 (and 8 before that).
+DEFAULT_STAGE_CONCURRENCY = 1
+
+
+def _stage_concurrency() -> int:
+    """Resolve the staging concurrency from config at runtime, clamped to
+    at least 1. Read here (not at import) so the value is picked up from
+    settings without a code change."""
+    try:
+        value = int(settings.e4e_nas.get("stage_concurrency", DEFAULT_STAGE_CONCURRENCY))
+    except (TypeError, ValueError):
+        value = DEFAULT_STAGE_CONCURRENCY
+    return max(1, value)
 
 # `type` on the non-retryable ApplicationError we raise for a missing
 # file; must match `non_retryable_error_types` in STAGE_RAW_RETRY_POLICY.
@@ -71,7 +84,7 @@ NAS_FILE_NOT_FOUND_TYPE = "NasFileNotFound"
 _PERMANENT_DSM_CODES = frozenset({408})
 
 __all__ = [
-    "STAGE_CONCURRENCY",
+    "DEFAULT_STAGE_CONCURRENCY",
     "NAS_FILE_NOT_FOUND_TYPE",
     "StageRawBytesResult",
     "stage_raw_bytes_for_dive_activity",
@@ -169,7 +182,11 @@ async def stage_raw_bytes_for_dive_activity(
     )
 
     nas = _build_nas_client()
-    sem = asyncio.Semaphore(STAGE_CONCURRENCY)
+    concurrency = _stage_concurrency()
+    activity.logger.info(
+        "staging concurrency=%d dive_id=%d", concurrency, dive_id
+    )
+    sem = asyncio.Semaphore(concurrency)
 
     staged = 0
     skipped = 0
