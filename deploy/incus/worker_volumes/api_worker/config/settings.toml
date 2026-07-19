@@ -49,7 +49,11 @@ url = "http://fishsense-api:8000"
 [object_store]
 endpoint_url = "https://s3.e4e.ucsd.edu"
 region = "garage"
-bucket = "fishsense"
+# `bucket` = raw/slate scratch; `labels_bucket` = the LS-facing bucket where
+# processed JPEGs live (under `labels_prefix`). krg-infra provisioned both.
+bucket = "fishsense-lite"
+labels_bucket = "labels-fishsense-lite"
+labels_prefix = "fishsense-lite"
 
 # NRP data-worker scale-to-zero. The api-worker scales the data-worker
 # Deployment (ns `e4e-fishsense`) 0 <-> active_replicas on demand.
