@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.7.3...fishsense-data-processing-workflow-worker-v2.7.4) (2026-07-19)
+
+
+### Bug Fixes
+
+* use krg's Garage buckets (scratch vs labels split) + publish LS projects only when complete ([#324](https://github.com/UCSD-E4E/fishsense-lite/issues/324)) ([d77d4ff](https://github.com/UCSD-E4E/fishsense-lite/commit/d77d4ff2d9097c6cb8a77649b639fed18d7d5eb7))
+
 ## [2.7.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.7.2...fishsense-data-processing-workflow-worker-v2.7.3) (2026-07-18)
 
 
