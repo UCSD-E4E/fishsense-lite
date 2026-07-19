@@ -99,51 +99,10 @@ async def test_create_idempotent_finds_existing_in_workspace(monkeypatch):
     ls.projects.create.assert_not_called()
 
 
-async def test_create_publishes_existing_draft_project(monkeypatch):
-    # An already-created but still-draft per-dive project must be published
-    # on the next idempotent hit so labelers aren't blocked waiting for a
-    # manual toggle.
-    monkeypatch.setenv("E4EFS_LABEL_STUDIO__WORKSPACE", "FishSense")
-    cfg.settings.reload()
-    existing = MagicMock()
-    existing.id = 55
-    existing.title = "X - Laser Labeling"
-    existing.is_published = False
-    ls = _fake_ls(workspaces=[_workspace(7, "FishSense")], existing_projects=[existing])
-    monkeypatch.setattr(pu, "_get_ls_client", lambda: ls)
-    monkeypatch.setattr(pu, "ensure_label_studio_s3_storage", _noop)
-
-    pid = await pu.create_or_get_label_studio_project(
-        project_title="X - Laser Labeling", labeling_config_xml="<View/>"
-    )
-
-    assert pid == 55
-    ls.projects.create.assert_not_called()
-    ls.projects.update.assert_called_once_with(id=55, is_published=True)
-
-
-async def test_create_leaves_published_existing_project_untouched(monkeypatch):
-    monkeypatch.setenv("E4EFS_LABEL_STUDIO__WORKSPACE", "FishSense")
-    cfg.settings.reload()
-    existing = MagicMock()
-    existing.id = 55
-    existing.title = "X - Laser Labeling"
-    existing.is_published = True
-    ls = _fake_ls(workspaces=[_workspace(7, "FishSense")], existing_projects=[existing])
-    monkeypatch.setattr(pu, "_get_ls_client", lambda: ls)
-    monkeypatch.setattr(pu, "ensure_label_studio_s3_storage", _noop)
-
-    await pu.create_or_get_label_studio_project(
-        project_title="X - Laser Labeling", labeling_config_xml="<View/>"
-    )
-
-    ls.projects.update.assert_not_called()
-
-
-async def test_create_publishes_new_project(monkeypatch):
-    # On LS Enterprise a project created without is_published defaults to
-    # draft — invisible to annotators. Per-dive projects must be created
-    # published so labelers can pick them up without a manual toggle.
+async def test_create_does_not_publish(monkeypatch):
+    # Projects are created as drafts (no is_published on create) and never
+    # published from the create path — publishing is deferred to the populate
+    # activities once the task set is complete (see publish_label_studio_project).
     monkeypatch.delenv("E4EFS_LABEL_STUDIO__WORKSPACE", raising=False)
     cfg.settings.reload()
     ls = _fake_ls(workspaces=[], existing_projects=[])
@@ -155,7 +114,17 @@ async def test_create_publishes_new_project(monkeypatch):
     )
 
     _, kwargs = ls.projects.create.call_args
-    assert kwargs["is_published"] is True
+    assert "is_published" not in kwargs
+    ls.projects.update.assert_not_called()
+
+
+async def test_publish_label_studio_project_sets_is_published(monkeypatch):
+    ls = _fake_ls()
+    monkeypatch.setattr(pu, "_get_ls_client", lambda: ls)
+
+    await pu.publish_label_studio_project(55)
+
+    ls.projects.update.assert_called_once_with(id=55, is_published=True)
 
 
 async def test_create_without_workspace_uses_default(monkeypatch):

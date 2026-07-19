@@ -16,6 +16,7 @@ from temporalio import activity
 from fishsense_api_workflow_worker.activities.populate_utils import (
     build_image_url,
     import_tasks_and_record_labels,
+    publish_label_studio_project,
 )
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
 
@@ -79,6 +80,15 @@ async def populate_laser_label_studio_project_activity(
                 "nothing to import",
                 dive_id,
             )
+            # No image needs a task, so the task set is complete. Publish
+            # iff this project already holds tasks — a genuinely empty
+            # project (grandfathered dive whose rows point at an old
+            # project) is left as a hidden draft.
+            if any(
+                label.label_studio_project_id == project_id
+                for label in existing_labels
+            ):
+                await publish_label_studio_project(project_id)
             return 0
 
         tasks = [_build_task(image) for image in unlabeled]
@@ -100,9 +110,13 @@ async def populate_laser_label_studio_project_activity(
             )
             await fs.labels.put_laser_label(image.id, label)
 
-        return await import_tasks_and_record_labels(
+        imported = await import_tasks_and_record_labels(
             project_id=project_id,
             tasks=tasks,
             record_label=_record,
             items=unlabeled,
         )
+        # Laser imports its whole selection in one pass (no JPEG deferral),
+        # so the project's task set is now complete — safe to publish.
+        await publish_label_studio_project(project_id)
+        return imported

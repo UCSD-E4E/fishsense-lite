@@ -136,19 +136,6 @@ async def create_or_get_label_studio_project(
                 matches[0].id,
             )
         project_id = matches[0].id
-        # Self-heal drafts created before publish-on-create landed: if the
-        # existing project isn't published, publish it so labelers can see
-        # it. `is_published is False` (not falsy) avoids a needless update
-        # when the SDK omits the field.
-        if getattr(matches[0], "is_published", None) is False:
-            await asyncio.to_thread(
-                lambda: ls.projects.update(id=project_id, is_published=True)
-            )
-            activity.logger.info(
-                "Published existing draft LS project %r (id=%d)",
-                project_title,
-                project_id,
-            )
         await ensure_label_studio_s3_storage(project_id)
         return project_id
 
@@ -160,15 +147,16 @@ async def create_or_get_label_studio_project(
             "Interface -> Code) into the corresponding constant."
         )
 
-    # `is_published=True` so annotators can see the project immediately.
-    # On LS Enterprise a project created without it defaults to draft and
-    # stays invisible until an admin publishes it by hand.
+    # Created as a draft (is_published left at the LS default). Per-dive
+    # projects are only published once their task set is complete — see
+    # `publish_label_studio_project`, called by the populate activities —
+    # so a still-filling or JPEG-deferred project stays hidden from
+    # annotators until every intended task exists.
     project = await asyncio.to_thread(
         ls.projects.create,
         title=project_title,
         label_config=labeling_config_xml,
         workspace=workspace_id,
-        is_published=True,
     )
     activity.logger.info(
         "Created LS project %r (id=%d)", project_title, project.id
@@ -251,6 +239,25 @@ async def import_tasks_and_record_labels(
             activity.heartbeat()
 
     return len(task_ids)
+
+
+async def publish_label_studio_project(project_id: int) -> None:
+    """Idempotently publish an LS project so annotators can see it.
+
+    Called by the populate activities **only once a project's task set is
+    complete** — never at create time. On LS Enterprise a project is created
+    as a draft (invisible to annotators); publishing is deferred until every
+    intended task exists so a still-filling project (e.g. species images
+    whose stage-2 JPEGs haven't been processed yet, which the JPEG gate
+    defers) is never shown half-populated. `projects.update` with
+    `is_published=True` is idempotent, so re-running populate on an
+    already-complete project is a harmless no-op.
+    """
+    ls = _get_ls_client()
+    await asyncio.to_thread(
+        lambda: ls.projects.update(id=project_id, is_published=True)
+    )
+    activity.logger.info("Published LS project id=%d", project_id)
 
 
 def _get_ls_client() -> LabelStudio:

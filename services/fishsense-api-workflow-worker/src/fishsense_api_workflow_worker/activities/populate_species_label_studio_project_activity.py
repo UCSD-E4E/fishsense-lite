@@ -30,6 +30,7 @@ from temporalio import activity
 from fishsense_api_workflow_worker.activities.populate_utils import (
     build_image_url,
     import_tasks_and_record_labels,
+    publish_label_studio_project,
 )
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
 from fishsense_api_workflow_worker.object_store import open_object_store_client
@@ -156,13 +157,14 @@ async def populate_species_label_studio_project_activity(
             if image is not None:
                 images_by_id[image.id] = image
 
-        targets = _select_target_images(
+        selected = _select_target_images(
             laser_labels, images_by_id, existing_species, project_id
         )
         # Only import tasks for images whose species JPEG is already in
         # Garage (see `_gate_on_jpeg_presence`). Deferred images stay in
         # the cohort and are picked up on a later run.
-        targets = await _gate_on_jpeg_presence(targets)
+        targets = await _gate_on_jpeg_presence(selected)
+        deferred = len(selected) - len(targets)
 
         new_count = 0
         if targets:
@@ -221,5 +223,18 @@ async def populate_species_label_studio_project_activity(
             old.superseded = True
             await fs.labels.put_species_label(old.image_id, old)
             activity.heartbeat()
+
+        # Publish only when the project's task set is COMPLETE. Species tasks
+        # trickle in as stage-2 JPEGs are processed, so a run that deferred
+        # any image (JPEG not yet in Garage) leaves the project a hidden
+        # draft — never shown to annotators half-populated. Once nothing is
+        # deferred, publish iff the project holds tasks (this run's imports or
+        # a prior run's non-superseded rows for this project).
+        already_in_project = any(
+            label.label_studio_project_id == project_id and not label.superseded
+            for label in existing_species
+        )
+        if deferred == 0 and (new_count > 0 or already_in_project):
+            await publish_label_studio_project(project_id)
 
         return new_count

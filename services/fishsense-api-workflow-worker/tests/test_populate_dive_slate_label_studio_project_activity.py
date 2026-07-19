@@ -178,3 +178,42 @@ async def test_no_slate_marked_images_is_a_no_op(monkeypatch):
     assert n == 0
     ls.projects.import_tasks.assert_not_called()
     fs.labels.put_dive_slate_label.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_publishes_project_after_import(monkeypatch):
+    # Slate imports its whole selection in one pass -> project complete
+    # after import -> publish.
+    species = [
+        _species_label(1, content=sut.SLATE_CONTENT_MARKER),
+        _species_label(3, content=sut.SLATE_CONTENT_MARKER),
+    ]
+    images_by_id = {1: _image(1, "a"), 3: _image(3, "c")}
+    fs = _make_fs_client(species, existing_slate=[], images_by_id=images_by_id)
+    ls = _make_ls_client(returned_task_ids=[4001, 4002])
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    await ActivityEnvironment().run(
+        sut.populate_dive_slate_label_studio_project_activity, 42, 66
+    )
+
+    ls.projects.update.assert_called_once_with(id=66, is_published=True)
+
+
+@pytest.mark.asyncio
+async def test_does_not_publish_empty_project(monkeypatch):
+    # No slate-marked images and no existing rows -> stay a hidden draft.
+    species = [_species_label(1, content="Fish")]
+    fs = _make_fs_client(species, existing_slate=[], images_by_id={})
+    ls = _make_ls_client(returned_task_ids=[])
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    await ActivityEnvironment().run(
+        sut.populate_dive_slate_label_studio_project_activity, 42, 66
+    )
+
+    ls.projects.update.assert_not_called()
