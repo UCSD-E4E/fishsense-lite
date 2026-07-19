@@ -364,3 +364,68 @@ async def test_writes_label_with_image_url_and_groups_jpeg_folder(monkeypatch):
     assert written.image_url is not None
     assert "preprocess_groups_jpeg" in written.image_url
     assert "abc123" in written.image_url
+
+
+@pytest.mark.asyncio
+async def test_publishes_when_no_images_deferred(monkeypatch):
+    # All laser-valid images have their JPEG (autouse fixture) -> nothing
+    # deferred -> project task set complete -> publish.
+    laser = [_laser(1), _laser(2)]
+    images_by_id = {1: _image(1, "a"), 2: _image(2, "b")}
+    fs = _make_fs_client(laser, [], images_by_id)
+    ls = _make_ls_client(returned_task_ids=[1, 2])
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    await ActivityEnvironment().run(
+        sut.populate_species_label_studio_project_activity, 42, 70
+    )
+
+    ls.projects.update.assert_called_once_with(id=70, is_published=True)
+
+
+@pytest.mark.asyncio
+async def test_does_not_publish_when_an_image_is_deferred(monkeypatch):
+    # Image 2's JPEG isn't in Garage yet -> deferred -> project incomplete ->
+    # stay a hidden draft even though image 1's task imported.
+    laser = [_laser(1), _laser(2)]
+    images_by_id = {1: _image(1, "aaa"), 2: _image(2, "bbb")}
+    fs = _make_fs_client(laser, [], images_by_id)
+    ls = _make_ls_client(returned_task_ids=[9001])
+
+    store = MagicMock()
+
+    async def _has(_folder, checksum):
+        return checksum == "aaa"
+
+    store.has_processed_jpeg = AsyncMock(side_effect=_has)
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+    monkeypatch.setattr(sut, "open_object_store_client", lambda: store)
+
+    await ActivityEnvironment().run(
+        sut.populate_species_label_studio_project_activity, 42, 70
+    )
+
+    ls.projects.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_does_not_publish_empty_project(monkeypatch):
+    # No laser-valid images and no existing rows -> nothing to task ->
+    # stay a hidden draft.
+    laser = [_laser(1, completed=False)]
+    images_by_id = {1: _image(1, "a")}
+    fs = _make_fs_client(laser, [], images_by_id)
+    ls = _make_ls_client(returned_task_ids=[])
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    await ActivityEnvironment().run(
+        sut.populate_species_label_studio_project_activity, 42, 70
+    )
+
+    ls.projects.update.assert_not_called()

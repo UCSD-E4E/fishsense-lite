@@ -33,6 +33,7 @@ from temporalio import activity
 from fishsense_api_workflow_worker.activities.populate_utils import (
     build_image_url,
     import_tasks_and_record_labels,
+    publish_label_studio_project,
 )
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
 
@@ -162,5 +163,14 @@ async def populate_headtail_label_studio_project_activity(
             old.superseded = True
             await fs.labels.put_headtail_label(old.image_id, old)
             activity.heartbeat()
+
+        # Headtail imports its whole selection in one pass (no JPEG
+        # deferral), so the project's task set is complete. Publish iff it
+        # actually holds tasks so an empty project isn't shown to labelers.
+        if new_count > 0 or any(
+            label.label_studio_project_id == project_id
+            for label in existing_headtail
+        ):
+            await publish_label_studio_project(project_id)
 
         return new_count
