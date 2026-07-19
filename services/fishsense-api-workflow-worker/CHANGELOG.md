@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.41.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.41.1...fishsense-api-workflow-worker-v1.41.2) (2026-07-19)
+
+
+### Bug Fixes
+
+* **stage-raw:** retry NAS downloads with backoff + lower concurrency ([#317](https://github.com/UCSD-E4E/fishsense-lite/issues/317)) ([0016a5f](https://github.com/UCSD-E4E/fishsense-lite/commit/0016a5f73a912f4764dc785e22129ca7a9c9f659))
+
 ## [1.41.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.41.0...fishsense-api-workflow-worker-v1.41.1) (2026-07-18)
 
 
