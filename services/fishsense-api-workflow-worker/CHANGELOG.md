@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.41.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.41.3...fishsense-api-workflow-worker-v1.41.4) (2026-07-19)
+
+
+### Bug Fixes
+
+* use krg's Garage buckets (scratch vs labels split) + publish LS projects only when complete ([#324](https://github.com/UCSD-E4E/fishsense-lite/issues/324)) ([d77d4ff](https://github.com/UCSD-E4E/fishsense-lite/commit/d77d4ff2d9097c6cb8a77649b639fed18d7d5eb7))
+
 ## [1.41.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.41.2...fishsense-api-workflow-worker-v1.41.3) (2026-07-19)
 
 
