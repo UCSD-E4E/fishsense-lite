@@ -41,6 +41,12 @@ def _keys(s3) -> set[str]:
 def test_key_helpers():
     assert sut.raw_key("abc123") == "raw/abc123.ORF"
     assert sut.slate_pdf_key(7) == "slate_pdf/7.pdf"
+    assert sut.processed_jpeg_key("preprocess_jpeg", "abc") == (
+        "preprocess_jpeg/abc.JPG"
+    )
+    assert sut.processed_jpeg_key("preprocess_jpeg", "abc", "fishsense-lite") == (
+        "fishsense-lite/preprocess_jpeg/abc.JPG"
+    )
 
 
 def test_build_s3_client_uses_path_style_addressing_for_garage():
@@ -110,3 +116,50 @@ async def test_delete_raw_removes_scratch_object_and_is_idempotent(s3):
     assert first is True
     assert second is True
     assert _keys(s3) == set()
+
+
+@pytest.mark.asyncio
+async def test_has_processed_jpeg_checks_labels_bucket_and_prefix(s3):
+    # JPEGs live in the labels bucket under labels_prefix; has_processed_jpeg
+    # must look there, not in the scratch bucket.
+    labels = "labels-fishsense-test"
+    s3.create_bucket(Bucket=labels)
+    client = sut.ObjectStoreClient(
+        s3, BUCKET, labels_bucket=labels, labels_prefix="fishsense-lite"
+    )
+
+    async def _before():
+        return await client.has_processed_jpeg("preprocess_groups_jpeg", "caf")
+
+    assert await ActivityEnvironment().run(_before) is False
+
+    # Writing it into the scratch bucket must NOT count.
+    s3.put_object(
+        Bucket=BUCKET, Key="fishsense-lite/preprocess_groups_jpeg/caf.JPG", Body=b"x"
+    )
+    assert await ActivityEnvironment().run(_before) is False
+
+    # Only the labels bucket at the prefixed key counts.
+    s3.put_object(
+        Bucket=labels, Key="fishsense-lite/preprocess_groups_jpeg/caf.JPG", Body=b"x"
+    )
+    assert await ActivityEnvironment().run(_before) is True
+
+
+@pytest.mark.asyncio
+async def test_staging_uses_scratch_bucket_even_with_labels_configured(s3):
+    # Raw staging always targets the scratch bucket, never the labels bucket.
+    labels = "labels-fishsense-test"
+    s3.create_bucket(Bucket=labels)
+    client = sut.ObjectStoreClient(
+        s3, BUCKET, labels_bucket=labels, labels_prefix="fishsense-lite"
+    )
+
+    async def _run():
+        await client.upload_raw("abc123", b"RAW")
+        return await client.has_raw("abc123")
+
+    assert await ActivityEnvironment().run(_run) is True
+    assert _body(s3, "raw/abc123.ORF") == b"RAW"
+    # nothing written to the labels bucket
+    assert s3.list_objects_v2(Bucket=labels).get("Contents", []) == []

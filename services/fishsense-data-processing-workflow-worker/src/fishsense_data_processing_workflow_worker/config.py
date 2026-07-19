@@ -51,7 +51,12 @@ _VALIDATORS = [
         condition=url_condition,
     ),
     Validator("object_store.region", required=True, cast=str, default="garage"),
+    # `bucket` = raw/slate **scratch** (read here). Processed JPEGs are
+    # written to `labels_bucket` under `labels_prefix` — the LS-facing bucket.
+    # `labels_bucket` defaults to `bucket`; `labels_prefix` defaults to "".
     Validator("object_store.bucket", required=True, cast=str),
+    Validator("object_store.labels_bucket", cast=str),
+    Validator("object_store.labels_prefix", cast=str, default=""),
     Validator("object_store.access_key", required=True, cast=str),
     Validator("object_store.secret_key", required=True, cast=str),
 ]

@@ -41,9 +41,16 @@ def build_image_url(folder: str, checksum: str) -> str:
     at. There's no virtual->physical rewrite layer anymore, which is
     why the old nginx alias mismatch (issue #113) is gone by
     construction.
+
+    JPEGs live in the **labels** bucket (LS-facing) under the optional
+    `labels_prefix`, separate from the raw/slate scratch `bucket`. Falls
+    back to `bucket`/no-prefix for single-bucket layouts.
     """
-    bucket = settings.object_store.bucket
-    return f"s3://{bucket}/{folder}/{checksum}.JPG"
+    obj = settings.object_store
+    bucket = obj.get("labels_bucket", None) or obj.bucket
+    prefix = (obj.get("labels_prefix", "") or "").strip("/")
+    key = f"{prefix}/{folder}/{checksum}.JPG" if prefix else f"{folder}/{checksum}.JPG"
+    return f"s3://{bucket}/{key}"
 
 
 def _ls_s3_presign_credentials() -> tuple[str, str]:
@@ -70,7 +77,12 @@ async def ensure_label_studio_s3_storage(project_id: int) -> None:
     exists only to enable presigning.
     """
     ls = _get_ls_client()
-    bucket = settings.object_store.bucket
+    obj = settings.object_store
+    # LS serves JPEGs from the labels bucket; register storage against it
+    # (not the scratch bucket). Prefix scopes it within the shared labels
+    # bucket, mirroring the coral-gardeners layout.
+    bucket = obj.get("labels_bucket", None) or obj.bucket
+    prefix = (obj.get("labels_prefix", "") or "").strip("/")
 
     existing = await asyncio.to_thread(
         lambda: list(ls.import_storage.s3.list(project=project_id))
@@ -83,19 +95,20 @@ async def ensure_label_studio_s3_storage(project_id: int) -> None:
             return
 
     access_key, secret_key = _ls_s3_presign_credentials()
-    await asyncio.to_thread(
-        lambda: ls.import_storage.s3.create(
-            project=project_id,
-            title=LS_S3_STORAGE_TITLE,
-            bucket=bucket,
-            s3endpoint=settings.object_store.endpoint_url,
-            region_name=settings.object_store.region,
-            aws_access_key_id=access_key,
-            aws_secret_access_key=secret_key,
-            presign=True,
-            use_blob_urls=False,
-        )
-    )
+    create_kwargs = {
+        "project": project_id,
+        "title": LS_S3_STORAGE_TITLE,
+        "bucket": bucket,
+        "s3endpoint": settings.object_store.endpoint_url,
+        "region_name": settings.object_store.region,
+        "aws_access_key_id": access_key,
+        "aws_secret_access_key": secret_key,
+        "presign": True,
+        "use_blob_urls": False,
+    }
+    if prefix:
+        create_kwargs["prefix"] = prefix
+    await asyncio.to_thread(lambda: ls.import_storage.s3.create(**create_kwargs))
     activity.logger.info(
         "registered LS S3 storage project_id=%d bucket=%s", project_id, bucket
     )
@@ -136,19 +149,6 @@ async def create_or_get_label_studio_project(
                 matches[0].id,
             )
         project_id = matches[0].id
-        # Self-heal drafts created before publish-on-create landed: if the
-        # existing project isn't published, publish it so labelers can see
-        # it. `is_published is False` (not falsy) avoids a needless update
-        # when the SDK omits the field.
-        if getattr(matches[0], "is_published", None) is False:
-            await asyncio.to_thread(
-                lambda: ls.projects.update(id=project_id, is_published=True)
-            )
-            activity.logger.info(
-                "Published existing draft LS project %r (id=%d)",
-                project_title,
-                project_id,
-            )
         await ensure_label_studio_s3_storage(project_id)
         return project_id
 
@@ -160,15 +160,16 @@ async def create_or_get_label_studio_project(
             "Interface -> Code) into the corresponding constant."
         )
 
-    # `is_published=True` so annotators can see the project immediately.
-    # On LS Enterprise a project created without it defaults to draft and
-    # stays invisible until an admin publishes it by hand.
+    # Created as a draft (is_published left at the LS default). Per-dive
+    # projects are only published once their task set is complete — see
+    # `publish_label_studio_project`, called by the populate activities —
+    # so a still-filling or JPEG-deferred project stays hidden from
+    # annotators until every intended task exists.
     project = await asyncio.to_thread(
         ls.projects.create,
         title=project_title,
         label_config=labeling_config_xml,
         workspace=workspace_id,
-        is_published=True,
     )
     activity.logger.info(
         "Created LS project %r (id=%d)", project_title, project.id
@@ -251,6 +252,25 @@ async def import_tasks_and_record_labels(
             activity.heartbeat()
 
     return len(task_ids)
+
+
+async def publish_label_studio_project(project_id: int) -> None:
+    """Idempotently publish an LS project so annotators can see it.
+
+    Called by the populate activities **only once a project's task set is
+    complete** — never at create time. On LS Enterprise a project is created
+    as a draft (invisible to annotators); publishing is deferred until every
+    intended task exists so a still-filling project (e.g. species images
+    whose stage-2 JPEGs haven't been processed yet, which the JPEG gate
+    defers) is never shown half-populated. `projects.update` with
+    `is_published=True` is idempotent, so re-running populate on an
+    already-complete project is a harmless no-op.
+    """
+    ls = _get_ls_client()
+    await asyncio.to_thread(
+        lambda: ls.projects.update(id=project_id, is_published=True)
+    )
+    activity.logger.info("Published LS project id=%d", project_id)
 
 
 def _get_ls_client() -> LabelStudio:

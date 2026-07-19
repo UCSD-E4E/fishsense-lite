@@ -56,14 +56,18 @@ def slate_pdf_key(slate_id: int) -> str:
     return f"{SLATE_PDF_PREFIX}/{slate_id}.pdf"
 
 
-def processed_jpeg_key(folder: str, checksum: str) -> str:
+def processed_jpeg_key(folder: str, checksum: str, prefix: str = "") -> str:
     """Physical Garage key for a data-worker-written processed JPEG.
 
     `folder` is the per-stage prefix (`preprocess_groups_jpeg`,
     `preprocess_jpeg`, `preprocess_headtail_jpeg`,
-    `preprocess_slate_images_jpeg`) — the exact key the JPEG lives at.
+    `preprocess_slate_images_jpeg`). `prefix` is the optional
+    `labels_prefix` that partitions our JPEGs within the shared labels
+    bucket (mirrors the coral-gardeners prefix); empty → no prefix.
     """
-    return f"{folder}/{checksum}.JPG"
+    base = f"{folder}/{checksum}.JPG"
+    prefix = (prefix or "").strip("/")
+    return f"{prefix}/{base}" if prefix else base
 
 
 def build_s3_client(
@@ -105,22 +109,36 @@ def open_object_store_client() -> "ObjectStoreClient":
         access_key=settings.object_store.access_key,
         secret_key=settings.object_store.secret_key,
     )
-    return ObjectStoreClient(s3, settings.object_store.bucket)
+    return ObjectStoreClient(
+        s3,
+        settings.object_store.bucket,
+        labels_bucket=settings.object_store.get("labels_bucket", None),
+        labels_prefix=settings.object_store.get("labels_prefix", "") or "",
+    )
 
 
 class ObjectStoreClient:
     """Thin async wrapper over a boto3 S3 client for the api-worker's
     staging + scratch-cleanup needs. Constructed per-activity-call; the
-    boto3 client is injected so tests can pass a moto-backed one."""
+    boto3 client is injected so tests can pass a moto-backed one.
 
-    def __init__(self, s3, bucket: str):
+    Staging (raw/slate) lives in ``bucket`` (scratch); processed JPEGs that
+    Label Studio serves live in ``labels_bucket`` under ``labels_prefix``.
+    ``labels_bucket`` defaults to ``bucket`` so single-bucket layouts keep
+    working unchanged."""
+
+    def __init__(self, s3, bucket: str, labels_bucket=None, labels_prefix=""):
         self._s3 = s3
         self._bucket = bucket
+        self._labels_bucket = labels_bucket or bucket
+        self._labels_prefix = labels_prefix or ""
 
-    async def _exists(self, key: str) -> bool:
+    async def _exists(self, key: str, bucket: str | None = None) -> bool:
+        target = bucket or self._bucket
+
         def _do() -> bool:
             try:
-                self._s3.head_object(Bucket=self._bucket, Key=key)
+                self._s3.head_object(Bucket=target, Key=key)
                 return True
             except ClientError as exc:
                 code = exc.response.get("Error", {}).get("Code", "")
@@ -153,8 +171,12 @@ class ObjectStoreClient:
         activity to gate task import on the JPEG existing (a decoupled
         populate must never seed rows for an image whose JPEG isn't
         written yet — that would drop the dive out of the preprocess
-        cohort with a broken image)."""
-        return await self._exists(processed_jpeg_key(folder, checksum))
+        cohort with a broken image). Checks the **labels** bucket/prefix
+        where the data-worker writes JPEGs."""
+        return await self._exists(
+            processed_jpeg_key(folder, checksum, self._labels_prefix),
+            bucket=self._labels_bucket,
+        )
 
     async def upload_raw(self, checksum: str, data: bytes) -> None:
         await self._put(raw_key(checksum), data)

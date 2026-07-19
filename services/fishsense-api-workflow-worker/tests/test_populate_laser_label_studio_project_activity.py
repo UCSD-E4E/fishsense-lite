@@ -230,3 +230,41 @@ async def test_aborts_when_import_tasks_returns_wrong_count(monkeypatch):
         )
 
     fs.labels.put_laser_label.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_publishes_project_after_import(monkeypatch):
+    # Laser imports its whole selection in one pass, so the project is
+    # complete after import -> publish it.
+    images = [_image(1, "a"), _image(2, "b")]
+    fs = _make_fs_client(images, [])
+    ls = _make_ls_client(returned_task_ids=[1001, 1002])
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    await ActivityEnvironment().run(
+        sut.populate_laser_label_studio_project_activity, 42, 73
+    )
+
+    ls.projects.update.assert_called_once_with(id=73, is_published=True)
+
+
+@pytest.mark.asyncio
+async def test_does_not_publish_empty_project(monkeypatch):
+    # Fully-labeled dive whose only rows point at an OLD project (99): the
+    # fresh per-dive project (73) gets no tasks and must stay a hidden draft.
+    images = [_image(1, "a")]
+    existing = [_label(1, completed=True, project_id=99)]
+    fs = _make_fs_client(images, existing)
+    ls = _make_ls_client(returned_task_ids=[])
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    n = await ActivityEnvironment().run(
+        sut.populate_laser_label_studio_project_activity, 42, 73
+    )
+
+    assert n == 0
+    ls.projects.update.assert_not_called()

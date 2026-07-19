@@ -230,3 +230,40 @@ async def test_no_valid_laser_targets_skips_import_but_still_supersedes(monkeypa
     fs.labels.put_headtail_label.assert_awaited_once()
     written = fs.labels.put_headtail_label.await_args.args[1]
     assert written.superseded is True
+
+
+@pytest.mark.asyncio
+async def test_publishes_project_after_import(monkeypatch):
+    # Headtail imports its whole selection in one pass -> project complete
+    # after import -> publish.
+    laser = [_laser(1), _laser(2)]
+    images_by_id = {1: _image(1, "a"), 2: _image(2, "b")}
+    fs = _make_fs_client(laser, [], images_by_id)
+    ls = _make_ls_client(returned_task_ids=[3001, 3002])
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    await ActivityEnvironment().run(
+        sut.populate_headtail_label_studio_project_activity, 42, 71
+    )
+
+    ls.projects.update.assert_called_once_with(id=71, is_published=True)
+
+
+@pytest.mark.asyncio
+async def test_does_not_publish_empty_project(monkeypatch):
+    # No laser-valid images and no existing rows -> stay a hidden draft.
+    laser = [_laser(1, completed=False)]
+    images_by_id = {1: _image(1, "a")}
+    fs = _make_fs_client(laser, [], images_by_id)
+    ls = _make_ls_client(returned_task_ids=[])
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    await ActivityEnvironment().run(
+        sut.populate_headtail_label_studio_project_activity, 42, 71
+    )
+
+    ls.projects.update.assert_not_called()
