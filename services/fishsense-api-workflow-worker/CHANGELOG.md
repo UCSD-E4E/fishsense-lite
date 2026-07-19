@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.41.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.41.2...fishsense-api-workflow-worker-v1.41.3) (2026-07-19)
+
+
+### Bug Fixes
+
+* **label-studio:** publish per-dive projects on create ([#321](https://github.com/UCSD-E4E/fishsense-lite/issues/321)) ([3392964](https://github.com/UCSD-E4E/fishsense-lite/commit/339296464852933d42052ec958f818879aa72e1b))
+
 ## [1.41.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.41.1...fishsense-api-workflow-worker-v1.41.2) (2026-07-19)
 
 
