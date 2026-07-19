@@ -199,7 +199,7 @@ services:
 
   # ── api-side Temporal worker (hourly schedules, LS sync, preprocess parents) ───────────
   fishsense-api-workflow-worker:
-    image: ghcr.io/ucsd-e4e/fishsense-api-workflow-worker:v1.41.3
+    image: ghcr.io/ucsd-e4e/fishsense-api-workflow-worker:v1.41.4
     restart: unless-stopped
     # Secrets as dynaconf E4EFS_* env overrides from the vault-agent render
     # (API basic-auth, Garage keys, LS key, NAS creds — see secrets.nix).
