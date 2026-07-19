@@ -33,6 +33,7 @@ from unittest.mock import AsyncMock, MagicMock
 import boto3
 import pytest
 from moto import mock_aws
+from synology_filestation import TransportError
 from temporalio.testing import ActivityEnvironment
 
 from fishsense_api_sdk.models.image import Image
@@ -341,3 +342,55 @@ async def test_relative_image_paths_get_prefixed_before_nas_download(monkeypatch
         )
         # Object-store PUT still keys on checksum, not the rewritten path.
         assert _raw_keys(s3) == {raw_key("aaa")}
+
+
+@pytest.mark.asyncio
+async def test_retries_transient_transport_error_then_succeeds(monkeypatch):
+    """A 502 (TransportError) that clears on retry stages successfully —
+    one flaky FileStation download must not fail the whole dive."""
+    monkeypatch.setattr(sut, "NAS_DOWNLOAD_RETRY_INITIAL_SECONDS", 0.0)
+    images = [_image(1, checksum="aaa")]
+    fs = _make_fs(images)
+    nas = _make_nas()
+    nas.download_to.side_effect = [
+        TransportError("download HTTP 502 Bad Gateway"),
+        TransportError("download HTTP 502 Bad Gateway"),
+        None,  # third attempt succeeds
+    ]
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+    _patch_tempfile_read(monkeypatch, b"raw-bytes")
+
+    with _moto_store(monkeypatch) as s3:
+        result = await ActivityEnvironment().run(
+            sut.stage_raw_bytes_for_dive_activity, 42
+        )
+
+        assert result.staged == 1
+        assert nas.download_to.call_count == 3
+        assert _raw_keys(s3) == {raw_key("aaa")}
+
+
+@pytest.mark.asyncio
+async def test_persistent_502_exhausts_retries_and_never_skips(monkeypatch):
+    """A persistent 502 exhausts the retries and fails the activity — the
+    file is NOT skipped. Skipping would stage the dive incomplete (a
+    missing raw) and hide a real NAS/data problem, so the failure must
+    surface."""
+    monkeypatch.setattr(sut, "NAS_DOWNLOAD_RETRY_INITIAL_SECONDS", 0.0)
+    images = [_image(1, checksum="aaa")]
+    fs = _make_fs(images)
+    nas = _make_nas()
+    nas.download_to.side_effect = TransportError("download HTTP 502 Bad Gateway")
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+
+    with _moto_store(monkeypatch) as s3:
+        with pytest.raises((ExceptionGroup, TransportError)):
+            await ActivityEnvironment().run(
+                sut.stage_raw_bytes_for_dive_activity, 42
+            )
+
+        assert nas.download_to.call_count == sut.NAS_DOWNLOAD_MAX_ATTEMPTS
+        # nothing partially staged
+        assert _raw_keys(s3) == set()
