@@ -24,6 +24,7 @@ with workflow.unsafe.imports_passed_through():
     from fishsense_api_workflow_worker.workflows._retry_policies import (
         SCALING_RETRY_POLICY,
         SDK_FAIL_FAST_RETRY_POLICY,
+        STAGE_RAW_RETRY_POLICY,
     )
 
 DATA_PROCESSING_TASK_QUEUE = "fishsense_data_processing_queue"
@@ -86,6 +87,7 @@ class PreprocessSlateImagesParentWorkflow:
             args=(dive_id,),
             schedule_to_close_timeout=timedelta(hours=1),
             heartbeat_timeout=timedelta(minutes=5),
+            retry_policy=STAGE_RAW_RETRY_POLICY,
         )
         await workflow.execute_activity(
             "stage_slate_pdf_activity",

@@ -35,3 +35,20 @@ SCALING_RETRY_POLICY = RetryPolicy(
     initial_interval=timedelta(seconds=2),
     maximum_attempts=3,
 )
+
+# Raw staging pulls `.ORF` from the NAS FileStation download API, whose
+# shared synoscgi backend 502s under concurrent large-file load. A 502
+# should self-heal on a *bounded, backed-off* reschedule — NOT an
+# unbounded inner loop under this policy, which produced a 200×-per-file
+# storm that tripped the NAS auto-block (krg-infra#501). Cap attempts so a
+# persistent outage fails the firing in ~a minute and the hourly schedule
+# owns re-trying; Temporal adds jitter to the interval automatically.
+# `NasFileNotFound` (Synology 408) is non-retryable — a missing raw won't
+# appear by retrying, so fail the firing fast instead of burning attempts.
+STAGE_RAW_RETRY_POLICY = RetryPolicy(
+    initial_interval=timedelta(seconds=2),
+    backoff_coefficient=2.0,
+    maximum_interval=timedelta(seconds=60),
+    maximum_attempts=5,
+    non_retryable_error_types=["NasFileNotFound"],
+)

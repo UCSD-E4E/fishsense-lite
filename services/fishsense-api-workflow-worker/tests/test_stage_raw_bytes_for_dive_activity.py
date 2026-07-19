@@ -33,7 +33,8 @@ from unittest.mock import AsyncMock, MagicMock
 import boto3
 import pytest
 from moto import mock_aws
-from synology_filestation import TransportError
+from synology_filestation import DSMError, TransportError
+from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment
 
 from fishsense_api_sdk.models.image import Image
@@ -345,39 +346,11 @@ async def test_relative_image_paths_get_prefixed_before_nas_download(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_retries_transient_transport_error_then_succeeds(monkeypatch):
-    """A 502 (TransportError) that clears on retry stages successfully —
-    one flaky FileStation download must not fail the whole dive."""
-    monkeypatch.setattr(sut, "NAS_DOWNLOAD_RETRY_INITIAL_SECONDS", 0.0)
-    images = [_image(1, checksum="aaa")]
-    fs = _make_fs(images)
-    nas = _make_nas()
-    nas.download_to.side_effect = [
-        TransportError("download HTTP 502 Bad Gateway"),
-        TransportError("download HTTP 502 Bad Gateway"),
-        None,  # third attempt succeeds
-    ]
-    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
-    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
-    _patch_tempfile_read(monkeypatch, b"raw-bytes")
-
-    with _moto_store(monkeypatch) as s3:
-        result = await ActivityEnvironment().run(
-            sut.stage_raw_bytes_for_dive_activity, 42
-        )
-
-        assert result.staged == 1
-        assert nas.download_to.call_count == 3
-        assert _raw_keys(s3) == {raw_key("aaa")}
-
-
-@pytest.mark.asyncio
-async def test_persistent_502_exhausts_retries_and_never_skips(monkeypatch):
-    """A persistent 502 exhausts the retries and fails the activity — the
-    file is NOT skipped. Skipping would stage the dive incomplete (a
-    missing raw) and hide a real NAS/data problem, so the failure must
-    surface."""
-    monkeypatch.setattr(sut, "NAS_DOWNLOAD_RETRY_INITIAL_SECONDS", 0.0)
+async def test_transient_502_propagates_without_inner_retry(monkeypatch):
+    """A 502 (TransportError) fails the activity so Temporal's bounded,
+    backed-off retry_policy reschedules it — the activity itself does NOT
+    loop internally (that inner-under-outer retry is what produced the
+    storm). One attempt per activity execution; nothing staged."""
     images = [_image(1, checksum="aaa")]
     fs = _make_fs(images)
     nas = _make_nas()
@@ -386,11 +359,78 @@ async def test_persistent_502_exhausts_retries_and_never_skips(monkeypatch):
     monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
 
     with _moto_store(monkeypatch) as s3:
-        with pytest.raises((ExceptionGroup, TransportError)):
+        with pytest.raises(BaseException) as excinfo:
             await ActivityEnvironment().run(
                 sut.stage_raw_bytes_for_dive_activity, 42
             )
-
-        assert nas.download_to.call_count == sut.NAS_DOWNLOAD_MAX_ATTEMPTS
-        # nothing partially staged
+        # transient -> NOT surfaced as a non-retryable ApplicationError
+        leaves = list(sut._iter_leaf_exceptions(excinfo.value))  # pylint: disable=protected-access
+        assert not any(
+            isinstance(leaf, ApplicationError) and leaf.non_retryable
+            for leaf in leaves
+        )
+        assert nas.download_to.call_count == 1  # no inner retry loop
         assert _raw_keys(s3) == set()
+
+
+@pytest.mark.asyncio
+async def test_permanent_408_raises_non_retryable_application_error(monkeypatch):
+    """Synology 408 ("no such file") is permanent — surfaced un-wrapped as
+    a non-retryable ApplicationError so Temporal fails the firing fast
+    instead of burning the retry budget on a doomed staging. The file is
+    never skipped, so the missing raw is not silently dropped."""
+    images = [_image(1, checksum="aaa")]
+    fs = _make_fs(images)
+    nas = _make_nas()
+    nas.download_to.side_effect = DSMError("Synology API error 408")
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+
+    with _moto_store(monkeypatch) as s3:
+        with pytest.raises(ApplicationError) as excinfo:
+            await ActivityEnvironment().run(
+                sut.stage_raw_bytes_for_dive_activity, 42
+            )
+        assert excinfo.value.non_retryable is True
+        assert excinfo.value.type == sut.NAS_FILE_NOT_FOUND_TYPE
+        assert nas.download_to.call_count == 1
+        assert _raw_keys(s3) == set()
+
+
+@pytest.mark.asyncio
+async def test_transient_dsm_407_propagates_retryable(monkeypatch):
+    """407 was the backend fail-closing during the incident — transient,
+    so it must NOT be classified permanent; it propagates for Temporal to
+    back off and retry."""
+    images = [_image(1, checksum="aaa")]
+    fs = _make_fs(images)
+    nas = _make_nas()
+    nas.download_to.side_effect = DSMError("Synology API error 407")
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+
+    with _moto_store(monkeypatch):
+        with pytest.raises(BaseException) as excinfo:
+            await ActivityEnvironment().run(
+                sut.stage_raw_bytes_for_dive_activity, 42
+            )
+        leaves = list(sut._iter_leaf_exceptions(excinfo.value))  # pylint: disable=protected-access
+        assert not any(
+            isinstance(leaf, ApplicationError) and leaf.non_retryable
+            for leaf in leaves
+        )
+
+
+def test_stage_raw_retry_policy_is_bounded_and_marks_missing_file_non_retryable():
+    """Contract between the activity and the parents' retry policy: the
+    non-retryable ApplicationError `type` the activity raises for a
+    permanent (408) error must be exactly what the policy lists in
+    `non_retryable_error_types`, and attempts must be bounded (no storm)."""
+    from fishsense_api_workflow_worker.workflows._retry_policies import (  # pylint: disable=import-outside-toplevel
+        STAGE_RAW_RETRY_POLICY,
+    )
+
+    assert STAGE_RAW_RETRY_POLICY.maximum_attempts == 5
+    assert sut.NAS_FILE_NOT_FOUND_TYPE in (
+        STAGE_RAW_RETRY_POLICY.non_retryable_error_types or []
+    )
