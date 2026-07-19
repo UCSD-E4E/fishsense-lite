@@ -16,30 +16,33 @@ this activity prepends `e4e_nas.raw_root_path` (default
 prefix, FileStation's download endpoint fails with a 502 (it surfaces
 unresolved paths as Bad Gateway on the download API specifically).
 
-Failure semantics: a transient `TransportError` (502 Bad Gateway from
-FileStation's download backend) on a single file is retried with
-exponential backoff (`NAS_DOWNLOAD_MAX_ATTEMPTS`); anything still
-failing after that — or any non-transient error — raises and aborts
-the whole activity. Files are never skipped: a silently-missing raw
-would stage the dive incomplete and hide a real NAS/data problem, so a
-persistent failure is surfaced, not swallowed. The next firing of the
-parent schedule retries from scratch — skip-on-present makes that cheap
-for already-staged work. `STAGE_CONCURRENCY` is deliberately low so a
-backlog of dives doesn't saturate FileStation's download backend (which
-502s under concurrent large-`.ORF` load, and can auto-block a client
-that hammers it).
+Failure semantics: retry/backoff is owned by the **bounded, jittered
+Temporal `retry_policy`** on the activity call (`STAGE_RAW_RETRY_POLICY`),
+NOT an inner loop — an inner retry under Temporal's outer retry is what
+produced the 200×-per-file storm that tripped the NAS auto-block
+(krg-infra#501). Transient errors (502 `TransportError`, 407 backend
+fail-closed, 402 busy) propagate so Temporal backs off and retries a
+bounded number of times, then fails the firing; the hourly schedule owns
+re-trying after that. A *permanent* error (Synology 408 "no such file")
+is raised as a non-retryable ApplicationError so Temporal doesn't
+reschedule a doomed staging. Files are never skipped — a silently-missing
+raw would stage the dive incomplete and hide a real NAS/data problem, so
+failures surface. `STAGE_CONCURRENCY` is deliberately low so a backlog of
+dives doesn't saturate FileStation's shared download backend.
 """
 
 from __future__ import annotations
 
 import asyncio
 import os
+import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from synology_filestation import TransportError
+from synology_filestation import DSMError
 from temporalio import activity
+from temporalio.exceptions import ApplicationError
 
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
 from fishsense_api_workflow_worker.config import settings
@@ -47,24 +50,29 @@ from fishsense_api_workflow_worker.object_store import open_object_store_client
 from fishsense_api_workflow_worker.nas import NasDownloadClient
 
 # Lowered from 8 → 3: FileStation's download backend (DSM nginx →
-# synoscgi) buckles under many concurrent large-`.ORF` transfers and
-# starts returning 502; fewer parallel downloads keep us under that
-# threshold and stop the worker from tripping the NAS's auto-block.
+# synoscgi) is a shared per-appliance CGI service that buckles under many
+# concurrent large-`.ORF` transfers and starts returning 502. A handful
+# of streams is what it's sized for; fewer parallel downloads keep us
+# under that threshold and stop the worker tripping the NAS's auto-block.
 STAGE_CONCURRENCY = 3
 
-# Per-file download retry. `TransportError` is what the Synology client
-# raises for a 502 Bad Gateway (DSM's nginx couldn't reach its own
-# FileStation download backend) — usually transient, so retry with
-# backoff instead of failing the whole dive on the first blip. We never
-# *skip* a file after exhaustion: a silently-missing raw would yield an
-# incomplete dive, so exhaustion re-raises and the activity fails loudly.
-NAS_DOWNLOAD_MAX_ATTEMPTS = 4
-NAS_DOWNLOAD_RETRY_INITIAL_SECONDS = 2.0
-NAS_DOWNLOAD_RETRY_BACKOFF = 2.0
+# `type` on the non-retryable ApplicationError we raise for a missing
+# file; must match `non_retryable_error_types` in STAGE_RAW_RETRY_POLICY.
+NAS_FILE_NOT_FOUND_TYPE = "NasFileNotFound"
+
+# Synology FileStation error codes that are *permanent* — retrying can't
+# help, so we fail the dive fast (non-retryable) instead of burning the
+# Temporal retry budget. 408 = "No such file or directory". Transient
+# codes (502 TransportError, 407 backend-fail-closed, 402 busy) are left
+# to propagate so the bounded Temporal retry policy backs off and retries.
+# NOTE: this string-parses the DSM code because the client doesn't expose
+# it structurally yet — remove once `synology-filestation` classifies
+# errors upstream (feedback filed).
+_PERMANENT_DSM_CODES = frozenset({408})
 
 __all__ = [
     "STAGE_CONCURRENCY",
-    "NAS_DOWNLOAD_MAX_ATTEMPTS",
+    "NAS_FILE_NOT_FOUND_TYPE",
     "StageRawBytesResult",
     "stage_raw_bytes_for_dive_activity",
 ]
@@ -90,39 +98,49 @@ def _build_nas_client() -> NasDownloadClient:
 
 
 
-async def _download_with_retry(nas, *, src_path: str, dest_dir: str) -> None:
-    """Download one file, retrying a transient `TransportError` (502 Bad
-    Gateway from FileStation's download backend) with exponential
-    backoff.
+def _iter_leaf_exceptions(exc: BaseException):
+    """Yield leaf (non-group) exceptions from a possibly-nested
+    ExceptionGroup, so a wrapped classification can be recovered."""
+    if isinstance(exc, BaseExceptionGroup):
+        for sub in exc.exceptions:
+            yield from _iter_leaf_exceptions(sub)
+    else:
+        yield exc
 
-    Re-raises on the final attempt — callers must NOT swallow it. Skipping
-    a file that can't be fetched would stage the dive incomplete (missing
-    raws → missing preprocessed images) and hide a real NAS/data problem;
-    a hard failure surfaces it. The backoff also throttles our request
-    rate so we stop hammering an already-struggling NAS.
+
+def _dsm_error_code(exc: BaseException) -> int | None:
+    """Best-effort extract the Synology FileStation error code from a
+    `DSMError` (whose message is `"Synology API error <code>"`). Interim
+    until the client exposes the code structurally."""
+    match = re.search(r"error\s+(\d+)", str(exc))
+    return int(match.group(1)) if match else None
+
+
+async def _download_one(nas, *, src_path: str, dest_dir: str) -> None:
+    """Download a single file. Retry/backoff is intentionally NOT here —
+    the bounded, jittered Temporal `retry_policy` on the activity owns
+    that (an inner loop under Temporal's outer retry is what produced the
+    200×-per-file storm). We only classify: a *permanent* FileStation
+    error (e.g. 408 "no such file") becomes a non-retryable
+    ApplicationError so Temporal doesn't reschedule a doomed staging;
+    transient errors (502/407/402) propagate and Temporal backs off.
+
+    Never skip a file: a silently-missing raw would stage the dive
+    incomplete and hide a real NAS/data problem, so failures surface.
     """
-    delay = NAS_DOWNLOAD_RETRY_INITIAL_SECONDS
-    for attempt in range(1, NAS_DOWNLOAD_MAX_ATTEMPTS + 1):
-        try:
-            await asyncio.to_thread(
-                nas.download_to, src_path=src_path, dest_dir=dest_dir
-            )
-            return
-        except TransportError as exc:
-            if attempt >= NAS_DOWNLOAD_MAX_ATTEMPTS:
-                raise
-            activity.logger.warning(
-                "nas download transient failure src=%s attempt=%d/%d: %s; "
-                "backing off %.1fs",
-                src_path,
-                attempt,
-                NAS_DOWNLOAD_MAX_ATTEMPTS,
-                exc,
-                delay,
-            )
-            activity.heartbeat()
-            await asyncio.sleep(delay)
-            delay *= NAS_DOWNLOAD_RETRY_BACKOFF
+    try:
+        await asyncio.to_thread(
+            nas.download_to, src_path=src_path, dest_dir=dest_dir
+        )
+    except DSMError as exc:
+        code = _dsm_error_code(exc)
+        if code in _PERMANENT_DSM_CODES:
+            raise ApplicationError(
+                f"NAS file not found (Synology {code}): {src_path}",
+                type=NAS_FILE_NOT_FOUND_TYPE,
+                non_retryable=True,
+            ) from exc
+        raise
 
 
 def _resolve_nas_path(relative_path: str) -> str:
@@ -178,9 +196,7 @@ async def stage_raw_bytes_for_dive_activity(
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 src_path = _resolve_nas_path(image.path)
-                await _download_with_retry(
-                    nas, src_path=src_path, dest_dir=tmpdir
-                )
+                await _download_one(nas, src_path=src_path, dest_dir=tmpdir)
                 local_path = Path(tmpdir) / os.path.basename(src_path)
                 data = await asyncio.to_thread(local_path.read_bytes)
                 await exchange.upload_raw(image.checksum, data)
@@ -188,9 +204,23 @@ async def stage_raw_bytes_for_dive_activity(
                 activity.heartbeat()
                 return "staged"
 
-    async with asyncio.TaskGroup() as tg:
-        for image in images:
-            tg.create_task(_stage_one(image))
+    try:
+        async with asyncio.TaskGroup() as tg:
+            for image in images:
+                tg.create_task(_stage_one(image))
+    except BaseExceptionGroup as group:
+        # TaskGroup wraps every failure in an ExceptionGroup, which would
+        # mask a sub-exception's non_retryable flag from Temporal. Surface
+        # a permanent classification (408 -> non-retryable ApplicationError)
+        # un-wrapped so Temporal honours it and doesn't reschedule a doomed
+        # staging; otherwise re-raise the group (transient -> Temporal
+        # retries under the bounded policy).
+        for leaf in _iter_leaf_exceptions(group):
+            if isinstance(leaf, ApplicationError) and leaf.non_retryable:
+                # `leaf` already carries its own `from exc` (the DSMError)
+                # cause; chaining it to the group would be wrong.
+                raise leaf  # pylint: disable=raise-missing-from
+        raise
 
     activity.logger.info(
         "staged dive_id=%d staged=%d skipped=%d no_path=%d",
