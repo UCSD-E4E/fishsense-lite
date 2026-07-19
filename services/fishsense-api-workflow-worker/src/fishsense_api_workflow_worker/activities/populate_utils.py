@@ -41,9 +41,16 @@ def build_image_url(folder: str, checksum: str) -> str:
     at. There's no virtual->physical rewrite layer anymore, which is
     why the old nginx alias mismatch (issue #113) is gone by
     construction.
+
+    JPEGs live in the **labels** bucket (LS-facing) under the optional
+    `labels_prefix`, separate from the raw/slate scratch `bucket`. Falls
+    back to `bucket`/no-prefix for single-bucket layouts.
     """
-    bucket = settings.object_store.bucket
-    return f"s3://{bucket}/{folder}/{checksum}.JPG"
+    obj = settings.object_store
+    bucket = obj.get("labels_bucket", None) or obj.bucket
+    prefix = (obj.get("labels_prefix", "") or "").strip("/")
+    key = f"{prefix}/{folder}/{checksum}.JPG" if prefix else f"{folder}/{checksum}.JPG"
+    return f"s3://{bucket}/{key}"
 
 
 def _ls_s3_presign_credentials() -> tuple[str, str]:
@@ -70,7 +77,12 @@ async def ensure_label_studio_s3_storage(project_id: int) -> None:
     exists only to enable presigning.
     """
     ls = _get_ls_client()
-    bucket = settings.object_store.bucket
+    obj = settings.object_store
+    # LS serves JPEGs from the labels bucket; register storage against it
+    # (not the scratch bucket). Prefix scopes it within the shared labels
+    # bucket, mirroring the coral-gardeners layout.
+    bucket = obj.get("labels_bucket", None) or obj.bucket
+    prefix = (obj.get("labels_prefix", "") or "").strip("/")
 
     existing = await asyncio.to_thread(
         lambda: list(ls.import_storage.s3.list(project=project_id))
@@ -83,19 +95,20 @@ async def ensure_label_studio_s3_storage(project_id: int) -> None:
             return
 
     access_key, secret_key = _ls_s3_presign_credentials()
-    await asyncio.to_thread(
-        lambda: ls.import_storage.s3.create(
-            project=project_id,
-            title=LS_S3_STORAGE_TITLE,
-            bucket=bucket,
-            s3endpoint=settings.object_store.endpoint_url,
-            region_name=settings.object_store.region,
-            aws_access_key_id=access_key,
-            aws_secret_access_key=secret_key,
-            presign=True,
-            use_blob_urls=False,
-        )
+    create_kwargs = dict(
+        project=project_id,
+        title=LS_S3_STORAGE_TITLE,
+        bucket=bucket,
+        s3endpoint=settings.object_store.endpoint_url,
+        region_name=settings.object_store.region,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        presign=True,
+        use_blob_urls=False,
     )
+    if prefix:
+        create_kwargs["prefix"] = prefix
+    await asyncio.to_thread(lambda: ls.import_storage.s3.create(**create_kwargs))
     activity.logger.info(
         "registered LS S3 storage project_id=%d bucket=%s", project_id, bucket
     )

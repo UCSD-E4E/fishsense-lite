@@ -142,3 +142,40 @@ async def test_create_without_workspace_uses_default(monkeypatch):
     ls.projects.list.assert_called_once_with()  # no workspace filter
     _, kwargs = ls.projects.create.call_args
     assert kwargs["workspace"] is None
+
+
+def test_build_image_url_single_bucket_fallback(monkeypatch):
+    # No labels_bucket configured -> falls back to `bucket`, no prefix.
+    monkeypatch.delenv("E4EFS_OBJECT_STORE__LABELS_BUCKET", raising=False)
+    monkeypatch.delenv("E4EFS_OBJECT_STORE__LABELS_PREFIX", raising=False)
+    cfg.settings.reload()
+    assert (
+        pu.build_image_url("preprocess_jpeg", "abc")
+        == "s3://fishsense-test/preprocess_jpeg/abc.JPG"
+    )
+
+
+def test_build_image_url_uses_labels_bucket_and_prefix(monkeypatch):
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__LABELS_BUCKET", "labels-fishsense-lite")
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__LABELS_PREFIX", "fishsense-lite")
+    cfg.settings.reload()
+    assert (
+        pu.build_image_url("preprocess_groups_jpeg", "caf")
+        == "s3://labels-fishsense-lite/fishsense-lite/preprocess_groups_jpeg/caf.JPG"
+    )
+
+
+async def test_ensure_s3_storage_registers_labels_bucket_and_prefix(monkeypatch):
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__LABELS_BUCKET", "labels-fishsense-lite")
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__LABELS_PREFIX", "fishsense-lite")
+    cfg.settings.reload()
+    ls = MagicMock()
+    ls.import_storage.s3.list.return_value = []
+    monkeypatch.setattr(pu, "_get_ls_client", lambda: ls)
+
+    await pu.ensure_label_studio_s3_storage(999)
+
+    _, kwargs = ls.import_storage.s3.create.call_args
+    assert kwargs["bucket"] == "labels-fishsense-lite"
+    assert kwargs["prefix"] == "fishsense-lite"
+    assert kwargs["presign"] is True

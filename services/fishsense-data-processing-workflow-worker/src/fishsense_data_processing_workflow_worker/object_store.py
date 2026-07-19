@@ -47,8 +47,10 @@ def slate_pdf_key(slate_id: int) -> str:
     return f"{SLATE_PDF_PREFIX}/{slate_id}.pdf"
 
 
-def jpeg_key(folder: str, checksum: str) -> str:
-    return f"{folder}/{checksum}.JPG"
+def jpeg_key(folder: str, checksum: str, prefix: str = "") -> str:
+    base = f"{folder}/{checksum}.JPG"
+    prefix = (prefix or "").strip("/")
+    return f"{prefix}/{base}" if prefix else base
 
 
 def build_s3_client(
@@ -88,17 +90,29 @@ def open_object_store_client() -> "ObjectStoreClient":
         access_key=settings.object_store.access_key,
         secret_key=settings.object_store.secret_key,
     )
-    return ObjectStoreClient(s3, settings.object_store.bucket)
+    return ObjectStoreClient(
+        s3,
+        settings.object_store.bucket,
+        labels_bucket=settings.object_store.get("labels_bucket", None),
+        labels_prefix=settings.object_store.get("labels_prefix", "") or "",
+    )
 
 
 class ObjectStoreClient:
     """Thin async wrapper over a boto3 S3 client for the data-worker's
     read + JPEG-write needs. Constructed per-activity-call; the boto3
-    client is injected so tests can pass a moto-backed one."""
+    client is injected so tests can pass a moto-backed one.
 
-    def __init__(self, s3, bucket: str):
+    Reads raw/slate **scratch** from ``bucket``; writes processed JPEGs to
+    ``labels_bucket`` (the LS-facing bucket) under ``labels_prefix``.
+    ``labels_bucket`` defaults to ``bucket`` so single-bucket layouts keep
+    working unchanged."""
+
+    def __init__(self, s3, bucket: str, labels_bucket=None, labels_prefix=""):
         self._s3 = s3
         self._bucket = bucket
+        self._labels_bucket = labels_bucket or bucket
+        self._labels_prefix = labels_prefix or ""
 
     async def _get(self, key: str) -> bytes:
         def _do() -> bytes:
@@ -125,7 +139,7 @@ class ObjectStoreClient:
     ) -> None:
         await asyncio.to_thread(
             self._s3.put_object,
-            Bucket=self._bucket,
-            Key=jpeg_key(folder, checksum),
+            Bucket=self._labels_bucket,
+            Key=jpeg_key(folder, checksum, self._labels_prefix),
             Body=data,
         )

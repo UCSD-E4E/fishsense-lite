@@ -35,6 +35,13 @@ def test_key_helpers():
     assert sut.jpeg_key("preprocess_groups_jpeg", "cafef00d") == (
         "preprocess_groups_jpeg/cafef00d.JPG"
     )
+    # labels_prefix partitions our JPEGs within the shared labels bucket.
+    assert sut.jpeg_key("preprocess_groups_jpeg", "cafef00d", "fishsense-lite") == (
+        "fishsense-lite/preprocess_groups_jpeg/cafef00d.JPG"
+    )
+    assert sut.jpeg_key("preprocess_jpeg", "x", "/fishsense-lite/") == (
+        "fishsense-lite/preprocess_jpeg/x.JPG"
+    )
 
 
 def test_build_s3_client_uses_path_style_addressing_for_garage():
@@ -92,6 +99,32 @@ async def test_upload_processed_jpeg_writes_folder_checksum_key(s3, folder):
 
     key = f"{folder}/cafef00d.JPG"
     assert s3.get_object(Bucket=BUCKET, Key=key)["Body"].read() == b"JPEGBYTES"
+
+
+@pytest.mark.asyncio
+async def test_split_buckets_read_scratch_write_labels(s3):
+    # Two-bucket layout: raw scratch is read from `bucket`, JPEGs are written
+    # to `labels_bucket` under `labels_prefix`.
+    labels = "labels-fishsense-test"
+    s3.create_bucket(Bucket=labels)
+    s3.put_object(Bucket=BUCKET, Key="raw/deadbeef.ORF", Body=b"RAW")
+    client = sut.ObjectStoreClient(
+        s3, BUCKET, labels_bucket=labels, labels_prefix="fishsense-lite"
+    )
+
+    async def _run():
+        raw = await client.download_raw("deadbeef")
+        await client.upload_processed_jpeg(
+            folder="preprocess_groups_jpeg", checksum="cafef00d", data=b"JPG"
+        )
+        return raw
+
+    assert await ActivityEnvironment().run(_run) == b"RAW"
+    # JPEG lands in the labels bucket, under the prefix; NOT the scratch bucket.
+    key = "fishsense-lite/preprocess_groups_jpeg/cafef00d.JPG"
+    assert s3.get_object(Bucket=labels, Key=key)["Body"].read() == b"JPG"
+    with pytest.raises(ClientError):
+        s3.get_object(Bucket=BUCKET, Key=key)
 
 
 @pytest.mark.asyncio

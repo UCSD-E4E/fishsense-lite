@@ -99,7 +99,14 @@ _VALIDATORS = [
         condition=url_condition,
     ),
     Validator("object_store.region", required=True, cast=str, default="garage"),
+    # `bucket` holds the raw/slate **scratch** (raw/, slate_pdf/). Processed
+    # JPEGs that Label Studio serves live in `labels_bucket` under
+    # `labels_prefix` — a separate bucket so scratch never lands in the
+    # LS-facing labels bucket. `labels_bucket` defaults to `bucket` (single-
+    # bucket layouts keep working); `labels_prefix` defaults to "" (no prefix).
     Validator("object_store.bucket", required=True, cast=str),
+    Validator("object_store.labels_bucket", cast=str),
+    Validator("object_store.labels_prefix", cast=str, default=""),
     Validator("object_store.access_key", required=True, cast=str),
     Validator("object_store.secret_key", required=True, cast=str),
     # Optional read-only key handed to Label Studio when registering the
