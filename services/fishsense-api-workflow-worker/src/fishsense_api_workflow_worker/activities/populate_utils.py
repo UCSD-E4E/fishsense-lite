@@ -95,17 +95,17 @@ async def ensure_label_studio_s3_storage(project_id: int) -> None:
             return
 
     access_key, secret_key = _ls_s3_presign_credentials()
-    create_kwargs = dict(
-        project=project_id,
-        title=LS_S3_STORAGE_TITLE,
-        bucket=bucket,
-        s3endpoint=settings.object_store.endpoint_url,
-        region_name=settings.object_store.region,
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
-        presign=True,
-        use_blob_urls=False,
-    )
+    create_kwargs = {
+        "project": project_id,
+        "title": LS_S3_STORAGE_TITLE,
+        "bucket": bucket,
+        "s3endpoint": settings.object_store.endpoint_url,
+        "region_name": settings.object_store.region,
+        "aws_access_key_id": access_key,
+        "aws_secret_access_key": secret_key,
+        "presign": True,
+        "use_blob_urls": False,
+    }
     if prefix:
         create_kwargs["prefix"] = prefix
     await asyncio.to_thread(lambda: ls.import_storage.s3.create(**create_kwargs))
