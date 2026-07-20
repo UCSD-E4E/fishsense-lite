@@ -42,6 +42,12 @@ _VALIDATORS = [
     Validator("e4e_nas.url", required=True, cast=str, condition=url_condition),
     Validator("e4e_nas.username", required=True, cast=str),
     Validator("e4e_nas.password", required=True, cast=str),
+    # Max concurrent raw `.ORF` downloads per staging activity. FileStation's
+    # download backend (DSM nginx -> synoscgi) is a fragile shared CGI that
+    # 502s / falls over under concurrent large transfers, so default to a
+    # single serial stream. Tunable via config (E4EFS_E4E_NAS__STAGE_CONCURRENCY)
+    # so we can ramp it up 1 -> 2 -> 3 while watching the NAS, without a redeploy.
+    Validator("e4e_nas.stage_concurrency", cast=int, default=1),
     # NAS path prefix prepended to relative `image.path` / `dive_slate.path`
     # values stored in the DB before downloading from FileStation. The DB
     # stores paths relative to the lab's data-root share (e.g.
