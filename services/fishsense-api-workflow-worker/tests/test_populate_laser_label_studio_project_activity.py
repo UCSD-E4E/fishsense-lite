@@ -155,11 +155,22 @@ def _make_fs_client(images: List[Image], existing_labels: List[LaserLabel]):
 
 
 def _make_ls_client(returned_task_ids: List[int]):
+    # Fake hosted LS: import creates tasks (assigning ids from
+    # `returned_task_ids` in order) and `tasks.list` serves them back. The
+    # import response carries NO task_ids -- hosted LS imports asynchronously.
     ls = MagicMock()
     ls.projects = MagicMock()
-    ls.projects.import_tasks = MagicMock(
-        return_value=SimpleNamespace(task_ids=returned_task_ids)
-    )
+    _stored: List = []
+    _ids = iter(returned_task_ids)
+
+    def _import(project_id, request, return_task_ids=False):  # pylint: disable=unused-argument
+        for task in request:
+            _stored.append(SimpleNamespace(id=next(_ids), data=task["data"]))
+        return SimpleNamespace(import_=1)
+
+    ls.projects.import_tasks = MagicMock(side_effect=_import)
+    ls.tasks = MagicMock()
+    ls.tasks.list = MagicMock(side_effect=lambda project=None: list(_stored))
     return ls
 
 
@@ -216,20 +227,32 @@ async def test_no_incomplete_images_is_a_no_op(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_aborts_when_import_tasks_returns_wrong_count(monkeypatch):
+async def test_rerun_does_not_reimport_existing_tasks(monkeypatch):
+    """Hosted LS import is async and returns no task ids; the activity resolves
+    ids by listing tasks and dedupes against ones already in the project. A
+    second run (e.g. after a mid-activity failure) must NOT re-import — that is
+    what stops the runaway task accumulation the old `imported.task_ids` crash
+    caused."""
     images = [_image(1, "a"), _image(2, "b")]
     fs = _make_fs_client(images, existing_labels=[])
-    ls = _make_ls_client(returned_task_ids=[999])  # only 1 ID for 2 tasks
+    ls = _make_ls_client(returned_task_ids=[1001, 1002])
 
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
     monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
 
-    with pytest.raises(Exception):
-        await ActivityEnvironment().run(
-            sut.populate_laser_label_studio_project_activity, 42, 73
-        )
+    n1 = await ActivityEnvironment().run(
+        sut.populate_laser_label_studio_project_activity, 42, 73
+    )
+    n2 = await ActivityEnvironment().run(
+        sut.populate_laser_label_studio_project_activity, 42, 73
+    )
 
-    fs.labels.put_laser_label.assert_not_called()
+    assert n1 == 2 and n2 == 2
+    # Imported exactly once: the rerun found both tasks already present and
+    # only re-resolved their ids to (re-)write the rows.
+    assert ls.projects.import_tasks.call_count == 1
+    written = [c.args[1] for c in fs.labels.put_laser_label.await_args_list]
+    assert {label.label_studio_task_id for label in written} == {1001, 1002}
 
 
 @pytest.mark.asyncio

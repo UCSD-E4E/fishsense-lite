@@ -126,11 +126,22 @@ def _make_fs_client(
 
 
 def _make_ls_client(returned_task_ids: List[int]):
+    # Fake hosted LS: import creates tasks (assigning ids from
+    # `returned_task_ids` in order) and `tasks.list` serves them back. The
+    # import response carries NO task_ids -- hosted LS imports asynchronously.
     ls = MagicMock()
     ls.projects = MagicMock()
-    ls.projects.import_tasks = MagicMock(
-        return_value=SimpleNamespace(task_ids=returned_task_ids)
-    )
+    _stored: List = []
+    _ids = iter(returned_task_ids)
+
+    def _import(project_id, request, return_task_ids=False):  # pylint: disable=unused-argument
+        for task in request:
+            _stored.append(SimpleNamespace(id=next(_ids), data=task["data"]))
+        return SimpleNamespace(import_=1)
+
+    ls.projects.import_tasks = MagicMock(side_effect=_import)
+    ls.tasks = MagicMock()
+    ls.tasks.list = MagicMock(side_effect=lambda project=None: list(_stored))
     return ls
 
 
