@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.41.5](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.41.4...fishsense-api-workflow-worker-v1.41.5) (2026-07-20)
+
+
+### Bug Fixes
+
+* **stage-raw:** NAS-safe staging — correct buckets + serial downloads by default ([#329](https://github.com/UCSD-E4E/fishsense-lite/issues/329)) ([bb79bc0](https://github.com/UCSD-E4E/fishsense-lite/commit/bb79bc0cec1de85f802bf21179c717a4a52b22f3))
+
 ## [1.41.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.41.3...fishsense-api-workflow-worker-v1.41.4) (2026-07-19)
 
 
