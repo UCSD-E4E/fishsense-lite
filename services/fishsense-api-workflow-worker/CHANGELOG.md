@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.41.7](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.41.6...fishsense-api-workflow-worker-v1.41.7) (2026-07-20)
+
+
+### Bug Fixes
+
+* **label-studio:** resolve task ids by URL — hosted LS import is async ([#336](https://github.com/UCSD-E4E/fishsense-lite/issues/336)) ([5b5816b](https://github.com/UCSD-E4E/fishsense-lite/commit/5b5816bb4360c3921025bcd6b4ad0588f8a723b1))
+
 ## [1.41.6](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.41.5...fishsense-api-workflow-worker-v1.41.6) (2026-07-20)
 
 
