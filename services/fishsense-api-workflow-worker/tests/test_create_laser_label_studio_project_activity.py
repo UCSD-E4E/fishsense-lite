@@ -62,7 +62,7 @@ def _patch_dive_lookup(monkeypatch, *, dive_name: str | None):
 @pytest.mark.asyncio
 async def test_returns_existing_project_id_by_title_match(monkeypatch):
     _patch_dive_lookup(monkeypatch, dive_name="dive-alpha")
-    expected_title = "dive-alpha - Laser Calibration Labeling"
+    expected_title = "dive-alpha #393 - Laser Calibration Labeling"
 
     ls = _make_ls(
         list_result=[
@@ -83,7 +83,7 @@ async def test_returns_existing_project_id_by_title_match(monkeypatch):
 @pytest.mark.asyncio
 async def test_creates_project_when_no_match_and_xml_present(monkeypatch):
     _patch_dive_lookup(monkeypatch, dive_name="dive-alpha")
-    expected_title = "dive-alpha - Laser Calibration Labeling"
+    expected_title = "dive-alpha #393 - Laser Calibration Labeling"
     monkeypatch.setattr(sut, "LASER_LABELING_CONFIG_XML", "<View><Image/></View>")
 
     ls = _make_ls(
@@ -123,11 +123,10 @@ async def test_raises_when_no_match_and_xml_constant_empty(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_falls_back_to_dive_id_when_name_missing(monkeypatch):
-    """A dive with a NULL name still gets a unique title — fall back
-    to `f"Dive {dive_id}"` so the create call doesn't generate an
-    empty-prefix title that would collide across nameless dives."""
+    """A dive with a NULL name still gets a unique title from the
+    `#{dive_id}` tail alone."""
     _patch_dive_lookup(monkeypatch, dive_name=None)
-    expected_title = "Dive 393 - Laser Calibration Labeling"
+    expected_title = "#393 - Laser Calibration Labeling"
     monkeypatch.setattr(sut, "LASER_LABELING_CONFIG_XML", "<View/>")
 
     ls = _make_ls(
@@ -150,14 +149,13 @@ async def test_falls_back_to_dive_id_when_name_missing(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_falls_back_to_dive_id_when_name_too_long(monkeypatch):
-    """LS caps `Project.title` at 50 chars. When a real dive's name
-    plus the stage suffix would exceed the cap, `build_per_dive_title`
-    must fall back to the `f"Dive {dive_id}"` form rather than
-    truncating — truncation could collide two long-named dives."""
+    """LS caps `Project.title` at 50 chars. A long dive name is
+    truncated to fit, but the `#{dive_id}` tail is always preserved so
+    two long-named dives can't collide on a truncated title."""
     long_name = "2024-08-21 Florida Keys reef survey dive 03 (cohort A)"
     assert len(long_name) > sut_utils.LS_PROJECT_TITLE_MAX
     _patch_dive_lookup(monkeypatch, dive_name=long_name)
-    expected_title = "Dive 393 - Laser Calibration Labeling"
+    expected_title = "2024-08-21 Flori #393 - Laser Calibration Labeling"
     monkeypatch.setattr(sut, "LASER_LABELING_CONFIG_XML", "<View/>")
 
     ls = _make_ls(

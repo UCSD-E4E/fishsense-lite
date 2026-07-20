@@ -179,3 +179,43 @@ async def test_ensure_s3_storage_registers_labels_bucket_and_prefix(monkeypatch)
     assert kwargs["bucket"] == "labels-fishsense-lite"
     assert kwargs["prefix"] == "fishsense-lite"
     assert kwargs["presign"] is True
+
+
+async def _title_for(monkeypatch, dive_id, name, suffix):
+    from contextlib import asynccontextmanager  # pylint: disable=import-outside-toplevel
+    from types import SimpleNamespace  # pylint: disable=import-outside-toplevel
+
+    fake = MagicMock()
+
+    async def _get(**_k):
+        return SimpleNamespace(id=dive_id, name=name)
+
+    fake.dives.get = _get
+
+    @asynccontextmanager
+    async def _client():
+        yield fake
+
+    monkeypatch.setattr(pu, "get_fs_client", _client)
+    return await pu.build_per_dive_title(dive_id, suffix)
+
+
+async def test_same_named_dives_get_distinct_titles(monkeypatch):
+    # Real prod case: dives 439 and 440 share the (mislabeled) name. The
+    # #dive_id tail must keep their LS projects distinct.
+    t439 = await _title_for(monkeypatch, 439, "101624_AlligatorDeep_FSL02", "Species Labeling")
+    t440 = await _title_for(monkeypatch, 440, "101624_AlligatorDeep_FSL02", "Species Labeling")
+    assert t439 != t440
+    assert "#439" in t439 and "#440" in t440
+    assert len(t439) <= pu.LS_PROJECT_TITLE_MAX
+
+
+async def test_title_truncates_long_name_but_keeps_id(monkeypatch):
+    t = await _title_for(monkeypatch, 393, "x" * 80, "Laser Calibration Labeling")
+    assert len(t) <= pu.LS_PROJECT_TITLE_MAX
+    assert "#393 - Laser Calibration Labeling" in t
+
+
+async def test_title_nameless_dive_is_id_and_suffix(monkeypatch):
+    t = await _title_for(monkeypatch, 7, None, "Species Labeling")
+    assert t == "#7 - Species Labeling"
