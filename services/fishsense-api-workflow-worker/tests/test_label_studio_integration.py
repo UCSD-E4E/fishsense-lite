@@ -94,8 +94,10 @@ def _patch_dive_lookup(monkeypatch, *, dive_id: int, dive_name: str):
     monkeypatch.setattr(populate_utils_sut, "get_fs_client", _client)
 
 
-def _expected_title(dive_name: str) -> str:
-    return f"{dive_name} - {create_sut.LASER_PROJECT_TITLE_SUFFIX}"
+def _expected_title(dive_name: str, dive_id: int) -> str:
+    # Mirrors build_per_dive_title: `"{name} #{dive_id} - {suffix}"`.
+    # Test dive names are short enough not to be truncated.
+    return f"{dive_name} #{dive_id} - {create_sut.LASER_PROJECT_TITLE_SUFFIX}"
 
 
 # ---------------------------------------------------------------------------
@@ -109,14 +111,13 @@ async def test_create_activity_creates_then_returns_existing_on_rerun(monkeypatc
     Create workflow without accumulating duplicate projects."""
     dive_id = 393
     # LS caps `Project.title` at 50 chars. The per-dive title is
-    # `f"{dive_name} - Laser Calibration Labeling"` (29 chars of fixed
-    # suffix), so dive_name must stay <= 21 chars or LS rejects with a
-    # 400. Same constraint applies to all three integration tests
-    # below — keep prefixes short.
+    # `f"{dive_name} #{dive_id} - Laser Calibration Labeling"`, so the
+    # variable dive_name must stay short (~16 chars) or it gets truncated.
+    # Same constraint applies to all three integration tests below.
     dive_name = f"rerun-{uuid.uuid4().hex[:8]}"
     _patch_dive_lookup(monkeypatch, dive_id=dive_id, dive_name=dive_name)
     monkeypatch.setattr(create_sut, "LASER_LABELING_CONFIG_XML", _MIN_LASER_XML)
-    title = _expected_title(dive_name)
+    title = _expected_title(dive_name, dive_id)
 
     ls = get_ls_client()
     try:
@@ -300,7 +301,7 @@ async def test_populate_workflow_creates_then_imports_tasks_against_real_ls(
 ):
     """End-to-end: PopulateLaserLabelStudioProjectWorkflow against real
     LS. The workflow's internal Create activity must stand up a
-    per-dive project (named `"{dive.name} - Laser Calibration Labeling"`)
+    per-dive project (named `"{dive.name} #{dive_id} - Laser Calibration Labeling"`)
     and the populate activity must push tasks into it.
 
     This is the integration-level proof that wiring Create into
@@ -312,7 +313,7 @@ async def test_populate_workflow_creates_then_imports_tasks_against_real_ls(
     dive_name = f"flow-{uuid.uuid4().hex[:8]}"
     _patch_dive_lookup(monkeypatch, dive_id=dive_id, dive_name=dive_name)
     monkeypatch.setattr(create_sut, "LASER_LABELING_CONFIG_XML", _MIN_LASER_XML)
-    title = _expected_title(dive_name)
+    title = _expected_title(dive_name, dive_id)
 
     images = [_image(i + 1, f"flow-{i:03d}") for i in range(4)]
     fs = _make_fs_client(images, existing_labels=[])
