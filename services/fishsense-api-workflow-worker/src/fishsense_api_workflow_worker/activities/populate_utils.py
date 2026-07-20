@@ -213,6 +213,18 @@ async def build_per_dive_title(dive_id: int, suffix: str) -> str:
     return f"{name[:budget].rstrip()} {tail}"
 
 
+# Hosted LS's import is asynchronous — the created tasks are usually listable
+# immediately, but the import call returns before they're guaranteed queryable.
+# Bounded poll so a small lag doesn't force a Temporal activity retry.
+_IMPORT_VISIBILITY_ATTEMPTS = 12
+_IMPORT_VISIBILITY_INTERVAL_S = 2.0
+
+
+def _task_image_url(task: dict) -> str | None:
+    data = task.get("data", {}) or {}
+    return data.get("image") or data.get("img")
+
+
 async def import_tasks_and_record_labels(
     *,
     project_id: int,
@@ -222,37 +234,81 @@ async def import_tasks_and_record_labels(
 ) -> int:
     """Import `tasks` to LS, then PUT one label row per (item, task_id).
 
-    `record_label(item, task_id)` is the per-stage hook that builds and
-    upserts a LaserLabel/SpeciesLabel/HeadTailLabel/DiveSlateLabel row
-    via the SDK. Rows are PUT in parallel via TaskGroup matching the
-    notebook behaviour; the api PUTs are upserts so partial-failure
-    replay is safe.
+    `record_label(item, task_id)` is the per-stage hook that upserts a
+    LaserLabel/SpeciesLabel/HeadTailLabel/DiveSlateLabel row anchoring the
+    (image, LS task, project) triple. Rows are PUT in parallel via TaskGroup;
+    the api PUTs are upserts so partial-failure replay is safe.
+
+    **Hosted LS (Enterprise/heartex) imports asynchronously**: `import_tasks`
+    returns an import-job id, NOT task ids — only OSS returns task ids. The old
+    code read `imported.task_ids`, which doesn't exist on hosted LS: it crashed
+    *after* the tasks were created but *before* writing any label rows, so every
+    Temporal retry re-imported the whole batch (projects ballooned to tens of
+    thousands of tasks with zero label rows).
+
+    So we resolve task ids by listing the project's tasks and matching each
+    input task by its image URL (checksum-based, unique per image), and we
+    **dedupe against tasks already in the project before importing** — a retry
+    after a mid-activity failure then re-imports nothing and just writes the
+    missing rows.
     """
+    tasks = list(tasks)
+    items_list = list(items)
     if not tasks:
         return 0
+    if len(tasks) != len(items_list):
+        raise RuntimeError(
+            f"import_tasks_and_record_labels: {len(tasks)} tasks for "
+            f"{len(items_list)} items — the two lists must be parallel"
+        )
+
+    urls = [_task_image_url(t) for t in tasks]
+    if any(u is None for u in urls):
+        raise RuntimeError(
+            "import task missing an image URL in `data` — cannot anchor label"
+        )
 
     ls = _get_ls_client()
-    imported = await asyncio.to_thread(
-        lambda: ls.projects.import_tasks(
-            project_id, request=tasks, return_task_ids=True
-        )
-    )
-    task_ids: List[int] = list(imported.task_ids)
 
-    items_list = list(items)
-    if len(task_ids) != len(items_list):
-        raise RuntimeError(
-            f"LS import_tasks returned {len(task_ids)} task IDs for "
-            f"{len(items_list)} input items; refusing to write mismatched "
-            "label rows"
+    def _url_to_task_id() -> dict:
+        mapping: dict = {}
+        for task in ls.tasks.list(project=project_id):
+            data = getattr(task, "data", {}) or {}
+            url = data.get("image") or data.get("img")
+            if url is not None:
+                mapping[url] = task.id
+        return mapping
+
+    # Dedupe against what's already imported so a retry doesn't duplicate.
+    known = await asyncio.to_thread(_url_to_task_id)
+    to_import = [t for t, u in zip(tasks, urls) if u not in known]
+
+    if to_import:
+        await asyncio.to_thread(
+            lambda: ls.projects.import_tasks(
+                project_id, request=to_import, return_task_ids=True
+            )
         )
+        want = {u for u in urls if u not in known}
+        for _ in range(_IMPORT_VISIBILITY_ATTEMPTS):
+            known = await asyncio.to_thread(_url_to_task_id)
+            if want <= known.keys():
+                break
+            activity.heartbeat()
+            await asyncio.sleep(_IMPORT_VISIBILITY_INTERVAL_S)
+        missing = want - known.keys()
+        if missing:
+            raise RuntimeError(
+                f"{len(missing)} imported task(s) not visible in project "
+                f"{project_id} after import — retrying (dedupe prevents dupes)"
+            )
 
     async with asyncio.TaskGroup() as tg:
-        for item, task_id in zip(items_list, task_ids):
-            tg.create_task(record_label(item, task_id))
+        for item, url in zip(items_list, urls):
+            tg.create_task(record_label(item, known[url]))
             activity.heartbeat()
 
-    return len(task_ids)
+    return len(items_list)
 
 
 async def publish_label_studio_project(project_id: int) -> None:
