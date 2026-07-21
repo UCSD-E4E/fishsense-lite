@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.5](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.7.4...fishsense-data-processing-workflow-worker-v2.7.5) (2026-07-21)
+
+
+### Bug Fixes
+
+* **data-worker:** cap max_concurrent_activities to stop OOM crash-loop ([#339](https://github.com/UCSD-E4E/fishsense-lite/issues/339)) ([fd79c2d](https://github.com/UCSD-E4E/fishsense-lite/commit/fd79c2d5a3d5786a445055ab1552541bee8ecdbc))
+
 ## [2.7.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.7.3...fishsense-data-processing-workflow-worker-v2.7.4) (2026-07-19)
 
 
