@@ -283,12 +283,18 @@ async def test_populate_skips_completed_against_real_ls(
     )
     assert n2 == 3  # only the 3 still-incomplete images
 
-    # LS now has 5 + 3 = 8 tasks. (Populate doesn't dedupe via LS — it
-    # dedupes against SQL state. Re-running with the same SQL state
-    # would push duplicates; that's why the SQL-based completed-filter
-    # is the correctness gate.)
+    # LS still has exactly 5 tasks. Populate now dedupes against LS
+    # itself: each built `s3://` URL is matched against the tasks
+    # already in the project, decoding hosted LS's per-task
+    # resolve-wrapper URLs (`/tasks/{id}/resolve/?fileuri=<b64(s3://…)>`)
+    # back to the `s3://` form first. So re-running for images that
+    # already have a task imports nothing new — no duplicate/ballooning
+    # tasks (the runaway accumulation the async-import + no-dedup bug
+    # caused). n2 == 3 counts the still-incomplete images processed
+    # (their existing task ids re-resolved and rows rewritten), not new
+    # imports.
     ls_tasks = list(ls.tasks.list(project=project_id))
-    assert len(ls_tasks) == 8
+    assert len(ls_tasks) == 5
 
 
 # ---------------------------------------------------------------------------
