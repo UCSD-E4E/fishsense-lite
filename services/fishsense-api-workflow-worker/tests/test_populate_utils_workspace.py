@@ -219,3 +219,18 @@ async def test_title_truncates_long_name_but_keeps_id(monkeypatch):
 async def test_title_nameless_dive_is_id_and_suffix(monkeypatch):
     t = await _title_for(monkeypatch, 7, None, "Species Labeling")
     assert t == "#7 - Species Labeling"
+
+
+def test_normalize_image_url_decodes_hosted_ls_resolve_wrapper():
+    import base64  # pylint: disable=import-outside-toplevel
+
+    s3 = "s3://labels-fishsense-lite/fishsense-lite/preprocess_groups_jpeg/abc.JPG"
+    wrapper = "/tasks/999/resolve/?fileuri=" + base64.b64encode(s3.encode()).decode()
+    # Hosted LS lists tasks with the resolve-wrapper; must decode back to s3://
+    # so dedup/resolve match the built s3:// URLs (else re-import every run).
+    assert pu._normalize_image_url(wrapper) == s3
+    assert pu._normalize_image_url(s3) == s3          # raw s3:// passes through
+    assert pu._normalize_image_url(None) is None
+    assert pu._normalize_image_url("/tasks/1/resolve/?fileuri=!!bad") == (
+        "/tasks/1/resolve/?fileuri=!!bad"             # undecodable → returned as-is
+    )

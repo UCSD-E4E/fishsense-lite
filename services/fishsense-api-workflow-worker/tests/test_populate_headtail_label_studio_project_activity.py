@@ -12,6 +12,8 @@ Two correctness invariants particular to stage 5.3:
 
 from __future__ import annotations
 
+import base64
+
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import List, Optional
@@ -163,7 +165,17 @@ def _make_ls_client(returned_task_ids: List[int]):
 
     def _import(project_id, request, return_task_ids=False):  # pylint: disable=unused-argument
         for task in request:
-            _stored.append(SimpleNamespace(id=next(_ids), data=task["data"]))
+            _tid = next(_ids)
+            _s3 = task["data"].get("image") or task["data"].get("img")
+            _fileuri = base64.b64encode(_s3.encode()).decode()
+            # hosted LS lists tasks with a per-task presign resolve-wrapper,
+            # NOT the imported s3:// URL — mirror that so dedup is exercised.
+            _stored.append(
+                SimpleNamespace(
+                    id=_tid,
+                    data={"image": f"/tasks/{_tid}/resolve/?fileuri={_fileuri}"},
+                )
+            )
         return SimpleNamespace(import_=1)
 
     ls.projects.import_tasks = MagicMock(side_effect=_import)
