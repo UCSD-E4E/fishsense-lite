@@ -64,7 +64,7 @@ services:
 
   # ── web portal → fishsense.e4e.ucsd.edu ────────────────────────────────────────────────
   web:
-    image: ghcr.io/ucsd-e4e/fishsense-lite-web:v0.7.3
+    image: ghcr.io/ucsd-e4e/fishsense-lite-web:v0.7.4
     restart: unless-stopped
     # Non-secret config inline (committed IaC); secrets from the vault-agent render
     # (AUTH_SECRET, AUTH_AUTHENTIK_{ID,SECRET,ISSUER}, FISHSENSE_API_{USERNAME,PASSWORD},
@@ -73,6 +73,16 @@ services:
     environment:
       FISHSENSE_API_URL: http://fishsense-api:8000
       LABEL_STUDIO_URL: https://app.heartex.com   # hosted Label Studio (labeler.e4e.ucsd.edu retired)
+      # Brings the labeling project cards back. Off by default in code; both
+      # blockers were fixed in v0.7.4 — the app exchanges LABEL_STUDIO_API_KEY
+      # (a refresh token) for an access JWT, and unresolvable legacy project
+      # ids are dropped rather than 500ing the page. See lib/env.ts.
+      #
+      # Deliberately committed in the SAME commit as the v0.7.4 pin above:
+      # enabling this against an older image reinstates the 401-on-every-fetch
+      # + Promise.all failure that takes down the public landing page, so the
+      # flag must never reach main ahead of the image that supports it.
+      LABEL_STUDIO_ENABLED: "true"
       AUTH_URL: https://fishsense.e4e.ucsd.edu
     env_file:
       - /run/tenant/secrets/app.env
