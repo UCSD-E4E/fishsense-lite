@@ -1,3 +1,3 @@
 """FishSense API Temporal Workflow Worker"""
 
-__version__ = "1.41.8"
+__version__ = "1.42.0"
