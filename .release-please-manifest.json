@@ -1,9 +1,9 @@
 {
   "services/fishsense-api": "1.30.2",
-  "services/fishsense-api-workflow-worker": "1.41.8",
+  "services/fishsense-api-workflow-worker": "1.42.0",
   "services/fishsense-backup-worker": "0.4.0",
   "services/fishsense-data-processing-workflow-worker": "2.7.6",
   "libs/fishsense-shared": "0.5.0",
   "libs/fishsense-api-sdk": "1.37.0",
-  "apps/fishsense-lite-web": "0.7.3"
+  "apps/fishsense-lite-web": "0.7.4"
 }

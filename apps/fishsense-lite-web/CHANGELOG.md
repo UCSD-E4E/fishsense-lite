@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.7.3...fishsense-lite-web-v0.7.4) (2026-07-21)
+
+
+### Bug Fixes
+
+* **web:** hosted-LS JWT auth + tolerate unresolvable project ids ([#358](https://github.com/UCSD-E4E/fishsense-lite/issues/358)) ([2cfec0f](https://github.com/UCSD-E4E/fishsense-lite/commit/2cfec0f5c0ce98623c32a6fbbc9aa218723afaa8))
+
 ## [0.7.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.7.2...fishsense-lite-web-v0.7.3) (2026-07-17)
 
 

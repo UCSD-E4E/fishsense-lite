@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.42.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.41.8...fishsense-api-workflow-worker-v1.42.0) (2026-07-21)
+
+
+### Features
+
+* **label-studio:** new Fish Model choices + self-healing labeling config ([#356](https://github.com/UCSD-E4E/fishsense-lite/issues/356)) ([7ff643d](https://github.com/UCSD-E4E/fishsense-lite/commit/7ff643d12b83502f1a49f9ff0791a58169812356))
+
 ## [1.41.8](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.41.7...fishsense-api-workflow-worker-v1.41.8) (2026-07-21)
 
 
