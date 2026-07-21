@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.30.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.30.1...fishsense-api-v1.30.2) (2026-07-21)
+
+
+### Bug Fixes
+
+* **api:** make preprocess cohort gates superseded-aware ([#353](https://github.com/UCSD-E4E/fishsense-lite/issues/353)) ([b3415a5](https://github.com/UCSD-E4E/fishsense-lite/commit/b3415a5df28c697934abf6424548507e414f1b28))
+
 ## [1.30.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.30.0...fishsense-api-v1.30.1) (2026-07-21)
 
 

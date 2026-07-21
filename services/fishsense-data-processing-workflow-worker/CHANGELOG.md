@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.6](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.7.5...fishsense-data-processing-workflow-worker-v2.7.6) (2026-07-21)
+
+
+### Bug Fixes
+
+* **data-worker:** halve activity concurrency, raise mem, run 2 replicas ([#351](https://github.com/UCSD-E4E/fishsense-lite/issues/351)) ([1b4de74](https://github.com/UCSD-E4E/fishsense-lite/commit/1b4de74e3da69f8d469629ca58febe66aaa81675))
+
 ## [2.7.5](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.7.4...fishsense-data-processing-workflow-worker-v2.7.5) (2026-07-21)
 
 
