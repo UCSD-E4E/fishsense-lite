@@ -221,9 +221,17 @@ async def select_next_for_species_preprocessing(
     `validate_laser_labels_for_dive_activity._positive_xy`, and the
     headtail cohort.
 
-    "Non-sentinel" species = `project_id IS NOT NULL`. See the laser
-    cohort docstring for the rationale (sentinels predate the new
-    flow and every other discovery query already filters them out).
+    "Non-sentinel" species = `project_id IS NOT NULL` AND not
+    superseded. See the laser cohort docstring for the sentinel
+    rationale (sentinels predate the new flow and every other discovery
+    query already filters them out).
+
+    The superseded half was added 2026-07-21: a dead-lettered row is not
+    evidence the work is done, and treating it as such deadlocked the
+    stage against `needing-species-population` (which is superseded-
+    aware). 1,826 species and 1,761 headtail images were stranded — their
+    JPEGs never regenerated, so populate deferred them forever and no
+    per-dive species project could publish.
     """
     has_prediction_cluster = (
         select(DiveFrameCluster.id)
@@ -240,6 +248,12 @@ async def select_next_for_species_preprocessing(
             ~select(SpeciesLabel.id)
             .where(SpeciesLabel.image_id == Image.id)
             .where(SpeciesLabel.label_studio_project_id != None)
+            # A superseded row is a dead letter, not evidence the work is
+            # done. Without this, an image whose only species row was
+            # dead-lettered (retired old-LS project) never gets its stage-2
+            # JPEG regenerated, so populate defers it forever and the
+            # per-dive project never publishes.
+            .where(SpeciesLabel.superseded == False)
             .exists()
         )
         .exists()
@@ -268,11 +282,15 @@ async def select_dives_needing_species_population(
     count, which is exactly what lets a dive whose old-project rows were
     superseded (e.g. after the hosted-LS migration) re-enter the cohort.
 
-    Unlike `select-next/species-preprocessing`, this is superseded-aware
-    (that endpoint's `project_id IS NOT NULL` check ignores supersede,
-    so it permanently excludes migrated dives) and drops the
-    PREDICTION-cluster gate — populate only needs the species JPEGs to
-    exist, which the populate activity gates per-image against Garage.
+    `select-next/species-preprocessing` is superseded-aware too, as of
+    2026-07-21 — it previously ignored supersede, which permanently
+    excluded migrated dives from stage 2 while this endpoint kept
+    re-selecting them for populate. The two disagreeing was a deadlock:
+    populate deferred every image whose JPEG preprocess would never
+    regenerate, so `deferred > 0` and the project never published.
+    This endpoint still drops the PREDICTION-cluster gate — populate
+    only needs the species JPEGs to exist, which the populate activity
+    gates per-image against Garage.
     The activity is idempotent + JPEG-gated, so this coarse candidate
     set is safe to over-select.
 
@@ -334,6 +352,8 @@ async def select_next_for_headtail_preprocessing(
             ~select(HeadTailLabel.id)
             .where(HeadTailLabel.image_id == Image.id)
             .where(HeadTailLabel.label_studio_project_id != None)
+            # Dead letters don't count as done — see the species cohort.
+            .where(HeadTailLabel.superseded == False)
             .exists()
         )
         .exists()
@@ -368,6 +388,11 @@ async def select_next_for_slate_preprocessing(
             ~select(DiveSlateLabel.id)
             .where(DiveSlateLabel.image_id == Image.id)
             .where(DiveSlateLabel.label_studio_project_id != None)
+            # Dead letters don't count as done — see the species cohort.
+            # No slate rows are superseded today; this keeps the three
+            # preprocess gates spelled identically so the next supersede
+            # pass can't strand slate images the way it stranded species.
+            .where(DiveSlateLabel.superseded == False)
             .exists()
         )
         .exists()
