@@ -17,6 +17,7 @@ import pytest
 from temporalio.testing import WorkflowEnvironment
 
 from fishsense_data_processing_workflow_worker.worker import (
+    DEFAULT_MAX_CONCURRENT_ACTIVITIES,
     GRACEFUL_SHUTDOWN_TIMEOUT,
     TASK_QUEUE_NAME,
     build_worker,
@@ -36,3 +37,16 @@ async def test_build_worker_wires_graceful_shutdown_and_task_queue():
             config = worker.config()
             assert config["task_queue"] == TASK_QUEUE_NAME
             assert config["graceful_shutdown_timeout"] == GRACEFUL_SHUTDOWN_TIMEOUT
+            # Default concurrency cap bounds peak memory (rawpy OOM guard).
+            assert (
+                config["max_concurrent_activities"]
+                == DEFAULT_MAX_CONCURRENT_ACTIVITIES
+            )
+
+
+@pytest.mark.asyncio
+async def test_build_worker_honors_explicit_concurrency_cap():
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            worker = build_worker(env.client, executor, max_concurrent_activities=2)
+            assert worker.config()["max_concurrent_activities"] == 2

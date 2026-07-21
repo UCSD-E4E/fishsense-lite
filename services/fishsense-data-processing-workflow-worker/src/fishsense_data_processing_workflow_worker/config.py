@@ -24,6 +24,16 @@ _VALIDATORS = [
         default=4,
         condition=lambda x: x > 0,
     ),
+    # Max activities run concurrently. Bounds peak memory: the per-image
+    # activities each do a ~1-2 GB rawpy decode, so an uncapped worker OOMs the
+    # 12 Gi pod. Keep low; raise cautiously while watching `kubectl top pod`.
+    Validator(
+        "general.max_concurrent_activities",
+        required=True,
+        cast=int,
+        default=4,
+        condition=lambda x: x > 0,
+    ),
     Validator("temporal.host", required=True, cast=str, condition=validators.hostname),
     Validator("temporal.port", required=True, cast=int, default=7233),
     Validator("temporal.tls", required=True, cast=bool, default=False),
