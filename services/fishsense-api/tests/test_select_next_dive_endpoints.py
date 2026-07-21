@@ -885,8 +885,9 @@ async def test_needing_species_population_picks_laser_valid_without_live_species
 
 async def test_needing_species_population_reincludes_superseded_only_dive(session):
     """The migration case: a dive whose only species rows are superseded
-    (old dead project) must re-enter the cohort — species-preprocessing
-    wrongly excludes it because its check ignores `superseded`."""
+    (old dead project) must re-enter BOTH cohorts. species-preprocessing
+    used to exclude it (its check ignored `superseded`); the two
+    selectors disagreeing deadlocked the stage — fixed 2026-07-21."""
     from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
         select_dives_needing_species_population,
         select_next_for_species_preprocessing,
@@ -918,8 +919,12 @@ async def test_needing_species_population_reincludes_superseded_only_dive(sessio
     await session.flush()
 
     assert await select_dives_needing_species_population(session=session) == [1]
-    # contrast: the preprocessing selector permanently excludes it
-    assert await select_next_for_species_preprocessing(session=session) is None
+    # The preprocessing selector MUST agree. It used to return None here
+    # (its check ignored `superseded`), and that disagreement was a
+    # deadlock: populate kept re-selecting the dive but every image was
+    # deferred on a JPEG that preprocess would never regenerate, so
+    # `deferred > 0` and the per-dive project never published.
+    assert await select_next_for_species_preprocessing(session=session) == 1
 
 
 async def test_needing_species_population_excludes_dive_with_live_species(session):
@@ -1525,3 +1530,120 @@ async def test_measure_fish_ignores_unbound_clusters_with_no_measurable_image(se
     await session.flush()
 
     assert await select_next_for_measure_fish(session=session) is None
+
+
+# ── Superseded rows must not permanently strand an image ──────────────
+#
+# The breach-recovery pass dead-lettered ~1.9k species and ~1.9k headtail
+# rows that pointed at retired old-LS projects. `needing-species-population`
+# is superseded-aware, so those dives re-enter *populate* — but the
+# preprocess selectors' existence gates were not, so the same images read as
+# "already labeled" and never got their stage-2 JPEG regenerated. Populate
+# then defers them forever (`deferred > 0`), so the per-dive project never
+# publishes. Measured in prod on 2026-07-21: 1,826 species and 1,761 headtail
+# images blocked this way, across the 12 dives that own every species project.
+#
+# A superseded row is a dead letter, not evidence the work is done.
+
+
+async def test_species_preprocessing_reenters_dive_with_only_superseded_species(
+    session,
+):
+    """A superseded real-project SpeciesLabel must NOT gate the image out."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_species_preprocessing,
+    )
+    from fishsense_api.models.data_source import DataSource  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive_frame_cluster import (  # pylint: disable=import-outside-toplevel
+        DiveFrameCluster,
+    )
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(_image(11, 1))
+    await session.flush()
+    session.add(DiveFrameCluster(dive_id=1, data_source=DataSource.PREDICTION))
+    session.add_all(
+        [
+            LaserLabel(
+                image_id=11, completed=True, superseded=False,
+                x=100.0, y=200.0, label_studio_project_id=43,
+            ),
+            # Dead-lettered row pointing at a retired project.
+            SpeciesLabel(
+                image_id=11, completed=False, superseded=True,
+                label_studio_project_id=117,
+            ),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_species_preprocessing(session=session) == 1
+
+
+async def test_headtail_preprocessing_reenters_dive_with_only_superseded_headtail(
+    session,
+):
+    """Same dead-letter rule for the head/tail cohort."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_headtail_preprocessing,
+    )
+    from fishsense_api.models.head_tail_label import HeadTailLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(_image(11, 1))
+    await session.flush()
+    session.add_all(
+        [
+            LaserLabel(
+                image_id=11, completed=True, superseded=False,
+                x=100.0, y=200.0, label_studio_project_id=43,
+            ),
+            HeadTailLabel(
+                image_id=11, completed=False, superseded=True,
+                label_studio_project_id=71,
+            ),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_headtail_preprocessing(session=session) == 1
+
+
+async def test_species_preprocessing_still_excludes_live_real_species_row(session):
+    """Guard the other direction: a LIVE (non-superseded) real-project row
+    must still drop the dive, or preprocess would loop forever."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_species_preprocessing,
+    )
+    from fishsense_api.models.data_source import DataSource  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive_frame_cluster import (  # pylint: disable=import-outside-toplevel
+        DiveFrameCluster,
+    )
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(_image(11, 1))
+    await session.flush()
+    session.add(DiveFrameCluster(dive_id=1, data_source=DataSource.PREDICTION))
+    session.add_all(
+        [
+            LaserLabel(
+                image_id=11, completed=True, superseded=False,
+                x=100.0, y=200.0, label_studio_project_id=43,
+            ),
+            SpeciesLabel(
+                image_id=11, completed=False, superseded=False,
+                label_studio_project_id=70,
+            ),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_species_preprocessing(session=session) is None
