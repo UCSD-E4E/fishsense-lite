@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.41.8](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.41.7...fishsense-api-workflow-worker-v1.41.8) (2026-07-21)
+
+
+### Bug Fixes
+
+* **label-studio:** normalize resolve-wrapper task URLs so dedup actually matches ([#343](https://github.com/UCSD-E4E/fishsense-lite/issues/343)) ([10f59b6](https://github.com/UCSD-E4E/fishsense-lite/commit/10f59b68ab1188bb5b151f52d6224dafc2cbbbc7))
+
 ## [1.41.7](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.41.6...fishsense-api-workflow-worker-v1.41.7) (2026-07-20)
 
 
