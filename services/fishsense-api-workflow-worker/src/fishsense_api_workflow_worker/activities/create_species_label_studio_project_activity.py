@@ -31,8 +31,13 @@ SPECIES_PROJECT_TITLE_SUFFIX = "Species Labeling"
 #     their own dedicated project (stage 0.1).
 #   - `<Choices name="slate">` ("Slate upside down") removed.
 #   - Slate branch expanded with H-Slate, Tic-Tac-Toe 1..6, V-Slate 1..4.
-#   - Fish Model branch added (George, Purple Angel, Purple Ant,
-#     Yellow Ant, Yellow Anthias, Snook).
+#   - Fish Model branch added; its choices were replaced wholesale on
+#     2026-07-21 with the current model set (Weasly Fish, Snook, Grouper,
+#     Shark, Gray Anthias, Purple Angel, Yellow Anthias). Editing this
+#     constant is enough — `create_or_get_label_studio_project` pushes a
+#     changed config onto already-created projects, so existing per-dive
+#     projects converge on the next populate run rather than keeping the
+#     config they were born with.
 SPECIES_LABELING_CONFIG_XML = """\
 <View>
   <Choices name="grouping" toName="image">
@@ -85,12 +90,13 @@ SPECIES_LABELING_CONFIG_XML = """\
       <Choice value="Other (Identifiable but Nontarget)"/>
     </Choice>
     <Choice value="Fish Model">
-      <Choice value="George"/>
-      <Choice value="Purple Angel"/>
-	  <Choice value="Purple Ant"/>
-      <Choice value="Yellow Ant"/>
-	  <Choice value="Yellow Anthias"/>
+      <Choice value="Weasly Fish"/>
       <Choice value="Snook"/>
+      <Choice value="Grouper"/>
+      <Choice value="Shark"/>
+      <Choice value="Gray Anthias"/>
+      <Choice value="Purple Angel"/>
+      <Choice value="Yellow Anthias"/>
     </Choice>
   </Taxonomy>
 

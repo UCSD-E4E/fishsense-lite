@@ -15,9 +15,11 @@ import asyncio
 import base64
 import binascii
 import urllib.parse
+import xml.etree.ElementTree as ET
 from typing import Any, Awaitable, Callable, Iterable, List
 
 from label_studio_sdk.client import LabelStudio
+from label_studio_sdk.core import ApiError
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.utils import (
@@ -117,6 +119,88 @@ async def ensure_label_studio_s3_storage(project_id: int) -> None:
     )
 
 
+def _canonical_label_config(config: str | None) -> str | None:
+    """Structure-only form of a labeling-config XML, or None if unparseable.
+
+    LS reformats `label_config` server-side (indentation, self-closing
+    style, attribute order), so a raw string compare reports drift on every
+    single run and would re-PATCH the project hourly forever. Comparing
+    parsed structure instead means we only write when the *choices* really
+    changed.
+    """
+    if not config or not isinstance(config, str):
+        return None
+    try:
+        root = ET.fromstring(config)
+    except ET.ParseError:
+        return None
+
+    def _node(element):
+        return (
+            element.tag,
+            tuple(sorted((k, (v or "").strip()) for k, v in element.attrib.items())),
+            tuple(_node(child) for child in element),
+        )
+
+    return repr(_node(root))
+
+
+def _label_config_differs(current: str | None, desired: str) -> bool:
+    """True when `current` needs to be replaced by `desired`."""
+    canonical_current = _canonical_label_config(current)
+    canonical_desired = _canonical_label_config(desired)
+    if canonical_current is None or canonical_desired is None:
+        # Unparseable on either side — fall back to a whitespace-normalized
+        # compare rather than guessing (and rather than looping on a PATCH
+        # that can never converge).
+        raw_current = current if isinstance(current, str) else ""
+        return " ".join(raw_current.split()) != " ".join(desired.split())
+    return canonical_current != canonical_desired
+
+
+async def heal_labeling_config(ls: LabelStudio, project: Any, desired_xml: str) -> bool:
+    """Push `desired_xml` onto an already-created project when it drifted.
+
+    Without this, editing a `<STAGE>_LABELING_CONFIG_XML` constant only
+    affects projects created *after* the deploy — every existing per-dive
+    project keeps the config it was born with, so a taxonomy change (e.g.
+    swapping the Fish Model choices) silently never reaches annotators.
+
+    Returns True when the config was rewritten.
+    """
+    current = getattr(project, "label_config", None)
+    if not isinstance(current, str):
+        # `projects.list` may omit the config; fetch the detail view.
+        detail = await asyncio.to_thread(lambda: ls.projects.get(id=project.id))
+        current = getattr(detail, "label_config", None)
+
+    if not _label_config_differs(current, desired_xml):
+        return False
+
+    try:
+        await asyncio.to_thread(
+            lambda: ls.projects.update(id=project.id, label_config=desired_xml)
+        )
+    except ApiError as e:
+        # LS rejects a config that would invalidate existing annotations
+        # (e.g. dropping a choice value someone already used). Keep the old
+        # config and keep populating rather than failing the whole stage.
+        activity.logger.warning(
+            "Could not update labeling config for LS project id=%d: %s. "
+            "Project keeps its previous config; reconcile by hand if the "
+            "taxonomy change is required.",
+            project.id,
+            e,
+        )
+        return False
+
+    activity.logger.info(
+        "Updated labeling config for LS project id=%d (config drift healed)",
+        project.id,
+    )
+    return True
+
+
 async def create_or_get_label_studio_project(
     *,
     project_title: str,
@@ -152,6 +236,11 @@ async def create_or_get_label_studio_project(
                 matches[0].id,
             )
         project_id = matches[0].id
+        # Self-heal: converge an already-created project onto the current
+        # labeling-config constant. Editing the constant is otherwise a
+        # no-op for every project that already exists.
+        if labeling_config_xml:
+            await heal_labeling_config(ls, matches[0], labeling_config_xml)
         await ensure_label_studio_s3_storage(project_id)
         return project_id
 
