@@ -27,7 +27,7 @@ max_workers = 8
 # Cap concurrent activities so peak memory (each per-image activity does a
 # ~1-2 GB rawpy decode) stays under the pod's 12 Gi limit. Uncapped (SDK
 # default 100) OOMKilled the pod → CrashLoopBackOff. Raise cautiously.
-max_concurrent_activities = 4
+max_concurrent_activities = 2
 
 # Shared krg-prod Temporal (mTLS). MUST match the api-worker's cluster +
 # TLS server-name — the two workers share the `fishsense_data_processing_queue`

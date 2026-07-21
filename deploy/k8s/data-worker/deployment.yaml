@@ -109,15 +109,24 @@ spec:
             # Tune from `kubectl top pod` once it's running. The CPU
             # limit must stay in lockstep with `general.max_workers` in
             # settings.toml (the ThreadPoolExecutor size for the
-            # CPU-bound rectify activities) — currently 8. Memory
-            # headroom is for ~8 concurrent full-res rawpy decodes.
+            # CPU-bound rectify activities) — currently 8.
+            #
+            # Memory is sized against `general.max_concurrent_activities`
+            # (currently 2), NOT max_workers: each in-flight per-image
+            # activity peaks at ~1-3 GB for a full-res rawpy decode +
+            # opencv rectify. At a cap of 4 this pod OOMKilled (exit 137)
+            # ~22s after start and CrashLoopBackOff'd 17 times, which
+            # starved the queue and timed out the ValidateLaserLabels
+            # children. Cap 2 x ~3 GB leaves real headroom under 16Gi;
+            # throughput is recovered with a second replica instead
+            # (`kubernetes.active_replicas` on the api-worker).
             requests:
               cpu: "4"
               memory: 6Gi
               ephemeral-storage: 2Gi
             limits:
               cpu: "8"
-              memory: 12Gi
+              memory: 16Gi
               # >= the sum of the emptyDir sizeLimits below
               # (logs 1Gi + cache 2Gi + scratch 4Gi = 7Gi) so a volume
               # can fill to its own cap without tripping the container's

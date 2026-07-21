@@ -77,12 +77,18 @@ GRACEFUL_SHUTDOWN_TIMEOUT = timedelta(seconds=30)
 
 # Cap on activities executed at once. The per-image activities are async and
 # offload full-res rawpy decode + opencv rectify via `asyncio.to_thread`, each
-# peaking at ~1-2 GB. The Temporal SDK default (100) let a burst run ~8-9
-# decodes concurrently, which blew the pod's 12 Gi limit → OOMKilled →
+# peaking at ~1-3 GB. The Temporal SDK default (100) let a burst run ~8-9
+# decodes concurrently, which blew the pod's memory limit → OOMKilled →
 # CrashLoopBackOff (the whole worker died on startup within seconds, so nothing
-# drained). Cap it low so peak memory stays bounded; tune via
+# drained). A cap of 4 was still too high: on 2026-07-21 headtail preprocessing
+# OOMKilled (exit 137) ~22s after start and CrashLoopBackOff'd 17 times, which
+# starved `fishsense_data_processing_queue` and timed out the
+# ValidateLaserLabelsForDive children after 17 min. It cannot self-heal —
+# Temporal redelivers the same heavy tasks on restart. Keep this low so peak
+# memory stays bounded and scale throughput horizontally instead
+# (`kubernetes.active_replicas` on the api-worker); tune via
 # `general.max_concurrent_activities`.
-DEFAULT_MAX_CONCURRENT_ACTIVITIES = 4
+DEFAULT_MAX_CONCURRENT_ACTIVITIES = 2
 
 
 async def schedule_workflows(_: Client):
