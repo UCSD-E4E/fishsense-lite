@@ -234,3 +234,110 @@ def test_normalize_image_url_decodes_hosted_ls_resolve_wrapper():
     assert pu._normalize_image_url("/tasks/1/resolve/?fileuri=!!bad") == (
         "/tasks/1/resolve/?fileuri=!!bad"             # undecodable → returned as-is
     )
+
+
+# ── Labeling-config self-heal ─────────────────────────────────────────
+#
+# Editing a `<STAGE>_LABELING_CONFIG_XML` constant used to affect only
+# projects created after the deploy: `create_or_get_label_studio_project`
+# found the existing project by title and returned its id untouched, so
+# every already-created per-dive project kept the config it was born with.
+# A taxonomy change (e.g. swapping the Fish Model choices) therefore never
+# reached annotators. These pin the converge-on-drift behavior.
+
+
+def _project(pid: int, title: str, label_config=None):
+    p = MagicMock()
+    p.id = pid
+    p.title = title
+    p.label_config = label_config
+    return p
+
+
+_CFG_A = '<View><Choices name="x"><Choice value="Old"/></Choices></View>'
+_CFG_B = '<View><Choices name="x"><Choice value="New"/></Choices></View>'
+
+
+async def test_heal_rewrites_config_when_choices_changed():
+    ls = _fake_ls()
+    changed = await pu.heal_labeling_config(ls, _project(5, "T", _CFG_A), _CFG_B)
+
+    assert changed is True
+    ls.projects.update.assert_called_once_with(id=5, label_config=_CFG_B)
+
+
+async def test_heal_is_noop_when_only_formatting_differs():
+    """The anti-churn guard. LS reformats `label_config` server-side, so a
+    raw string compare would report drift forever and re-PATCH every project
+    on every hourly run."""
+    reformatted = (
+        '<View>\n'
+        '  <Choices   name="x">\n'
+        '    <Choice value="Old"></Choice>\n'
+        '  </Choices>\n'
+        '</View>\n'
+    )
+    ls = _fake_ls()
+    changed = await pu.heal_labeling_config(ls, _project(5, "T", reformatted), _CFG_A)
+
+    assert changed is False
+    ls.projects.update.assert_not_called()
+
+
+async def test_heal_fetches_detail_when_list_omits_config():
+    ls = _fake_ls()
+    ls.projects.get.return_value = _project(5, "T", _CFG_A)
+
+    changed = await pu.heal_labeling_config(ls, _project(5, "T", None), _CFG_B)
+
+    ls.projects.get.assert_called_once_with(id=5)
+    assert changed is True
+
+
+async def test_heal_survives_ls_rejecting_the_config():
+    """LS refuses a config that would invalidate existing annotations. That
+    must not fail the whole populate stage."""
+    from label_studio_sdk.core import ApiError  # pylint: disable=import-outside-toplevel
+
+    ls = _fake_ls()
+    ls.projects.update.side_effect = ApiError(status_code=400, body="in use")
+
+    changed = await pu.heal_labeling_config(ls, _project(5, "T", _CFG_A), _CFG_B)
+
+    assert changed is False  # swallowed, not raised
+
+
+async def test_create_or_get_heals_existing_project_config(monkeypatch):
+    """End of the wiring: an existing per-dive project converges on the
+    current constant instead of keeping its birth config."""
+    monkeypatch.delenv("E4EFS_LABEL_STUDIO__WORKSPACE", raising=False)
+    cfg.settings.reload()
+    existing = _project(55, "X - Species Labeling", _CFG_A)
+    ls = _fake_ls(workspaces=[], existing_projects=[existing])
+    monkeypatch.setattr(pu, "_get_ls_client", lambda: ls)
+    monkeypatch.setattr(pu, "ensure_label_studio_s3_storage", _noop)
+
+    pid = await pu.create_or_get_label_studio_project(
+        project_title="X - Species Labeling", labeling_config_xml=_CFG_B
+    )
+
+    assert pid == 55
+    ls.projects.create.assert_not_called()
+    ls.projects.update.assert_called_once_with(id=55, label_config=_CFG_B)
+
+
+def test_species_xml_carries_the_current_fish_model_set():
+    """The Fish Model choices are the thing operators actually edit."""
+    from fishsense_api_workflow_worker.activities import (  # pylint: disable=import-outside-toplevel
+        create_species_label_studio_project_activity as species_sut,
+    )
+
+    xml = species_sut.SPECIES_LABELING_CONFIG_XML
+    for fish in (
+        "Weasly Fish", "Snook", "Grouper", "Shark",
+        "Gray Anthias", "Purple Angel", "Yellow Anthias",
+    ):
+        assert f'<Choice value="{fish}"/>' in xml, fish
+    # Retired model names must be gone, or annotators keep seeing them.
+    for gone in ("George", "Purple Ant", "Yellow Ant"):
+        assert f'<Choice value="{gone}"/>' not in xml, gone
