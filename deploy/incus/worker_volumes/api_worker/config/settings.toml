@@ -77,5 +77,11 @@ labels_prefix = "fishsense-lite"
 kubeconfig_path = "/run/tenant/nrp/kubeconfig"
 namespace = "e4e-fishsense"
 deployment_name = "fishsense-data-processing-workflow-worker"
-active_replicas = 1
+# 2 replicas (clamped range is [1, 4]). Deliberate operator choice, paired
+# with dropping the data-worker's `general.max_concurrent_activities` 4 -> 2
+# after the 2026-07-21 OOM CrashLoopBackOff: per-pod peak memory is halved,
+# and the lost throughput is recovered horizontally instead of by packing
+# more concurrent full-res rawpy decodes into one pod. Also buys active-window
+# resilience on a preemption-prone cluster.
+active_replicas = 2
 idle_cooldown_minutes = 15
