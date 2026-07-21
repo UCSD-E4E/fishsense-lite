@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.30.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.30.0...fishsense-api-v1.30.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* **api:** upsert put_*_label on natural key, not blind INSERT ([#347](https://github.com/UCSD-E4E/fishsense-lite/issues/347)) ([d5d1aa8](https://github.com/UCSD-E4E/fishsense-lite/commit/d5d1aa87aa3da9a29c472807274cfac31c12a1d3))
+
 ## [1.30.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.29.1...fishsense-api-v1.30.0) (2026-07-18)
 
 
