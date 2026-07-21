@@ -12,6 +12,9 @@ target project ID and then push tasks into it.
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
+import urllib.parse
 from typing import Any, Awaitable, Callable, Iterable, List
 
 from label_studio_sdk.client import LabelStudio
@@ -225,6 +228,30 @@ def _task_image_url(task: dict) -> str | None:
     return data.get("image") or data.get("img")
 
 
+def _normalize_image_url(url: str | None) -> str | None:
+    """Reduce an LS task image URL to a stable comparison key (the s3 URI).
+
+    Freshly-built task data carries `s3://…`, but when hosted LS *lists* tasks
+    it returns `data.image` as a per-task presign resolve-wrapper
+    `/tasks/{task_id}/resolve/?fileuri=<base64(s3://…)>`. The embedded task_id
+    makes that string unique per task, so comparing it raw against the built
+    `s3://` URL never matched — silently defeating dedup and re-importing the
+    whole batch every run (projects ballooned to thousands of tasks, 0 rows).
+    Decode the `fileuri` back to the s3 URI so both forms compare equal.
+    """
+    if not url or url.startswith("s3://"):
+        return url
+    if "fileuri=" in url:
+        query = urllib.parse.urlparse(url).query
+        fileuri = urllib.parse.parse_qs(query).get("fileuri", [None])[0]
+        if fileuri:
+            try:
+                return base64.b64decode(fileuri).decode("utf-8")
+            except (binascii.Error, ValueError, UnicodeDecodeError):
+                return url
+    return url
+
+
 async def import_tasks_and_record_labels(
     *,
     project_id: int,
@@ -262,7 +289,7 @@ async def import_tasks_and_record_labels(
             f"{len(items_list)} items — the two lists must be parallel"
         )
 
-    urls = [_task_image_url(t) for t in tasks]
+    urls = [_normalize_image_url(_task_image_url(t)) for t in tasks]
     if any(u is None for u in urls):
         raise RuntimeError(
             "import task missing an image URL in `data` — cannot anchor label"
@@ -274,7 +301,7 @@ async def import_tasks_and_record_labels(
         mapping: dict = {}
         for task in ls.tasks.list(project=project_id):
             data = getattr(task, "data", {}) or {}
-            url = data.get("image") or data.get("img")
+            url = _normalize_image_url(data.get("image") or data.get("img"))
             if url is not None:
                 mapping[url] = task.id
         return mapping
