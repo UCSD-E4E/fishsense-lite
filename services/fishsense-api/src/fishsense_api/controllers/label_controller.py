@@ -106,6 +106,23 @@ async def put_dive_slate_label(
     label = DiveSlateLabel.model_validate(jsonable_encoder(label))
     label.image_id = image_id
 
+    # Natural-key upsert: merge on id=None always INSERTs, violating
+    # uq_dive_slate_image_project on a populate retry. Resolve to the
+    # existing (image_id, project) row first (see put_headtail_label).
+    if label.id is None and label.label_studio_project_id is not None:
+        existing = (
+            await session.exec(
+                select(DiveSlateLabel)
+                .where(DiveSlateLabel.image_id == image_id)
+                .where(
+                    DiveSlateLabel.label_studio_project_id
+                    == label.label_studio_project_id
+                )
+            )
+        ).first()
+        if existing is not None:
+            label.id = existing.id
+
     label = await session.merge(label)
     await session.flush()
 
@@ -227,6 +244,26 @@ async def put_headtail_label(
     logger.debug("Creating or updating head-tail label for image with id=%d", image_id)
     label = HeadTailLabel.model_validate(jsonable_encoder(label))
     label.image_id = image_id
+
+    # session.merge keys on the primary key alone, so a body with id=None
+    # always INSERTs — which violates uq_headtail_image_project when the
+    # populate activity retries and re-writes a sentinel row that already
+    # exists for this (image_id, project). Resolve the natural key to the
+    # existing row id first so the merge becomes an UPDATE (see
+    # post_measurement / uq_measurement_image_fish for the precedent).
+    if label.id is None and label.label_studio_project_id is not None:
+        existing = (
+            await session.exec(
+                select(HeadTailLabel)
+                .where(HeadTailLabel.image_id == image_id)
+                .where(
+                    HeadTailLabel.label_studio_project_id
+                    == label.label_studio_project_id
+                )
+            )
+        ).first()
+        if existing is not None:
+            label.id = existing.id
 
     label = await session.merge(label)
     await session.flush()
@@ -429,6 +466,23 @@ async def put_laser_label(
     label = LaserLabel.model_validate(jsonable_encoder(label))
     label.image_id = image_id
 
+    # Natural-key upsert: merge on id=None always INSERTs, violating
+    # uq_laser_image_project on a populate retry. Resolve to the existing
+    # (image_id, project) row first (see put_headtail_label).
+    if label.id is None and label.label_studio_project_id is not None:
+        existing = (
+            await session.exec(
+                select(LaserLabel)
+                .where(LaserLabel.image_id == image_id)
+                .where(
+                    LaserLabel.label_studio_project_id
+                    == label.label_studio_project_id
+                )
+            )
+        ).first()
+        if existing is not None:
+            label.id = existing.id
+
     label = await session.merge(label)
     await session.flush()
 
@@ -522,6 +576,23 @@ async def put_species_label(
     logger.debug("Creating or updating species label for image with id=%d", image_id)
     label = SpeciesLabel.model_validate(jsonable_encoder(label))
     label.image_id = image_id
+
+    # Natural-key upsert: merge on id=None always INSERTs, violating
+    # uq_species_image_project on a populate retry. Resolve to the existing
+    # (image_id, project) row first (see put_headtail_label).
+    if label.id is None and label.label_studio_project_id is not None:
+        existing = (
+            await session.exec(
+                select(SpeciesLabel)
+                .where(SpeciesLabel.image_id == image_id)
+                .where(
+                    SpeciesLabel.label_studio_project_id
+                    == label.label_studio_project_id
+                )
+            )
+        ).first()
+        if existing is not None:
+            label.id = existing.id
 
     label = await session.merge(label)
     await session.flush()
