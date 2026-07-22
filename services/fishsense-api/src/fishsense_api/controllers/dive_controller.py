@@ -256,14 +256,20 @@ async def select_next_for_species_preprocessing(
     aware). 1,826 species and 1,761 headtail images were stranded — their
     JPEGs never regenerated, so populate deferred them forever and no
     per-dive species project could publish.
+
+    The PREDICTION-cluster gate is checked on the SAME image as the laser
+    gate, not dive-wide (fixed 2026-07-22). `resolve_species_preprocess_inputs_activity`
+    only dispatches per-image work for a qualifying image that is *in* a
+    PREDICTION cluster (it needs the cluster for the "image i of N" overlay).
+    The selector used to check "dive has some cluster" and "dive has some
+    qualifying image" independently, so a dive whose one qualifying image
+    was NOT clustered (a laser validated after stage-1 clustering, which is
+    one-shot per dive) got selected while the resolver returned zero. Since
+    the parent drains one dive per hour ordered by id, such a dive sat at the
+    front forever, resolving to nothing and starving every productive dive
+    behind it — dives 59 and 439 did exactly this, blocking 60/61/66/76/…
     """
-    has_prediction_cluster = (
-        select(DiveFrameCluster.id)
-        .where(DiveFrameCluster.dive_id == Dive.id)
-        .where(DiveFrameCluster.data_source == DataSource.PREDICTION)
-        .exists()
-    )
-    has_valid_laser_image_without_real_species = (
+    has_valid_laser_image_in_cluster_without_real_species = (
         select(LaserLabel.id)
         .join(Image, Image.id == LaserLabel.image_id)
         .where(Image.dive_id == Dive.id)
@@ -280,13 +286,26 @@ async def select_next_for_species_preprocessing(
             .where(SpeciesLabel.superseded == False)
             .exists()
         )
+        # The qualifying image must itself be in a PREDICTION cluster — this
+        # is what the resolver requires, so checking it here keeps the two in
+        # step. Subsumes the old dive-wide "has any PREDICTION cluster" gate.
+        .where(
+            select(DiveFrameClusterImageMapping.image_id)
+            .join(
+                DiveFrameCluster,
+                DiveFrameCluster.id
+                == DiveFrameClusterImageMapping.dive_frame_cluster_id,
+            )
+            .where(DiveFrameClusterImageMapping.image_id == Image.id)
+            .where(DiveFrameCluster.data_source == DataSource.PREDICTION)
+            .exists()
+        )
         .exists()
     )
     query = (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
-        .where(has_prediction_cluster)
-        .where(has_valid_laser_image_without_real_species)
+        .where(has_valid_laser_image_in_cluster_without_real_species)
         .order_by(Dive.id)
         .limit(1)
     )

@@ -160,34 +160,54 @@ SELECT
           AND dfc.data_source = 'PREDICTION'
     ) AS has_prediction_clusters,
 
-    -- Stage 2: has PREDICTION clusters AND every image carrying a
-    -- valid laser label (completed, not superseded, x/y both set) has
-    -- a non-sentinel SpeciesLabel row. ≥1 such laser-valid image must
-    -- exist (otherwise the predicate would be vacuously true for dives
-    -- with no laser work yet — same convention as headtail_preprocessed).
-    -- Cohort flipped 2026-05-05 from "every image" → "every laser-valid
-    -- image" so species labeling now mirrors head/tail (per-image
-    -- cascade from valid lasers) while keeping the cluster gate.
+    -- Stage 2: every "processable" image has a non-sentinel, non-superseded
+    -- SpeciesLabel row, and ≥1 processable image exists (else vacuously true
+    -- for dives with no laser work yet — same convention as
+    -- headtail_preprocessed).
+    --
+    -- "Processable" = carries a valid laser label (completed, not superseded,
+    -- x/y both set) AND is itself in a PREDICTION cluster. Both halves mirror
+    -- `select_next_for_species_preprocessing` exactly, and the drift-guard
+    -- test pins the two together:
+    --   * in-cluster (2026-07-22): the resolver only makes JPEGs for a
+    --     qualifying image that is in a cluster (it needs the cluster for the
+    --     "image i of N" overlay). An image with a valid laser but no cluster
+    --     — a laser validated after one-shot stage-1 clustering — is not
+    --     processable, so it must not count against "preprocessed" (it would
+    --     otherwise read as forever-incomplete while the selector, correctly,
+    --     never re-fired on it).
+    --   * superseded (2026-07-22): a dead-lettered species row is not
+    --     evidence the work is done — matches the selector's superseded gate.
     (EXISTS (
-         SELECT 1 FROM diveframecluster dfc
-         WHERE dfc.dive_id = d.id
-           AND dfc.data_source = 'PREDICTION'
-     )
-     AND EXISTS (
          SELECT 1 FROM laserlabel ll
          JOIN image i ON i.id = ll.image_id
          WHERE i.dive_id = d.id
            AND {_VALID_LASER_SQL}
+           AND EXISTS (
+               SELECT 1 FROM diveframeclusterimagemapping mm
+               JOIN diveframecluster dfc
+                 ON dfc.id = mm.dive_frame_cluster_id
+               WHERE mm.image_id = i.id
+                 AND dfc.data_source = 'PREDICTION'
+           )
      )
      AND NOT EXISTS (
          SELECT 1 FROM laserlabel ll
          JOIN image i ON i.id = ll.image_id
          WHERE i.dive_id = d.id
            AND {_VALID_LASER_SQL}
+           AND EXISTS (
+               SELECT 1 FROM diveframeclusterimagemapping mm
+               JOIN diveframecluster dfc
+                 ON dfc.id = mm.dive_frame_cluster_id
+               WHERE mm.image_id = i.id
+                 AND dfc.data_source = 'PREDICTION'
+           )
            AND NOT EXISTS (
                SELECT 1 FROM specieslabel sl
                WHERE sl.image_id = i.id
                  AND sl.label_studio_project_id IS NOT NULL
+                 AND sl.superseded = FALSE
            )
      )) AS dive_images_preprocessed,
 
