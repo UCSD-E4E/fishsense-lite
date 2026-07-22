@@ -326,18 +326,56 @@ async def test_create_or_get_heals_existing_project_config(monkeypatch):
     ls.projects.update.assert_called_once_with(id=55, label_config=_CFG_B)
 
 
-def test_species_xml_carries_the_current_fish_model_set():
-    """The Fish Model choices are the thing operators actually edit."""
+def _species_taxonomy_branch(label: str) -> list[str]:
+    """Child choice values under a top-level species-taxonomy branch.
+
+    Parsed rather than substring-matched so the assertions are about
+    structure — a value nested under the wrong parent would still satisfy
+    an `in xml` check.
+    """
+    import xml.etree.ElementTree as ET  # pylint: disable=import-outside-toplevel
+
     from fishsense_api_workflow_worker.activities import (  # pylint: disable=import-outside-toplevel
         create_species_label_studio_project_activity as species_sut,
     )
 
-    xml = species_sut.SPECIES_LABELING_CONFIG_XML
-    for fish in (
-        "Weasly Fish", "Snook", "Grouper", "Shark",
-        "Gray Anthias", "Purple Angel", "Yellow Anthias",
-    ):
-        assert f'<Choice value="{fish}"/>' in xml, fish
+    root = ET.fromstring(species_sut.SPECIES_LABELING_CONFIG_XML)
+    for choice in root.iter("Choice"):
+        if choice.get("value") == label:
+            return [child.get("value") for child in choice]
+    raise AssertionError(f"no top-level taxonomy branch {label!r}")
+
+
+def test_species_xml_carries_the_current_fish_model_set():
+    """The Fish Model choices are the thing operators actually edit."""
+    assert _species_taxonomy_branch("Fish Model") == [
+        "Weasly Fish",
+        "Snook",
+        "Grouper",
+        "Shark",
+        "Gray Anthias",
+        "Purple Angel",
+        "Yellow Anthias",
+    ]
     # Retired model names must be gone, or annotators keep seeing them.
+    from fishsense_api_workflow_worker.activities import (  # pylint: disable=import-outside-toplevel
+        create_species_label_studio_project_activity as species_sut,
+    )
+
     for gone in ("George", "Purple Ant", "Yellow Ant"):
-        assert f'<Choice value="{gone}"/>' not in xml, gone
+        assert f'<Choice value="{gone}"/>' not in species_sut.SPECIES_LABELING_CONFIG_XML
+
+
+def test_species_xml_has_calibration_targets_as_its_own_branch():
+    """Ruler / E4E Checkerboard are not fish.
+
+    Kept a sibling of `Fish Model` rather than folded into it so
+    `content_of_image` (which stores the joined taxonomy path) reads as
+    "Calibration Targets, Ruler" and stays separable from fish-model rows.
+    """
+    assert _species_taxonomy_branch("Calibration Targets") == [
+        "Ruler",
+        "E4E Checkerboard",
+    ]
+    # ...and they must NOT also linger under Fish Model.
+    assert "Ruler" not in _species_taxonomy_branch("Fish Model")

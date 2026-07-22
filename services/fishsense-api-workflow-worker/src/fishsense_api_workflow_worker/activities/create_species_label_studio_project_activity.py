@@ -33,11 +33,17 @@ SPECIES_PROJECT_TITLE_SUFFIX = "Species Labeling"
 #   - Slate branch expanded with H-Slate, Tic-Tac-Toe 1..6, V-Slate 1..4.
 #   - Fish Model branch added; its choices were replaced wholesale on
 #     2026-07-21 with the current model set (Weasly Fish, Snook, Grouper,
-#     Shark, Gray Anthias, Purple Angel, Yellow Anthias). Editing this
-#     constant is enough — `create_or_get_label_studio_project` pushes a
-#     changed config onto already-created projects, so existing per-dive
-#     projects converge on the next populate run rather than keeping the
-#     config they were born with.
+#     Shark, Gray Anthias, Purple Angel, Yellow Anthias).
+#   - `Calibration Targets` top-level branch added 2026-07-21 (Ruler,
+#     E4E Checkerboard). Kept as its own sibling of `Fish Model` rather
+#     than folded into it because they aren't fish — `content_of_image`
+#     records the taxonomy path, so these read as
+#     "Calibration Targets, Ruler" and stay trivially separable from the
+#     fish-model rows downstream. Editing this constant is enough —
+#     `create_or_get_label_studio_project` pushes a changed config onto
+#     already-created projects, so existing per-dive projects converge on
+#     the next populate run rather than keeping the config they were born
+#     with.
 SPECIES_LABELING_CONFIG_XML = """\
 <View>
   <Choices name="grouping" toName="image">
@@ -97,6 +103,10 @@ SPECIES_LABELING_CONFIG_XML = """\
       <Choice value="Gray Anthias"/>
       <Choice value="Purple Angel"/>
       <Choice value="Yellow Anthias"/>
+    </Choice>
+    <Choice value="Calibration Targets">
+      <Choice value="Ruler"/>
+      <Choice value="E4E Checkerboard"/>
     </Choice>
   </Taxonomy>
 
