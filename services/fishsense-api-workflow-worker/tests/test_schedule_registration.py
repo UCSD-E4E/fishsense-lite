@@ -129,3 +129,23 @@ async def test_every_dive_selecting_parent_is_registered(registered):
     scheduled — it would simply never run."""
     for schedule_id in _DIVE_SELECTING_PARENT_SCHEDULE_IDS:
         assert schedule_id in registered
+
+
+async def test_labeling_config_reconcile_is_scheduled_hourly_at_25(registered):
+    """Slot +25 — the gap between the +20 species populate and the +30
+    headtail preprocess. It selects no dive, so it isn't part of the
+    dive-selecting stagger, but it must still not collide with a parent."""
+    schedule = registered["reconcile-labeling-configs-workflow-schedule"]
+
+    assert _every(schedule) == timedelta(hours=1)
+    assert _offset(schedule) == timedelta(minutes=25)
+    assert schedule.spec.intervals[0].offset not in {
+        _offset(registered[sid]) for sid in _DIVE_SELECTING_PARENT_SCHEDULE_IDS
+    }
+
+
+async def test_labeling_config_reconcile_skips_when_still_in_flight(registered):
+    """A slow workspace walk must not stack — the next hour re-converges."""
+    schedule = registered["reconcile-labeling-configs-workflow-schedule"]
+
+    assert schedule.policy.overlap == ScheduleOverlapPolicy.SKIP
