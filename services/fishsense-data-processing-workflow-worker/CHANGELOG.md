@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.8.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.7.6...fishsense-data-processing-workflow-worker-v2.8.0) (2026-07-22)
+
+
+### Features
+
+* **label-studio:** hourly labeling-config reconcile for every per-dive project ([#376](https://github.com/UCSD-E4E/fishsense-lite/issues/376)) ([7e8e609](https://github.com/UCSD-E4E/fishsense-lite/commit/7e8e609bfc4c9255e902aea9e5eb25c55df7f04b))
+
+
+### Bug Fixes
+
+* **api:** stage-14 cohort must skip species rows with no scientific name ([#375](https://github.com/UCSD-E4E/fishsense-lite/issues/375)) ([64f9117](https://github.com/UCSD-E4E/fishsense-lite/commit/64f911747f2e35ce8fdc6389f925da56c646ac30))
+
 ## [2.7.6](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.7.5...fishsense-data-processing-workflow-worker-v2.7.6) (2026-07-21)
 
 
