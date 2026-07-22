@@ -3,6 +3,13 @@ import { env } from "./env";
 export type LabelStudioProject = {
   id: number;
   title: string;
+  /** LS publish state. Unpublished projects are drafts or deliberately held
+   *  and must not be surfaced — see `getActiveProjects`.
+   *
+   *  Optional because only `getProject` sources it; consumers that merely
+   *  render id/title (e.g. `buildSections`) shouldn't have to carry it.
+   *  Absent is treated as published, so filtering fails open. */
+  isPublished?: boolean;
 };
 
 // Hosted Label Studio (app.heartex.com) does NOT accept the configured key
@@ -122,8 +129,19 @@ export async function getProject(
     );
   }
 
-  const data = (await response.json()) as { id: number; title: string };
-  return { id: data.id, title: data.title };
+  const data = (await response.json()) as {
+    id: number;
+    title: string;
+    is_published?: boolean;
+  };
+  // A missing `is_published` counts as published: the landing page should
+  // fail OPEN (show the card) rather than silently hide real labeling work
+  // if LS ever stops returning the field.
+  return {
+    id: data.id,
+    title: data.title,
+    isPublished: data.is_published !== false,
+  };
 }
 
 export async function getProjects(

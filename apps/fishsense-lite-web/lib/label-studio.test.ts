@@ -77,7 +77,7 @@ describe("getProject", () => {
 
     const project = await getProject(42, 60);
 
-    expect(project).toEqual({ id: 42, title: "REEF Laser High Priority" });
+    expect(project).toEqual({ id: 42, title: "REEF Laser High Priority", isPublished: true });
     const projectCall = fetchMock.mock.calls.find(([url]) => url !== REFRESH_URL)!;
     expect(projectCall[0]).toBe("http://ls.test/api/projects/42");
     const headers = projectCall[1]?.headers as Record<string, string>;
@@ -105,7 +105,7 @@ describe("getProject", () => {
 
     const project = await getProject(7, 60);
 
-    expect(project).toEqual({ id: 7, title: "recovered" });
+    expect(project).toEqual({ id: 7, title: "recovered", isPublished: true });
     const refreshCalls = fetchMock.mock.calls.filter(([url]) => url === REFRESH_URL);
     expect(refreshCalls).toHaveLength(2); // initial + forced retry
   });
@@ -143,9 +143,9 @@ describe("getProjects", () => {
     const projects = await getProjects([1, 2, 3], 60);
 
     expect(projects).toEqual([
-      { id: 1, title: "project-1" },
-      { id: 2, title: "project-2" },
-      { id: 3, title: "project-3" },
+      { id: 1, title: "project-1", isPublished: true },
+      { id: 2, title: "project-2", isPublished: true },
+      { id: 3, title: "project-3", isPublished: true },
     ]);
     expect(maxInFlight).toBe(3);
   });
@@ -162,7 +162,7 @@ describe("getProjects", () => {
 
     const projects = await getProjects([73, 274558], 60);
 
-    expect(projects).toEqual([{ id: 274558, title: "project-274558" }]);
+    expect(projects).toEqual([{ id: 274558, title: "project-274558", isPublished: true }]);
   });
 
   it("returns an empty list rather than throwing when every ID is dead", async () => {
