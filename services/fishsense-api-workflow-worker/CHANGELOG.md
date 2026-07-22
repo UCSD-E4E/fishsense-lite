@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.44.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.44.0...fishsense-api-workflow-worker-v1.44.1) (2026-07-22)
+
+
+### Bug Fixes
+
+* **sync:** a Label Studio 429 is not a missing project ([#383](https://github.com/UCSD-E4E/fishsense-lite/issues/383)) ([4295027](https://github.com/UCSD-E4E/fishsense-lite/commit/429502715f9167eb88b5b75ff5c80c1da6064536))
+
 ## [1.44.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.43.0...fishsense-api-workflow-worker-v1.44.0) (2026-07-22)
 
 
