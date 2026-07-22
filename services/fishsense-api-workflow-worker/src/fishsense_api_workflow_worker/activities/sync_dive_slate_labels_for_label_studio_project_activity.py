@@ -21,6 +21,7 @@ from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.utils import (
     SYNC_CONCURRENCY,
+    resolve_annotator_user,
     sync_label_studio_project,
 )
 from fishsense_api_workflow_worker.object_store import (
@@ -188,12 +189,12 @@ async def _update_slate_label(
     if slate_label is None:
         return
 
-    if task.annotators:
-        # Unmapped annotator (get_by_label_studio_id 404s -> None) mustn't
-        # crash the task sync — skip attribution instead.
-        user = await fs.users.get_by_label_studio_id(task.annotators[-1])
-        if user is not None:
-            slate_label.user_id = user.id
+    # Attribution is best-effort: hosted LS returns `annotators` as
+    # dicts rather than ints, and mis-handling that used to 422 and
+    # kill the whole project's sync. See resolve_annotator_user.
+    user = await resolve_annotator_user(fs, task)
+    if user is not None:
+        slate_label.user_id = user.id
 
     slate_label.label_studio_json = json.loads(task.json())
     slate_label.completed = task.is_labeled

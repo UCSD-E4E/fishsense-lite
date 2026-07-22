@@ -8,6 +8,7 @@ from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.utils import (
     SYNC_CONCURRENCY,
+    resolve_annotator_user,
     sync_label_studio_project,
 )
 
@@ -26,13 +27,12 @@ async def __update_laser_label(fs: Client, task: Any) -> None:
     if laser_label is None:
         return
 
-    if task.annotators:
-        # The annotator may not be user-synced yet (get_by_label_studio_id
-        # 404s -> None), e.g. mid Label-Studio-instance transition. Skip
-        # attribution rather than crash the whole task sync.
-        user = await fs.users.get_by_label_studio_id(task.annotators[-1])
-        if user is not None:
-            laser_label.user_id = user.id
+    # Attribution is best-effort: hosted LS returns `annotators` as
+    # dicts rather than ints, and mis-handling that used to 422 and
+    # kill the whole project's sync. See resolve_annotator_user.
+    user = await resolve_annotator_user(fs, task)
+    if user is not None:
+        laser_label.user_id = user.id
 
     laser_label.label_studio_json = json.loads(task.json())
     laser_label.updated_at = task.updated_at

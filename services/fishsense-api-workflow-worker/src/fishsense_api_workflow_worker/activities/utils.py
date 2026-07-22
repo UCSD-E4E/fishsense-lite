@@ -96,6 +96,77 @@ async def _list_ls_tasks_with_heartbeat(
             pass
 
 
+def _coerce_label_studio_id(value: Any) -> int | None:
+    """An int id from `value`, or None. `bool` is rejected explicitly —
+    it subclasses int, and `True` must never resolve to user 1."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
+
+
+def resolve_annotator_label_studio_id(annotators: Any) -> int | None:
+    """Label Studio user id of the most recent annotator, or None.
+
+    Self-hosted LS returned `task.annotators` as a list of **ints**, so every
+    sync activity did `task.annotators[-1]`. Hosted LS (app.heartex.com)
+    returns a list of **dicts** instead::
+
+        [{"user_id": 141592, "id": 141592, "username": "ccrutchf", ...}]
+
+    Passing that dict straight to `get_by_label_studio_id` URL-encoded it
+    into the request path — `/api/v1/users/label-studio/%7B` — which
+    fishsense-api rejects with 422. The sync activities anticipated a 404
+    ("annotator not user-synced yet -> skip attribution"), not a 422, so the
+    error escaped the per-task TaskGroup and failed the WHOLE project's
+    sync. No completions were written back, which is why fully-labeled
+    projects never dropped off the dashboard.
+
+    Accepts either shape so a mixed/rolled-back instance still works.
+    """
+    if not annotators:
+        return None
+
+    last = annotators[-1]
+    if isinstance(last, dict):
+        # `user_id` is the annotator; `id` is the same value on hosted LS but
+        # is checked second in case a future payload separates them.
+        for key in ("user_id", "id"):
+            resolved = _coerce_label_studio_id(last.get(key))
+            if resolved is not None:
+                return resolved
+        return None
+    return _coerce_label_studio_id(last)
+
+
+async def resolve_annotator_user(fs: Client, task: Any) -> Any | None:
+    """Look up the fishsense user who annotated `task`, or None.
+
+    Attribution is best-effort on purpose: it is metadata on the label, and
+    it must never cost us the label itself. Any failure here is logged and
+    swallowed, because the 422 above proved how expensive the alternative
+    is — one unexpected annotator payload took down every task in the
+    project, on every hourly run.
+    """
+    annotator_id = resolve_annotator_label_studio_id(getattr(task, "annotators", None))
+    if annotator_id is None:
+        return None
+    try:
+        return await fs.users.get_by_label_studio_id(annotator_id)
+    except Exception as e:  # pylint: disable=broad-except
+        activity.logger.warning(
+            "could not resolve annotator label_studio_id=%s for task %s: %s; "
+            "syncing the label without attribution",
+            annotator_id,
+            getattr(task, "id", None),
+            e,
+        )
+        return None
+
+
 async def sync_label_studio_project(
     project_id: int,
     update_fn: Callable[[Client, Any], Awaitable[None]],
