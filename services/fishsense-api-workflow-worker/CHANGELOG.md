@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.43.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.42.0...fishsense-api-workflow-worker-v1.43.0) (2026-07-22)
+
+
+### Features
+
+* **label-studio:** add Calibration Targets branch (Ruler, E4E Checkerboard) ([#371](https://github.com/UCSD-E4E/fishsense-lite/issues/371)) ([2d715fa](https://github.com/UCSD-E4E/fishsense-lite/commit/2d715fa80332848f0c79aa8439d345b547222ae3))
+
 ## [1.42.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.41.8...fishsense-api-workflow-worker-v1.42.0) (2026-07-21)
 
 
