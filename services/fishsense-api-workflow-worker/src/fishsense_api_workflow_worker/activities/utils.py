@@ -1,6 +1,7 @@
 """Utility functions for activities."""
 
 import asyncio
+import re
 from datetime import datetime
 from typing import Any, Awaitable, Callable
 
@@ -60,6 +61,77 @@ def _coerce_updated_at(value: Any) -> datetime | None:
         except ValueError:
             return None
     return None
+
+
+_THROTTLE_MAX_ATTEMPTS = 5
+_THROTTLE_DEFAULT_WAIT_SECONDS = 30.0
+
+
+def _throttle_wait_seconds(error: ApiError) -> float | None:
+    """Seconds to wait if `error` is a throttle, else None.
+
+    Label Studio answers 429 with `{"detail": "Request was throttled.
+    Expected available in 48 seconds."}` — honour that hint rather than
+    guessing, plus a small margin.
+    """
+    if getattr(error, "status_code", None) != 429:
+        return None
+    body = getattr(error, "body", None)
+    detail = body.get("detail", "") if isinstance(body, dict) else str(body or "")
+    match = re.search(r"(\d+(?:\.\d+)?)\s*second", str(detail))
+    return float(match.group(1)) + 2.0 if match else _THROTTLE_DEFAULT_WAIT_SECONDS
+
+
+async def _ls_project_exists(ls: LabelStudio, project_id: int, kind: str) -> bool:
+    """Whether `project_id` exists, retrying through rate limits.
+
+    A 429 is NOT a missing project. Both arrive as `ApiError`, and treating
+    them the same meant a throttled probe logged "missing" and returned —
+    silently skipping the project *and* returning before the cursor write,
+    so the skip repeated every hour forever with no error surfaced.
+
+    That is exactly what happened to project 274633 (86/86 tasks labeled in
+    LS, 0 completed in the DB, no cursor row ever written): each hourly
+    cycle probes ~46 projects across four label kinds, LS starts throttling
+    partway through, and whichever projects land after that point are
+    silently dropped. Position-dependent, so it looked non-deterministic.
+
+    Raises when still throttled after `_THROTTLE_MAX_ATTEMPTS` so the
+    activity fails and Temporal retries — a loud failure is correct here,
+    because the alternative is the silent skip this replaces.
+    """
+    for attempt in range(_THROTTLE_MAX_ATTEMPTS):
+        try:
+            await asyncio.to_thread(ls.projects.get, project_id)
+            return True
+        except ApiError as e:
+            wait = _throttle_wait_seconds(e)
+            if wait is None:
+                # 404 and friends — genuinely gone. Skipping is right.
+                activity.logger.warning(
+                    "sync_label_studio_project missing kind=%s project_id=%d error=%s",
+                    kind,
+                    project_id,
+                    e,
+                )
+                return False
+            activity.logger.info(
+                "sync_label_studio_project throttled kind=%s project_id=%d "
+                "attempt=%d/%d; backing off %.0fs",
+                kind,
+                project_id,
+                attempt + 1,
+                _THROTTLE_MAX_ATTEMPTS,
+                wait,
+            )
+            activity.heartbeat()
+            await asyncio.sleep(wait)
+
+    raise RuntimeError(
+        f"Label Studio still throttling project {project_id} (kind={kind}) after "
+        f"{_THROTTLE_MAX_ATTEMPTS} attempts — failing rather than skipping it, "
+        "so the cursor is not advanced and the next run retries."
+    )
 
 
 async def _list_ls_tasks_with_heartbeat(
@@ -196,15 +268,7 @@ async def sync_label_studio_project(
         project_id,
     )
 
-    try:
-        _ = await asyncio.to_thread(ls.projects.get, project_id)
-    except ApiError as e:
-        activity.logger.warning(
-            "sync_label_studio_project missing kind=%s project_id=%d error=%s",
-            kind,
-            project_id,
-            e,
-        )
+    if not await _ls_project_exists(ls, project_id, kind):
         return
 
     tasks = await _list_ls_tasks_with_heartbeat(ls, project_id)
