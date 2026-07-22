@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.31.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.31.0...fishsense-api-v1.31.1) (2026-07-22)
+
+
+### Bug Fixes
+
+* **api:** species preprocess selector/view require the image be in a cluster ([#390](https://github.com/UCSD-E4E/fishsense-lite/issues/390)) ([eb4f6f2](https://github.com/UCSD-E4E/fishsense-lite/commit/eb4f6f23bc88be91fc971db387f54637c1bf39fe))
+
 ## [1.31.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.30.2...fishsense-api-v1.31.0) (2026-07-22)
 
 
