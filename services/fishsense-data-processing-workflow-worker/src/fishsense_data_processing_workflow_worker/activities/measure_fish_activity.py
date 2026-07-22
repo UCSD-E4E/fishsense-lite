@@ -53,6 +53,12 @@ class MeasureFishResult:
     missing_laser_or_headtail: int
     missing_cluster: int
     skipped_already_measured: int = 0
+    # Species rows whose `content_of_image` carries no `Common (Scientific)`
+    # name — the non-`Fish` taxonomy branches (`Fish Model, Weasly Fish`,
+    # `Calibration Targets, Ruler`). Counted separately because these were
+    # previously tallied as `missing_laser_or_headtail`, which pointed
+    # debugging at the labels instead of at the taxonomy branch.
+    skipped_unmeasurable_species: int = 0
 
 
 __all__ = ["MeasureFishResult", "measure_fish_activity"]
@@ -271,11 +277,18 @@ async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
 
             names = _parse_species_names(species_label.content_of_image)
             if names is None:
-                activity.logger.warning(
-                    "dive_id=%d image_id=%d: unparseable content_of_image=%r; skipping",
+                # Expected for the non-`Fish` taxonomy branches (Fish Model,
+                # Calibration Targets) — they carry no scientific name, so
+                # there is nothing to measure against. Info rather than
+                # warning, and its own counter: this used to increment
+                # `missing_laser_or_headtail`, which sent anyone reading the
+                # result at the labels rather than at the taxonomy branch.
+                activity.logger.info(
+                    "dive_id=%d image_id=%d: content_of_image=%r carries no "
+                    "'Common (Scientific)' name; not measurable, skipping",
                     dive_id, image_id, species_label.content_of_image,
                 )
-                result.missing_laser_or_headtail += 1
+                result.skipped_unmeasurable_species += 1
                 continue
             common, scientific = names
 

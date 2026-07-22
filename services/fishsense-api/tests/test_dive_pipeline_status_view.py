@@ -866,9 +866,25 @@ async def test_calibrated_false_when_no_laser_extrinsics(session):
 # a LABEL_STUDIO cluster.
 
 
-def _measurable_image(session, image_id: int, dive_id: int, *, cluster_id: int):
+MEASURABLE_CONTENT = "Fish, Hogfish (Lachnolaimus maximus)"
+
+
+def _measurable_image(
+    session,
+    image_id: int,
+    dive_id: int,
+    *,
+    cluster_id: int,
+    content_of_image: str | None = MEASURABLE_CONTENT,
+):
     """Seed an image that stage 14 would attempt: top-three species label
-    + valid laser + valid headtail + a LABEL_STUDIO cluster."""
+    + valid laser + valid headtail + a LABEL_STUDIO cluster.
+
+    `content_of_image` defaults to a real `Fish` row because stage 14 also
+    needs a `Common (Scientific)` name to measure against — a row without
+    one is skipped by the activity, so leaving it NULL here would have
+    built an image the pipeline can never actually measure.
+    """
     from fishsense_api.models.dive_frame_cluster import (  # pylint: disable=import-outside-toplevel
         DiveFrameCluster,
         DiveFrameClusterImageMapping,
@@ -894,6 +910,7 @@ def _measurable_image(session, image_id: int, dive_id: int, *, cluster_id: int):
         SpeciesLabel(
             image_id=image_id, top_three_photos_of_group=True,
             completed=True, superseded=False, label_studio_project_id=70,
+            content_of_image=content_of_image,
         )
     )
     return DiveFrameClusterImageMapping(
@@ -990,3 +1007,29 @@ async def test_measured_ignores_non_top_three_images(session):
     await session.flush()
 
     assert (await _row(session, 1))["measured"] is True
+
+
+async def test_measured_ignores_species_rows_without_a_scientific_name(session):
+    """`measured` must mirror what stage 14 can actually measure.
+
+    A `Fish Model` / `Calibration Targets` row carries no
+    "Common (Scientific)" name, so `measure_fish_activity` skips it and no
+    Measurement is ever written. Counting it as a measurable-but-unmeasured
+    image pinned `measured` false forever — the same never-goes-false shape
+    b7c2e4d81a09 fixed one layer up, for unbound clusters.
+    """
+    session.add(_dive(1))
+    await session.flush()
+    # One real fish (measured) + one Fish Model rig (never measurable).
+    real = _measurable_image(session, 11, 1, cluster_id=1)
+    rig = _measurable_image(
+        session, 12, 1, cluster_id=2, content_of_image="Fish Model, Weasly Fish"
+    )
+    await session.flush()
+    session.add_all([real, rig])
+    session.add(_measurement(11))
+    await session.flush()
+
+    assert (await _row(session, 1))["measured"] is True, (
+        "the Fish Model rig must not hold `measured` false"
+    )

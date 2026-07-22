@@ -24,6 +24,9 @@ from temporalio.client import (
 )
 from temporalio.worker import Worker
 
+from fishsense_api_workflow_worker.activities.reconcile_labeling_configs_activity import (  # pylint: disable=line-too-long
+    reconcile_labeling_configs_activity,
+)
 from fishsense_api_workflow_worker.activities.cleanup_raw_bytes_for_dive_activity import (  # pylint: disable=line-too-long
     cleanup_raw_bytes_for_dive_activity,
 )
@@ -153,6 +156,9 @@ from fishsense_api_workflow_worker.workflows.create_species_label_studio_project
 )
 from fishsense_api_workflow_worker.workflows.populate_dive_slate_label_studio_project_workflow import (  # pylint: disable=line-too-long
     PopulateDiveSlateLabelStudioProjectWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.reconcile_labeling_configs_workflow import (  # pylint: disable=line-too-long
+    ReconcileLabelingConfigsWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.populate_headtail_label_studio_project_workflow import (  # pylint: disable=line-too-long
     PopulateHeadTailLabelStudioProjectWorkflow,
@@ -362,6 +368,26 @@ async def schedule_workflows(client: Client):
                     overlap=ScheduleOverlapPolicy.SKIP,
                 )
             )
+            # Labeling-config reconcile: hourly at +25 min, in the gap
+            # between the +20 species populate and the +30 headtail
+            # preprocess. Cheap (one workspace list + a detail fetch per
+            # drifted project) and independent of every cohort, which is
+            # the whole point: the heal inside
+            # `create_or_get_label_studio_project` only runs during
+            # populate, so a fully-populated dive's project never saw a
+            # taxonomy change again. SKIP overlap — a slow pass shouldn't
+            # stack, and the next hour re-converges anyway.
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "reconcile-labeling-configs-workflow-schedule",
+                    ReconcileLabelingConfigsWorkflow,
+                    timedelta(hours=1),
+                    offset=timedelta(minutes=25),
+                    run_timeout=timedelta(minutes=30),
+                    overlap=ScheduleOverlapPolicy.SKIP,
+                )
+            )
             tg.create_task(
                 schedule_workflow(
                     client,
@@ -483,6 +509,7 @@ async def main():
                 PopulateSpeciesLabelStudioProjectWorkflow,
                 PopulateSpeciesLabelStudioProjectParentWorkflow,
                 PopulateHeadTailLabelStudioProjectWorkflow,
+                ReconcileLabelingConfigsWorkflow,
                 PopulateDiveSlateLabelStudioProjectWorkflow,
                 UpdateDiveImageGroupsWorkflow,
                 ClusterDiveFramesParentWorkflow,
@@ -496,6 +523,7 @@ async def main():
             ],
             activity_executor=executor,
             activities=[
+                reconcile_labeling_configs_activity,
                 get_laser_label_studio_project_ids_activity,
                 get_headtail_label_studio_project_ids_activity,
                 get_dive_slate_label_studio_project_ids_activity,

@@ -542,3 +542,41 @@ async def test_measurements_are_fetched_once_per_dive(monkeypatch):
     await ActivityEnvironment().run(sut.measure_fish_activity, 42)
 
     fs.fish.get_measurements.assert_awaited_once_with(42)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "content",
+    ["Fish Model, Weasly Fish", "Calibration Targets, Ruler", None],
+    ids=["fish-model", "calibration-target", "empty"],
+)
+async def test_skips_species_rows_that_carry_no_scientific_name(monkeypatch, content):
+    """The non-`Fish` taxonomy branches have no "Common (Scientific)" name,
+    so there is nothing to measure against.
+
+    These land in their own counter rather than `missing_laser_or_headtail`
+    — they used to inflate that one, which pointed anyone reading the result
+    at the labels instead of at the taxonomy branch. The labels here are
+    deliberately complete, so a regression that reuses the old counter shows
+    up immediately.
+    """
+    image_id = 100
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_camera_intrinsics(),
+        laser_extrinsics=_laser_extrinsics(),
+        species_labels=[_species_label(image_id, content=content)],
+        laser_labels={image_id: _laser_label(image_id, 10.0, 20.0)},
+        headtail_labels={
+            image_id: _headtail_label(image_id, (1.0, 2.0), (3.0, 4.0))
+        },
+        clusters=[_cluster([image_id])],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(sut.measure_fish_activity, 42)
+
+    assert result.measured == 0
+    assert result.skipped_unmeasurable_species == 1
+    assert result.missing_laser_or_headtail == 0, "must not inflate the label counter"
+    fs.fish.post_measurement.assert_not_called()

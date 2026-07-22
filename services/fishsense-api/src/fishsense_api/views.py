@@ -46,6 +46,29 @@ _VALID_HEADTAIL_SQL = """htl.completed = TRUE
                  AND htl.tail_x IS NOT NULL
                  AND htl.tail_y IS NOT NULL"""
 
+# An image stage 14 can actually turn into a Measurement.
+#
+# `measure_fish_activity._parse_species_names` reads the species name out of
+# the LAST ", "-separated chunk of `content_of_image` and requires the
+# `Common Name (Scientific name)` shape — it returns None otherwise and the
+# activity skips the image rather than writing a malformed Species row. Only
+# the `Fish` branch of the taxonomy carries that shape:
+#
+#     "Fish, Hogfish (Lachnolaimus maximus)"  -> measurable
+#     "Fish Model, Weasly Fish"               -> skipped (no parens)
+#     "Calibration Targets, Ruler"            -> skipped (no parens)
+#
+# Without this condition the cohort and the activity disagree, and that
+# disagreement cannot resolve: the selector keeps offering an image the
+# activity always skips, no Measurement is ever written, so `NOT EXISTS
+# (measurement)` stays true and the dive is re-selected every hour forever.
+# That is the same never-goes-false shape that blocked scheduling stage 14
+# before 2026-07-17, so it is spelled once and mirrored in
+# `dive_controller._measurable_species_conditions`.
+#
+# Assumes the enclosing subquery aliases specieslabel as `sl`.
+_MEASURABLE_SPECIES_SQL = "sl.content_of_image LIKE '%(%)'"
+
 # "Complete" everywhere = ≥1 completed-non-superseded row AND zero
 # incomplete-non-superseded rows. Mirrors
 # `get_dives_with_complete_laser_labeling`'s semantics so a dive with
@@ -259,6 +282,7 @@ SELECT
          JOIN image i ON i.id = sl.image_id
          WHERE i.dive_id = d.id
            AND sl.top_three_photos_of_group = TRUE
+           AND {_MEASURABLE_SPECIES_SQL}
            AND EXISTS (
                SELECT 1 FROM laserlabel ll
                WHERE ll.image_id = i.id
