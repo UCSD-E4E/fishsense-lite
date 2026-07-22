@@ -475,7 +475,10 @@ async def test_dive_images_preprocessed_requires_clusters_and_laser_valid_specie
 ):
     """Predicate (post 2026-05-05): PREDICTION cluster present AND
     every laser-valid image has a non-sentinel SpeciesLabel row."""
-    from fishsense_api.models.dive_frame_cluster import DiveFrameCluster  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive_frame_cluster import (  # pylint: disable=import-outside-toplevel
+        DiveFrameCluster,
+        DiveFrameClusterImageMapping,
+    )
     from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
     from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
 
@@ -484,12 +487,13 @@ async def test_dive_images_preprocessed_requires_clusters_and_laser_valid_specie
     session.add_all([_image(11, 1), _image(12, 1)])
     await session.flush()
     session.add(
-        DiveFrameCluster(
-            dive_id=1, data_source="PREDICTION", index=0,
-        )
+        DiveFrameCluster(id=820, dive_id=1, data_source="PREDICTION", index=0)
     )
+    await session.flush()
     session.add_all(
         [
+            DiveFrameClusterImageMapping(dive_frame_cluster_id=820, image_id=11),
+            DiveFrameClusterImageMapping(dive_frame_cluster_id=820, image_id=12),
             LaserLabel(
                 image_id=11, completed=True, superseded=False,
                 x=100.0, y=200.0, label_studio_project_id=43,
@@ -591,7 +595,10 @@ async def test_dive_images_preprocessed_ignores_images_without_valid_laser(sessi
     species row on it doesn't fail dive_images_preprocessed. As long
     as the laser-valid image (11) has a species row, the predicate
     holds."""
-    from fishsense_api.models.dive_frame_cluster import DiveFrameCluster  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive_frame_cluster import (  # pylint: disable=import-outside-toplevel
+        DiveFrameCluster,
+        DiveFrameClusterImageMapping,
+    )
     from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
     from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
 
@@ -600,12 +607,13 @@ async def test_dive_images_preprocessed_ignores_images_without_valid_laser(sessi
     session.add_all([_image(11, 1), _image(12, 1)])
     await session.flush()
     session.add(
-        DiveFrameCluster(
-            dive_id=1, data_source="PREDICTION", index=0,
-        )
+        DiveFrameCluster(id=830, dive_id=1, data_source="PREDICTION", index=0)
     )
+    await session.flush()
     session.add_all(
         [
+            DiveFrameClusterImageMapping(dive_frame_cluster_id=830, image_id=11),
+            DiveFrameClusterImageMapping(dive_frame_cluster_id=830, image_id=12),
             LaserLabel(
                 image_id=11, completed=True, superseded=False,
                 x=100.0, y=200.0, label_studio_project_id=43,
@@ -641,12 +649,13 @@ async def test_view_and_selector_agree_on_species_predicate(session):
     )
     from fishsense_api.models.dive_frame_cluster import (  # pylint: disable=import-outside-toplevel
         DiveFrameCluster,
+        DiveFrameClusterImageMapping,
     )
     from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
     from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
 
-    # dive 1 (Case A): PREDICTION cluster + valid laser + no species → cohort.
-    # dive 2 (Case B): PREDICTION cluster + valid laser + species labeled → done.
+    # dive 1 (Case A): valid laser IN a cluster + no species → cohort.
+    # dive 2 (Case B): valid laser IN a cluster + species labeled → done.
     # dive 3 (Case C): PREDICTION cluster + no valid laser → ineligible.
     session.add_all([_dive(1), _dive(2), _dive(3)])
     await session.flush()
@@ -654,9 +663,17 @@ async def test_view_and_selector_agree_on_species_predicate(session):
     await session.flush()
     session.add_all(
         [
-            DiveFrameCluster(dive_id=1, data_source="PREDICTION", index=0),
-            DiveFrameCluster(dive_id=2, data_source="PREDICTION", index=0),
-            DiveFrameCluster(dive_id=3, data_source="PREDICTION", index=0),
+            DiveFrameCluster(id=801, dive_id=1, data_source="PREDICTION", index=0),
+            DiveFrameCluster(id=802, dive_id=2, data_source="PREDICTION", index=0),
+            DiveFrameCluster(id=803, dive_id=3, data_source="PREDICTION", index=0),
+        ]
+    )
+    await session.flush()
+    session.add_all(
+        [
+            # Qualifying images must be IN their cluster (view + selector).
+            DiveFrameClusterImageMapping(dive_frame_cluster_id=801, image_id=11),
+            DiveFrameClusterImageMapping(dive_frame_cluster_id=802, image_id=21),
             LaserLabel(
                 image_id=11, completed=True, superseded=False,
                 x=100.0, y=200.0, label_studio_project_id=43,
@@ -1033,3 +1050,85 @@ async def test_measured_ignores_species_rows_without_a_scientific_name(session):
     assert (await _row(session, 1))["measured"] is True, (
         "the Fish Model rig must not hold `measured` false"
     )
+
+
+async def test_dive_images_preprocessed_ignores_unclustered_and_superseded(session):
+    """`dive_images_preprocessed` must count only *processable* images —
+    valid laser AND in a PREDICTION cluster — with a live species row, so it
+    stays in step with `select_next_for_species_preprocessing`.
+
+    Two images: image 11 is clustered and labeled (done); image 12 has a
+    valid laser but is NOT in any cluster, so it is unprocessable and must not
+    drag the flag to False. Otherwise the dashboard reads "stage 2 stuck"
+    forever on a dive the selector correctly never re-fires on (the prod
+    poison pill).
+    """
+    from fishsense_api.models.data_source import DataSource  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive_frame_cluster import (  # pylint: disable=import-outside-toplevel
+        DiveFrameCluster,
+        DiveFrameClusterImageMapping,
+    )
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1)])
+    await session.flush()
+    session.add(DiveFrameCluster(id=810, dive_id=1, data_source=DataSource.PREDICTION))
+    await session.flush()
+    session.add(DiveFrameClusterImageMapping(dive_frame_cluster_id=810, image_id=11))
+    session.add_all(
+        [
+            LaserLabel(
+                image_id=11, completed=True, superseded=False,
+                x=1.0, y=2.0, label_studio_project_id=43,
+            ),
+            LaserLabel(
+                image_id=12, completed=True, superseded=False,
+                x=3.0, y=4.0, label_studio_project_id=43,
+            ),
+            SpeciesLabel(
+                image_id=11, completed=False, superseded=False,
+                label_studio_project_id=70,
+            ),
+        ]
+    )
+    await session.flush()
+
+    # image 12 is unclustered → not processable → doesn't count against done.
+    assert (await _row(session, 1))["dive_images_preprocessed"] is True
+
+
+async def test_dive_images_preprocessed_false_when_only_species_row_superseded(session):
+    """A dead-lettered species row is not evidence the work is done."""
+    from fishsense_api.models.data_source import DataSource  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive_frame_cluster import (  # pylint: disable=import-outside-toplevel
+        DiveFrameCluster,
+        DiveFrameClusterImageMapping,
+    )
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(_image(11, 1))
+    await session.flush()
+    session.add(DiveFrameCluster(id=811, dive_id=1, data_source=DataSource.PREDICTION))
+    await session.flush()
+    session.add(DiveFrameClusterImageMapping(dive_frame_cluster_id=811, image_id=11))
+    session.add_all(
+        [
+            LaserLabel(
+                image_id=11, completed=True, superseded=False,
+                x=1.0, y=2.0, label_studio_project_id=43,
+            ),
+            SpeciesLabel(
+                image_id=11, completed=False, superseded=True,
+                label_studio_project_id=117,
+            ),
+        ]
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["dive_images_preprocessed"] is False
