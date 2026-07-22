@@ -765,7 +765,7 @@ wheels = [
 
 [[package]]
 name = "fishsense-api"
-version = "1.30.2"
+version = "1.31.0"
 source = { editable = "services/fishsense-api" }
 dependencies = [
     { name = "alembic" },
@@ -847,7 +847,7 @@ dev = [
 
 [[package]]
 name = "fishsense-api-workflow-worker"
-version = "1.43.0"
+version = "1.44.0"
 source = { editable = "services/fishsense-api-workflow-worker" }
 dependencies = [
     { name = "boto3" },
@@ -1009,7 +1009,7 @@ requires-dist = [
 
 [[package]]
 name = "fishsense-data-processing-workflow-worker"
-version = "2.7.6"
+version = "2.8.0"
 source = { editable = "services/fishsense-data-processing-workflow-worker" }
 dependencies = [
     { name = "boto3" },
