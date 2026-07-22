@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.44.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.43.0...fishsense-api-workflow-worker-v1.44.0) (2026-07-22)
+
+
+### Features
+
+* **label-studio:** hourly labeling-config reconcile for every per-dive project ([#376](https://github.com/UCSD-E4E/fishsense-lite/issues/376)) ([7e8e609](https://github.com/UCSD-E4E/fishsense-lite/commit/7e8e609bfc4c9255e902aea9e5eb25c55df7f04b))
+
 ## [1.43.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.42.0...fishsense-api-workflow-worker-v1.43.0) (2026-07-22)
 
 
