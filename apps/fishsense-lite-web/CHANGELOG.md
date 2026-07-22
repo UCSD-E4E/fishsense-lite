@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.7.4...fishsense-lite-web-v0.8.0) (2026-07-22)
+
+
+### Features
+
+* **web:** only surface published Label Studio projects on the landing page ([#387](https://github.com/UCSD-E4E/fishsense-lite/issues/387)) ([9868570](https://github.com/UCSD-E4E/fishsense-lite/commit/98685704bf3c66865da8506159c572eaaa1fa3bf))
+
 ## [0.7.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.7.3...fishsense-lite-web-v0.7.4) (2026-07-21)
 
 
