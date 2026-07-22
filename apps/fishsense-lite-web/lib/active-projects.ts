@@ -18,6 +18,23 @@ const noActiveProjects = (): ActiveProjects => ({
   slate: [],
 });
 
+/** Drop unpublished projects.
+ *
+ * The id list comes from fishsense-api (`label-studio-project-ids?incomplete=true`),
+ * which is derived from label rows and knows nothing about Label Studio's
+ * publish state. So a project that is a draft — still being populated — or one
+ * deliberately unpublished to hold it back from labelers would still be linked
+ * from the landing page. Publish state lives in LS, so it's filtered here,
+ * after the per-project fetch that already tells us.
+ */
+function published(projects: LabelStudioProject[]): LabelStudioProject[] {
+  // `!== false` rather than truthiness: only an explicit unpublished flag
+  // hides a card. `getProject` already normalizes a missing `is_published`
+  // to true, and failing open here too means a Label Studio response change
+  // can never silently blank the landing page.
+  return projects.filter((project) => project.isPublished !== false);
+}
+
 export async function getActiveProjects(revalidate = 300): Promise<ActiveProjects> {
   // Label Studio is off by default — see `labelStudioEnabled`. Short-circuit
   // before the fishsense-api call too: the project IDs it returns are only
@@ -34,5 +51,10 @@ export async function getActiveProjects(revalidate = 300): Promise<ActiveProject
     getProjects(ids.headtail, revalidate),
     getProjects(ids["dive-slate"], revalidate),
   ]);
-  return { laser, species, headtail, slate };
+  return {
+    laser: published(laser),
+    species: published(species),
+    headtail: published(headtail),
+    slate: published(slate),
+  };
 }
