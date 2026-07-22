@@ -49,6 +49,30 @@ def _valid_laser_conditions():
     )
 
 
+def _measurable_species_conditions():
+    """A species row stage 14 can actually turn into a Measurement.
+
+    `measure_fish_activity._parse_species_names` reads the species name from
+    the LAST ", "-separated chunk of `content_of_image` and requires the
+    `Common Name (Scientific name)` shape, returning None otherwise — the
+    activity then skips the image rather than writing a malformed Species
+    row. Only the `Fish` taxonomy branch carries that shape:
+
+        "Fish, Hogfish (Lachnolaimus maximus)"  -> measurable
+        "Fish Model, Weasly Fish"               -> skipped (no parens)
+        "Calibration Targets, Ruler"            -> skipped (no parens)
+
+    Without this, the cohort and the activity disagree in a way that cannot
+    resolve: the selector keeps offering an image the activity always skips,
+    so no Measurement is written, `~is_measured` stays true, and the dive is
+    re-selected every hour forever. That is the same never-goes-false shape
+    that blocked scheduling stage 14 before 2026-07-17.
+
+    Mirrors `views._MEASURABLE_SPECIES_SQL` — keep the two in step.
+    """
+    return (SpeciesLabel.content_of_image.like("%(%)"),)  # pylint: disable=no-member
+
+
 def _valid_headtail_conditions():
     """The repo-wide definition of a *valid* head/tail label.
 
@@ -496,6 +520,7 @@ async def select_next_for_measure_fish(
         .join(Image, Image.id == SpeciesLabel.image_id)
         .where(Image.dive_id == Dive.id)
         .where(SpeciesLabel.top_three_photos_of_group == True)
+        .where(*_measurable_species_conditions())
         .where(valid_laser)
         .where(valid_headtail)
         .where(in_label_studio_cluster)

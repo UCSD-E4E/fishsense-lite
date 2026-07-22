@@ -1406,9 +1406,25 @@ async def test_laser_calibration_requires_dive_slate_id(session):
 # Prod dive 466 carried 1632 such clusters against 24 measurable images.
 
 
-def _measurable_image(session, image_id: int, dive_id: int, *, cluster_id: int):
+MEASURABLE_CONTENT = "Fish, Hogfish (Lachnolaimus maximus)"
+
+
+def _measurable_image(
+    session,
+    image_id: int,
+    dive_id: int,
+    *,
+    cluster_id: int,
+    content_of_image: str | None = MEASURABLE_CONTENT,
+):
     """An image stage 14 would attempt: top-three species label + valid
-    laser + valid headtail + a LABEL_STUDIO cluster."""
+    laser + valid headtail + a LABEL_STUDIO cluster.
+
+    `content_of_image` defaults to a real `Fish` row because stage 14 also
+    needs a `Common (Scientific)` name to measure against — a row without
+    one is skipped by the activity, so leaving it NULL here would have
+    built an image the pipeline can never actually measure.
+    """
     from fishsense_api.models.data_source import DataSource  # pylint: disable=import-outside-toplevel
     from fishsense_api.models.dive_frame_cluster import (  # pylint: disable=import-outside-toplevel
         DiveFrameCluster,
@@ -1437,6 +1453,7 @@ def _measurable_image(session, image_id: int, dive_id: int, *, cluster_id: int):
         SpeciesLabel(
             image_id=image_id, top_three_photos_of_group=True,
             completed=True, superseded=False, label_studio_project_id=70,
+            content_of_image=content_of_image,
         )
     )
     return DiveFrameClusterImageMapping(
@@ -1647,3 +1664,64 @@ async def test_species_preprocessing_still_excludes_live_real_species_row(sessio
     await session.flush()
 
     assert await select_next_for_species_preprocessing(session=session) is None
+
+
+# ── Stage 14 only measures rows that carry a scientific name ──────────
+#
+# `measure_fish_activity._parse_species_names` needs the trailing
+# ", "-chunk of `content_of_image` to look like "Common (Scientific)".
+# The non-`Fish` taxonomy branches don't:
+#
+#     "Fish Model, Weasly Fish"     -> skipped
+#     "Calibration Targets, Ruler"  -> skipped
+#
+# If the cohort ignores that, it offers an image the activity always skips.
+# No Measurement is ever written, so `~is_measured` stays true and the dive
+# is re-selected every hour forever — the same never-goes-false shape that
+# blocked scheduling stage 14 before 2026-07-17.
+
+
+async def test_measure_fish_skips_species_rows_without_a_scientific_name(session):
+    """Fish Model / Calibration Targets rows must not hold a dive in the
+    cohort — nothing downstream can ever measure them."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_measure_fish,
+    )
+    from fishsense_api.models.laser_extrinsics import (  # pylint: disable=import-outside-toplevel
+        LaserExtrinsics,
+    )
+
+    for content in ("Fish Model, Weasly Fish", "Calibration Targets, Ruler", None):
+        session.add(_dive(1))
+        await session.flush()
+        session.add(LaserExtrinsics(dive_id=1, camera_id=1))
+        mapping = _measurable_image(
+            session, 11, 1, cluster_id=1, content_of_image=content
+        )
+        await session.flush()
+        session.add(mapping)
+        await session.flush()
+
+        assert await select_next_for_measure_fish(session=session) is None, content
+
+        await session.rollback()
+
+
+async def test_measure_fish_still_selects_a_real_fish_row(session):
+    """Guard the other direction — the `Fish` branch stays measurable."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_measure_fish,
+    )
+    from fishsense_api.models.laser_extrinsics import (  # pylint: disable=import-outside-toplevel
+        LaserExtrinsics,
+    )
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(LaserExtrinsics(dive_id=1, camera_id=1))
+    mapping = _measurable_image(session, 11, 1, cluster_id=1)  # default Fish row
+    await session.flush()
+    session.add(mapping)
+    await session.flush()
+
+    assert await select_next_for_measure_fish(session=session) == 1
