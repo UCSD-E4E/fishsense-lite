@@ -249,7 +249,7 @@ dives). Per-stage cohort:
 | 5.1 | HIGH-priority + at least one image with a *valid* `LaserLabel` whose image carries no non-sentinel `HeadTailLabel` row |
 | 9   | HIGH-priority + `dive_slate_id` set + at least one `SpeciesLabel.content_of_image='Slate, Laser on slate'` whose image carries no `DiveSlateLabel` row at all |
 | 13  | HIGH-priority + `dive_slate_id` set + no `LaserExtrinsics` + ≥2 completed `DiveSlateLabel` rows (matches the data-worker activity's `MIN_LASER_POINTS=2` precondition) |
-| 14  | HIGH-priority + has `LaserExtrinsics` + at least one *measurable* image with no `Measurement` (same predicate as the view's `measured`; keep the two in step) |
+| 14  | HIGH-priority + has `LaserExtrinsics` (own **or borrowed** via `Dive.calibration_dive_id`) + at least one *measurable* image with no `Measurement` (same predicate as the view's `measured`; keep the two in step) |
 
 Stages 1, 2, and 5.1 all cascade from the same "valid laser" gate.
 Stage 1 lands PREDICTION clusters that stage 2 then consumes; stage
@@ -335,7 +335,7 @@ Backs Superset dashboards reading the fishsense Postgres connection.
 | `slate_applicable` | `dive_slate_id IS NOT NULL` |
 | `slate_preprocessed` | every image with `SpeciesLabel.content_of_image='Slate, Laser on slate'` has a non-sentinel `DiveSlateLabel` row |
 | `slate_labeling_complete` | ≥1 completed `DiveSlateLabel` AND zero incomplete |
-| `calibrated` | dive has a `LaserExtrinsics` row |
+| `calibrated` | dive has a `LaserExtrinsics` row **of its own, or borrows one** via `Dive.calibration_dive_id` (see "Borrowed laser calibration" below) |
 | `measured` | ≥1 `Measurement` for the dive AND zero *measurable* images without one. "Measurable" = a `top_three_photos_of_group` `SpeciesLabel` whose image has a valid laser label, a valid head/tail label, and a LABEL_STUDIO cluster — i.e. what `measure_fish_activity` actually attempts. Rescoped 2026-07-17; see the stage-14 notes. |
 
 **"Complete" semantics throughout** mirror
@@ -383,6 +383,31 @@ activity calls (selector → `start_child_workflow`); the data-worker
 keeps SDK fetches inline because the math kernels need opencv +
 fishsense-core, so splitting fetch/math across workers would add 5+
 activity handoffs per dive for no gain.
+
+**Borrowed laser calibration (`Dive.calibration_dive_id`).** Laser
+calibration (`LaserExtrinsics`) is physically a property of the
+camera+laser rig, not the dive — one slate calibration holds for every
+dive shot with the same rig until it's disturbed. But stage 13 computes
+`LaserExtrinsics` *per dive* from that dive's own slate labels, so a
+fish-only dive with no slate frames (the slate was shot in a separate
+calibration dive) can never self-calibrate and stage 14 can never
+measure it. The self-referential FK `Dive.calibration_dive_id` lets such
+a dive **borrow** a sibling slate dive's calibration. Resolution order,
+own-wins-then-link, is centralized in `get_laser_extrinsics_for_dive`
+(the endpoint `measure_fish_activity` reads via
+`fs.dives.get_laser_extrinsics(dive_id)`), so the data-worker needs no
+change — it transparently gets the borrowed row. Three predicates mirror
+each other and must stay in step: the endpoint's fallback, the stage-14
+`select_next_for_measure_fish` cohort (`has_laser_extrinsics` = own
+`OR` linked), and the view's `calibrated` flag. Stage 13 is unchanged:
+a linked fish dive has no `dive_slate_id`/slate labels so it's naturally
+excluded from self-calibration, and a dive with its own slate always
+self-calibrates (own wins). Set/clear the link via
+`PUT|DELETE /api/v1/dives/{id}/calibration-source/{source_id}` (SDK:
+`dives.set_calibration_source` / `clear_calibration_source`). The
+management UI is the authenticated `/portal` dashboard (a follow-up to
+the backend). NULL link = self-calibrate (the default for every
+slate-bearing dive).
 
 **Stage 14 became idempotent and got a schedule on 2026-07-17** (hourly,
 +40 min). It used to be non-idempotent — `post_measurement` was a plain

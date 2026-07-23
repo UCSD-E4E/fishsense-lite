@@ -34,7 +34,7 @@ async def session():
     await engine.dispose()
 
 
-def _dive(dive_id: int, *, priority="HIGH", dive_slate_id=None):
+def _dive(dive_id: int, *, priority="HIGH", dive_slate_id=None, calibration_dive_id=None):
     from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
     from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
 
@@ -44,6 +44,7 @@ def _dive(dive_id: int, *, priority="HIGH", dive_slate_id=None):
         dive_datetime=datetime(2025, 1, 1, tzinfo=timezone.utc),
         priority=Priority[priority],
         dive_slate_id=dive_slate_id,
+        calibration_dive_id=calibration_dive_id,
     )
 
 
@@ -1560,6 +1561,48 @@ async def test_measure_fish_ignores_unbound_clusters_with_no_measurable_image(se
             id=99, dive_id=1, data_source=DataSource.LABEL_STUDIO, fish_id=None
         )
     )
+    await session.flush()
+
+    assert await select_next_for_measure_fish(session=session) is None
+
+
+async def test_measure_fish_selects_dive_with_borrowed_calibration(session):
+    """A fish dive with no extrinsics of its own is still measurable when it
+    links to a slate dive that owns extrinsics via `calibration_dive_id`."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_measure_fish,
+    )
+    from fishsense_api.models.laser_extrinsics import (  # pylint: disable=import-outside-toplevel
+        LaserExtrinsics,
+    )
+
+    # dive 1: the slate/calibration dive — owns extrinsics, no fish images.
+    # dive 2: the fish dive — borrows dive 1's calibration, has an
+    # unmeasured measurable image. Without the link it would be excluded
+    # (no extrinsics); with it, it is selected.
+    session.add_all([_dive(1), _dive(2, calibration_dive_id=1)])
+    await session.flush()
+    session.add(LaserExtrinsics(dive_id=1, camera_id=1))
+    mapping = _measurable_image(session, 21, 2, cluster_id=2)
+    await session.flush()
+    session.add(mapping)
+    await session.flush()
+
+    assert await select_next_for_measure_fish(session=session) == 2
+
+
+async def test_measure_fish_link_to_uncalibrated_source_does_not_select(session):
+    """A link to a source that owns no extrinsics doesn't fabricate
+    calibration — the fish dive stays out of the cohort."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_measure_fish,
+    )
+
+    session.add_all([_dive(1), _dive(2, calibration_dive_id=1)])
+    await session.flush()
+    mapping = _measurable_image(session, 21, 2, cluster_id=2)
+    await session.flush()
+    session.add(mapping)
     await session.flush()
 
     assert await select_next_for_measure_fish(session=session) is None

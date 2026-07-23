@@ -20,3 +20,12 @@ class Dive(ModelBase, table=True):
 
     camera_id: int | None = Field(default=None, foreign_key="camera.id")
     dive_slate_id: int | None = Field(default=None, foreign_key="diveslate.id")
+
+    # Self-referential link to the dive whose laser calibration this dive
+    # borrows. Laser calibration is physically a property of the camera+laser
+    # rig, not the dive, so a dive with no slate frames of its own (e.g. a
+    # fish-only dive) can point at a sibling slate/calibration dive shot with
+    # the same rig. When set, laser-extrinsics resolution and the
+    # `calibrated` gate fall back to this dive's LaserExtrinsics. NULL means
+    # "self-calibrate from my own slate labels" (the default).
+    calibration_dive_id: int | None = Field(default=None, foreign_key="dive.id")

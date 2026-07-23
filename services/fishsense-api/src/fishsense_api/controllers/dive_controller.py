@@ -6,7 +6,7 @@ from typing import List
 
 from fastapi import Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -504,10 +504,17 @@ async def select_next_for_measure_fish(
     (image_id, fish_id) and the activity skips already-measured images —
     so this cohort drains and the workflow is safe to schedule.
     """
-    has_laser_extrinsics = (
+    # Own calibration, or a sibling dive's via `calibration_dive_id`.
+    # When the link is NULL the borrowed EXISTS never matches (no
+    # LaserExtrinsics row has dive_id = NULL), so it reduces to the own
+    # check. Mirrors `dive_pipeline_status.calibrated`.
+    has_laser_extrinsics = or_(
         select(LaserExtrinsics.id)
         .where(LaserExtrinsics.dive_id == Dive.id)
-        .exists()
+        .exists(),
+        select(LaserExtrinsics.id)
+        .where(LaserExtrinsics.dive_id == Dive.calibration_dive_id)
+        .exists(),
     )
     valid_laser = (
         select(LaserLabel.id)
@@ -572,14 +579,9 @@ async def get_dive(
     return dive
 
 
-@app.get("/api/v1/dives/{dive_id}/laser-extrinsics/")
-async def get_laser_extrinsics_for_dive(
-    dive_id: int, session: AsyncSession = Depends(get_async_session)
-) -> LaserExtrinsics | None:
-    """Retrieve all laser extrinsics for a given dive ID."""
-    logger.debug("Retrieving laser extrinsics for dive with id=%d", dive_id)
-    # With max date filter
-    query = (
+def _latest_extrinsics_query(dive_id: int):
+    """The most-recently-created `LaserExtrinsics` row for a dive."""
+    return (
         select(LaserExtrinsics)
         .where(LaserExtrinsics.dive_id == dive_id)
         .where(
@@ -592,7 +594,42 @@ async def get_laser_extrinsics_for_dive(
         )
     )
 
-    laser_extrinsics = (await session.exec(query)).first()
+
+@app.get("/api/v1/dives/{dive_id}/laser-extrinsics/")
+async def get_laser_extrinsics_for_dive(
+    dive_id: int, session: AsyncSession = Depends(get_async_session)
+) -> LaserExtrinsics | None:
+    """Retrieve the laser extrinsics that apply to a dive.
+
+    A dive's *own* calibration wins; if it has none but is linked to a
+    calibration-source dive (`Dive.calibration_dive_id`), the source
+    dive's extrinsics are returned instead. This lets a fish-only dive
+    with no slate frames borrow the calibration of a sibling slate dive
+    shot with the same camera+laser rig. The `laser_position` /
+    `laser_axis` are all stage 14 consumes, so the returned row's
+    `dive_id` (the source dive) is inconsequential to callers.
+    """
+    logger.debug("Retrieving laser extrinsics for dive with id=%d", dive_id)
+
+    laser_extrinsics = (
+        await session.exec(_latest_extrinsics_query(dive_id))
+    ).first()
+
+    if laser_extrinsics is None:
+        dive = await session.get(Dive, dive_id)
+        if dive is not None and dive.calibration_dive_id is not None:
+            logger.debug(
+                "dive id=%d has no own extrinsics; borrowing from "
+                "calibration_dive_id=%d",
+                dive_id,
+                dive.calibration_dive_id,
+            )
+            laser_extrinsics = (
+                await session.exec(
+                    _latest_extrinsics_query(dive.calibration_dive_id)
+                )
+            ).first()
+
     if laser_extrinsics is None:
         logger.warning("Laser extrinsics for dive with id=%d not found", dive_id)
         raise HTTPException(status_code=404, detail="Laser extrinsics not found")
@@ -616,3 +653,67 @@ async def put_laser_extrinsics_for_dive(
     extrinsics_id = extrinsics.id
 
     return extrinsics_id
+
+
+@app.put("/api/v1/dives/{dive_id}/calibration-source/{source_dive_id}")
+async def set_dive_calibration_source(
+    dive_id: int,
+    source_dive_id: int,
+    session: AsyncSession = Depends(get_async_session),
+) -> int:
+    """Link `dive_id` to borrow `source_dive_id`'s laser calibration.
+
+    For a fish-only dive with no slate frames of its own: point it at a
+    sibling slate/calibration dive shot with the same camera+laser rig.
+    Laser-extrinsics resolution and the `calibrated` gate then fall back
+    to the source dive when this dive has no calibration of its own.
+
+    Returns the linked dive's id. 404 if either dive is missing; 400 on a
+    self-link (a dive is never its own calibration source).
+    """
+    logger.debug(
+        "Linking dive id=%d to calibration source dive id=%d",
+        dive_id,
+        source_dive_id,
+    )
+    if dive_id == source_dive_id:
+        raise HTTPException(
+            status_code=400,
+            detail="A dive cannot be its own calibration source",
+        )
+
+    dive = await session.get(Dive, dive_id)
+    if dive is None:
+        raise HTTPException(status_code=404, detail="Dive not found")
+
+    source = await session.get(Dive, source_dive_id)
+    if source is None:
+        raise HTTPException(
+            status_code=404, detail="Calibration source dive not found"
+        )
+
+    dive.calibration_dive_id = source_dive_id
+    session.add(dive)
+    await session.flush()
+
+    return dive_id
+
+
+@app.delete("/api/v1/dives/{dive_id}/calibration-source/", status_code=204)
+async def clear_dive_calibration_source(
+    dive_id: int,
+    session: AsyncSession = Depends(get_async_session),
+) -> None:
+    """Unlink `dive_id` from any borrowed calibration source (idempotent).
+
+    404 only if the dive itself is missing; clearing an already-null link
+    is a no-op.
+    """
+    logger.debug("Clearing calibration source link for dive id=%d", dive_id)
+    dive = await session.get(Dive, dive_id)
+    if dive is None:
+        raise HTTPException(status_code=404, detail="Dive not found")
+
+    dive.calibration_dive_id = None
+    session.add(dive)
+    await session.flush()

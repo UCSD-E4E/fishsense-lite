@@ -268,6 +268,7 @@ class Dive(BaseModel):
     flip_dive_slate: bool | None = Field(False, title='Flip Dive Slate')
     camera_id: int | None = Field(None, title='Camera Id')
     dive_slate_id: int | None = Field(None, title='Dive Slate Id')
+    calibration_dive_id: int | None = Field(None, title='Calibration Dive Id')
 
 
 class HTTPValidationError(BaseModel):

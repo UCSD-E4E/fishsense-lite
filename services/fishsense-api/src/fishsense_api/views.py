@@ -271,11 +271,18 @@ SELECT
            AND (dsl.completed = FALSE OR dsl.completed IS NULL)
      )) AS slate_labeling_complete,
 
-    -- Stage 13: dive has a LaserExtrinsics row.
-    EXISTS (
+    -- Stage 13: calibration is available for the dive — either its own
+    -- LaserExtrinsics row, or a borrowed one via `calibration_dive_id`
+    -- (a fish-only dive pointing at a sibling slate dive shot with the
+    -- same rig). Mirrors `get_laser_extrinsics_for_dive`'s resolution and
+    -- the stage-14 cohort's `has_laser_extrinsics`.
+    (EXISTS (
         SELECT 1 FROM laserextrinsics le
         WHERE le.dive_id = d.id
-    ) AS calibrated,
+    ) OR EXISTS (
+        SELECT 1 FROM laserextrinsics le
+        WHERE le.dive_id = d.calibration_dive_id
+    )) AS calibrated,
 
     -- Stage 14: ≥1 measurement for the dive AND no measurable image left
     -- unmeasured. "Measurable" mirrors what measure_fish_activity

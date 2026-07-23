@@ -49,7 +49,9 @@ async def session():
     await engine.dispose()
 
 
-def _dive(dive_id: int, *, priority: str = "HIGH", dive_slate_id=None):
+def _dive(
+    dive_id: int, *, priority: str = "HIGH", dive_slate_id=None, calibration_dive_id=None
+):
     from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
     from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
 
@@ -59,6 +61,7 @@ def _dive(dive_id: int, *, priority: str = "HIGH", dive_slate_id=None):
         dive_datetime=datetime(2025, 1, 1, tzinfo=timezone.utc),
         priority=Priority[priority],
         dive_slate_id=dive_slate_id,
+        calibration_dive_id=calibration_dive_id,
     )
 
 
@@ -865,6 +868,31 @@ async def test_calibrated_false_when_no_laser_extrinsics(session):
     await session.flush()
 
     assert (await _row(session, 1))["calibrated"] is False
+
+
+async def test_calibrated_true_when_borrowed_via_calibration_dive_id(session):
+    """A fish-only dive linked to a slate dive that owns extrinsics reads
+    calibrated=true even though it has none of its own."""
+    from fishsense_api.models.laser_extrinsics import LaserExtrinsics  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))  # slate dive: owns the calibration
+    session.add(_dive(2, calibration_dive_id=1))  # fish dive: borrows it
+    await session.flush()
+    session.add(LaserExtrinsics(dive_id=1, camera_id=1))
+    await session.flush()
+
+    assert (await _row(session, 1))["calibrated"] is True
+    assert (await _row(session, 2))["calibrated"] is True
+
+
+async def test_calibrated_false_when_linked_source_has_no_extrinsics(session):
+    """A link to a source that isn't itself calibrated doesn't fabricate
+    calibration."""
+    session.add(_dive(1))
+    session.add(_dive(2, calibration_dive_id=1))
+    await session.flush()
+
+    assert (await _row(session, 2))["calibrated"] is False
 
 
 # ---------- measured (stage 14) ----------
