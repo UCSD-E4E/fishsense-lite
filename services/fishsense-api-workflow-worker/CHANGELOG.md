@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.44.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.44.1...fishsense-api-workflow-worker-v1.44.2) (2026-07-23)
+
+
+### Bug Fixes
+
+* **preprocess:** child uses ALLOW_DUPLICATE so a dive can reprocess new images ([#395](https://github.com/UCSD-E4E/fishsense-lite/issues/395)) ([e343840](https://github.com/UCSD-E4E/fishsense-lite/commit/e3438409f702d485d2994777bae2e1bab70664a6))
+
 ## [1.44.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.44.0...fishsense-api-workflow-worker-v1.44.1) (2026-07-22)
 
 
