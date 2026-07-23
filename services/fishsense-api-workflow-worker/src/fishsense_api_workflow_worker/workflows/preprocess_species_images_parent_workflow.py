@@ -106,13 +106,28 @@ class PreprocessSpeciesImagesParentWorkflow:
                 id=f"preprocess-species-{dive_id}",
                 task_queue=DATA_PROCESSING_TASK_QUEUE,
                 execution_timeout=timedelta(hours=2),
-                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+                # ALLOW_DUPLICATE, not ALLOW_DUPLICATE_FAILED_ONLY: the child
+                # must be able to re-run on a dive it already processed, to
+                # pick up images that became processable AFTER that run — a
+                # laser validated after one-shot stage-1 clustering, or an
+                # orphan later assigned a cluster. FAILED_ONLY permanently
+                # blocked that (a completed id can never re-dispatch), so such
+                # images' JPEGs were never produced and populate deferred them
+                # forever. Safe: the resolver returns only images that still
+                # need work (finished images aren't redone) and the per-image
+                # activities are idempotent (S3 overwrite). (Species populate
+                # is decoupled — the scheduled populate parent owns dedup of
+                # LS imports — so there is no populate child here to worry
+                # about; laser/headtail/slate keep FAILED_ONLY on theirs.)
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
             )
         except WorkflowAlreadyStartedError:
+            # Only reachable now if a prior child with this id is still
+            # RUNNING (e.g. a manual run overlapping the schedule). The
+            # in-flight run is doing the work; continue to cleanup.
             workflow.logger.info(
-                "preprocess-species-%d already ran successfully in a "
-                "prior firing; skipping data-worker dispatch and continuing "
-                "to cleanup + populate",
+                "preprocess-species-%d already running; skipping duplicate "
+                "dispatch and continuing to cleanup",
                 dive_id,
             )
 
