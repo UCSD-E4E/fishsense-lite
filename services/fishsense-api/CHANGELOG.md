@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.32.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.31.1...fishsense-api-v1.32.0) (2026-07-23)
+
+
+### Features
+
+* **calibration:** borrow another dive's laser calibration via calibration_dive_id ([#399](https://github.com/UCSD-E4E/fishsense-lite/issues/399)) ([fa89c3c](https://github.com/UCSD-E4E/fishsense-lite/commit/fa89c3c152f96e3192f9984b57ae1af07a56c427))
+
 ## [1.31.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.31.0...fishsense-api-v1.31.1) (2026-07-22)
 
 
