@@ -235,3 +235,59 @@ async def test_skips_child_dispatch_when_no_clusters():
     assert result == 440
     assert not child_runs
     assert not populate_runs
+
+
+@pytest.mark.asyncio
+async def test_child_redispatches_after_a_prior_successful_run():
+    """The preprocess child must re-run on a dive it already processed.
+
+    A dive's image set grows after its first successful child run — a laser
+    validated after one-shot stage-1 clustering, or an orphan later given a
+    cluster. Under ALLOW_DUPLICATE_FAILED_ONLY the deterministic child id
+    (`preprocess-species-{dive}`) was permanently spent once it completed, so
+    those new images' JPEGs were never produced and populate deferred them
+    forever. With ALLOW_DUPLICATE the child re-dispatches; the resolver
+    returns only still-needed images and per-image work is idempotent, so
+    re-running is safe.
+
+    Two parent runs on the same dive → the child (same deterministic id) must
+    run BOTH times.
+    """
+    inputs = PreprocessSpeciesImagesInput(
+        dive_id=59,
+        clusters=[["orphan-checksum"]],
+        camera_matrix=_K,
+        distortion_coefficients=_D,
+    )
+    activities, _, _ = _make_stubs(59, inputs)
+    child_runs: List[tuple] = []
+    populate_runs: List[tuple] = []
+
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
+            task_queue="test-stage2-redispatch",
+            workflows=[
+                PreprocessSpeciesImagesParentWorkflow,
+                _StubPopulateWorkflow,
+            ],
+            activities=[
+                *activities,
+                _make_populate_recording_activity(populate_runs),
+            ],
+        ), Worker(
+            env.client,
+            task_queue=DATA_PROCESSING_TASK_QUEUE,
+            workflows=[_StubChildWorkflow],
+            activities=[_make_recording_activity(child_runs)],
+        ):
+            for _ in range(2):
+                await env.client.execute_workflow(
+                    PreprocessSpeciesImagesParentWorkflow.run,
+                    id=f"test-stage2-redispatch-parent-{uuid.uuid4()}",
+                    task_queue="test-stage2-redispatch",
+                )
+
+    # Same deterministic child id both times; both must have run.
+    assert len(child_runs) == 2, "child must re-dispatch on the second parent run"
+    assert {c[0] for c in child_runs} == {"preprocess-species-59"}

@@ -208,17 +208,26 @@ one replica):
   `overlap=ScheduleOverlapPolicy.SKIP` — a previous run still in
   flight blocks the next firing, so two selectors can't race past
   the same `dives.get()` and pick the same dive.
-* Child workflow id is deterministic (`preprocess-laser-{dive_id}`)
-  and dispatched with
-  `id_reuse_policy=ALLOW_DUPLICATE_FAILED_ONLY`. If a parent run
-  *does* race past the schedule guard (e.g. manual trigger
-  overlapping a scheduled one), the second `start_child_workflow`
-  raises `WorkflowAlreadyStartedError` which the parent catches —
-  archive + cleanup + populate then still run, so a child-then-parent
-  split failure self-heals on the next firing without redoing
-  per-image work. **Note:** temporalio's default child
-  `id_reuse_policy` is `ALLOW_DUPLICATE`, which lets duplicates
-  through silently — the explicit setting is required.
+* Child workflow id is deterministic (`preprocess-laser-{dive_id}`).
+  The **preprocess** child is dispatched with
+  `id_reuse_policy=ALLOW_DUPLICATE` (changed from
+  `ALLOW_DUPLICATE_FAILED_ONLY` on 2026-07-23). FAILED_ONLY meant a
+  *completed* child id could never re-dispatch, so a dive could never
+  be reprocessed to pick up images that became processable after its
+  first successful run — a laser validated after one-shot stage-1
+  clustering, or an orphan later assigned a cluster. Those images'
+  JPEGs were never produced and populate deferred them forever (prod
+  dives 59/439). ALLOW_DUPLICATE is safe here: the resolver returns
+  only images that still need work (finished images aren't redone) and
+  the per-image activities are idempotent (S3 overwrite). A
+  `WorkflowAlreadyStartedError` is now only raised when a prior child
+  with the same id is still *running* (manual run overlapping the
+  schedule); the parent catches it and continues to cleanup.
+  The **populate** child (laser/headtail/slate parents) keeps
+  `ALLOW_DUPLICATE_FAILED_ONLY` — duplicate LS `import_tasks` is the
+  task-ballooning bug, so its dedup must stay. **Note:** temporalio's
+  default child `id_reuse_policy` is `ALLOW_DUPLICATE`, so the populate
+  child's FAILED_ONLY is set explicitly.
 * Per-image activities are idempotent: S3 PutObject overwrites,
   SDK upserts.
 

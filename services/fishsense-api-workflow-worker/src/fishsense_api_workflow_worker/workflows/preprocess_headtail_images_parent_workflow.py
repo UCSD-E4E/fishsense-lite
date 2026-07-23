@@ -93,7 +93,12 @@ class PreprocessHeadtailImagesParentWorkflow:
                 id=f"preprocess-headtail-{dive_id}",
                 task_queue=DATA_PROCESSING_TASK_QUEUE,
                 execution_timeout=timedelta(hours=1),
-                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+                # ALLOW_DUPLICATE so a dive can reprocess images that became
+                # processable after its first successful run (see the species
+                # parent for the full rationale). Safe: the resolver returns only
+                # still-needed images and per-image work is idempotent. The populate
+                # child below keeps FAILED_ONLY to dedupe LS task imports.
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
             )
         except WorkflowAlreadyStartedError:
             workflow.logger.info(
