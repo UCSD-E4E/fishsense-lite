@@ -95,12 +95,25 @@ class ClientBase(ABC):
             )
 
     @retry(exceptions=httpx.HTTPStatusError, tries=3, delay=2, backoff=2)
-    async def _put(self, endpoint: str, json: dict) -> httpx.Response:
+    async def _put(self, endpoint: str, json: dict | None = None) -> httpx.Response:
         async with self.semaphore:
             self.logger.debug("PUT request to %s with payload: %s", endpoint, json)
             return await self.__client.put(
                 endpoint,
                 json=json,
+                headers=(
+                    {"Authorization": f"Basic {self.__token.decode('utf-8')}"}
+                    if self.__token
+                    else {}
+                ),
+            )
+
+    @retry(exceptions=httpx.HTTPStatusError, tries=3, delay=2, backoff=2)
+    async def _delete(self, endpoint: str) -> httpx.Response:
+        async with self.semaphore:
+            self.logger.debug("DELETE request to %s", endpoint)
+            return await self.__client.delete(
+                endpoint,
                 headers=(
                     {"Authorization": f"Basic {self.__token.decode('utf-8')}"}
                     if self.__token

@@ -148,3 +148,38 @@ class DiveClient(ClientBase):
         response.raise_for_status()
 
         return response.json()
+
+    async def set_calibration_source(
+        self, dive_id: int, source_dive_id: int
+    ) -> int:
+        """Link a dive to borrow another dive's laser calibration.
+
+        Use for a fish-only dive with no slate frames of its own — point
+        it at a sibling slate/calibration dive shot with the same
+        camera+laser rig. Laser-extrinsics resolution then falls back to
+        the source dive when this dive has no calibration of its own.
+
+        Args:
+            dive_id (int): The dive that will borrow calibration.
+            source_dive_id (int): The dive whose calibration to borrow.
+
+        Returns:
+            int: The linked dive's id.
+        """
+        response = await self._put(
+            f"/api/v1/dives/{dive_id}/calibration-source/{source_dive_id}"
+        )
+        response.raise_for_status()
+
+        return response.json()
+
+    async def clear_calibration_source(self, dive_id: int) -> None:
+        """Unlink a dive from any borrowed calibration source (idempotent).
+
+        Args:
+            dive_id (int): The dive to unlink.
+        """
+        response = await self._delete(
+            f"/api/v1/dives/{dive_id}/calibration-source/"
+        )
+        response.raise_for_status()

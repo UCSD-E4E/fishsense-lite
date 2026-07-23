@@ -18,3 +18,7 @@ class Dive(ModelBase):
 
     camera_id: int | None
     dive_slate_id: int | None
+    # Defaulted (unlike the fields above) so consumers built before this
+    # column existed — older API responses, worker test fixtures — still
+    # validate. A newly-added optional column must be optional on the wire.
+    calibration_dive_id: int | None = None

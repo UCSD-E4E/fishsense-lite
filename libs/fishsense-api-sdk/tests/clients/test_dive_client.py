@@ -32,6 +32,7 @@ def _dive_payload(dive_id: int = 1, name: str = "test-dive") -> dict:
         "flip_dive_slate": False,
         "camera_id": 12,
         "dive_slate_id": None,
+        "calibration_dive_id": None,
     }
 
 
@@ -248,6 +249,40 @@ class TestDiveClient:
                 assert payload["camera_id"] == 12
                 assert payload["laser_position"] == [1.0, 2.0, 3.0]
                 assert payload["laser_axis"] == [0.0, 0.0, 1.0]
+
+    async def test_set_calibration_source_puts_to_link_endpoint(self):
+        """Links a dive to a calibration source via the path-param PUT."""
+        client = _make_client()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = 2
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(client, "_put", new_callable=AsyncMock) as mock_put:
+            mock_put.return_value = mock_response
+
+            async with client:
+                returned = await client.set_calibration_source(2, 1)
+                assert returned == 2
+                mock_put.assert_awaited_once_with(
+                    "/api/v1/dives/2/calibration-source/1"
+                )
+
+    async def test_clear_calibration_source_deletes_the_link(self):
+        """Unlinks a dive via DELETE on the calibration-source endpoint."""
+        client = _make_client()
+        mock_response = Mock()
+        mock_response.status_code = 204
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(client, "_delete", new_callable=AsyncMock) as mock_delete:
+            mock_delete.return_value = mock_response
+
+            async with client:
+                await client.clear_calibration_source(2)
+                mock_delete.assert_awaited_once_with(
+                    "/api/v1/dives/2/calibration-source/"
+                )
 
     async def test_get_dives_needing_species_population_returns_list(self):
         """Returns the full list of dive ids from the population endpoint."""
