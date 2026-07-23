@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.8.0...fishsense-lite-web-v0.9.0) (2026-07-23)
+
+
+### Features
+
+* **web:** portal UI to link dives to a slate calibration source ([#402](https://github.com/UCSD-E4E/fishsense-lite/issues/402)) ([f3ecfef](https://github.com/UCSD-E4E/fishsense-lite/commit/f3ecfef7120c83fee358a59924476c392ecdad2a))
+
+
+### Bug Fixes
+
+* **web:** render signed-in user's name + groups on the portal ([#403](https://github.com/UCSD-E4E/fishsense-lite/issues/403)) ([2305ff4](https://github.com/UCSD-E4E/fishsense-lite/commit/2305ff40255a54032ebdb1a3cf6f44de33ae9c06))
+
 ## [0.8.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.7.4...fishsense-lite-web-v0.8.0) (2026-07-22)
 
 
