@@ -22,10 +22,16 @@ export default async function PortalPage() {
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-12">
-      <header className="mb-8 flex items-center justify-between">
+      <header className="mb-8 flex items-start justify-between gap-4">
         <h1 className="text-3xl font-semibold tracking-tight">Portal</h1>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-slate-500">{user?.email ?? user?.name}</span>
+        <div className="flex items-start gap-4">
+          <div className="text-right text-sm leading-tight">
+            <div className="font-medium">{user?.name ?? "—"}</div>
+            <div className="text-slate-500">{user?.email ?? "—"}</div>
+            <div className="text-xs text-slate-400">
+              {user?.groups?.length ? user.groups.join(", ") : "no groups"}
+            </div>
+          </div>
           <form
             action={async () => {
               "use server";
