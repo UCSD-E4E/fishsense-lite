@@ -21,15 +21,17 @@ function basicAuthHeader(): string {
 /** Validate a dive id before it goes into a request URL.
  *
  * These ids originate client-side (a `<select>` value passed through a server
- * action), so TypeScript's `number` type is no runtime guarantee. Constraining
- * them to non-negative integers stops anything untrusted from injecting extra
- * path segments or steering the request elsewhere (js/request-forgery), and
- * returns a string safe to interpolate. */
-function safeId(value: number, label: string): string {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+ * action), so TypeScript's `number` type is no runtime guarantee. Coercing
+ * through `Number()` and constraining to a non-negative integer stops anything
+ * untrusted from injecting extra path segments or steering the request
+ * elsewhere (js/request-forgery). The returned value is a plain number — safe
+ * to interpolate as a single path segment. */
+function safeId(value: number, label: string): number {
+  const id = Number(value);
+  if (!Number.isInteger(id) || id < 0) {
     throw new Error(`Invalid ${label}: ${value}`);
   }
-  return String(value);
+  return id;
 }
 
 /** Every dive, for the calibration-linking table. */
