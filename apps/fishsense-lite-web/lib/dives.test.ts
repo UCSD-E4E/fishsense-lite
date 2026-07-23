@@ -82,6 +82,18 @@ describe("setCalibrationSource", () => {
       /set calibration source failed: 400/,
     );
   });
+
+  it("rejects non-integer ids before making a request (SSRF guard)", async () => {
+    const fetchMock = vi.fn<FetchSig>(async () => jsonResponse(1));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(setCalibrationSource(1.5, 2)).rejects.toThrow(/Invalid diveId/);
+    await expect(setCalibrationSource(1, -3)).rejects.toThrow(/Invalid sourceId/);
+    await expect(
+      setCalibrationSource(Number.NaN, 2),
+    ).rejects.toThrow(/Invalid diveId/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("clearCalibrationSource", () => {

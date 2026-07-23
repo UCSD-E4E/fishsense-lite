@@ -18,6 +18,20 @@ function basicAuthHeader(): string {
   return `Basic ${token}`;
 }
 
+/** Validate a dive id before it goes into a request URL.
+ *
+ * These ids originate client-side (a `<select>` value passed through a server
+ * action), so TypeScript's `number` type is no runtime guarantee. Constraining
+ * them to non-negative integers stops anything untrusted from injecting extra
+ * path segments or steering the request elsewhere (js/request-forgery), and
+ * returns a string safe to interpolate. */
+function safeId(value: number, label: string): string {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new Error(`Invalid ${label}: ${value}`);
+  }
+  return String(value);
+}
+
 /** Every dive, for the calibration-linking table. */
 export async function getDives(revalidate = 0): Promise<Dive[]> {
   const url = `${env.fishsenseApiUrl}/api/v1/dives/`;
@@ -45,7 +59,7 @@ export async function setCalibrationSource(
   diveId: number,
   sourceId: number,
 ): Promise<void> {
-  const url = `${env.fishsenseApiUrl}/api/v1/dives/${diveId}/calibration-source/${sourceId}`;
+  const url = `${env.fishsenseApiUrl}/api/v1/dives/${safeId(diveId, "diveId")}/calibration-source/${safeId(sourceId, "sourceId")}`;
   const response = await fetch(url, {
     method: "PUT",
     headers: { Authorization: basicAuthHeader() },
@@ -66,7 +80,7 @@ export async function setCalibrationSource(
 
 /** Remove any borrowed-calibration link from `diveId` (idempotent). */
 export async function clearCalibrationSource(diveId: number): Promise<void> {
-  const url = `${env.fishsenseApiUrl}/api/v1/dives/${diveId}/calibration-source/`;
+  const url = `${env.fishsenseApiUrl}/api/v1/dives/${safeId(diveId, "diveId")}/calibration-source/`;
   const response = await fetch(url, {
     method: "DELETE",
     headers: { Authorization: basicAuthHeader() },
