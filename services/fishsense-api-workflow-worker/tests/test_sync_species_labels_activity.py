@@ -18,6 +18,7 @@ Three things this file pins down:
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any, List
 from unittest.mock import AsyncMock, MagicMock
@@ -48,7 +49,7 @@ def _make_task(
     )
 
 
-def _make_fs_client(label_lookup, *, cursor=None):
+def _make_fs_client(label_lookup, *, cursor=None, dive_slates=None, image_to_dive=None):
     fs = MagicMock()
     fs.__aenter__ = AsyncMock(return_value=fs)
     fs.__aexit__ = AsyncMock(return_value=None)
@@ -67,6 +68,27 @@ def _make_fs_client(label_lookup, *, cursor=None):
     # Default: the annotator isn't user-synced yet -> None.
     fs.users = MagicMock()
     fs.users.get_by_label_studio_id = AsyncMock(return_value=None)
+
+    # DiveSlate templates for the slate-identification pass. Names must
+    # match the species Taxonomy slate leaves.
+    slates = dive_slates if dive_slates is not None else [
+        SimpleNamespace(id=1, name="H-Slate"),
+        SimpleNamespace(id=9, name="V-Slate 2"),
+    ]
+    fs.dive_slates = MagicMock()
+    fs.dive_slates.get = AsyncMock(return_value=slates)
+
+    img_map = image_to_dive or {}
+
+    async def _get_image(dive_id=None, image_id=None, checksum=None):
+        did = img_map.get(image_id)
+        return SimpleNamespace(dive_id=did) if did is not None else None
+
+    fs.images = MagicMock()
+    fs.images.get = AsyncMock(side_effect=_get_image)
+
+    fs.dives = MagicMock()
+    fs.dives.set_dive_slate = AsyncMock()
     return fs
 
 
@@ -352,3 +374,172 @@ async def test_writes_parsed_fields_when_annotation_present(monkeypatch):
     written = fs.labels.put_species_label.await_args.args[1]
     assert written.grouping == "Part of previous group"
     assert written.content_of_image == "Reef fish, Yellowtail Snapper"
+
+
+# ----------------------- slate identification -------------------------
+
+
+def test_slate_type_choice_finds_the_slate_template():
+    results = [
+        {
+            "from_name": "species",
+            "value": {"taxonomy": [["Slate", "Laser on slate"], ["Slate", "V-Slate 2"]]},
+        }
+    ]
+    assert (
+        sut._slate_type_choice(results, {"H-Slate", "V-Slate 2"})  # pylint: disable=protected-access
+        == "V-Slate 2"
+    )
+
+
+def test_slate_type_choice_none_when_only_laser_marker():
+    results = [
+        {"from_name": "species", "value": {"taxonomy": [["Slate", "Laser on slate"]]}}
+    ]
+    assert (
+        sut._slate_type_choice(results, {"H-Slate", "V-Slate 2"})  # pylint: disable=protected-access
+        is None
+    )
+
+
+def test_slate_type_choice_none_for_fish():
+    results = [
+        {"from_name": "species", "value": {"taxonomy": [["Fish", "Hogfish"]]}}
+    ]
+    assert sut._slate_type_choice(results, {"H-Slate"}) is None  # pylint: disable=protected-access
+
+
+def test_slate_type_choice_empty_results():
+    assert sut._slate_type_choice([], {"H-Slate"}) is None  # pylint: disable=protected-access
+
+
+def test_reduce_slate_winners_most_recent_per_dive():
+    votes = [
+        (7, datetime(2026, 5, 1, tzinfo=timezone.utc), 9),
+        (7, datetime(2026, 5, 3, tzinfo=timezone.utc), 1),  # newer -> wins for dive 7
+        (8, datetime(2026, 5, 2, tzinfo=timezone.utc), 5),
+    ]
+    assert sut._reduce_slate_winners(votes) == {7: 1, 8: 5}  # pylint: disable=protected-access
+
+
+def test_reduce_slate_winners_timestamp_beats_none_either_order():
+    ts = datetime(2026, 5, 1, tzinfo=timezone.utc)
+    assert sut._reduce_slate_winners([(7, None, 9), (7, ts, 1)]) == {7: 1}  # pylint: disable=protected-access
+    assert sut._reduce_slate_winners([(7, ts, 1), (7, None, 9)]) == {7: 1}  # pylint: disable=protected-access
+
+
+@pytest.mark.asyncio
+async def test_sync_sets_dive_slate_from_slate_choice(monkeypatch):
+    annotation = {
+        "result": [
+            {
+                "from_name": "species",
+                "value": {
+                    "taxonomy": [["Slate", "Laser on slate"], ["Slate", "V-Slate 2"]]
+                },
+            }
+        ]
+    }
+    task = _make_task(101, annotations=[annotation])
+    task.is_labeled = True
+    task.updated_at = "2026-05-02T10:00:00Z"
+    label = _empty_species_label(image_id=42)
+    fs = _make_fs_client(label_lookup={101: label}, image_to_dive={42: 7})
+    ls = _make_ls_client([task])
+
+    monkeypatch.setattr(sut_utils, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "get_ls_client", lambda: ls)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    await ActivityEnvironment().run(
+        sut.sync_species_labels_for_label_studio_project_activity, 1
+    )
+
+    # V-Slate 2 -> DiveSlate id 9, image 42 -> dive 7.
+    fs.dives.set_dive_slate.assert_awaited_once_with(7, 9)
+
+
+@pytest.mark.asyncio
+async def test_sync_does_not_touch_dive_slate_without_a_slate_choice(monkeypatch):
+    annotation = {
+        "result": [
+            {"from_name": "species", "value": {"taxonomy": [["Fish", "Hogfish"]]}}
+        ]
+    }
+    task = _make_task(101, annotations=[annotation])
+    task.is_labeled = True
+    label = _empty_species_label(image_id=42)
+    fs = _make_fs_client(label_lookup={101: label}, image_to_dive={42: 7})
+    ls = _make_ls_client([task])
+
+    monkeypatch.setattr(sut_utils, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "get_ls_client", lambda: ls)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    await ActivityEnvironment().run(
+        sut.sync_species_labels_for_label_studio_project_activity, 1
+    )
+
+    fs.dives.set_dive_slate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_sync_ignores_incomplete_slate_choice(monkeypatch):
+    """A slate type on a not-yet-completed task must not set dive_slate_id."""
+    annotation = {
+        "result": [
+            {"from_name": "species", "value": {"taxonomy": [["Slate", "V-Slate 2"]]}}
+        ]
+    }
+    task = _make_task(101, annotations=[annotation])
+    task.is_labeled = False  # incomplete
+    label = _empty_species_label(image_id=42)
+    fs = _make_fs_client(label_lookup={101: label}, image_to_dive={42: 7})
+    ls = _make_ls_client([task])
+
+    monkeypatch.setattr(sut_utils, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "get_ls_client", lambda: ls)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    await ActivityEnvironment().run(
+        sut.sync_species_labels_for_label_studio_project_activity, 1
+    )
+
+    fs.dives.set_dive_slate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_sync_most_recent_completed_slate_choice_wins(monkeypatch):
+    a_old = {
+        "result": [
+            {"from_name": "species", "value": {"taxonomy": [["Slate", "V-Slate 2"]]}}
+        ]
+    }
+    a_new = {
+        "result": [
+            {"from_name": "species", "value": {"taxonomy": [["Slate", "H-Slate"]]}}
+        ]
+    }
+    t_old = _make_task(101, annotations=[a_old])
+    t_old.is_labeled = True
+    t_old.updated_at = "2026-05-01T00:00:00Z"
+    t_new = _make_task(102, annotations=[a_new])
+    t_new.is_labeled = True
+    t_new.updated_at = "2026-05-03T00:00:00Z"
+
+    fs = _make_fs_client(
+        label_lookup={101: _empty_species_label(41), 102: _empty_species_label(42)},
+        image_to_dive={41: 7, 42: 7},  # same dive
+    )
+    ls = _make_ls_client([t_old, t_new])
+
+    monkeypatch.setattr(sut_utils, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "get_ls_client", lambda: ls)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    await ActivityEnvironment().run(
+        sut.sync_species_labels_for_label_studio_project_activity, 1
+    )
+
+    # H-Slate (id 1) is the most-recent completed choice for dive 7.
+    fs.dives.set_dive_slate.assert_awaited_once_with(7, 1)

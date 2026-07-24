@@ -268,6 +268,24 @@ class TestDiveClient:
                     "/api/v1/dives/2/calibration-source/1"
                 )
 
+    async def test_set_dive_slate_puts_to_the_dive_slate_endpoint(self):
+        """Sets which DiveSlate template a dive used via the path-param PUT."""
+        client = _make_client()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = 5
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(client, "_put", new_callable=AsyncMock) as mock_put:
+            mock_put.return_value = mock_response
+
+            async with client:
+                returned = await client.set_dive_slate(5, 9)
+                assert returned == 5
+                mock_put.assert_awaited_once_with(
+                    "/api/v1/dives/5/dive-slate/9"
+                )
+
     async def test_clear_calibration_source_deletes_the_link(self):
         """Unlinks a dive via DELETE on the calibration-source endpoint."""
         client = _make_client()
