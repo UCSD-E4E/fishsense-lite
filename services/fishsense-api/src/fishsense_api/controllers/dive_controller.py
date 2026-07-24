@@ -17,6 +17,7 @@ from fishsense_api.models.dive_frame_cluster import (
     DiveFrameCluster,
     DiveFrameClusterImageMapping,
 )
+from fishsense_api.models.dive_slate import DiveSlate
 from fishsense_api.models.dive_slate_label import DiveSlateLabel
 from fishsense_api.models.head_tail_label import HeadTailLabel
 from fishsense_api.models.image import Image
@@ -717,3 +718,37 @@ async def clear_dive_calibration_source(
     dive.calibration_dive_id = None
     session.add(dive)
     await session.flush()
+
+
+@app.put("/api/v1/dives/{dive_id}/dive-slate/{dive_slate_id}")
+async def set_dive_slate(
+    dive_id: int,
+    dive_slate_id: int,
+    session: AsyncSession = Depends(get_async_session),
+) -> int:
+    """Set which `DiveSlate` template a dive was shot with.
+
+    Identifies the physical slate (H-Slate / V-Slate N / Tic-Tac-Toe N),
+    which stages 9/12/13 need before a dive can be slate-labeled and
+    calibrated. Populated by the species-label sync from the labeler's
+    slate-type choice; also settable by an operator.
+
+    Returns the dive id. 404 if the dive or the DiveSlate template is
+    missing.
+    """
+    logger.debug(
+        "Setting dive id=%d dive_slate_id=%d", dive_id, dive_slate_id
+    )
+    dive = await session.get(Dive, dive_id)
+    if dive is None:
+        raise HTTPException(status_code=404, detail="Dive not found")
+
+    slate = await session.get(DiveSlate, dive_slate_id)
+    if slate is None:
+        raise HTTPException(status_code=404, detail="DiveSlate template not found")
+
+    dive.dive_slate_id = dive_slate_id
+    session.add(dive)
+    await session.flush()
+
+    return dive_id

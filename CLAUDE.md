@@ -1187,6 +1187,23 @@ so Create-on-fresh-deploy stands up a usable project immediately.
 There is no discovery query or fan-out — each dive owns one project
 per stage.
 
+**Species sync is the only writer of `Dive.dive_slate_id`** (2026-07-23).
+The species Taxonomy's slate sub-choices (`H-Slate` / `Tic-Tac-Toe 1..6`
+/ `V-Slate 1..4`) are, by name, exactly the 11 `DiveSlate` template rows.
+`sync_species_labels_for_label_studio_project_activity` extracts the
+slate-type leaf from each *completed* task's taxonomy (a separate path
+from `content_of_image`'s `taxonomy[0]`, which stays the `"Slate, Laser
+on slate"` marker that stage 14 parses), maps the name → `DiveSlate.id`,
+resolves the image's dive, and sets `dive_slate_id` (most-recent-completed
+wins) via `PUT /api/v1/dives/{id}/dive-slate/{slate_id}`
+(SDK `dives.set_dive_slate`). Nothing else in the pipeline writes
+`dive_slate_id` — stages 9/12/13 only read it — so before this, it was
+hand-set (only 17/479 prod dives ever had it, the historically-measured
+ones where the slate frame lived *inside* the fish dive). A dedicated
+slate-only dive (e.g. the FishModels `*_Slate_*` dives) still has to pass
+through species labeling for a labeler to pick its slate type before
+this fires.
+
 The populate workflows are dispatched automatically by the
 preprocess parents (see "Cross-worker orchestration pattern"); manual
 `temporal workflow start` is only needed for backfill of dives the

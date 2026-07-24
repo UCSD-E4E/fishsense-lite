@@ -183,3 +183,24 @@ class DiveClient(ClientBase):
             f"/api/v1/dives/{dive_id}/calibration-source/"
         )
         response.raise_for_status()
+
+    async def set_dive_slate(self, dive_id: int, dive_slate_id: int) -> int:
+        """Set which DiveSlate template a dive was shot with.
+
+        Identifies the physical slate (H-Slate / V-Slate N / Tic-Tac-Toe N),
+        which the slate preprocess / sync / calibration stages need before a
+        dive can be calibrated.
+
+        Args:
+            dive_id (int): The dive to set.
+            dive_slate_id (int): The DiveSlate template id.
+
+        Returns:
+            int: The dive id.
+        """
+        response = await self._put(
+            f"/api/v1/dives/{dive_id}/dive-slate/{dive_slate_id}"
+        )
+        response.raise_for_status()
+
+        return response.json()
