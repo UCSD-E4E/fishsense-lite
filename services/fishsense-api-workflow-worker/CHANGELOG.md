@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.45.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.44.3...fishsense-api-workflow-worker-v1.45.0) (2026-07-24)
+
+
+### Features
+
+* **species-sync:** set dive_slate_id from the labeler's slate choice ([#410](https://github.com/UCSD-E4E/fishsense-lite/issues/410)) ([8751a4f](https://github.com/UCSD-E4E/fishsense-lite/commit/8751a4f28c57a090a8fe046962bf5aa22dfb7d0f))
+
 ## [1.44.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.44.2...fishsense-api-workflow-worker-v1.44.3) (2026-07-23)
 
 
