@@ -121,11 +121,11 @@
       },
       "locked": {
         "dir": "nix",
-        "lastModified": 1784534836,
-        "narHash": "sha256-FbUciI5GEUS2bsLaQgTEMFH9bfWEiLigLbaUZ9bvLNA=",
+        "lastModified": 1785140187,
+        "narHash": "sha256-2d/1h+/Aypf6TpIghdL8vs48pbSdmxk9PNyFezW6Vno=",
         "owner": "KastnerRG",
         "repo": "krg-infra",
-        "rev": "dcb64d0c046bfaf6900718d5c34313f1a87db723",
+        "rev": "f3240cd081c25045dcf7907b2665859bf9d29d56",
         "type": "github"
       },
       "original": {
@@ -137,11 +137,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1784432872,
-        "narHash": "sha256-n3gKTBIV4ZA5VQpUakffBe3KGu4+mhPoA34rrqS0GkA=",
+        "lastModified": 1785002762,
+        "narHash": "sha256-Y0BbgB3BLLHEUK88g4oSp3DerIx7rCX0iwICKJcY7/c=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "fd1462031fdee08f65fd0b4c6b64e22239a77870",
+        "rev": "f7a2e428f5d71c47a5a938a3c5ad7138bb291093",
         "type": "github"
       },
       "original": {
