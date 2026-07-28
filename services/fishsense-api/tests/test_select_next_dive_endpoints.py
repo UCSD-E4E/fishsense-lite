@@ -1888,14 +1888,19 @@ async def test_species_preprocessing_picks_dive_with_a_clustered_qualifying_imag
 # ---------- laser-prediction (model-assisted labeling) ----------
 #
 # Cohort: HIGH + at least one image with no LaserPrediction AND no
-# non-sentinel LaserLabel. One-shot per image — a prediction (or a real
-# label) drops the image out.
+# *completed* LaserLabel. One-shot per image — a prediction (or a completed
+# human label) drops the image out. A populate-seeded placeholder
+# (completed=False, carries a project_id) does NOT drop it out.
 
 
-def _laser_label(image_id: int, *, project_id=73):
+def _laser_label(image_id: int, *, project_id=73, completed=False):
     from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
 
-    return LaserLabel(image_id=image_id, label_studio_project_id=project_id)
+    return LaserLabel(
+        image_id=image_id,
+        label_studio_project_id=project_id,
+        completed=completed,
+    )
 
 
 def _laser_prediction(image_id: int):
@@ -1910,13 +1915,13 @@ async def test_laser_prediction_selects_dive_with_unpredicted_unlabeled_image(se
     )
 
     # dive 1: image already predicted -> excluded.
-    # dive 2: image already labeled (real project) -> excluded.
+    # dive 2: image with a completed human label -> excluded.
     # dive 3: image with neither -> selected.
     session.add_all([_dive(1), _dive(2), _dive(3)])
     session.add_all([_image(11, 1), _image(21, 2), _image(31, 3)])
     await session.flush()
     session.add(_laser_prediction(11))
-    session.add(_laser_label(21))
+    session.add(_laser_label(21, completed=True))
     await session.flush()
 
     assert await select_next_for_laser_prediction(session=session) == 3
@@ -1929,7 +1934,7 @@ async def test_laser_prediction_none_when_all_predicted_or_labeled(session):
 
     session.add_all([_dive(1), _image(11, 1), _image(12, 1)])
     await session.flush()
-    session.add_all([_laser_prediction(11), _laser_label(12)])
+    session.add_all([_laser_prediction(11), _laser_label(12, completed=True)])
     await session.flush()
 
     assert await select_next_for_laser_prediction(session=session) is None
@@ -1945,6 +1950,25 @@ async def test_laser_prediction_sentinel_label_does_not_exclude(session):
     session.add_all([_dive(1), _image(11, 1)])
     await session.flush()
     session.add(_laser_label(11, project_id=None))  # sentinel
+    await session.flush()
+
+    assert await select_next_for_laser_prediction(session=session) == 1
+
+
+async def test_laser_prediction_seeded_placeholder_does_not_exclude(session):
+    """A populate-seeded placeholder (carries a project_id but
+    completed=False, x/y NULL) is NOT a human label — the image still
+    needs a prediction. This is the dive-84 case: a dive populated before
+    the detector shipped has project-id-bearing incomplete rows that must
+    not starve the predict cohort."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_laser_prediction,
+    )
+
+    session.add_all([_dive(1), _image(11, 1)])
+    await session.flush()
+    # project-bearing but incomplete — exactly what populate seeds.
+    session.add(_laser_label(11, project_id=274728, completed=False))
     await session.flush()
 
     assert await select_next_for_laser_prediction(session=session) == 1
