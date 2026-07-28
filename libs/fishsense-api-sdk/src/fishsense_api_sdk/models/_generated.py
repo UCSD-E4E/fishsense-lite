@@ -174,6 +174,21 @@ class LaserLabel(BaseModel):
     user_id: int | None = Field(None, title='User Id')
 
 
+class LaserPrediction(BaseModel):
+    """
+    A model-predicted laser dot, in rectified-image pixels (the space
+    labelers place `LaserLabel.x/y`). One row per image — re-prediction
+    upserts on the natural key.
+    """
+
+    id: int | None = Field(None, title='Id')
+    x: float | None = Field(None, title='X')
+    y: float | None = Field(None, title='Y')
+    confidence: float | None = Field(0.0, title='Confidence')
+    created_at: AwareDatetime | None = Field(None, title='Created At')
+    image_id: int | None = Field(None, title='Image Id')
+
+
 class Measurement(BaseModel):
     """
     Measurement model representing fish measurements in the database.
