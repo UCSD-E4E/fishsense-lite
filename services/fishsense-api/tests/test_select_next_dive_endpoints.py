@@ -1883,3 +1883,68 @@ async def test_species_preprocessing_picks_dive_with_a_clustered_qualifying_imag
     await session.flush()
 
     assert await select_next_for_species_preprocessing(session=session) == 1
+
+
+# ---------- laser-prediction (model-assisted labeling) ----------
+#
+# Cohort: HIGH + at least one image with no LaserPrediction AND no
+# non-sentinel LaserLabel. One-shot per image — a prediction (or a real
+# label) drops the image out.
+
+
+def _laser_label(image_id: int, *, project_id=73):
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+
+    return LaserLabel(image_id=image_id, label_studio_project_id=project_id)
+
+
+def _laser_prediction(image_id: int):
+    from fishsense_api.models.laser_prediction import LaserPrediction  # pylint: disable=import-outside-toplevel
+
+    return LaserPrediction(image_id=image_id, x=1.0, y=2.0, confidence=0.9)
+
+
+async def test_laser_prediction_selects_dive_with_unpredicted_unlabeled_image(session):
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_laser_prediction,
+    )
+
+    # dive 1: image already predicted -> excluded.
+    # dive 2: image already labeled (real project) -> excluded.
+    # dive 3: image with neither -> selected.
+    session.add_all([_dive(1), _dive(2), _dive(3)])
+    session.add_all([_image(11, 1), _image(21, 2), _image(31, 3)])
+    await session.flush()
+    session.add(_laser_prediction(11))
+    session.add(_laser_label(21))
+    await session.flush()
+
+    assert await select_next_for_laser_prediction(session=session) == 3
+
+
+async def test_laser_prediction_none_when_all_predicted_or_labeled(session):
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_laser_prediction,
+    )
+
+    session.add_all([_dive(1), _image(11, 1), _image(12, 1)])
+    await session.flush()
+    session.add_all([_laser_prediction(11), _laser_label(12)])
+    await session.flush()
+
+    assert await select_next_for_laser_prediction(session=session) is None
+
+
+async def test_laser_prediction_sentinel_label_does_not_exclude(session):
+    """A NULL-project sentinel LaserLabel doesn't count as labeled — the
+    image still needs a prediction."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_laser_prediction,
+    )
+
+    session.add_all([_dive(1), _image(11, 1)])
+    await session.flush()
+    session.add(_laser_label(11, project_id=None))  # sentinel
+    await session.flush()
+
+    assert await select_next_for_laser_prediction(session=session) == 1
