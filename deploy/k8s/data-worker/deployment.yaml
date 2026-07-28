@@ -46,6 +46,14 @@ spec:
       # also has arm64 nodes.
       nodeSelector:
         kubernetes.io/arch: amd64
+      # The laser-detector predict stage runs a torch checkpoint on the GPU
+      # (resources below request one). NRP/Nautilus GPU nodes are commonly
+      # tainted `nvidia.com/gpu:NoSchedule`; tolerate it so we can land there.
+      # Harmless on untainted nodes.
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
       # We're a guest on a shared cluster — let NRP preempt our pods
       # whenever it needs the capacity. No PodDisruptionBudget on
       # purpose; an evicted activity just times out and re-runs
@@ -132,6 +140,13 @@ spec:
               # can fill to its own cap without tripping the container's
               # overall ephemeral-storage limit and getting evicted first.
               ephemeral-storage: 7Gi
+              # One GPU for the laser-detector predict stage (torch checkpoint).
+              # Extended resources must appear in limits; k8s copies it to
+              # requests. The whole data-worker pod carries the GPU (one
+              # Deployment, one queue) — idle during the non-laser stages, but
+              # the worker scales to zero when the queue is quiet and NRP is
+              # GPU-rich, so a dedicated GPU deployment is only an optimization.
+              nvidia.com/gpu: "1"
           volumeMounts:
             - name: settings
               mountPath: /e4efs/config/settings.toml
