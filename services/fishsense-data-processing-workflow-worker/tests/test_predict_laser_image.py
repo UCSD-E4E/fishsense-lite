@@ -115,13 +115,13 @@ def test_get_detector_loads_once_and_caches(monkeypatch):
 
 
 def _make_payload(**overrides) -> PredictLaserImageInput:
-    base = dict(
-        checksum="abc123",
-        image_id=42,
-        camera_matrix=[[1000.0, 0.0, 960.0], [0.0, 1000.0, 540.0], [0.0, 0.0, 1.0]],
-        distortion_coefficients=[0.0, 0.0, 0.0, 0.0, 0.0],
-        wavelength=None,
-    )
+    base = {
+        "checksum": "abc123",
+        "image_id": 42,
+        "camera_matrix": [[1000.0, 0.0, 960.0], [0.0, 1000.0, 540.0], [0.0, 0.0, 1.0]],
+        "distortion_coefficients": [0.0, 0.0, 0.0, 0.0, 0.0],
+        "wavelength": None,
+    }
     base.update(overrides)
     return PredictLaserImageInput(**base)
 
@@ -137,7 +137,7 @@ def _mock_object_store(monkeypatch, raw=b"raw"):
 async def test_activity_returns_mapped_prediction(monkeypatch):
     client = _mock_object_store(monkeypatch, raw=b"ORFBYTES")
 
-    def _fake_predict(raw_bytes, camera_matrix, distortion, wavelength, checkpoint):
+    def _fake_predict(raw_bytes, *_args):
         assert raw_bytes == b"ORFBYTES"
         return SimpleNamespace(x=100.0, y=200.0, confidence=0.77)
 
