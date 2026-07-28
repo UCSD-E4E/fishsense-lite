@@ -54,6 +54,21 @@ spec:
         - key: nvidia.com/gpu
           operator: Exists
           effect: NoSchedule
+      # Exclude nodes that advertise `kubernetes.io/arch: amd64` but cannot
+      # actually exec an amd64 binary (arm64/emulated nodes with a wrong arch
+      # label), which defeats the nodeSelector above and lands our amd64-only
+      # image in CrashLoopBackOff with `exec format error`. Observed on
+      # bak-hpc2.csub.edu (2026-07-28) — reported to NRP; remove once the node
+      # is fixed/cordoned. Add other offenders here if they surface.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - bak-hpc2.csub.edu
       # We're a guest on a shared cluster — let NRP preempt our pods
       # whenever it needs the capacity. No PodDisruptionBudget on
       # purpose; an evicted activity just times out and re-runs
