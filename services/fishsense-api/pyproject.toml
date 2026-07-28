@@ -39,7 +39,7 @@ dev = [
     # Dev-only: tools/generate_sdk_models.py + the generated-models freshness
     # test invoke datamodel-codegen against the FastAPI app's openapi schema.
     # Pinned to label-studio-sdk's transitive version to avoid resolver conflict.
-    "datamodel-code-generator==0.26.1",
+    "datamodel-code-generator==0.64.0",
 ]
 
 [tool.pytest.ini_options]
