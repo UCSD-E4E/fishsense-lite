@@ -37,6 +37,7 @@ from temporalio.worker import Worker
 
 from fishsense_api_sdk.models.image import Image
 from fishsense_api_sdk.models.laser_label import LaserLabel
+from fishsense_api_sdk.models.laser_prediction import LaserPrediction
 from fishsense_api_workflow_worker.activities import (
     create_laser_label_studio_project_activity as create_sut,
     populate_laser_label_studio_project_activity as populate_sut,
@@ -171,6 +172,17 @@ def _make_fs_client(images: List[Image], existing_labels: List[LaserLabel]):
     fs.labels = MagicMock()
     fs.labels.get_laser_labels = AsyncMock(return_value=existing_labels)
     fs.labels.put_laser_label = AsyncMock()
+    # Laser populate is now prediction-gated (model-assisted labeling): it only
+    # seeds a task for an image that has a LaserPrediction. Give every image one
+    # so the gate is a no-op here and the LS-import path is still exercised.
+    fs.labels.get_laser_predictions = AsyncMock(
+        return_value=[
+            LaserPrediction(
+                image_id=img.id, x=1.0, y=2.0, confidence=0.9, width=4000, height=3000
+            )
+            for img in images
+        ]
+    )
     return fs
 
 
