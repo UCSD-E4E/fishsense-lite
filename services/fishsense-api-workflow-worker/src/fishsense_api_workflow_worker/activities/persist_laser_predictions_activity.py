@@ -36,6 +36,8 @@ async def persist_laser_predictions_activity(results: List[Any]) -> int:
                     x=result.x,
                     y=result.y,
                     confidence=result.confidence,
+                    width=result.width,
+                    height=result.height,
                 ),
             )
     return len(parsed)

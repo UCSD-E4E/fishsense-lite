@@ -68,7 +68,11 @@ def _predict_from_raw(
     (linear + Bayer-excess, which the 6-channel model needs) and run the
     detector with rectified output so the point lands in labeling space.
 
-    Returns the fishsense-core `LaserPrediction` (`.x`, `.y`, `.confidence`).
+    Returns `(prediction, width, height)` — the fishsense-core
+    `LaserPrediction` (`.x`, `.y`, `.confidence`) plus the rectified frame
+    dimensions the x/y are relative to (needed to convert to Label Studio
+    keypoint percentages downstream). `cv2.undistort` preserves the image
+    size, so the rectified dims equal the decoded raw dims.
     """
     import numpy as np  # pylint: disable=import-outside-toplevel
     # no-name-in-module: linear_raw_image ships in fishsense-core >= 2.2.0
@@ -78,14 +82,16 @@ def _predict_from_raw(
     )
 
     image = LinearRawImage(raw_bytes)
+    height, width = image.data.shape[:2]
     detector = _get_detector(checkpoint_path)
-    return detector.predict(
+    prediction = detector.predict(
         image,
         wavelength=wavelength,
         rectify_output=True,
         camera_matrix=np.array(camera_matrix, dtype=float),
         distortion=np.array(distortion_coefficients, dtype=float),
     )
+    return prediction, int(width), int(height)
 
 
 def _models():
@@ -115,7 +121,7 @@ async def predict_laser_image(payload):  # type: ignore[no-untyped-def]
     client = open_object_store_client()
     raw_bytes = await client.download_raw(payload.checksum)
 
-    prediction = await asyncio.to_thread(
+    prediction, width, height = await asyncio.to_thread(
         _predict_from_raw,
         raw_bytes,
         payload.camera_matrix,
@@ -125,15 +131,19 @@ async def predict_laser_image(payload):  # type: ignore[no-untyped-def]
     )
 
     activity.logger.info(
-        "predicted laser image_id=%d x=%s y=%s confidence=%.3f",
+        "predicted laser image_id=%d x=%s y=%s confidence=%.3f dims=%dx%d",
         payload.image_id,
         prediction.x,
         prediction.y,
         prediction.confidence,
+        width,
+        height,
     )
     return result_cls(
         image_id=payload.image_id,
         x=prediction.x,
         y=prediction.y,
         confidence=prediction.confidence,
+        width=width,
+        height=height,
     )

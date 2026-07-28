@@ -22,27 +22,87 @@ from fishsense_api_workflow_worker.activities.utils import get_fs_client
 
 PREPROCESS_FOLDER = "preprocess_jpeg"
 
+# Laser LS labeling config (see create_laser_label_studio_project_activity):
+# <KeyPointLabels name="laser" toName="img"> with Red/Green Laser labels.
+_KEYPOINT_FROM_NAME = "laser"
+_KEYPOINT_TO_NAME = "img"
+# The model doesn't know the laser color (wavelength unknown), so pre-fill the
+# more common one; the labeler flips it to Green when needed. A keypointlabels
+# result must name a label to be valid.
+_DEFAULT_LASER_LABEL = "Red Laser"
+
+
+def _prediction_annotations(prediction) -> list:
+    """Build the LS `predictions` list (one keypoint pre-annotation) from a
+    model `LaserPrediction`, or [] when there's nothing placeable.
+
+    Label Studio keypoints are in percentages, so convert the prediction's
+    rectified pixels using its own recorded frame dims. Skips a prediction
+    with no detection (x/y None) or missing dims.
+    """
+    if prediction is None:
+        return []
+    x, y, width, height = (
+        prediction.x,
+        prediction.y,
+        prediction.width,
+        prediction.height,
+    )
+    if x is None or y is None or not width or not height:
+        return []
+    return [
+        {
+            "model_version": "laser-detector",
+            "result": [
+                {
+                    "from_name": _KEYPOINT_FROM_NAME,
+                    "to_name": _KEYPOINT_TO_NAME,
+                    "type": "keypointlabels",
+                    "original_width": width,
+                    "original_height": height,
+                    "image_rotation": 0,
+                    "value": {
+                        "x": x / width * 100,
+                        "y": y / height * 100,
+                        "width": 0.5,
+                        "keypointlabels": [_DEFAULT_LASER_LABEL],
+                    },
+                }
+            ],
+        }
+    ]
+
 
 def _select_unlabeled_images(
-    images: List[Image], existing_labels: List[LaserLabel]
+    images: List[Image],
+    existing_labels: List[LaserLabel],
+    predicted_image_ids: set,
 ) -> List[Image]:
-    """Return only images that need a fresh LS task — no completed
-    LaserLabel exists for them in any project.
+    """Return images that need a fresh laser LS task: no completed
+    LaserLabel in any project, AND a model prediction already exists.
 
-    Multi-row-aware: an image carrying both a completed row in
-    project 43 and an incomplete sentinel row in project NULL is
-    treated as labeled. The previous shape collapsed labels into a
-    `{image_id: label}` dict and let SDK iteration order pick which
-    row won, which silently leaked already-labeled images into the
-    task-import set when the incomplete row happened to land last.
+    **Prediction-gated** (like species populate is JPEG-gated): seeding a
+    LaserLabel for an un-predicted image would exclude it from the predict
+    cohort (which requires "no LaserLabel") before the detector ever ran,
+    permanently starving it of a prediction. So an image is only populated
+    once its `LaserPrediction` is in place — un-predicted images defer to a
+    later run.
+
+    Multi-row-aware: an image carrying a completed row in one project and an
+    incomplete sentinel elsewhere is treated as labeled.
     """
     completed_image_ids = {
         label.image_id for label in existing_labels if label.completed
     }
-    return [image for image in images if image.id not in completed_image_ids]
+    return [
+        image
+        for image in images
+        if image.id not in completed_image_ids
+        and image.id in predicted_image_ids
+    ]
 
 
-def _build_task(image: Image) -> dict:
+def _build_task(image: Image, prediction=None) -> dict:
     """Build an LS task referencing the preprocessed JPEG.
 
     Emits BOTH `image` and `img` keys in `data` because legacy prod
@@ -58,6 +118,10 @@ def _build_task(image: Image) -> dict:
     return {
         "data": {"image": url, "img": url},
         "annotations": [],
+        # Model-assisted labeling: seed the laser-detector's predicted dot as
+        # a pre-annotation the labeler confirms/nudges. Empty when there's no
+        # prediction for this image yet.
+        "predictions": _prediction_annotations(prediction),
     }
 
 
@@ -72,8 +136,12 @@ async def populate_laser_label_studio_project_activity(
     async with get_fs_client() as fs:
         images = await fs.images.get(dive_id=dive_id) or []
         existing_labels = await fs.labels.get_laser_labels(dive_id) or []
+        predictions = await fs.labels.get_laser_predictions(dive_id) or []
+        predictions_by_image = {p.image_id: p for p in predictions}
 
-        unlabeled = _select_unlabeled_images(images, existing_labels)
+        unlabeled = _select_unlabeled_images(
+            images, existing_labels, set(predictions_by_image)
+        )
         if not unlabeled:
             activity.logger.info(
                 "Dive %d has a completed laser label for every image; "
@@ -91,7 +159,10 @@ async def populate_laser_label_studio_project_activity(
                 await publish_label_studio_project(project_id)
             return 0
 
-        tasks = [_build_task(image) for image in unlabeled]
+        tasks = [
+            _build_task(image, predictions_by_image.get(image.id))
+            for image in unlabeled
+        ]
 
         async def _record(image: Image, task_id: int) -> None:
             label = LaserLabel(

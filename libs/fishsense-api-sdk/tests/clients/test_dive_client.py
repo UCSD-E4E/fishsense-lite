@@ -319,6 +319,23 @@ class TestDiveClient:
                     "/api/v1/dives/select-next/laser-prediction/"
                 )
 
+    async def test_get_dives_needing_laser_population_returns_list(self):
+        client = _make_client()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [5, 9]
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            async with client:
+                result = await client.get_dives_needing_laser_population()
+                assert result == [5, 9]
+                mock_get.assert_awaited_once_with(
+                    "/api/v1/dives/needing-laser-population/"
+                )
+
     async def test_get_dives_needing_species_population_returns_list(self):
         """Returns the full list of dive ids from the population endpoint."""
         client = _make_client()

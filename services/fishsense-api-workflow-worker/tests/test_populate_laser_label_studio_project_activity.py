@@ -22,10 +22,23 @@ from temporalio.testing import ActivityEnvironment
 
 from fishsense_api_sdk.models.image import Image
 from fishsense_api_sdk.models.laser_label import LaserLabel
+from fishsense_api_sdk.models.laser_prediction import LaserPrediction
 from fishsense_api_workflow_worker.activities import (
     populate_laser_label_studio_project_activity as sut,
     populate_utils as sut_utils,
 )
+
+
+def _prediction(image_id: int, *, x=100.0, y=200.0, width=4000, height=3000):
+    return LaserPrediction(
+        id=image_id,
+        image_id=image_id,
+        x=x,
+        y=y,
+        confidence=0.9,
+        width=width,
+        height=height,
+    )
 
 
 def _image(image_id: int, checksum: str) -> Image:
@@ -63,7 +76,7 @@ def test_select_unlabeled_excludes_images_with_any_completed_label():
     images = [_image(1, "a"), _image(2, "b"), _image(3, "c")]
     existing = [_label(1, completed=True), _label(2, completed=False)]
 
-    result = sut._select_unlabeled_images(images, existing)  # pylint: disable=protected-access
+    result = sut._select_unlabeled_images(images, existing, {i.id for i in images})  # pylint: disable=protected-access
 
     # Image 1 has a completed label -> excluded.
     # Image 2's only label is incomplete -> included.
@@ -91,7 +104,7 @@ def test_select_unlabeled_treats_null_project_sentinel_as_unlabeled():
         _label(2, completed=True, project_id=43),
     ]
 
-    result = sut._select_unlabeled_images(images, existing)  # pylint: disable=protected-access
+    result = sut._select_unlabeled_images(images, existing, {i.id for i in images})  # pylint: disable=protected-access
 
     # Image 1 still needs a task; image 2 doesn't.
     assert [img.id for img in result] == [1]
@@ -112,7 +125,7 @@ def test_select_unlabeled_handles_multi_row_state():
         _label(2, completed=False, project_id=43),
     ]
 
-    result = sut._select_unlabeled_images(images, existing)  # pylint: disable=protected-access
+    result = sut._select_unlabeled_images(images, existing, {i.id for i in images})  # pylint: disable=protected-access
 
     assert [img.id for img in result] == [2]
 
@@ -139,10 +152,46 @@ def test_build_task_uses_configured_url_base_and_dual_keys(monkeypatch):
     assert task == {
         "data": {"image": expected_url, "img": expected_url},
         "annotations": [],
+        "predictions": [],
     }
 
 
-def _make_fs_client(images: List[Image], existing_labels: List[LaserLabel]):
+def test_select_unlabeled_gates_on_prediction_present():
+    """An image with no LaserPrediction is deferred — populating it would
+    stamp a LaserLabel and starve the predict cohort before the detector ran."""
+    images = [_image(1, "a"), _image(2, "b")]
+    # Only image 1 has been predicted.
+    result = sut._select_unlabeled_images(images, [], {1})  # pylint: disable=protected-access
+    assert [img.id for img in result] == [1]
+
+
+def test_prediction_annotations_converts_pixels_to_percent():
+    pred = _prediction(1, x=2000.0, y=1500.0, width=4000, height=3000)
+    result = sut._prediction_annotations(pred)  # pylint: disable=protected-access
+    assert len(result) == 1
+    kp = result[0]["result"][0]
+    assert kp["from_name"] == "laser" and kp["to_name"] == "img"
+    assert kp["type"] == "keypointlabels"
+    assert kp["original_width"] == 4000 and kp["original_height"] == 3000
+    assert kp["value"]["x"] == 50.0  # 2000/4000*100
+    assert kp["value"]["y"] == 50.0  # 1500/3000*100
+    assert kp["value"]["keypointlabels"] == ["Red Laser"]
+
+
+def test_prediction_annotations_empty_for_none_or_missing_dims():
+    # pylint: disable=protected-access
+    assert not sut._prediction_annotations(None)
+    assert not sut._prediction_annotations(_prediction(1, x=None, y=None))
+    assert not sut._prediction_annotations(
+        LaserPrediction(image_id=1, x=1.0, y=2.0, confidence=0.9, width=None, height=None)
+    )
+
+
+def _make_fs_client(
+    images: List[Image],
+    existing_labels: List[LaserLabel],
+    predictions: List[LaserPrediction] | None = None,
+):
     fs = MagicMock()
     fs.__aenter__ = AsyncMock(return_value=fs)
     fs.__aexit__ = AsyncMock(return_value=None)
@@ -153,6 +202,12 @@ def _make_fs_client(images: List[Image], existing_labels: List[LaserLabel]):
     fs.labels = MagicMock()
     fs.labels.get_laser_labels = AsyncMock(return_value=existing_labels)
     fs.labels.put_laser_label = AsyncMock()
+    # Default: every image has a prediction, so the prediction-gate is a no-op
+    # and the completed-label filter alone decides what gets populated. Tests
+    # that exercise the gate pass an explicit subset.
+    if predictions is None:
+        predictions = [_prediction(image.id) for image in images]
+    fs.labels.get_laser_predictions = AsyncMock(return_value=predictions)
     return fs
 
 

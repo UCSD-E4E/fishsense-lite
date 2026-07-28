@@ -49,6 +49,8 @@ def _install_fake_linear_raw_image(monkeypatch, captured):
         def __init__(self, source, *, bayer_upsample="repeat"):
             captured["source"] = source
             captured["bayer_upsample"] = bayer_upsample
+            # (H, W, C) — the activity reads dims from image.data.shape.
+            self.data = SimpleNamespace(shape=(3000, 4000, 3))
 
     mod.LinearRawImage = _LinearRawImage
     monkeypatch.setitem(
@@ -73,7 +75,7 @@ def test_predict_from_raw_calls_detector_with_rectified_output(monkeypatch):
 
     monkeypatch.setattr(sut, "_get_detector", lambda checkpoint_path: _FakeDetector())
 
-    pred = sut._predict_from_raw(
+    pred, width, height = sut._predict_from_raw(
         b"rawbytes",
         camera_matrix=[[1000.0, 0.0, 960.0], [0.0, 1000.0, 540.0], [0.0, 0.0, 1.0]],
         distortion_coefficients=[0.1, -0.2, 0.0, 0.0, 0.0],
@@ -82,6 +84,7 @@ def test_predict_from_raw_calls_detector_with_rectified_output(monkeypatch):
     )
 
     assert (pred.x, pred.y, pred.confidence) == (12.5, 34.0, 0.9)
+    assert (width, height) == (4000, 3000)  # from image.data.shape (H, W)
     # Built a LinearRawImage straight from the raw bytes.
     assert captured["source"] == b"rawbytes"
     # Rectified output in labeling space, with the dive's intrinsics + wavelength.
@@ -139,7 +142,7 @@ async def test_activity_returns_mapped_prediction(monkeypatch):
 
     def _fake_predict(raw_bytes, *_args):
         assert raw_bytes == b"ORFBYTES"
-        return SimpleNamespace(x=100.0, y=200.0, confidence=0.77)
+        return SimpleNamespace(x=100.0, y=200.0, confidence=0.77), 4000, 3000
 
     monkeypatch.setattr(sut, "_predict_from_raw", _fake_predict)
 
@@ -150,6 +153,7 @@ async def test_activity_returns_mapped_prediction(monkeypatch):
     assert isinstance(result, LaserPredictionResult)
     assert result.image_id == 7
     assert (result.x, result.y, result.confidence) == (100.0, 200.0, 0.77)
+    assert (result.width, result.height) == (4000, 3000)
     client.download_raw.assert_awaited_once_with("abc123")
 
 
@@ -159,7 +163,7 @@ async def test_activity_handles_non_detection(monkeypatch):
     monkeypatch.setattr(
         sut,
         "_predict_from_raw",
-        lambda *a, **k: SimpleNamespace(x=None, y=None, confidence=0.05),
+        lambda *a, **k: (SimpleNamespace(x=None, y=None, confidence=0.05), 4000, 3000),
     )
 
     result = await ActivityEnvironment().run(
@@ -178,7 +182,7 @@ async def test_activity_validates_dict_payload(monkeypatch):
     monkeypatch.setattr(
         sut,
         "_predict_from_raw",
-        lambda *a, **k: SimpleNamespace(x=1.0, y=2.0, confidence=0.5),
+        lambda *a, **k: (SimpleNamespace(x=1.0, y=2.0, confidence=0.5), 4000, 3000),
     )
 
     result = await ActivityEnvironment().run(

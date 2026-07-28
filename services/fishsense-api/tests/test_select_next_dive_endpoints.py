@@ -1948,3 +1948,47 @@ async def test_laser_prediction_sentinel_label_does_not_exclude(session):
     await session.flush()
 
     assert await select_next_for_laser_prediction(session=session) == 1
+
+
+# ---------- needing-laser-population (decoupled model-assisted populate) ----------
+#
+# Cohort: HIGH + >=1 image with a LaserPrediction and no completed LaserLabel.
+# Prediction-gated so populate never seeds a LaserLabel before the detector ran.
+
+
+async def test_needing_laser_population_lists_predicted_incomplete_dives(session):
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_dives_needing_laser_population,
+    )
+
+    # dive 1: predicted image, no completed label -> included.
+    # dive 2: predicted image but completed label -> excluded.
+    # dive 3: unpredicted image -> excluded (gate).
+    session.add_all([_dive(1), _dive(2), _dive(3)])
+    session.add_all([_image(11, 1), _image(21, 2), _image(31, 3)])
+    await session.flush()
+    session.add_all([_laser_prediction(11), _laser_prediction(21)])
+    session.add(_laser_label(21, project_id=73))  # completed below
+    await session.flush()
+    # mark dive 2's label completed
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+    from sqlmodel import select as _select  # pylint: disable=import-outside-toplevel
+
+    lbl = (await session.exec(_select(LaserLabel).where(LaserLabel.image_id == 21))).first()
+    lbl.completed = True
+    session.add(lbl)
+    await session.flush()
+
+    result = await select_dives_needing_laser_population(session=session)
+    assert result == [1]
+
+
+async def test_needing_laser_population_empty_when_nothing_predicted(session):
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_dives_needing_laser_population,
+    )
+
+    session.add_all([_dive(1), _image(11, 1)])
+    await session.flush()
+
+    assert await select_dives_needing_laser_population(session=session) == []

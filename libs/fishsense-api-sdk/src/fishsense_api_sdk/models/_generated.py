@@ -185,6 +185,8 @@ class LaserPrediction(BaseModel):
     x: float | None = Field(None, title='X')
     y: float | None = Field(None, title='Y')
     confidence: float | None = Field(0.0, title='Confidence')
+    width: int | None = Field(None, title='Width')
+    height: int | None = Field(None, title='Height')
     created_at: AwareDatetime | None = Field(None, title='Created At')
     image_id: int | None = Field(None, title='Image Id')
 

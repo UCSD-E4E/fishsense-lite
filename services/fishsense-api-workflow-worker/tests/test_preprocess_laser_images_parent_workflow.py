@@ -189,7 +189,10 @@ async def test_dispatches_child_with_deterministic_id_and_correct_payload():
     assert child_id == "preprocess-laser-440"
     assert child_dive_id == 440
     assert child_checksums == ["a", "b", "c"]
-    assert populate_runs == [("populate-laser-440", 440)]
+    # Populate is DECOUPLED (2026-07-28): the preprocess parent no longer
+    # chains into it — the scheduled PopulateLaserLabelStudioProjectParentWorkflow
+    # (+12, after the +10 predict parent) owns laser task import now.
+    assert not populate_runs
 
 
 @pytest.mark.asyncio
@@ -274,64 +277,3 @@ async def test_skips_child_dispatch_when_no_incomplete_images():
     assert not stage_calls
     assert not child_runs
     assert not populate_runs
-
-
-@pytest.mark.asyncio
-async def test_repeat_invocation_swallows_workflow_already_started():
-    """Stage-0.1's cohort keeps a dive selectable until stage-13 writes
-    LaserExtrinsics, so the parent re-runs hourly on the same dive_id.
-    The deterministic populate child id makes the second+ firing's
-    populate dispatch hit WorkflowAlreadyStarted, which the parent
-    catches so the run still completes successfully.
-    """
-    inputs = PreprocessLaserImagesInput(
-        dive_id=441,
-        image_checksums=["x"],
-        camera_matrix=_K,
-        distortion_coefficients=_D,
-        bbox=_BBOX,
-    )
-    activities, _, _, _ = _make_stub_activities(
-        selector_result=441, resolver_result=inputs
-    )
-    child_runs: List[tuple] = []
-    record = _make_recording_activity(child_runs)
-    populate_runs: List[tuple] = []
-    record_populate = _make_populate_recording_activity(populate_runs)
-
-    async with await WorkflowEnvironment.start_time_skipping() as env:
-        # Pre-seed: start a populate child with the same id that the
-        # parent will try to use, then let it complete.
-        existing = await env.client.start_workflow(
-            _StubPopulateWorkflow.run,
-            441,
-            id="populate-laser-441",
-            task_queue="test-stage01-parent-rerun",
-        )
-        async with Worker(
-            env.client,
-            task_queue="test-stage01-parent-rerun",
-            workflows=[
-                PreprocessLaserImagesParentWorkflow,
-                _StubPopulateWorkflow,
-            ],
-            activities=[*activities, record_populate],
-        ), Worker(
-            env.client,
-            task_queue=DATA_PROCESSING_TASK_QUEUE,
-            workflows=[_StubChildWorkflow],
-            activities=[record],
-        ):
-            await existing.result()
-            result = await env.client.execute_workflow(
-                PreprocessLaserImagesParentWorkflow.run,
-                id=f"test-stage01-parent-rerun-{uuid.uuid4()}",
-                task_queue="test-stage01-parent-rerun",
-            )
-
-    assert result == 441
-    assert len(child_runs) == 1
-    # Pre-seeded populate ran once; the parent's attempt was rejected
-    # with WorkflowAlreadyStarted and caught, so no second populate
-    # invocation happened.
-    assert populate_runs == [("populate-laser-441", 441)]
