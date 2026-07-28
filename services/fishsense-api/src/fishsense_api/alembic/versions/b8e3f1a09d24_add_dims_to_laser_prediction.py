@@ -24,9 +24,25 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Upgrade schema."""
-    op.add_column("laserprediction", sa.Column("width", sa.Integer(), nullable=True))
-    op.add_column("laserprediction", sa.Column("height", sa.Integer(), nullable=True))
+    """Upgrade schema.
+
+    Idempotent against `SQLModel.metadata.create_all`: on an existing DB
+    the lifespan's `create_all` may have already materialized
+    `laserprediction` with width/height from the current ORM model
+    before alembic runs. Add each column only when it's missing so
+    `upgrade head` can't crash with `DuplicateColumnError`.
+    """
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing = {c["name"] for c in inspector.get_columns("laserprediction")}
+    if "width" not in existing:
+        op.add_column(
+            "laserprediction", sa.Column("width", sa.Integer(), nullable=True)
+        )
+    if "height" not in existing:
+        op.add_column(
+            "laserprediction", sa.Column("height", sa.Integer(), nullable=True)
+        )
 
 
 def downgrade() -> None:
