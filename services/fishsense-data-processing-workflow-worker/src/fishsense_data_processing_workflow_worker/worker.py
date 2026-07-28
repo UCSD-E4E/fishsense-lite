@@ -30,6 +30,9 @@ from fishsense_data_processing_workflow_worker.activities.preprocess_species_ima
 from fishsense_data_processing_workflow_worker.activities.preprocess_headtail_image import (
     preprocess_headtail_image,
 )
+from fishsense_data_processing_workflow_worker.activities.predict_laser_image import (
+    predict_laser_image,
+)
 from fishsense_data_processing_workflow_worker.activities.preprocess_laser_image import (
     preprocess_laser_image,
 )
@@ -54,6 +57,9 @@ from fishsense_data_processing_workflow_worker.workflows.preprocess_species_imag
 )
 from fishsense_data_processing_workflow_worker.workflows.preprocess_headtail_images_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PreprocessHeadtailImagesWorkflow,
+)
+from fishsense_data_processing_workflow_worker.workflows.predict_laser_images_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    PredictLaserImagesWorkflow,
 )
 from fishsense_data_processing_workflow_worker.workflows.preprocess_laser_images_workflow import (
     PreprocessLaserImagesWorkflow,
@@ -122,6 +128,7 @@ def build_worker(
             PerformLaserCalibrationWorkflow,
             PreprocessSpeciesImagesWorkflow,
             PreprocessHeadtailImagesWorkflow,
+            PredictLaserImagesWorkflow,
             PreprocessLaserImagesWorkflow,
             PreprocessSlateImagesWorkflow,
             ValidateLaserLabelsForDiveWorkflow,
@@ -131,6 +138,7 @@ def build_worker(
             cluster_dive_frames,
             measure_fish_activity,
             perform_laser_calibration_activity,
+            predict_laser_image,
             preprocess_species_image,
             preprocess_headtail_image,
             preprocess_laser_image,

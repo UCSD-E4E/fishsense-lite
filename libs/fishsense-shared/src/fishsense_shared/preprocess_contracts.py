@@ -91,6 +91,37 @@ class PreprocessHeadtailImagesInput(BaseModel):
     distortion_coefficients: List[float]
 
 
+class PredictLaserImage(BaseModel):
+    """Per-image (checksum, image_id) pair for laser prediction.
+
+    Both are needed: the checksum fetches the raw bytes from Garage, and
+    the image_id is what the prediction result is keyed back to so the
+    api-worker can persist it against the right image.
+    """
+
+    image_id: int
+    checksum: str
+
+
+class PredictLaserImagesInput(BaseModel):
+    """Laser-detector (model-assisted labeling) workflow-level input.
+
+    Constructed by the api-worker parent (selector + resolver), passed to
+    the GPU data-worker `PredictLaserImagesWorkflow` child. The fishsense-core
+    `LaserDetector` rectifies its output into camera-corrected pixels using
+    the dive's intrinsics, so predictions land in the same space labelers
+    place `LaserLabel.x/y`.
+    """
+
+    dive_id: int
+    images: List[PredictLaserImage]
+    camera_matrix: List[List[float]]
+    distortion_coefficients: List[float]
+    # Laser wavelength ("red" / "green"); None when the dive's laser color
+    # isn't known — the model uses an "unknown" wavelength channel then.
+    wavelength: str | None = None
+
+
 class PreprocessSlateImagesInput(BaseModel):
     """Stage 9 (slate preprocess) workflow-level input.
 
