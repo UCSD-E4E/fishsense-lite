@@ -70,7 +70,7 @@ async def test_measure_fish_is_scheduled_hourly_at_40(registered):
 
 async def test_laser_predict_is_scheduled_hourly_at_10(registered):
     schedule = registered["predict-laser-images-workflow-schedule"]
-    assert _interval(schedule) == timedelta(hours=1)
+    assert _every(schedule) == timedelta(hours=1)
     assert _offset(schedule) == timedelta(minutes=10)
 
 
