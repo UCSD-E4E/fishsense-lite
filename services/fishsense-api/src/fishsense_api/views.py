@@ -77,6 +77,7 @@ DIVE_PIPELINE_STATUS_VIEW_SQL = f"""
 CREATE VIEW {DIVE_PIPELINE_STATUS_VIEW_NAME} AS
 SELECT
     d.id AS dive_id,
+    d.name AS dive_name,
     d.priority,
     d.dive_slate_id,
 

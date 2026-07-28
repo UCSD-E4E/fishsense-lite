@@ -50,7 +50,12 @@ async def session():
 
 
 def _dive(
-    dive_id: int, *, priority: str = "HIGH", dive_slate_id=None, calibration_dive_id=None
+    dive_id: int,
+    *,
+    priority: str = "HIGH",
+    dive_slate_id=None,
+    calibration_dive_id=None,
+    name=None,
 ):
     from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
     from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
@@ -62,6 +67,7 @@ def _dive(
         priority=Priority[priority],
         dive_slate_id=dive_slate_id,
         calibration_dive_id=calibration_dive_id,
+        name=name,
     )
 
 
@@ -139,14 +145,28 @@ async def test_empty_dive_emits_a_row_with_every_flag_false(session):
 
 
 async def test_identity_columns_pass_through(session):
-    session.add(_dive(7, priority="LOW", dive_slate_id=42))
+    session.add(
+        _dive(7, priority="LOW", dive_slate_id=42, name="083023_FishModels_FSL05")
+    )
     await session.flush()
 
     row = await _row(session, 7)
     assert row["dive_id"] == 7
+    # Superset dashboards key on dive_id but display the readable name.
+    assert row["dive_name"] == "083023_FishModels_FSL05"
     # priority enum stored as enum-name string by sqlmodel.
     assert row["priority"] == "LOW"
     assert row["dive_slate_id"] == 42
+
+
+async def test_dive_name_null_passes_through_as_none(session):
+    """A dive with no name (NULL) still emits a row; dive_name is None."""
+    session.add(_dive(8, name=None))
+    await session.flush()
+
+    row = await _row(session, 8)
+    assert row["dive_id"] == 8
+    assert row["dive_name"] is None
 
 
 # ---------- laser_preprocessed (stage 0.1) ----------
