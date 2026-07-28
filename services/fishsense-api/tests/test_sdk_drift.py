@@ -59,6 +59,7 @@ MODEL_PAIRS: list[Pair] = [
     ),
     Pair("laser_extrinsics", "_LaserExtrinsics", "laser_extrinsics", "LaserExtrinsics"),
     Pair("laser_label", "LaserLabel", "laser_label", "LaserLabel"),
+    Pair("laser_prediction", "LaserPrediction", "laser_prediction", "LaserPrediction"),
     Pair("measurement", "Measurement", "measurement", "Measurement"),
     Pair("species", "Species", "species", "Species"),
     Pair("species_label", "SpeciesLabel", "species_label", "SpeciesLabel"),

@@ -70,6 +70,53 @@ class TestLabelClient:  # pylint: disable=too-many-public-methods
             async with client:
                 assert await client.get_laser_label(label_studio_id=999) is None
 
+    async def test_put_laser_prediction_puts_to_image_endpoint(self):
+        from fishsense_api_sdk.models.laser_prediction import (  # pylint: disable=import-outside-toplevel
+            LaserPrediction,
+        )
+
+        client = _make_client()
+        resp = Mock()
+        resp.status_code = 201
+        resp.json.return_value = 7
+        resp.raise_for_status = Mock()
+        with patch.object(client, "_put", new_callable=AsyncMock) as mock_put:
+            mock_put.return_value = resp
+            async with client:
+                pid = await client.put_laser_prediction(
+                    11, LaserPrediction(x=1.0, y=2.0, confidence=0.9)
+                )
+        assert pid == 7
+        endpoint, *_ = mock_put.call_args.args
+        assert endpoint == "/api/v1/images/11/laser-prediction/"
+
+    async def test_get_laser_predictions_returns_list(self):
+        client = _make_client()
+        resp = Mock()
+        resp.status_code = 200
+        resp.json.return_value = [
+            {"id": 1, "x": 1.0, "y": 2.0, "confidence": 0.9, "image_id": 11},
+            {"id": 2, "x": None, "y": None, "confidence": 0.1, "image_id": 12},
+        ]
+        resp.raise_for_status = Mock()
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = resp
+            async with client:
+                preds = await client.get_laser_predictions(1)
+        assert [p.image_id for p in preds] == [11, 12]
+        mock_get.assert_awaited_once_with("/api/v1/dives/1/laser-predictions/")
+
+    async def test_get_laser_predictions_empty_on_null_body(self):
+        client = _make_client()
+        resp = Mock()
+        resp.status_code = 200
+        resp.json.return_value = None
+        resp.raise_for_status = Mock()
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = resp
+            async with client:
+                assert await client.get_laser_predictions(1) == []
+
     async def test_get_species_label_returns_none_on_404(self):
         client = _make_client()
         with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
