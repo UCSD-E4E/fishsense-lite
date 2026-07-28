@@ -191,13 +191,20 @@ async def select_next_for_laser_prediction(
     session: AsyncSession = Depends(get_async_session),
 ) -> int | None:
     """Model-assisted laser labeling: HIGH-priority + at least one image
-    with no `LaserPrediction` row and no non-sentinel `LaserLabel` row.
+    with no `LaserPrediction` row and no *completed* `LaserLabel` row.
 
     An image needs a prediction only if it has neither been predicted nor
-    labeled yet — so a dive drops out of the cohort once every image is
-    predicted (one-shot per image; re-prediction is a manual affair), and
-    images a human already labeled are never predicted over. Mirrors the
-    stage-0.1 "non-sentinel label" convention (`project_id IS NOT NULL`).
+    *labeled by a human* yet — so a dive drops out of the cohort once every
+    image is predicted (one-shot per image; re-prediction is a manual
+    affair), and images a human already labeled are never predicted over.
+
+    "Labeled" here means `completed IS TRUE`, NOT merely
+    `project_id IS NOT NULL`: the laser populate step seeds placeholder
+    rows (`completed=False`, x/y NULL) that *carry* a `project_id`, so a
+    project-id check would exclude every populate-seeded-but-unlabeled
+    image — starving the detector on exactly the dives it should assist
+    (e.g. a dive populated before the detector shipped). Matches populate's
+    own `completed`-based definition of "labeled" (`_select_unlabeled_images`).
     """
     has_image_needing_prediction = (
         select(Image.id)
@@ -210,7 +217,7 @@ async def select_next_for_laser_prediction(
         .where(
             ~select(LaserLabel.id)
             .where(LaserLabel.image_id == Image.id)
-            .where(LaserLabel.label_studio_project_id != None)
+            .where(LaserLabel.completed == True)
             .exists()
         )
         .exists()
