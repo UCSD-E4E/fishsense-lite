@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.46.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.45.1...fishsense-api-workflow-worker-v1.46.0) (2026-07-28)
+
+
+### Features
+
+* **laser-populate:** assisted-review pre-annotations, decoupled (phase 5) ([#423](https://github.com/UCSD-E4E/fishsense-lite/issues/423)) ([1af7aa9](https://github.com/UCSD-E4E/fishsense-lite/commit/1af7aa90dc9895bd8e98fa77823a13676882f789))
+* **laser-predict:** orchestration — parent + selector + schedule (phase 4) ([#422](https://github.com/UCSD-E4E/fishsense-lite/issues/422)) ([28baa3c](https://github.com/UCSD-E4E/fishsense-lite/commit/28baa3cc22ee9da02344f4901f9bb83fb20c1642))
+
 ## [1.45.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.45.0...fishsense-api-workflow-worker-v1.45.1) (2026-07-24)
 
 
