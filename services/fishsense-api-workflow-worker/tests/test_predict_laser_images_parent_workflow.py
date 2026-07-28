@@ -29,6 +29,7 @@ from fishsense_shared import (
     PredictLaserImagesInput,
 )
 from fishsense_api_workflow_worker.workflows.predict_laser_images_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    DATA_PROCESSING_TASK_QUEUE,
     PredictLaserImagesParentWorkflow,
 )
 
@@ -54,7 +55,7 @@ class _StubChild:
         ]
 
 
-def _stubs(dive_id, images, child_ids, persisted, task_queues):
+def _stubs(dive_id, images, child_ids, persisted):
     @activity.defn(name="select_next_high_priority_dive_for_laser_prediction_activity")
     async def selector() -> int | None:
         return dive_id
@@ -93,12 +94,22 @@ def _stubs(dive_id, images, child_ids, persisted, task_queues):
     return [selector, resolver, ensure, stage, cleanup, persist, record]
 
 
-async def _run(env, dive_id, images, child_ids, persisted, task_queues):
+async def _run(env, dive_id, images, child_ids, persisted):
+    activities = _stubs(dive_id, images, child_ids, persisted)
+    # Two workers: the parent (+ its activities) on the parent queue, and the
+    # stub child on the data-processing queue the parent dispatches to — the
+    # activities are registered on both so the child's _record_child_dispatch
+    # and the parent's persist both resolve.
     async with Worker(
         env.client,
         task_queue="test-predict-parent",
-        workflows=[PredictLaserImagesParentWorkflow, _StubChild],
-        activities=_stubs(dive_id, images, child_ids, persisted, task_queues),
+        workflows=[PredictLaserImagesParentWorkflow],
+        activities=activities,
+    ), Worker(
+        env.client,
+        task_queue=DATA_PROCESSING_TASK_QUEUE,
+        workflows=[_StubChild],
+        activities=activities,
     ):
         return await env.client.execute_workflow(
             PredictLaserImagesParentWorkflow.run,
@@ -112,7 +123,7 @@ async def test_selector_none_returns_none():
     child_ids: List[str] = []
     persisted: List = []
     async with await WorkflowEnvironment.start_time_skipping() as env:
-        result = await _run(env, None, [], child_ids, persisted, [])
+        result = await _run(env, None, [], child_ids, persisted)
     assert result is None
     assert not child_ids
     assert not persisted
@@ -124,7 +135,7 @@ async def test_full_path_dispatches_child_and_persists():
     persisted: List = []
     async with await WorkflowEnvironment.start_time_skipping() as env:
         result = await _run(
-            env, 440, [(1, "a"), (2, "b")], child_ids, persisted, []
+            env, 440, [(1, "a"), (2, "b")], child_ids, persisted
         )
     assert result == 440
     assert child_ids == ["predict-laser-440"]  # deterministic id
@@ -139,7 +150,7 @@ async def test_no_images_skips_child_and_persist():
     child_ids: List[str] = []
     persisted: List = []
     async with await WorkflowEnvironment.start_time_skipping() as env:
-        result = await _run(env, 440, [], child_ids, persisted, [])
+        result = await _run(env, 440, [], child_ids, persisted)
     assert result == 440
     assert not child_ids
     assert not persisted
