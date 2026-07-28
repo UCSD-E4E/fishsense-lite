@@ -33,20 +33,35 @@ RUN uv sync --frozen --no-dev --no-editable \
 FROM python:3.13-slim-trixie AS runtime
 
 # OpenCV runtime libs — same set the devcontainer pulls in (libgl1 +
-# libglib2.0-0 are what opencv-python links against). ca-certificates
-# for HTTPS to fishsense-api / static_file_server / NAS.
+# libglib2.0-0 are what opencv-python links against). libgomp1 is torch's
+# OpenMP runtime (pulled in by the [laser-detector] extra). ca-certificates
+# for HTTPS to fishsense-api / static_file_server / NAS / HuggingFace, and
+# curl to fetch the baked laser-detector checkpoint. torch's CUDA runtime is
+# vendored inside the wheel, so no CUDA base image is needed — the NRP GPU
+# node supplies only the driver.
 RUN apt-get update && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
         libgl1 \
         libglib2.0-0 \
+        libgomp1 \
         ca-certificates \
+        curl \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 ENV E4EFS_DOCKER=true
 
-RUN mkdir -p /e4efs/config /e4efs/logs /e4efs/data /e4efs/cache
+RUN mkdir -p /e4efs/config /e4efs/logs /e4efs/data /e4efs/cache /e4efs/models
+
+# Bake the laser-detector checkpoint into the image so the GPU predict
+# activity never has to reach HuggingFace at run time (preemptible NRP pods,
+# no HF token). Public repo. `E4EFS_LASER_DETECTOR__CHECKPOINT` in the activity
+# defaults to this path. run3 = the production ResNet-34 checkpoint whose
+# fp32 bias-offset is calibrated in fishsense-core.
+RUN curl -fsSL \
+        "https://huggingface.co/ucsde4e/fishsense-laser-detector/resolve/main/run3_epoch_021.pt" \
+        -o /e4efs/models/run3_epoch_021.pt
 
 COPY --from=builder /app/.venv /app/.venv
 
