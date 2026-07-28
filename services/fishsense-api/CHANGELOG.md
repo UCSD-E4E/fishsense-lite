@@ -2,6 +2,18 @@
 
 <!-- version list -->
 
+## [1.35.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.34.1...fishsense-api-v1.35.0) (2026-07-28)
+
+
+### Features
+
+* **api:** expose dive_name in dive_pipeline_status view ([#437](https://github.com/UCSD-E4E/fishsense-lite/issues/437)) ([5c59daf](https://github.com/UCSD-E4E/fishsense-lite/commit/5c59daf7b9f1e8c0f396504aabf14503bc928767))
+
+
+### Bug Fixes
+
+* **api:** make laserprediction migrations idempotent vs create_all bootstrap ([#434](https://github.com/UCSD-E4E/fishsense-lite/issues/434)) ([d488dd2](https://github.com/UCSD-E4E/fishsense-lite/commit/d488dd2870136882b3e0572d1fb7a9c1fef5242c))
+
 ## [1.34.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.34.0...fishsense-api-v1.34.1) (2026-07-28)
 
 
