@@ -122,6 +122,22 @@ class PredictLaserImagesInput(BaseModel):
     wavelength: str | None = None
 
 
+class LaserPredictionResult(BaseModel):
+    """One image's predicted laser dot, returned by the data-worker
+    `PredictLaserImagesWorkflow` and persisted by the api-worker parent.
+
+    In rectified-image pixels (the space labelers place `LaserLabel.x/y`).
+    `x`/`y` are None when the detector found no laser; `confidence` is always
+    reported. Cross-worker, so it lives here rather than in the data-worker
+    workflow module.
+    """
+
+    image_id: int
+    x: float | None
+    y: float | None
+    confidence: float
+
+
 class PreprocessSlateImagesInput(BaseModel):
     """Stage 9 (slate preprocess) workflow-level input.
 

@@ -12,6 +12,7 @@ from fishsense_shared.logging import configure_log_handler, configure_logging
 from fishsense_shared.preprocess_contracts import (
     ClusterDiveFrameImage,
     ClusterDiveFramesInput,
+    LaserPredictionResult,
     PredictLaserImage,
     PredictLaserImagesInput,
     PreprocessHeadtailImagesInput,
@@ -30,6 +31,7 @@ __all__ = [
     "ClusterDiveFrameImage",
     "ClusterDiveFramesInput",
     "ExceptionGroupErrorLogging",
+    "LaserPredictionResult",
     "PredictLaserImage",
     "PredictLaserImagesInput",
     "PreprocessHeadtailImagesInput",

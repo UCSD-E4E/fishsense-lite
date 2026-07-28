@@ -18,9 +18,15 @@ import asyncio
 from datetime import timedelta
 from typing import List
 
-from fishsense_shared import PredictLaserImagesInput
+from fishsense_shared import LaserPredictionResult, PredictLaserImagesInput
 from pydantic import BaseModel
 from temporalio import workflow
+
+__all__ = [
+    "LaserPredictionResult",
+    "PredictLaserImageInput",
+    "PredictLaserImagesWorkflow",
+]
 
 
 class PredictLaserImageInput(BaseModel):
@@ -33,17 +39,6 @@ class PredictLaserImageInput(BaseModel):
     # Laser wavelength ("red" / "green"), or None when unknown — the model
     # takes an "unknown" wavelength channel in that case.
     wavelength: str | None = None
-
-
-class LaserPredictionResult(BaseModel):
-    """One image's predicted laser dot, in rectified-image pixels (the same
-    space labelers place `LaserLabel.x/y`). `x`/`y` are None when the model
-    detected no laser; `confidence` is always reported."""
-
-    image_id: int
-    x: float | None
-    y: float | None
-    confidence: float
 
 
 @workflow.defn

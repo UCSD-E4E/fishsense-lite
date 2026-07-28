@@ -90,6 +90,12 @@ from fishsense_api_workflow_worker.activities.resolve_headtail_preprocess_inputs
 from fishsense_api_workflow_worker.activities.resolve_laser_preprocess_inputs_activity import (  # pylint: disable=line-too-long
     resolve_laser_preprocess_inputs_activity,
 )
+from fishsense_api_workflow_worker.activities.resolve_laser_predict_inputs_activity import (  # noqa: E501  pylint: disable=line-too-long
+    resolve_laser_predict_inputs_activity,
+)
+from fishsense_api_workflow_worker.activities.persist_laser_predictions_activity import (  # noqa: E501  pylint: disable=line-too-long
+    persist_laser_predictions_activity,
+)
 from fishsense_api_workflow_worker.activities.resolve_slate_preprocess_inputs_activity import (  # pylint: disable=line-too-long
     resolve_slate_preprocess_inputs_activity,
 )
@@ -110,6 +116,9 @@ from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for
 )
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_laser_preprocessing_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_laser_preprocessing_activity,
+)
+from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_laser_prediction_activity import (  # noqa: E501  pylint: disable=line-too-long
+    select_next_high_priority_dive_for_laser_prediction_activity,
 )
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_measure_fish_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_measure_fish_activity,
@@ -186,6 +195,9 @@ from fishsense_api_workflow_worker.workflows.preprocess_species_images_parent_wo
 )
 from fishsense_api_workflow_worker.workflows.preprocess_headtail_images_parent_workflow import (  # pylint: disable=line-too-long
     PreprocessHeadtailImagesParentWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.predict_laser_images_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    PredictLaserImagesParentWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.preprocess_laser_images_parent_workflow import (  # pylint: disable=line-too-long
     PreprocessLaserImagesParentWorkflow,
@@ -337,6 +349,22 @@ async def schedule_workflows(client: Client):
                     PreprocessLaserImagesParentWorkflow,
                     timedelta(hours=1),
                     run_timeout=timedelta(hours=1),
+                    overlap=ScheduleOverlapPolicy.SKIP,
+                )
+            )
+            # Laser-detector (model-assisted labeling) parent: hourly at
+            # +10 min (free slot between cluster +5 and species +15). Scales
+            # the GPU data-worker up, predicts a laser dot per unlabeled
+            # image, and persists them for the laser populate step to serve
+            # as LS pre-annotations. SKIP overlap; drains one dive per firing.
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "predict-laser-images-workflow-schedule",
+                    PredictLaserImagesParentWorkflow,
+                    timedelta(hours=1),
+                    offset=timedelta(minutes=10),
+                    run_timeout=timedelta(hours=2),
                     overlap=ScheduleOverlapPolicy.SKIP,
                 )
             )
@@ -513,6 +541,7 @@ async def main():
                 PopulateDiveSlateLabelStudioProjectWorkflow,
                 UpdateDiveImageGroupsWorkflow,
                 ClusterDiveFramesParentWorkflow,
+                PredictLaserImagesParentWorkflow,
                 PreprocessLaserImagesParentWorkflow,
                 PreprocessSpeciesImagesParentWorkflow,
                 PreprocessHeadtailImagesParentWorkflow,
@@ -545,12 +574,15 @@ async def main():
                 update_dive_image_groups_activity,
                 resolve_dive_frame_clustering_inputs_activity,
                 resolve_laser_preprocess_inputs_activity,
+                resolve_laser_predict_inputs_activity,
+                persist_laser_predictions_activity,
                 resolve_species_preprocess_inputs_activity,
                 resolve_headtail_preprocess_inputs_activity,
                 resolve_slate_preprocess_inputs_activity,
                 persist_dive_frame_clusters_activity,
                 select_next_high_priority_dive_for_clustering_activity,
                 select_next_high_priority_dive_for_laser_preprocessing_activity,
+                select_next_high_priority_dive_for_laser_prediction_activity,
                 select_next_high_priority_dive_for_species_preprocessing_activity,
                 select_dives_needing_species_population_activity,
                 select_next_high_priority_dive_for_headtail_preprocessing_activity,

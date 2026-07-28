@@ -105,6 +105,10 @@ class DiveClient(ClientBase):
         """Stage 9 cohort selector. See `select_next_for_laser_preprocessing`."""
         return await self._select_next("slate-preprocessing")
 
+    async def select_next_for_laser_prediction(self) -> int | None:
+        """Laser-detector cohort selector. See `select_next_for_laser_preprocessing`."""
+        return await self._select_next("laser-prediction")
+
     async def select_next_for_laser_calibration(self) -> int | None:
         """Stage 13 cohort selector. See `select_next_for_laser_preprocessing`."""
         return await self._select_next("laser-calibration")

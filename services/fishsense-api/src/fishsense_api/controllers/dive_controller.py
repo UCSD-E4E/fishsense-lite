@@ -23,6 +23,7 @@ from fishsense_api.models.head_tail_label import HeadTailLabel
 from fishsense_api.models.image import Image
 from fishsense_api.models.laser_extrinsics import LaserExtrinsics
 from fishsense_api.models.laser_label import LaserLabel
+from fishsense_api.models.laser_prediction import LaserPrediction
 from fishsense_api.models.measurement import Measurement
 from fishsense_api.models.priority import Priority
 from fishsense_api.models.species_label import SpeciesLabel
@@ -179,6 +180,45 @@ async def select_next_for_laser_preprocessing(
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
         .where(has_image_without_real_laser_label)
+        .order_by(Dive.id)
+        .limit(1)
+    )
+    return (await session.exec(query)).first()
+
+
+@app.get("/api/v1/dives/select-next/laser-prediction/")
+async def select_next_for_laser_prediction(
+    session: AsyncSession = Depends(get_async_session),
+) -> int | None:
+    """Model-assisted laser labeling: HIGH-priority + at least one image
+    with no `LaserPrediction` row and no non-sentinel `LaserLabel` row.
+
+    An image needs a prediction only if it has neither been predicted nor
+    labeled yet — so a dive drops out of the cohort once every image is
+    predicted (one-shot per image; re-prediction is a manual affair), and
+    images a human already labeled are never predicted over. Mirrors the
+    stage-0.1 "non-sentinel label" convention (`project_id IS NOT NULL`).
+    """
+    has_image_needing_prediction = (
+        select(Image.id)
+        .where(Image.dive_id == Dive.id)
+        .where(
+            ~select(LaserPrediction.id)
+            .where(LaserPrediction.image_id == Image.id)
+            .exists()
+        )
+        .where(
+            ~select(LaserLabel.id)
+            .where(LaserLabel.image_id == Image.id)
+            .where(LaserLabel.label_studio_project_id != None)
+            .exists()
+        )
+        .exists()
+    )
+    query = (
+        select(Dive.id)
+        .where(Dive.priority == Priority.HIGH)
+        .where(has_image_needing_prediction)
         .order_by(Dive.id)
         .limit(1)
     )
