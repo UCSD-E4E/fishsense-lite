@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.34.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.34.0...fishsense-api-v1.34.1) (2026-07-28)
+
+
+### Bug Fixes
+
+* **api:** predict cohort keys off completed, not project_id ([#435](https://github.com/UCSD-E4E/fishsense-lite/issues/435)) ([769fe00](https://github.com/UCSD-E4E/fishsense-lite/commit/769fe00da9f79c0c506946bd7ff984bcc5bce029))
+
 ## [1.34.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.33.0...fishsense-api-v1.34.0) (2026-07-28)
 
 
