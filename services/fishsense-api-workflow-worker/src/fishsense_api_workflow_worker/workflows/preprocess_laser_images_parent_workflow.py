@@ -162,19 +162,12 @@ class PreprocessLaserImagesParentWorkflow:
             heartbeat_timeout=timedelta(minutes=5),
         )
 
-        try:
-            await workflow.execute_child_workflow(
-                "PopulateLaserLabelStudioProjectWorkflow",
-                dive_id,
-                id=f"populate-laser-{dive_id}",
-                execution_timeout=timedelta(minutes=30),
-                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
-            )
-        except WorkflowAlreadyStartedError:
-            workflow.logger.info(
-                "populate-laser-%d already ran in a prior hourly firing; "
-                "skipping LS task import",
-                dive_id,
-            )
-
+        # Laser populate is DECOUPLED from preprocess (2026-07-28, model-
+        # assisted labeling). It now runs as its own scheduled parent
+        # (PopulateLaserLabelStudioProjectParentWorkflow, +12 min) AFTER the
+        # laser-detector predict stage (+10), because populate seeds
+        # non-sentinel LaserLabel rows and the predict cohort excludes any
+        # image that already has a LaserLabel — populating here (at +0) would
+        # starve the predictor before it ever ran. See that parent + the
+        # `needing-laser-population` cohort.
         return inputs.dive_id

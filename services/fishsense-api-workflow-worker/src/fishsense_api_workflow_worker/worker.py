@@ -105,6 +105,9 @@ from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_species_preprocessing_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_species_preprocessing_activity,
 )
+from fishsense_api_workflow_worker.activities.select_dives_needing_laser_population_activity import (  # noqa: E501  pylint: disable=line-too-long
+    select_dives_needing_laser_population_activity,
+)
 from fishsense_api_workflow_worker.activities.select_dives_needing_species_population_activity import (  # pylint: disable=line-too-long
     select_dives_needing_species_population_activity,
 )
@@ -174,6 +177,9 @@ from fishsense_api_workflow_worker.workflows.populate_headtail_label_studio_proj
 )
 from fishsense_api_workflow_worker.workflows.populate_laser_label_studio_project_workflow import (  # pylint: disable=line-too-long
     PopulateLaserLabelStudioProjectWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.populate_laser_label_studio_project_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    PopulateLaserLabelStudioProjectParentWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.populate_species_label_studio_project_workflow import (  # pylint: disable=line-too-long
     PopulateSpeciesLabelStudioProjectWorkflow,
@@ -368,6 +374,24 @@ async def schedule_workflows(client: Client):
                     overlap=ScheduleOverlapPolicy.SKIP,
                 )
             )
+            # Laser populate parent: hourly at +12 min, just after the +10
+            # laser-detector predict parent has written LaserPrediction rows.
+            # Decoupled from the stage-0.1 preprocess parent (which no longer
+            # chains into populate) because populate seeds LaserLabel rows and
+            # the predict cohort excludes any labeled image — populating before
+            # predict would starve the detector. Prediction-gated + idempotent,
+            # so SKIP-overlap hourly firings converge.
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "populate-laser-labels-workflow-schedule",
+                    PopulateLaserLabelStudioProjectParentWorkflow,
+                    timedelta(hours=1),
+                    offset=timedelta(minutes=12),
+                    run_timeout=timedelta(hours=1),
+                    overlap=ScheduleOverlapPolicy.SKIP,
+                )
+            )
             tg.create_task(
                 schedule_workflow(
                     client,
@@ -534,6 +558,7 @@ async def main():
                 CreateHeadTailLabelStudioProjectWorkflow,
                 CreateDiveSlateLabelStudioProjectWorkflow,
                 PopulateLaserLabelStudioProjectWorkflow,
+                PopulateLaserLabelStudioProjectParentWorkflow,
                 PopulateSpeciesLabelStudioProjectWorkflow,
                 PopulateSpeciesLabelStudioProjectParentWorkflow,
                 PopulateHeadTailLabelStudioProjectWorkflow,
@@ -584,6 +609,7 @@ async def main():
                 select_next_high_priority_dive_for_laser_preprocessing_activity,
                 select_next_high_priority_dive_for_laser_prediction_activity,
                 select_next_high_priority_dive_for_species_preprocessing_activity,
+                select_dives_needing_laser_population_activity,
                 select_dives_needing_species_population_activity,
                 select_next_high_priority_dive_for_headtail_preprocessing_activity,
                 select_next_high_priority_dive_for_slate_preprocessing_activity,

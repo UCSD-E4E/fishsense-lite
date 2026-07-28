@@ -18,5 +18,9 @@ class LaserPrediction(ModelBase):
     x: float | None = None
     y: float | None = None
     confidence: float
+    # Rectified frame dimensions the x/y are relative to (for the pixel ->
+    # Label Studio keypoint-percentage conversion in laser populate).
+    width: int | None = None
+    height: int | None = None
     created_at: datetime | None = None
     image_id: int | None = None

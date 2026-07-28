@@ -31,6 +31,10 @@ class LaserPrediction(ModelBase, table=True):
     x: float | None = Field(default=None)
     y: float | None = Field(default=None)
     confidence: float = Field(default=0.0)
+    # Rectified frame dimensions the x/y are relative to — the laser populate
+    # step needs them to convert pixels to Label Studio keypoint percentages.
+    width: int | None = Field(default=None)
+    height: int | None = Field(default=None)
     created_at: datetime | None = Field(sa_type=DateTime(timezone=True), default=None)
 
     image_id: int | None = Field(default=None, foreign_key="image.id")

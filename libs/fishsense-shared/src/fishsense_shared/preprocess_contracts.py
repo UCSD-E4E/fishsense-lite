@@ -128,14 +128,18 @@ class LaserPredictionResult(BaseModel):
 
     In rectified-image pixels (the space labelers place `LaserLabel.x/y`).
     `x`/`y` are None when the detector found no laser; `confidence` is always
-    reported. Cross-worker, so it lives here rather than in the data-worker
-    workflow module.
+    reported. `width`/`height` are the rectified frame dimensions the x/y are
+    relative to — the laser populate step needs them to convert pixels to the
+    percentages Label Studio keypoints use. Cross-worker, so it lives here
+    rather than in the data-worker workflow module.
     """
 
     image_id: int
     x: float | None
     y: float | None
     confidence: float
+    width: int | None = None
+    height: int | None = None
 
 
 class PreprocessSlateImagesInput(BaseModel):

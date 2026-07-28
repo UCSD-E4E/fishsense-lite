@@ -407,6 +407,50 @@ async def select_dives_needing_species_population(
     return list((await session.exec(query)).all())
 
 
+@app.get("/api/v1/dives/needing-laser-population/")
+async def select_dives_needing_laser_population(
+    session: AsyncSession = Depends(get_async_session),
+) -> List[int]:
+    """Dives that need model-assisted laser LS tasks (re)populated.
+
+    Cohort: HIGH priority + at least one image that has a `LaserPrediction`
+    (the detector has run for it) and no *completed* `LaserLabel`. The
+    prediction gate is what makes this the decoupled populate cohort rather
+    than the preprocess one: laser populate seeds non-sentinel `LaserLabel`
+    rows, and the predict cohort excludes any image with a `LaserLabel`, so
+    populating an un-predicted image would starve it of a prediction forever.
+    Gating on "prediction exists" guarantees the detector ran first.
+
+    "No completed label" (not "no row") keeps a dive in the cohort until its
+    labelers finish, so the idempotent populate self-heals hourly. Returns
+    every match; the scheduled populate parent fans out one
+    `PopulateLaserLabelStudioProjectWorkflow` child per dive.
+    """
+    has_predicted_incomplete_image = (
+        select(Image.id)
+        .where(Image.dive_id == Dive.id)
+        .where(
+            select(LaserPrediction.id)
+            .where(LaserPrediction.image_id == Image.id)
+            .exists()
+        )
+        .where(
+            ~select(LaserLabel.id)
+            .where(LaserLabel.image_id == Image.id)
+            .where(LaserLabel.completed == True)
+            .exists()
+        )
+        .exists()
+    )
+    query = (
+        select(Dive.id)
+        .where(Dive.priority == Priority.HIGH)
+        .where(has_predicted_incomplete_image)
+        .order_by(Dive.id)
+    )
+    return list((await session.exec(query)).all())
+
+
 @app.get("/api/v1/dives/select-next/headtail-preprocessing/")
 async def select_next_for_headtail_preprocessing(
     session: AsyncSession = Depends(get_async_session),
