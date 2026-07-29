@@ -1893,13 +1893,14 @@ async def test_species_preprocessing_picks_dive_with_a_clustered_qualifying_imag
 # (completed=False, carries a project_id) does NOT drop it out.
 
 
-def _laser_label(image_id: int, *, project_id=73, completed=False):
+def _laser_label(image_id: int, *, project_id=73, completed=False, superseded=False):
     from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
 
     return LaserLabel(
         image_id=image_id,
         label_studio_project_id=project_id,
         completed=completed,
+        superseded=superseded,
     )
 
 
@@ -1972,6 +1973,37 @@ async def test_laser_prediction_seeded_placeholder_does_not_exclude(session):
     await session.flush()
 
     assert await select_next_for_laser_prediction(session=session) == 1
+
+
+async def test_laser_prediction_superseded_completed_label_does_not_exclude(session):
+    """A completed laser label that RANSAC validation superseded is an
+    invalidated label — the image has no live human label and still needs a
+    prediction. Regression for dive 60's straggler 4747, whose only completed
+    row was superseded."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_laser_prediction,
+    )
+
+    session.add_all([_dive(1), _image(11, 1)])
+    await session.flush()
+    session.add(_laser_label(11, completed=True, superseded=True))
+    await session.flush()
+
+    assert await select_next_for_laser_prediction(session=session) == 1
+
+
+async def test_laser_prediction_live_completed_label_excludes(session):
+    """A completed, non-superseded label is a live human label — excluded."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_laser_prediction,
+    )
+
+    session.add_all([_dive(1), _image(11, 1)])
+    await session.flush()
+    session.add(_laser_label(11, completed=True, superseded=False))
+    await session.flush()
+
+    assert await select_next_for_laser_prediction(session=session) is None
 
 
 # ---------- needing-laser-population (decoupled model-assisted populate) ----------
