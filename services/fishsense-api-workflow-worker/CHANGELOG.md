@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.46.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.46.3...fishsense-api-workflow-worker-v1.46.4) (2026-07-29)
+
+
+### Bug Fixes
+
+* **deps:** require synology-filestation&gt;=0.2.0 in NAS consumers ([#457](https://github.com/UCSD-E4E/fishsense-lite/issues/457)) ([ae92fa5](https://github.com/UCSD-E4E/fishsense-lite/commit/ae92fa53a2b6f12c30ad4be7b6ecc2357d7f9499))
+
 ## [1.46.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.46.2...fishsense-api-workflow-worker-v1.46.3) (2026-07-29)
 
 

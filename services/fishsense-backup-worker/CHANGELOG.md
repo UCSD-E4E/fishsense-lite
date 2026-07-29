@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-backup-worker-v0.4.0...fishsense-backup-worker-v0.4.1) (2026-07-29)
+
+
+### Bug Fixes
+
+* **deps:** require synology-filestation&gt;=0.2.0 in NAS consumers ([#457](https://github.com/UCSD-E4E/fishsense-lite/issues/457)) ([ae92fa5](https://github.com/UCSD-E4E/fishsense-lite/commit/ae92fa53a2b6f12c30ad4be7b6ecc2357d7f9499))
+
 ## [0.4.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-backup-worker-v0.3.1...fishsense-backup-worker-v0.4.0) (2026-07-15)
 
 
