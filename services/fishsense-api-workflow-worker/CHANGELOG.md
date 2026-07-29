@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.46.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.46.1...fishsense-api-workflow-worker-v1.46.2) (2026-07-29)
+
+
+### Bug Fixes
+
+* **api-worker:** JPEG-gate laser populate to avoid seeding tasks for missing JPEGs ([#443](https://github.com/UCSD-E4E/fishsense-lite/issues/443)) ([915aa36](https://github.com/UCSD-E4E/fishsense-lite/commit/915aa361622991b28d94504a9db5352dbcd9dbf2))
+
 ## [1.46.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.46.0...fishsense-api-workflow-worker-v1.46.1) (2026-07-28)
 
 
