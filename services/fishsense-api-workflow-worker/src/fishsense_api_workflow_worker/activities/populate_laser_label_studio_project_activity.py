@@ -19,6 +19,7 @@ from fishsense_api_workflow_worker.activities.populate_utils import (
     publish_label_studio_project,
 )
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
+from fishsense_api_workflow_worker.object_store import open_object_store_client
 
 PREPROCESS_FOLDER = "preprocess_jpeg"
 
@@ -102,6 +103,36 @@ def _select_unlabeled_images(
     ]
 
 
+async def _gate_on_jpeg_presence(images: List[Image]) -> List[Image]:
+    """Keep only images whose stage-0.1 laser JPEG is already in Garage.
+
+    Populate runs decoupled from preprocess (its own schedule) and is
+    prediction-gated — but the predictor works off the raw `.ORF`, so it can
+    predict an image whose `preprocess_jpeg` JPEG was never written (e.g. a
+    dive labeled before the Garage migration, whose originals live on the old
+    file-exchange). Seeding a task for such an image points its LS `data.image`
+    at a missing key and the labeler gets a Garage `NoSuchKey`. Gate on JPEG
+    existence so those images defer to a later run (once preprocess has written
+    them); a no-op when the JPEG is already present. Mirrors species populate's
+    `_gate_on_jpeg_presence`.
+    """
+    if not images:
+        return images
+    store = open_object_store_client()
+    present: List[Image] = []
+    for image in images:
+        if await store.has_processed_jpeg(PREPROCESS_FOLDER, image.checksum):
+            present.append(image)
+        else:
+            activity.logger.info(
+                "laser JPEG not yet in Garage for image %d (checksum=%s); "
+                "deferring to a later populate run",
+                image.id,
+                image.checksum,
+            )
+    return present
+
+
 def _build_task(image: Image, prediction=None) -> dict:
     """Build an LS task referencing the preprocessed JPEG.
 
@@ -142,6 +173,9 @@ async def populate_laser_label_studio_project_activity(
         unlabeled = _select_unlabeled_images(
             images, existing_labels, set(predictions_by_image)
         )
+        # Never seed a task for an image whose laser JPEG isn't in Garage —
+        # its LS task would 404 (NoSuchKey). Deferred images retry next run.
+        unlabeled = await _gate_on_jpeg_presence(unlabeled)
         if not unlabeled:
             activity.logger.info(
                 "Dive %d has a completed laser label for every image; "
