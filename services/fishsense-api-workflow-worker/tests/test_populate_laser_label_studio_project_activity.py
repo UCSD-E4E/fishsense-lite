@@ -29,6 +29,17 @@ from fishsense_api_workflow_worker.activities import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _default_store_all_present(monkeypatch):
+    """Default: every image's laser JPEG is in Garage, so the JPEG-gate is a
+    no-op and the existing tests decide populate purely on the label/prediction
+    state. Tests that exercise the gate override open_object_store_client."""
+    store = MagicMock()
+    store.has_processed_jpeg = AsyncMock(return_value=True)
+    monkeypatch.setattr(sut, "open_object_store_client", lambda: store)
+    return store
+
+
 def _prediction(image_id: int, *, x=100.0, y=200.0, width=4000, height=3000):
     return LaserPrediction(
         id=image_id,
@@ -271,6 +282,39 @@ async def test_imports_tasks_and_writes_one_label_per_incomplete_image(
     assert {label.label_studio_task_id for label in written_labels} == {1001, 1002}
     assert all(label.label_studio_project_id == 73 for label in written_labels)
     assert all(label.completed is False for label in written_labels)
+
+
+@pytest.mark.asyncio
+async def test_defers_image_whose_laser_jpeg_is_not_in_garage(monkeypatch):
+    """An image with a prediction + no completed label but NO laser JPEG in
+    Garage must NOT be populated — its LS task would 404 (NoSuchKey).
+    Regression for the project-276057 broken tasks on dive 60's pre-Garage
+    stragglers."""
+    images = [_image(1, "has-jpeg"), _image(2, "missing-jpeg")]
+    fs = _make_fs_client(images, existing_labels=[])  # both predicted, none done
+    ls = _make_ls_client(returned_task_ids=[2001])
+
+    store = MagicMock()
+
+    async def _has(_folder, checksum):
+        return checksum != "missing-jpeg"
+
+    store.has_processed_jpeg = AsyncMock(side_effect=_has)
+    monkeypatch.setattr(sut, "open_object_store_client", lambda: store)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    n = await ActivityEnvironment().run(
+        sut.populate_laser_label_studio_project_activity, 42, 73
+    )
+
+    assert n == 1  # only the image whose JPEG exists got a task
+    _args, kwargs = ls.projects.import_tasks.call_args
+    imported = [t["data"].get("image", "") for t in kwargs["request"]]
+    assert len(imported) == 1
+    assert any("missing-jpeg" not in u for u in imported)
+    assert not any("missing-jpeg" in u for u in imported)
+    assert fs.labels.put_laser_label.await_count == 1
 
 
 @pytest.mark.asyncio
