@@ -38,17 +38,31 @@ def _make_fs(*, camera_id=1, images=None, predictions=None, labels=None, intrins
     return fs
 
 
-def test_select_filters_predicted_and_labeled():
+def test_select_filters_predicted_and_completed():
     images = [_image(1, "a"), _image(2, "b"), _image(3, "c")]
     predictions = [SimpleNamespace(image_id=1)]
-    labels = [SimpleNamespace(image_id=2, label_studio_project_id=73)]
+    # image 2 has a completed (live) laser label -> excluded.
+    labels = [SimpleNamespace(image_id=2, label_studio_project_id=73, completed=True)]
     needing = sut._select_images_needing_prediction(images, predictions, labels)
     assert [i.id for i in needing] == [3]
 
 
+def test_seeded_placeholder_does_not_exclude():
+    """A populate-seeded placeholder (project_id set but completed=False) is
+    NOT a human label — the image still needs a prediction. Regression for
+    dive 84 / project 274728, whose 53 unlabeled images carried placeholder
+    rows and got 0 predictions."""
+    images = [_image(1, "a")]
+    labels = [SimpleNamespace(image_id=1, label_studio_project_id=274728, completed=False)]
+    needing = sut._select_images_needing_prediction(images, [], labels)
+    assert [i.id for i in needing] == [1]
+
+
 def test_sentinel_label_does_not_exclude():
     images = [_image(1, "a")]
-    labels = [SimpleNamespace(image_id=1, label_studio_project_id=None)]
+    labels = [
+        SimpleNamespace(image_id=1, label_studio_project_id=None, completed=False)
+    ]
     needing = sut._select_images_needing_prediction(images, [], labels)
     assert [i.id for i in needing] == [1]
 

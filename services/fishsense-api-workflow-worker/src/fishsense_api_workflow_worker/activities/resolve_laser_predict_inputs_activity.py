@@ -25,13 +25,18 @@ def _select_images_needing_prediction(
     predictions: List[LaserPrediction],
     labels: List[LaserLabel],
 ) -> List[Image]:
-    """Images with no prediction and no non-sentinel laser label."""
+    """Images with no prediction and no *completed* laser label.
+
+    Keys off `completed`, NOT `label_studio_project_id`: the laser populate
+    step seeds placeholder rows (`completed=False`) that carry a project_id,
+    so a project-id check would exclude every populate-seeded-but-unlabeled
+    image and the detector would never predict it (the dive-84 / project-274728
+    case). `labels` is already superseded-filtered by `get_laser_labels`, so a
+    completed row here is a live human label. Mirrors the API selector
+    (`select_next_for_laser_prediction`) and populate's own definition.
+    """
     predicted_ids = {p.image_id for p in predictions}
-    labeled_ids = {
-        label.image_id
-        for label in labels
-        if label.label_studio_project_id is not None
-    }
+    labeled_ids = {label.image_id for label in labels if label.completed}
     return [
         image
         for image in images
