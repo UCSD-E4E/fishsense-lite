@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.46.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.46.2...fishsense-api-workflow-worker-v1.46.3) (2026-07-29)
+
+
+### Bug Fixes
+
+* **api-worker:** predict resolver keys off completed, not project_id ([#452](https://github.com/UCSD-E4E/fishsense-lite/issues/452)) ([ff8677f](https://github.com/UCSD-E4E/fishsense-lite/commit/ff8677f6cc645d7c121865d61a470fe765258832))
+
 ## [1.46.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.46.1...fishsense-api-workflow-worker-v1.46.2) (2026-07-29)
 
 
