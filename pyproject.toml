@@ -47,7 +47,12 @@ fishsense-shared = { workspace = true }
 # python:3.13-slim-trixie via the stable ABI. Bump the URL when picking
 # up a new release; v0.1.18 raised the project's requires-python to
 # >=3.10, so the platform tag flipped from cp39-abi3 to cp310-abi3.
-synology-filestation = { url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.1.19/synology_filestation-0.1.19-cp310-abi3-manylinux_2_34_x86_64.whl" }
+#
+# v0.2.0 (2026-07-29): auto-prefers SMB with transparent HTTP fallback and
+# throttles bulk transfers to protect the NAS — fixes the FileStation
+# download-API HTTP 502s that were failing raw `.ORF` staging (stage 0.1/1/2/
+# 5.1/9 preprocess parents) under load. No API change; drop-in URL bump.
+synology-filestation = { url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.2.0/synology_filestation-0.2.0-cp310-abi3-manylinux_2_34_x86_64.whl" }
 
 # Workspace-wide pylint configuration. Lives at the repo root so every
 # package picks up the same rules; pylint walks up the directory tree

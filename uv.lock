@@ -783,7 +783,7 @@ requires-dist = [
     { name = "platformdirs", specifier = ">=4.3.8" },
     { name = "pyaml", specifier = ">=25.7.0" },
     { name = "pymupdf", specifier = ">=1.24.0" },
-    { name = "synology-filestation", url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.1.19/synology_filestation-0.1.19-cp310-abi3-manylinux_2_34_x86_64.whl" },
+    { name = "synology-filestation", url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.2.0/synology_filestation-0.2.0-cp310-abi3-manylinux_2_34_x86_64.whl" },
     { name = "temporalio", specifier = ">=1.15.0" },
     { name = "validators", specifier = ">=0.35.0" },
 ]
@@ -827,7 +827,7 @@ requires-dist = [
     { name = "fishsense-shared", editable = "libs/fishsense-shared" },
     { name = "platformdirs", specifier = ">=4.3.8" },
     { name = "pydantic", specifier = ">=2.11.9" },
-    { name = "synology-filestation", url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.1.19/synology_filestation-0.1.19-cp310-abi3-manylinux_2_34_x86_64.whl" },
+    { name = "synology-filestation", url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.2.0/synology_filestation-0.2.0-cp310-abi3-manylinux_2_34_x86_64.whl" },
     { name = "temporalio", specifier = ">=1.17.0" },
     { name = "validators", specifier = ">=0.35.0" },
 ]
@@ -3039,14 +3039,14 @@ wheels = [
 
 [[package]]
 name = "synology-filestation"
-version = "0.1.19"
-source = { url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.1.19/synology_filestation-0.1.19-cp310-abi3-manylinux_2_34_x86_64.whl" }
+version = "0.2.0"
+source = { url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.2.0/synology_filestation-0.2.0-cp310-abi3-manylinux_2_34_x86_64.whl" }
 wheels = [
-    { url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.1.19/synology_filestation-0.1.19-cp310-abi3-manylinux_2_34_x86_64.whl", hash = "sha256:f951fc7bbbdf4b692b4c2c164fdaee975a1bda524c48ba6944798095268bf104" },
+    { url = "https://github.com/UCSD-E4E/synology-filestation/releases/download/synology_filestation-v0.2.0/synology_filestation-0.2.0-cp310-abi3-manylinux_2_34_x86_64.whl", hash = "sha256:667eee98d93851d249b47482162e255d0dbb022b3b5804120b9c8a0f4edc28e1" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "fsspec", marker = "extra == 'fsspec'", specifier = ">=2026.4.0" }]
+requires-dist = [{ name = "fsspec", marker = "extra == 'fsspec'", specifier = ">=2026.7.0" }]
 provides-extras = ["fsspec"]
 
 [[package]]
