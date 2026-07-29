@@ -163,6 +163,20 @@ async def test_create_activity_raises_when_xml_constant_empty(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _stub_laser_jpeg_gate(monkeypatch):
+    """Laser populate is JPEG-gated (`_gate_on_jpeg_presence` →
+    `has_processed_jpeg`). These tests exercise the real LS-import path, not
+    the gate, and don't stage `preprocess_jpeg` JPEGs in the integration
+    Garage — so stub the gate to "present" (a no-op), mirroring how the
+    prediction gate is no-op'd via injected predictions in `_make_fs_client`.
+    Only laser populate is exercised in this file, so this is inert elsewhere.
+    """
+    store = MagicMock()
+    store.has_processed_jpeg = AsyncMock(return_value=True)
+    monkeypatch.setattr(populate_sut, "open_object_store_client", lambda: store)
+
+
 def _make_fs_client(images: List[Image], existing_labels: List[LaserLabel]):
     fs = MagicMock()
     fs.__aenter__ = AsyncMock(return_value=fs)
