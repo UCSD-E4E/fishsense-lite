@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.35.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.35.0...fishsense-api-v1.35.1) (2026-07-29)
+
+
+### Bug Fixes
+
+* **api:** predict cohort excludes superseded-completed labels ([#447](https://github.com/UCSD-E4E/fishsense-lite/issues/447)) ([ec14af9](https://github.com/UCSD-E4E/fishsense-lite/commit/ec14af90a358df95a62ceb60e1bc7a16e639b313))
+
 ## [1.35.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.34.1...fishsense-api-v1.35.0) (2026-07-28)
 
 
