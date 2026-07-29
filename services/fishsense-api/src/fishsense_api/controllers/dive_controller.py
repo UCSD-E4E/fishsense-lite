@@ -205,6 +205,12 @@ async def select_next_for_laser_prediction(
     image — starving the detector on exactly the dives it should assist
     (e.g. a dive populated before the detector shipped). Matches populate's
     own `completed`-based definition of "labeled" (`_select_unlabeled_images`).
+
+    "Labeled" also requires `superseded IS FALSE`: a completed label that
+    `ValidateLaserLabelsForDiveWorkflow`'s RANSAC pass dead-lettered is an
+    *invalidated* label — the image has no live human label and should
+    re-enter the cohort. Mirrors the superseded-filter every downstream read
+    (`get_laser_labels`, the preprocess/predict resolvers) already applies.
     """
     has_image_needing_prediction = (
         select(Image.id)
@@ -218,6 +224,7 @@ async def select_next_for_laser_prediction(
             ~select(LaserLabel.id)
             .where(LaserLabel.image_id == Image.id)
             .where(LaserLabel.completed == True)
+            .where(LaserLabel.superseded == False)
             .exists()
         )
         .exists()
