@@ -230,7 +230,7 @@ services:
 
   # ── nightly Postgres → NAS backups ─────────────────────────────────────────────────────
   fishsense-backup-worker:
-    image: ghcr.io/ucsd-e4e/fishsense-backup-worker:v0.4.0
+    image: ghcr.io/ucsd-e4e/fishsense-backup-worker:v0.4.1
     restart: unless-stopped
     env_file:
       - /run/tenant/secrets/app.env            # shared secrets
