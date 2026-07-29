@@ -54,6 +54,30 @@ spec:
         - key: nvidia.com/gpu
           operator: Exists
           effect: NoSchedule
+      # GPU compute-capability floor. The laser-detector's torch build
+      # (cu13x / cuDNN 9.2) dropped support for GPUs with SM < 7.5, so a
+      # conv2d on an older card dies at runtime with "cuDNN version 92000 is
+      # not compatible with devices with SM < 7.5" — observed live when NRP
+      # scheduled us onto a GTX 1080 Ti (SM 6.1). Require SM >= 7.5: Turing
+      # (major 7, minor 5) OR Ampere/Ada/Hopper/Blackwell+ (major >= 8).
+      # Excludes Pascal (6.x) and Volta (7.0). Labels come from NVIDIA GPU
+      # Feature Discovery (runs on NRP's GPU nodes). The two nodeSelectorTerms
+      # are OR'd; this AND's with the amd64 nodeSelector above.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: nvidia.com/gpu.compute.major
+                    operator: In
+                    values: ["8", "9", "10", "11", "12"]
+              - matchExpressions:
+                  - key: nvidia.com/gpu.compute.major
+                    operator: In
+                    values: ["7"]
+                  - key: nvidia.com/gpu.compute.minor
+                    operator: In
+                    values: ["5"]
       # We're a guest on a shared cluster — let NRP preempt our pods
       # whenever it needs the capacity. No PodDisruptionBudget on
       # purpose; an evicted activity just times out and re-runs
