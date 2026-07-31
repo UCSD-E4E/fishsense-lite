@@ -33,6 +33,30 @@ MIN_LASER_POINTS = 2
 __all__ = ["perform_laser_calibration_activity"]
 
 
+def _drop_skipped(points: list, skipped) -> list:
+    """Remove `skipped` indices from `points`, resolved against the ORIGINAL list.
+
+    A sequential ``list.pop(idx)`` (the previous implementation, and the
+    stage-13 notebook) is only correct for <=1 skipped point: popping index 2
+    slides every later element down one, so a subsequent ``pop(5)`` removes what
+    was originally index 6 — feeding a wrong 3D<->2D pair into solvePnP. Latent
+    while every production label skips <=1 point, but model-assisted labeling
+    emits per-point visibility (multi-skip), so it activates the moment that
+    ships. Resolve all indices up front, and reject duplicate / out-of-range
+    indices. Mirrors `slate_training.contracts.drop_skipped`.
+    """
+    indices = [int(i) for i in skipped]
+    if len(set(indices)) != len(indices):
+        raise ValueError(f"duplicate skipped index in {indices}")
+    for i in indices:
+        if not 0 <= i < len(points):
+            raise ValueError(
+                f"skipped index {i} out of range for {len(points)} points"
+            )
+    drop = set(indices)
+    return [p for i, p in enumerate(points) if i not in drop]
+
+
 def _laser_point_in_camera_space(
     label: DiveSlateLabel,
     laser_label: LaserLabel,
@@ -44,12 +68,23 @@ def _laser_point_in_camera_space(
     Returns None when the observation can't be used (PnP failure, NaN
     ray). Mirrors the per-label kernel from `scripts/validate_stage13_refactor.py`.
     """
-    source_points = list(slate.reference_points or [])
-    for idx in label.skipped_points or []:
-        source_points.pop(idx)
+    source_points = _drop_skipped(
+        list(slate.reference_points or []), label.skipped_points or []
+    )
+    image_points = list(label.reference_points or [])
+    # solvePnP pairs body<->image points purely by position, so a count that
+    # disagrees with (template - skipped) silently mis-pairs the geometry.
+    # Make that a hard error. Mirrors `contracts.template_correspondences`.
+    if len(image_points) != len(source_points):
+        raise ValueError(
+            f"slate label reference_points={len(image_points)} disagrees with "
+            f"template {slate.id} ({len(slate.reference_points or [])}) minus "
+            f"{len(set(int(i) for i in (label.skipped_points or [])))} skipped "
+            f"= {len(source_points)}; refusing to mis-pair solvePnP correspondences"
+        )
     body_points = np.zeros((len(source_points), 3), dtype=np.float32)
     body_points[:, :2] = (np.array(source_points) / float(slate.dpi)) * INCH_TO_M
-    image_space = np.array(label.reference_points)
+    image_space = np.array(image_points)
 
     ret, rvec, tvec = cv2.solvePnP(
         body_points,
