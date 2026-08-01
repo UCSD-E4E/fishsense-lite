@@ -16,7 +16,6 @@ FK-less in-memory sqlite, same harness as test_calibration_source_endpoints.py.
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import func
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -54,13 +53,12 @@ async def _count_for_dive(session: AsyncSession, dive_id: int) -> int:
         LaserExtrinsics,
     )
 
-    return (
+    rows = (
         await session.exec(
-            select(func.count())
-            .select_from(LaserExtrinsics)
-            .where(LaserExtrinsics.dive_id == dive_id)
+            select(LaserExtrinsics).where(LaserExtrinsics.dive_id == dive_id)
         )
-    ).one()
+    ).all()
+    return len(rows)
 
 
 async def test_put_upserts_on_dive_id_no_duplicate(session):

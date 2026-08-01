@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import List
 
-from sqlalchemy import UniqueConstraint, text
+from sqlalchemy import UniqueConstraint, func
 from sqlmodel import JSON, Column, DateTime, Field
 
 from fishsense_api.models.model_base import ModelBase
@@ -28,7 +28,10 @@ class LaserExtrinsics(ModelBase, table=True):
     created_at: datetime | None = Field(
         sa_type=DateTime(timezone=True),
         default=None,
-        sa_column_kwargs={"server_default": text("now()")},
+        # func.now() is dialect-aware (CURRENT_TIMESTAMP on sqlite, now() on
+        # Postgres); a literal text("now()") would break the sqlite test DB.
+        # pylint's not-callable on func.* is a known false positive.
+        sa_column_kwargs={"server_default": func.now()},  # pylint: disable=not-callable
     )
 
     dive_id: int | None = Field(default=None, foreign_key="dive.id")
