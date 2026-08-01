@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.9.1...fishsense-data-processing-workflow-worker-v2.9.2) (2026-08-01)
+
+
+### Bug Fixes
+
+* **slate:** fail-hard on uncomputable panel offset; correct multi-skip point drop ([#462](https://github.com/UCSD-E4E/fishsense-lite/issues/462)) ([06cfa52](https://github.com/UCSD-E4E/fishsense-lite/commit/06cfa528551ae662e0ee2b4de29de866e0412d42))
+
 ## [2.9.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.9.0...fishsense-data-processing-workflow-worker-v2.9.1) (2026-07-28)
 
 

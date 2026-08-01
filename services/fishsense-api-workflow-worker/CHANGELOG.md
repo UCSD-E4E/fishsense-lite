@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.46.5](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.46.4...fishsense-api-workflow-worker-v1.46.5) (2026-08-01)
+
+
+### Bug Fixes
+
+* **slate:** fail-hard on uncomputable panel offset; correct multi-skip point drop ([#462](https://github.com/UCSD-E4E/fishsense-lite/issues/462)) ([06cfa52](https://github.com/UCSD-E4E/fishsense-lite/commit/06cfa528551ae662e0ee2b4de29de866e0412d42))
+
 ## [1.46.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.46.3...fishsense-api-workflow-worker-v1.46.4) (2026-07-29)
 
 
