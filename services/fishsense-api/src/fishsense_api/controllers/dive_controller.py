@@ -2,6 +2,7 @@
 """Dive Controller for FishSense API."""
 
 import logging
+from datetime import datetime, timezone
 from typing import List
 
 from fastapi import Depends, HTTPException
@@ -741,10 +742,26 @@ async def put_laser_extrinsics_for_dive(
     extrinsics: LaserExtrinsics,
     session: AsyncSession = Depends(get_async_session),
 ) -> int:
-    """Create or update laser extrinsics for a given dive ID."""
+    """Create or update laser extrinsics for a given dive ID.
+
+    Upsert keyed on `dive_id`: a recompute overwrites the dive's existing row
+    in place rather than appending a new one (calibration is per-dive and the
+    table carries `uq_laserextrinsics_dive_id`). `created_at` is always stamped
+    so the latest-wins read never sees a NULL timestamp — a NULL sorts first
+    under `created_at DESC` in Postgres and made the lookup resolve nothing.
+    """
     logger.debug("Creating or updating laser extrinsics for dive with id=%d", dive_id)
     extrinsics = LaserExtrinsics.model_validate(jsonable_encoder(extrinsics))
     extrinsics.dive_id = dive_id
+
+    existing = (
+        await session.exec(
+            select(LaserExtrinsics).where(LaserExtrinsics.dive_id == dive_id)
+        )
+    ).first()
+    if existing is not None:
+        extrinsics.id = existing.id  # resolve natural key -> merge updates in place
+    extrinsics.created_at = datetime.now(timezone.utc)
 
     extrinsics = await session.merge(extrinsics)
     await session.flush()

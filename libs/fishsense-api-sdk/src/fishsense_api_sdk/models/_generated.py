@@ -145,6 +145,13 @@ class LabelStudioSyncCursor(BaseModel):
 class LaserExtrinsics(BaseModel):
     """
     Laser extrinsics model representing laser calibration data in the database.
+
+    One row per dive (`uq_laserextrinsics_dive_id`): calibration is a per-dive
+    property, `put_laser_extrinsics_for_dive` upserts on `dive_id`, and no
+    consumer reads a history of extrinsics — reads take the single row (or borrow
+    a sibling's via `Dive.calibration_dive_id`). `created_at` carries a
+    `server_default=now()` so a row can never be inserted with a NULL timestamp
+    (which broke the latest-wins read: Postgres sorts NULLs first under DESC).
     """
 
     id: int | None = Field(None, title='Id')
