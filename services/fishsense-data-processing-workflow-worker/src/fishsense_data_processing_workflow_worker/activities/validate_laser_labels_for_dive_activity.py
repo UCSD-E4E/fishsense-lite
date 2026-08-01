@@ -33,6 +33,7 @@ import contextlib
 from typing import AsyncIterator, List
 
 import numpy as np
+from fishsense_api_sdk.models.dive_laser_line import DiveLaserLine
 from fishsense_api_sdk.models.laser_label import LaserLabel
 from temporalio import activity
 
@@ -195,6 +196,28 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
             fit.line_confidence,
             fit.is_confident,
         )
+
+        # Persist the line fingerprint (byproduct we already computed) so
+        # (camera_id, line) becomes queryable: borrow candidates, drift,
+        # mount-swap epochs, pooled calibration. Written every run — even a
+        # clean dive with no outliers — and tightens as outliers are
+        # superseded across runs. Upsert keyed on dive_id.
+        await fs.dives.put_dive_laser_line(
+            dive_id,
+            DiveLaserLine(
+                dive_id=dive_id,
+                a=fit.a,
+                b=fit.b,
+                c=fit.c,
+                n_points=fit.n_points,
+                inlier_count=fit.inlier_count,
+                inlier_fraction=fit.inlier_fraction,
+                residual_std=fit.residual_std,
+                label_noise_mad=fit.label_noise_mad,
+                line_confidence=fit.line_confidence,
+            ),
+        )
+        activity.heartbeat()
 
         outlier_mask = flag_outliers(xy, fit)
         n_outliers = int(outlier_mask.sum())

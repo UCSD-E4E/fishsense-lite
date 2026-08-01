@@ -18,6 +18,7 @@ from fishsense_api.models.dive_frame_cluster import (
     DiveFrameCluster,
     DiveFrameClusterImageMapping,
 )
+from fishsense_api.models.dive_laser_line import DiveLaserLine
 from fishsense_api.models.dive_slate import DiveSlate
 from fishsense_api.models.dive_slate_label import DiveSlateLabel
 from fishsense_api.models.head_tail_label import HeadTailLabel
@@ -769,6 +770,50 @@ async def put_laser_extrinsics_for_dive(
     extrinsics_id = extrinsics.id
 
     return extrinsics_id
+
+
+@app.put("/api/v1/dives/{dive_id}/laser-line/", status_code=201)
+async def put_dive_laser_line(
+    dive_id: int,
+    line: DiveLaserLine,
+    session: AsyncSession = Depends(get_async_session),
+) -> int:
+    """Upsert the per-dive laser-line fingerprint (keyed on `dive_id`).
+
+    The laser-label validation refits this line each run; upserting keeps one
+    row per dive so the fingerprint stays current (and tightens as outliers are
+    superseded across runs). `fitted_at` is always stamped — same NULL-safe
+    contract as `put_laser_extrinsics_for_dive`.
+    """
+    logger.debug("Upserting laser-line fingerprint for dive id=%d", dive_id)
+    line = DiveLaserLine.model_validate(jsonable_encoder(line))
+    line.dive_id = dive_id
+
+    existing = (
+        await session.exec(
+            select(DiveLaserLine).where(DiveLaserLine.dive_id == dive_id)
+        )
+    ).first()
+    if existing is not None:
+        line.id = existing.id  # resolve natural key -> merge updates in place
+    line.fitted_at = datetime.now(timezone.utc)
+
+    line = await session.merge(line)
+    await session.flush()
+
+    return line.id
+
+
+@app.get("/api/v1/dives/{dive_id}/laser-line/")
+async def get_dive_laser_line(
+    dive_id: int, session: AsyncSession = Depends(get_async_session)
+) -> DiveLaserLine | None:
+    """Return the dive's laser-line fingerprint, or None if not yet fitted."""
+    return (
+        await session.exec(
+            select(DiveLaserLine).where(DiveLaserLine.dive_id == dive_id)
+        )
+    ).first()
 
 
 @app.put("/api/v1/dives/{dive_id}/calibration-source/{source_dive_id}")

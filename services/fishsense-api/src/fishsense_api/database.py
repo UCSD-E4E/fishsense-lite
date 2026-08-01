@@ -24,6 +24,7 @@ from fishsense_api.models.dive_frame_cluster import (
     DiveFrameCluster,
     DiveFrameClusterImageMapping,
 )
+from fishsense_api.models.dive_laser_line import DiveLaserLine
 from fishsense_api.models.dive_slate import DiveSlate
 from fishsense_api.models.dive_slate_label import DiveSlateLabel
 from fishsense_api.models.fish import Fish

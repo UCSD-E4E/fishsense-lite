@@ -54,6 +54,30 @@ class DiveFrameClusterJson(BaseModel):
     fish_id: int | None = Field(..., title='Fish Id')
 
 
+class DiveLaserLine(BaseModel):
+    """
+    A dive's fitted 2D laser line `a*x + b*y + c = 0` plus fit-quality metrics.
+
+    One row per dive (`uq_diveslaserline_dive_id`); `put_dive_laser_line`
+    upserts on `dive_id`. `camera_id` / `dive_datetime` are NOT duplicated here
+    — consumers join `Dive`. Same NULL-safe `server_default` pattern as
+    LaserExtrinsics so a row can never be inserted with a NULL timestamp.
+    """
+
+    id: int | None = Field(None, title='Id')
+    dive_id: int | None = Field(None, title='Dive Id')
+    a: float = Field(..., title='A')
+    b: float = Field(..., title='B')
+    c: float = Field(..., title='C')
+    n_points: int = Field(..., title='N Points')
+    inlier_count: int = Field(..., title='Inlier Count')
+    inlier_fraction: float = Field(..., title='Inlier Fraction')
+    residual_std: float = Field(..., title='Residual Std')
+    label_noise_mad: float = Field(..., title='Label Noise Mad')
+    line_confidence: float = Field(..., title='Line Confidence')
+    fitted_at: AwareDatetime | None = Field(None, title='Fitted At')
+
+
 class DiveSlate(BaseModel):
     """
     Model representing a dive slate.
