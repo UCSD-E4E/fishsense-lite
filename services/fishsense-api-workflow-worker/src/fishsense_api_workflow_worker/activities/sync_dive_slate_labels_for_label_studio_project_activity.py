@@ -64,21 +64,39 @@ def _shift_x(points: List[Point], dx: float) -> List[Point]:
     return [(x - dx, y) for x, y in points]
 
 
+def _assert_in_frame(
+    points: List[Point], photo_width: float, *, task_id: Any, slate_id: int
+) -> None:
+    """Reject a panel-offset shift that lands any x outside [0, photo_width].
+
+    The photo occupies composite x in [panel_width, original_width], so a
+    correctly de-offset point lands in [0, original_width - panel_width] =
+    [0, photo_width]. A shift computed from the wrong template's panel width
+    (or none at all) leaves points past the right edge (x > photo_width, still
+    composite space) or overshoots past the left edge (x < 0). Either way the
+    geometry is wrong-space and must fail loudly rather than be persisted.
+    Mirrors `contracts.repair_panel_offset`.
+    """
+    for x, _ in points:
+        if not 0 <= x <= float(photo_width):
+            raise ValueError(
+                f"slate label task_id={task_id} slate_id={slate_id}: panel-offset "
+                f"shift put x={x:.1f} outside [0, {photo_width:.1f}] — wrong slate "
+                f"template or missing offset. Refusing to persist wrong-space geometry."
+            )
+
+
 def _parse_results(annotation: Dict[str, Any]) -> Dict[str, Any]:
     """Pull the slate annotation fields out of an LS task result list.
 
     Returns raw composite-frame coordinates (no offset applied) plus
-    `original_height`. The caller applies the panel-width shift once it
-    has fetched the slate PDF.
+    `original_width`/`original_height`. The caller applies the panel-width
+    shift once it has fetched the slate PDF.
+
+    Note: the `upside_down` Choices control was removed from the labeling
+    config on 2026-07-31 (never read downstream), so it is no longer parsed.
     """
     results = annotation.get("result") or []
-
-    upside_down: bool | None = None
-    upside_down_results = [r for r in results if r["from_name"] == "upside_down"]
-    if upside_down_results:
-        choices = upside_down_results[0]["value"].get("choices") or []
-        if choices:
-            upside_down = choices[0] == "Slate upside down"
 
     reference_results = [r for r in results if r["from_name"] == "reference_points"]
     reference_points: List[Point] = [
@@ -111,17 +129,21 @@ def _parse_results(annotation: Dict[str, Any]) -> Dict[str, Any]:
         skipped_points = [int(p) - 1 for p in text]
 
     original_height: float | None = None
+    original_width: float | None = None
     for r in results:
-        if "original_height" in r:
+        if original_height is None and "original_height" in r:
             original_height = float(r["original_height"])
+        if original_width is None and "original_width" in r:
+            original_width = float(r["original_width"])
+        if original_height is not None and original_width is not None:
             break
 
     return {
-        "upside_down": upside_down,
         "reference_points": reference_points,
         "slate_rectangle": slate_rectangle,
         "skipped_points": skipped_points,
         "original_height": original_height,
+        "original_width": original_width,
     }
 
 
@@ -157,12 +179,13 @@ async def _aspect_ratio_for_slate(
         pdf_bytes = await exchange.download_slate_pdf(slate_id)
     except (ClientError, BotoCoreError) as e:
         # Missing/unreadable slate PDF in Garage (botocore ClientError or
-        # transport error). Skip the panel-width offset for this label
-        # rather than failing the whole sync. Anything else (e.g. a
-        # programming error) propagates and fails the activity.
+        # transport error). Return None; the caller treats an uncomputable
+        # offset as fatal for any label that carries geometry (it FAILS the
+        # label rather than persist composite-space coords). Anything else
+        # (e.g. a programming error) propagates and fails the activity.
         activity.logger.warning(
             "Could not fetch slate PDF for slate_id=%d (%s); "
-            "skipping panel-width offset for this label",
+            "panel-width offset is uncomputable for labels using this slate",
             slate_id,
             e,
         )
@@ -204,40 +227,67 @@ async def _update_slate_label(
         annotation = task.annotations[0]
         parsed = _parse_results(annotation)
 
-        if parsed["upside_down"] is not None:
-            slate_label.upside_down = parsed["upside_down"]
-
         if parsed["skipped_points"] is not None:
             slate_label.skipped_points = parsed["skipped_points"]
 
-        panel_width = 0.0
-        original_height = parsed["original_height"]
-        if (
-            (parsed["reference_points"] or parsed["slate_rectangle"])
-            and original_height is not None
-            and slate_label.image_id is not None
-        ):
+        # The LS canvas is a composite (PDF panel left + photo right), so
+        # stored geometry MUST have the panel width subtracted to land in
+        # photo-frame coords. If we can't compute that offset (no image_id,
+        # unresolvable slate, or the slate PDF is missing from the object
+        # store) we FAIL THE LABEL rather than persist composite-space
+        # geometry with a 0-px shift — the previous silent fallback stranded
+        # 104 prod rows in composite space (out of frame; corrupt for
+        # calibration). A raise fails this (per-dive) project's sync without
+        # advancing the cursor, so the hourly re-run recovers once the PDF
+        # is staged.
+        if parsed["reference_points"] or parsed["slate_rectangle"]:
+            original_height = parsed["original_height"]
+            original_width = parsed["original_width"]
+            if original_height is None or original_width is None:
+                raise ValueError(
+                    f"slate label task_id={task.id} has geometry but the LS result "
+                    f"is missing original_width/height; cannot remove the composite "
+                    f"panel offset."
+                )
+            if slate_label.image_id is None:
+                raise ValueError(
+                    f"slate label task_id={task.id} has geometry but no image_id; "
+                    f"cannot resolve its slate template to remove the panel offset."
+                )
             slate_id = await _slate_id_for_image(
                 fs, slate_label.image_id, image_to_slate
             )
-            if slate_id is not None:
-                aspect = await _aspect_ratio_for_slate(
-                    exchange, slate_id, aspect_cache
+            if slate_id is None:
+                raise ValueError(
+                    f"slate label task_id={task.id} image_id={slate_label.image_id}: "
+                    f"no resolvable dive_slate_id; cannot remove the composite panel "
+                    f"offset. Refusing to persist composite-space geometry."
                 )
-                if aspect is not None:
-                    panel_width = compute_pdf_panel_width_in_composite(
-                        aspect, original_height
-                    )
-
-        if parsed["reference_points"]:
-            slate_label.reference_points = _shift_x(
-                parsed["reference_points"], panel_width
+            aspect = await _aspect_ratio_for_slate(exchange, slate_id, aspect_cache)
+            if aspect is None:
+                raise ValueError(
+                    f"slate label task_id={task.id}: slate PDF for slate_id={slate_id} "
+                    f"is unavailable in the object store; cannot remove the composite "
+                    f"panel offset. Refusing to persist composite-space geometry "
+                    f"(fix: stage the slate PDF, then the hourly sync recovers)."
+                )
+            panel_width = compute_pdf_panel_width_in_composite(
+                aspect, original_height
             )
 
-        if parsed["slate_rectangle"] is not None:
-            slate_label.slate_rectangle = _shift_x(
-                parsed["slate_rectangle"], panel_width
-            )
+            if parsed["reference_points"]:
+                shifted = _shift_x(parsed["reference_points"], panel_width)
+                _assert_in_frame(
+                    shifted, original_width, task_id=task.id, slate_id=slate_id
+                )
+                slate_label.reference_points = shifted
+
+            if parsed["slate_rectangle"] is not None:
+                shifted = _shift_x(parsed["slate_rectangle"], panel_width)
+                _assert_in_frame(
+                    shifted, original_width, task_id=task.id, slate_id=slate_id
+                )
+                slate_label.slate_rectangle = shifted
 
     await fs.labels.put_dive_slate_label(slate_label.image_id, slate_label)
 

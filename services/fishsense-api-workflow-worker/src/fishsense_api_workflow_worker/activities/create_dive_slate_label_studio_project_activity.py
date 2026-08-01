@@ -11,18 +11,15 @@ DIVE_SLATE_PROJECT_TITLE_SUFFIX = "Dive Slate Labeling"
 
 # Labeling-config XML from the prod dive-slate project. Control names
 # map 1:1 to fields on `DiveSlateLabel`:
-#   * `upside_down` (Choices)        -> `DiveSlateLabel.upside_down`
 #   * `reference_points` (KeyPoints) -> `DiveSlateLabel.reference_points`
 #   * `slate` (RectangleLabels)      -> `DiveSlateLabel.slate_rectangle`
 #   * `skipped_points` (TextArea)    -> `DiveSlateLabel.skipped_points`
-# The stage 12 sync activity (sync_slate_label, not yet ported) will
-# need to read annotations off these `from_name`s.
+# The `upside_down` Choices control was removed 2026-07-31 — it was never
+# read downstream (only ever set true-or-NULL, never false) and the slate
+# geometry made it redundant. The `DiveSlateLabel.upside_down` column is
+# kept for the historical rows that carry a value; nothing new populates it.
 DIVE_SLATE_LABELING_CONFIG_XML = """\
 <View>
-
-  <Choices name="upside_down" toName="image">
-    <Choice value="Slate upside down" />
-  </Choices>
 
   <Image name="image" value="$image" zoom="true"/>
 

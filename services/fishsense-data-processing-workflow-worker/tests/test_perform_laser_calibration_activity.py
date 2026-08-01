@@ -274,3 +274,65 @@ async def test_recovers_known_laser_extrinsics_from_synthetic_scene(monkeypatch)
     fitted_pos = np.asarray(written_le.laser_position, dtype=float)
     pos_xy_l2 = float(np.linalg.norm(fitted_pos[:2] - laser_origin[:2]))
     assert pos_xy_l2 < 0.001
+
+
+# --------------------------- skipped-points (Bug 2) ---------------------------
+
+
+def test_drop_skipped_resolves_indices_against_original_list():
+    """skipped=[2,5] on 8 points keeps {0,1,3,4,6,7} — NOT the {0,1,3,4,5,7}
+    a sequential pop() would leave. Regression for the stage-13 mis-pair."""
+    pts = list("abcdefgh")
+    assert sut._drop_skipped(pts, [2, 5]) == ["a", "b", "d", "e", "g", "h"]
+    # single skip (the only case the old pop() got right) still works
+    assert sut._drop_skipped(pts, [5]) == ["a", "b", "c", "d", "e", "g", "h"]
+    # no skip is identity
+    assert sut._drop_skipped(pts, []) == pts
+
+
+def test_drop_skipped_rejects_duplicate_and_out_of_range():
+    with pytest.raises(ValueError):
+        sut._drop_skipped(list("abcdef"), [2, 2])
+    with pytest.raises(ValueError):
+        sut._drop_skipped(list("abcdef"), [6])
+    with pytest.raises(ValueError):
+        sut._drop_skipped(list("abcdef"), [-1])
+
+
+def test_laser_point_raises_when_reference_count_mismatches_template():
+    """A labeled point count that disagrees with (template - skipped) must fail
+    loudly rather than mis-pair solvePnP correspondences."""
+    slate = _slate()  # 6 template points
+    label = DiveSlateLabel(
+        id=1,
+        label_studio_task_id=1,
+        label_studio_project_id=66,
+        image_url=None,
+        upside_down=False,
+        # 6 template - 1 skipped = 5 expected, but only 4 provided
+        reference_points=[(10.0, 10.0), (20.0, 10.0), (10.0, 20.0), (20.0, 20.0)],
+        slate_rectangle=None,
+        skipped_points=[2],
+        updated_at=None,
+        completed=True,
+        superseded=False,
+        label_studio_json=None,
+        image_id=1,
+        user_id=None,
+    )
+    laser = LaserLabel(
+        id=1,
+        label_studio_task_id=1,
+        label_studio_project_id=73,
+        x=100.0,
+        y=100.0,
+        label="laser",
+        updated_at=None,
+        superseded=False,
+        completed=True,
+        label_studio_json=None,
+        image_id=1,
+        user_id=None,
+    )
+    with pytest.raises(ValueError):
+        sut._laser_point_in_camera_space(label, laser, slate, _camera_intrinsics())
