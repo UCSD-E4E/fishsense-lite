@@ -98,8 +98,73 @@ Prove "same line ⇒ same calibration" empirically before relying on it.
   slate observations across an epoch. (347 has no camera-2 partner, so it stays
   stuck — capability pays off elsewhere.)
 
+## Reframe (2026-08-02): borrow is mis-tuned; the real prize is self-calibration
+
+Empirical work on the 219 backfilled fingerprints + the 6 existing calibrations
+changed the picture. Findings:
+
+- **Measurement is brutally sensitive to the laser axis: ~14% length error per
+  degree** (position is forgiving, ~0.25%/mm). So the finder's 1° line
+  tolerance is 10-25× too loose — measurement-grade borrow needs the axis to
+  agree to ~0.1° (⇒ line match ~0.05-0.1°, essentially near-identical
+  fingerprints), not 1°.
+- **Cross-calibration transfer test** (measure dive B's fish with dive A's
+  calibration, compare to B's own): the one same-camera pair (383↔471, lines
+  1.1° apart) disagreed **44-305%** on length, and some cross-camera pairs beat
+  it. So a 1°-"matching" fingerprint does NOT yield a transferable calibration.
+- **But the geometry decomposes cleanly.** Per camera, all laser lines converge
+  to a common apex (cam10 to 1.8px; cam5/1/4 to ~16-22px) ⇒ **fixed laser
+  origin**. The 6 calibrations confirm it: origin = −30.9±1.0mm x, −101±5.7mm y
+  across ALL rigs, while the axis varies 2-6°. And the stored calibration's
+  projected line matches the observed fingerprint to <0.1° for the good fits ⇒
+  **the fingerprint faithfully encodes the beam axis.**
+- Mechanism (Chris): the laser diode spins in its bore, and because the beam is
+  off the cylinder's body axis by some ε, that spin cones the beam — the axis
+  changes with the mount perfectly rigid. Matches the data (fixed origin +
+  rotating direction).
+
+**Reframed north star — self-calibration from the laser line.** The calibration
+is ~1 rotational DOF about a fixed, once-known geometry. So instead of borrowing
+a neighbor's (noisy) calibration, fit each rig's laser model **once** (fixed 3D
+origin + beam-body offset ε + body axis / the cone) from a handful of
+well-labeled slate dives, then **every future dive self-calibrates from its own
+laser line** — no per-dive slate labeling, no borrow-matching. This subsumes
+borrow and largely removes the per-dive slate bottleneck (the slate detector
+still produces the calibrations the rig model is fit from).
+
+Open caveat: forward consistency (calibration → line) is confirmed tight, but
+the inverse (line → 3D axis) has 1 residual DOF — the line fixes the beam's
+plane, not its tilt within it (the depth-sensitive part). The per-rig **cone**
+fit resolves it, and needs several calibrated dives on one camera.
+
+### The experiment (single-camera cone fit + self-cal validation)
+
+Label slates on **camera 5** (33 dives, apex residual 16px, already has 1
+calibration = dive 279) for these high-confidence dives spanning the beam-angle
+range, then fit the rig model, hold some out, and self-calibrate them from their
+line alone vs their slate-derived calibration (and ideally ground-truth length):
+
+| dive | date | line θ | fit conf |
+|---|---|---|---|
+| 467 | 2024-12-10 | −20.3° | 5350 |
+| 192 or 446 | 2023-09-26 / 2024-10-27 | −18.1° | 6942 / 26966 |
+| 246 | 2023-10-19 | −17.1° | 14494 |
+| 375 | 2024-06-25 | −16.4° | 15820 |
+| 279 ★ | 2023-11-13 | −14.9° | (calibrated) |
+| 215 | 2023-09-26 | −13.4° | 7555 |
+
+Deliberately skip the extreme low-confidence outliers (458 at −37°, 425 at +6°)
+— almost certainly bad fits.
+
+### Finder tolerance
+
+Default `max_angle_deg=1.0` is far too loose for measurement-grade borrow; tighten
+toward ~0.1° (and re-run coverage — the "98 borrowable" figure was at 1° and will
+shrink a lot). Kept overridable so the validation experiment can set it from data.
+
 ## Related follow-ups (not started)
 
 - [ ] Slate predict activity (ML slate labeling from
       `UCSD-E4E/2026-07-31_slate_training`) — the original driver that makes
-      recalibration routine and these features high-value.
+      recalibration routine and these features high-value. Also produces the
+      calibrations the per-rig cone model is fit from.
