@@ -2,6 +2,18 @@
 
 <!-- version list -->
 
+## [1.48.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.47.0...fishsense-api-workflow-worker-v1.48.0) (2026-08-02)
+
+
+### Features
+
+* **api-worker:** backfill slate predictions onto existing LS tasks ([#493](https://github.com/UCSD-E4E/fishsense-lite/issues/493)) ([dd23f09](https://github.com/UCSD-E4E/fishsense-lite/commit/dd23f09e2b95514558b335495ba56932babe9b69))
+
+
+### Bug Fixes
+
+* **deps:** pin fishsense-api-sdk&gt;=1.43.0 ([#487](https://github.com/UCSD-E4E/fishsense-lite/issues/487)) ([c3084ff](https://github.com/UCSD-E4E/fishsense-lite/commit/c3084ff21d2cb0b10290d75ef84758534385bdf1))
+
 ## [1.47.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.46.6...fishsense-api-workflow-worker-v1.47.0) (2026-08-02)
 
 
