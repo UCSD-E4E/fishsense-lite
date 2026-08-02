@@ -2,6 +2,20 @@
 
 <!-- version list -->
 
+## [1.47.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.46.6...fishsense-api-workflow-worker-v1.47.0) (2026-08-02)
+
+
+### Features
+
+* **slate:** prediction-gated dive-slate populate + fix missing object-store read (part 4) ([#485](https://github.com/UCSD-E4E/fishsense-lite/issues/485)) ([22b655c](https://github.com/UCSD-E4E/fishsense-lite/commit/22b655c39faaef2fb6144d02a8716ca7878b8b1e))
+* **slate:** select_next_for_slate_prediction cohort (pipeline part 3a) ([#483](https://github.com/UCSD-E4E/fishsense-lite/issues/483)) ([73ba5ad](https://github.com/UCSD-E4E/fishsense-lite/commit/73ba5ad9f81b663157a3856eb7160ca4f5ec9541))
+* **slate:** slate-predict parent workflow + resolver + persist + schedule (part 3b) ([#484](https://github.com/UCSD-E4E/fishsense-lite/issues/484)) ([b297888](https://github.com/UCSD-E4E/fishsense-lite/commit/b297888620e825426da382a9af6470352336d7af))
+
+
+### Bug Fixes
+
+* **deps:** pin fishsense-api-sdk&gt;=1.42.0 ([#476](https://github.com/UCSD-E4E/fishsense-lite/issues/476)) ([bdf94df](https://github.com/UCSD-E4E/fishsense-lite/commit/bdf94df947928fad796c1c3b656abf8820da5e2a))
+
 ## [1.46.6](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.46.5...fishsense-api-workflow-worker-v1.46.6) (2026-08-02)
 
 
