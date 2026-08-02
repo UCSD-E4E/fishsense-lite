@@ -8,33 +8,27 @@ reference points rather than placing all of them from scratch.
 
 Same split as the preprocess/laser-predict stages: an api-worker parent does
 dive selection + SDK fetches + raw-byte staging and starts this as a child on
-`fishsense_data_processing_queue`. The per-image `PredictSlateImageInput` and
-`SlatePredictionResult` live here because they're only constructed inside the
-fan-out; the parent-facing `PredictSlateImagesInput` will move to
-`fishsense_shared` when the parent lands (kept local until then).
+`fishsense_data_processing_queue`. The workflow-level input DTO
+(`PredictSlateImagesInput`) and the result (`SlatePredictionResult`) live in
+`fishsense_shared` (the cross-worker contract); the per-image
+`PredictSlateImageInput` stays here because it's only constructed inside the
+fan-out.
 """
 
 import asyncio
 from datetime import timedelta
 from typing import List
 
+from fishsense_shared import PredictSlateImagesInput, SlatePredictionResult
 from pydantic import BaseModel
 from temporalio import workflow
 
 __all__ = [
-    "SlateImageRef",
     "PredictSlateImageInput",
     "SlatePredictionResult",
     "PredictSlateImagesInput",
     "PredictSlateImagesWorkflow",
 ]
-
-
-class SlateImageRef(BaseModel):
-    """One slate frame to predict: its raw checksum + image id."""
-
-    checksum: str
-    image_id: int
 
 
 class PredictSlateImageInput(BaseModel):
@@ -49,38 +43,6 @@ class PredictSlateImageInput(BaseModel):
     template_points: List[List[float]]
     camera_matrix: List[List[float]]
     distortion_coefficients: List[float]
-
-
-class SlatePredictionResult(BaseModel):
-    """One frame's gated prediction, or the reason there isn't one.
-
-    `reference_points` are in rectified-photo pixels (the same space the sync
-    activity stores `DiveSlateLabel.reference_points` after stripping the
-    composite panel offset); the slate populate step converts them to composite
-    Label Studio coordinates. `None` when the estimate was rejected — see
-    `rejected_reason` (`unsupported_slate_family` / `no_board` /
-    `low_confidence` / `points_off_canvas`).
-    """
-
-    image_id: int
-    reference_points: List[List[float]] | None = None
-    confidence: float = 0.0
-    rejected_reason: str | None = None
-    width: int = 0
-    height: int = 0
-
-
-class PredictSlateImagesInput(BaseModel):
-    """Parent-built workflow input: the dive's slate template + frames."""
-
-    dive_id: int
-    slate_id: int
-    slate_name: str
-    dpi: float
-    template_points: List[List[float]]
-    camera_matrix: List[List[float]]
-    distortion_coefficients: List[float]
-    images: List[SlateImageRef]
 
 
 @workflow.defn
