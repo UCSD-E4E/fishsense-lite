@@ -9,6 +9,24 @@ from typing import Any
 from pydantic import AwareDatetime, BaseModel, Field, constr
 
 
+class CalibrationCandidate(BaseModel):
+    """
+    A dive whose laser-line fingerprint matches the target's, so its
+    `LaserExtrinsics` is a borrow candidate. Read-only response DTO.
+    """
+
+    dive_id: int = Field(..., title='Dive Id')
+    name: str | None = Field(..., title='Name')
+    camera_id: int | None = Field(..., title='Camera Id')
+    dive_datetime: AwareDatetime = Field(..., title='Dive Datetime')
+    laser_extrinsics_id: int = Field(..., title='Laser Extrinsics Id')
+    line_angle_deg: float = Field(..., title='Line Angle Deg')
+    line_offset_px: float = Field(..., title='Line Offset Px')
+    line_confidence: float = Field(..., title='Line Confidence')
+    residual_std: float = Field(..., title='Residual Std')
+    days_apart: float = Field(..., title='Days Apart')
+
+
 class Camera(BaseModel):
     """
     Model representing a camera.
