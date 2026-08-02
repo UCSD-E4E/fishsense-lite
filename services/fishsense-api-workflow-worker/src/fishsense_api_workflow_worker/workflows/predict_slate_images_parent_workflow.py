@@ -127,6 +127,17 @@ class PredictSlateImagesParentWorkflow:
                 schedule_to_close_timeout=timedelta(minutes=15),
                 retry_policy=SDK_FAIL_FAST_RETRY_POLICY,
             )
+            # Attach the freshly-persisted predictions to any *existing* dive-
+            # slate LS tasks. The populate seeds pre-annotations only at import
+            # time and runs once per dive, so a dive already populated before it
+            # was predicted would otherwise never surface them. Idempotent
+            # (skips tasks that already carry a slate-detector prediction).
+            await workflow.execute_activity(
+                "backfill_slate_predictions_for_dive_activity",
+                args=(dive_id,),
+                schedule_to_close_timeout=timedelta(minutes=15),
+                retry_policy=SDK_FAIL_FAST_RETRY_POLICY,
+            )
 
         # Drop the staged raw `.ORF` scratch from Garage; the NAS source is
         # never touched.

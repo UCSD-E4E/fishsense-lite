@@ -41,6 +41,11 @@ _KEYPOINT_FROM_NAME = "reference_points"
 _KEYPOINT_TO_NAME = "image"
 _REFERENCE_POINT_LABEL = "Reference Point"
 
+# LS `model_version` tag stamped on every slate-detector pre-annotation. Shared
+# with the backfill activity so its idempotency check (skip tasks that already
+# carry this version) stays in lockstep with what we write.
+SLATE_DETECTOR_MODEL_VERSION = "slate-detector"
+
 
 def _prediction_annotations(prediction, panel_width: float) -> list:
     """Build the LS `predictions` list (one keypoint per reference point) from a
@@ -76,7 +81,7 @@ def _prediction_annotations(prediction, panel_width: float) -> list:
     ]
     return [
         {
-            "model_version": "slate-detector",
+            "model_version": SLATE_DETECTOR_MODEL_VERSION,
             "score": float(prediction.confidence),
             "result": result,
         }
