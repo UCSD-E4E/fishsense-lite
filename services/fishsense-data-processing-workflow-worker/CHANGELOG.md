@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.12.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.11.0...fishsense-data-processing-workflow-worker-v2.12.0) (2026-08-02)
+
+
+### Features
+
+* **data-worker:** predict_slate_image activity (slate-prediction pipeline, part 1) ([#480](https://github.com/UCSD-E4E/fishsense-lite/issues/480)) ([64b4024](https://github.com/UCSD-E4E/fishsense-lite/commit/64b4024aaf0e2753a8badb44432964aaa95e7a88))
+* **slate:** slate-predict parent workflow + resolver + persist + schedule (part 3b) ([#484](https://github.com/UCSD-E4E/fishsense-lite/issues/484)) ([b297888](https://github.com/UCSD-E4E/fishsense-lite/commit/b297888620e825426da382a9af6470352336d7af))
+* **slate:** wire the learned BoardMasker into slate prediction (part 5) ([#486](https://github.com/UCSD-E4E/fishsense-lite/issues/486)) ([6b0d046](https://github.com/UCSD-E4E/fishsense-lite/commit/6b0d0462fd48db8581e9edd46c4b38a4cbf91c51))
+
+
+### Bug Fixes
+
+* **deps:** pin fishsense-api-sdk&gt;=1.42.0 ([#476](https://github.com/UCSD-E4E/fishsense-lite/issues/476)) ([bdf94df](https://github.com/UCSD-E4E/fishsense-lite/commit/bdf94df947928fad796c1c3b656abf8820da5e2a))
+
 ## [2.11.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.10.0...fishsense-data-processing-workflow-worker-v2.11.0) (2026-08-02)
 
 

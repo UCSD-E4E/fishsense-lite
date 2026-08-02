@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.6.0...fishsense-shared-v0.7.0) (2026-08-02)
+
+
+### Features
+
+* **slate:** slate-predict parent workflow + resolver + persist + schedule (part 3b) ([#484](https://github.com/UCSD-E4E/fishsense-lite/issues/484)) ([b297888](https://github.com/UCSD-E4E/fishsense-lite/commit/b297888620e825426da382a9af6470352336d7af))
+
 ## [0.6.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.5.0...fishsense-shared-v0.6.0) (2026-07-28)
 
 

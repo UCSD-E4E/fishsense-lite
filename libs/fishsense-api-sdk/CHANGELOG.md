@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.43.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.42.0...fishsense-api-sdk-v1.43.0) (2026-08-02)
+
+
+### Features
+
+* **api:** SlatePrediction persistence (slate-prediction pipeline, part 2) ([#482](https://github.com/UCSD-E4E/fishsense-lite/issues/482)) ([3d1b92c](https://github.com/UCSD-E4E/fishsense-lite/commit/3d1b92c4cc977b701a599609c4121f435ca951d5))
+* **slate:** select_next_for_slate_prediction cohort (pipeline part 3a) ([#483](https://github.com/UCSD-E4E/fishsense-lite/issues/483)) ([73ba5ad](https://github.com/UCSD-E4E/fishsense-lite/commit/73ba5ad9f81b663157a3856eb7160ca4f5ec9541))
+
 ## [1.42.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.41.0...fishsense-api-sdk-v1.42.0) (2026-08-02)
 
 
