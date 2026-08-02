@@ -71,3 +71,25 @@ def test_gate_confidence_boundary_is_inclusive():
     est = _estimate(sut.DEFAULT_MIN_CONFIDENCE, [[1.0, 1.0]])
     pts, _conf, reason = sut.gate_estimate(est, "V-Slate 1", 4000, 3000)
     assert reason is None and pts == [[1.0, 1.0]]
+
+
+def test_get_masker_falls_back_to_none_and_caches(monkeypatch):
+    # pylint: disable=protected-access
+    """A BoardMasker that can't load (no net / no checkpoint) must degrade to
+    the classical path (None), and the failure is cached (no per-frame retry)."""
+    import fishsense_core.slate as slate_mod  # pylint: disable=import-outside-toplevel
+
+    calls = {"n": 0}
+
+    def _boom(*_a, **_k):
+        calls["n"] += 1
+        raise RuntimeError("no network")
+
+    monkeypatch.setattr(slate_mod.BoardMasker, "from_pretrained", _boom)
+    monkeypatch.setattr(sut, "DEFAULT_SLATE_CHECKPOINT_PATH", "")
+    monkeypatch.setattr(sut, "_MASKER", None)
+    monkeypatch.setattr(sut, "_MASKER_LOADED", False)
+
+    assert sut._get_masker() is None
+    assert sut._get_masker() is None  # cached
+    assert calls["n"] == 1  # loaded once, failure cached
