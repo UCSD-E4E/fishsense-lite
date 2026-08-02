@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.42.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.41.0...fishsense-api-sdk-v1.42.0) (2026-08-02)
+
+
+### Features
+
+* **calibration:** borrow-candidate finder endpoint ([#473](https://github.com/UCSD-E4E/fishsense-lite/issues/473)) ([8386998](https://github.com/UCSD-E4E/fishsense-lite/commit/838699817ceea02fa7d24528c075a0a10103e416))
+
 ## [1.41.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.40.0...fishsense-api-sdk-v1.41.0) (2026-08-02)
 
 
