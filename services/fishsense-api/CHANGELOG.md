@@ -2,6 +2,18 @@
 
 <!-- version list -->
 
+## [1.37.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.36.0...fishsense-api-v1.37.0) (2026-08-02)
+
+
+### Features
+
+* **calibration:** borrow-candidate finder endpoint ([#473](https://github.com/UCSD-E4E/fishsense-lite/issues/473)) ([8386998](https://github.com/UCSD-E4E/fishsense-lite/commit/838699817ceea02fa7d24528c075a0a10103e416))
+
+
+### Bug Fixes
+
+* **calibration:** tighten borrow-candidate default tolerance to measurement grade ([#474](https://github.com/UCSD-E4E/fishsense-lite/issues/474)) ([76d1ac5](https://github.com/UCSD-E4E/fishsense-lite/commit/76d1ac5392244975e7722169d0fd6f7ddce6c00a))
+
 ## [1.36.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.35.1...fishsense-api-v1.36.0) (2026-08-02)
 
 

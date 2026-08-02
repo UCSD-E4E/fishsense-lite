@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.11.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.10.0...fishsense-data-processing-workflow-worker-v2.11.0) (2026-08-02)
+
+
+### Features
+
+* **data-worker:** pull in the slate detector via fishsense-core 2.4.1 [slate] ([#475](https://github.com/UCSD-E4E/fishsense-lite/issues/475)) ([9f0d4cc](https://github.com/UCSD-E4E/fishsense-lite/commit/9f0d4cc4147a453dc8c34e275680e0062cd67802))
+
+
+### Bug Fixes
+
+* **deps:** pin fishsense-api-sdk&gt;=1.41.0 ([#469](https://github.com/UCSD-E4E/fishsense-lite/issues/469)) ([19142cb](https://github.com/UCSD-E4E/fishsense-lite/commit/19142cbcd04cce70ee5c532ebf3d6a22d09a5ca9))
+
 ## [2.10.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.9.2...fishsense-data-processing-workflow-worker-v2.10.0) (2026-08-02)
 
 
