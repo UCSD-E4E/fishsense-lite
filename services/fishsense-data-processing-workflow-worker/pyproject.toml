@@ -11,7 +11,7 @@ dependencies = [
     "boto3>=1.35.0",
     "dynaconf>=3.2.11",
     "fishsense-api-sdk>=1.41.0",
-    "fishsense-core[laser-detector]",
+    "fishsense-core[laser-detector,slate]",
     "fishsense-shared",
     "httpx>=0.28.1",
     "label-studio-sdk>=2.0.7",
@@ -95,7 +95,7 @@ upload_to_vcs_release = true
 [tool.uv.sources]
 fishsense-api-sdk = { workspace = true }
 fishsense-core = [
-    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v2.3.0/fishsense_core-2.3.0-cp313-cp313-manylinux_2_34_x86_64.whl", marker = "python_version == '3.13'" },
+    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v2.4.1/fishsense_core-2.4.1-cp313-cp313-manylinux_2_34_x86_64.whl", marker = "python_version == '3.13'" },
 ]
 fishsense-shared = { workspace = true }
 
