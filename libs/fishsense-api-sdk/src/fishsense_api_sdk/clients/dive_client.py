@@ -1,8 +1,10 @@
 """Client for interacting with dive-related endpoints of the Fishsense API."""
 
 from typing import List
+from urllib.parse import urlencode
 
 from fishsense_api_sdk.clients.client_base import ClientBase
+from fishsense_api_sdk.models.calibration_candidate import CalibrationCandidate
 from fishsense_api_sdk.models.dive import Dive
 from fishsense_api_sdk.models.dive_laser_line import DiveLaserLine
 from fishsense_api_sdk.models.laser_extrinsics import LaserExtrinsics, _LaserExtrinsics
@@ -202,6 +204,44 @@ class DiveClient(ClientBase):
         response.raise_for_status()
 
         return response.json()
+
+    async def get_calibration_candidates(
+        self,
+        dive_id: int,
+        *,
+        max_angle_deg: float | None = None,
+        max_offset_px: float | None = None,
+        min_confidence: float | None = None,
+    ) -> List[CalibrationCandidate]:
+        """Get ranked calibration-borrow candidates for a dive.
+
+        Dives whose laser-line fingerprint matches this dive's (same camera,
+        own extrinsics, confident fits, line within tolerance), ranked by line
+        closeness. Suggest-only — pick one and call `set_calibration_source`.
+
+        Args:
+            dive_id (int): The dive to find borrow candidates for.
+            max_angle_deg / max_offset_px / min_confidence: optional tolerance
+            overrides; the server applies its defaults when omitted.
+
+        Returns:
+            List[CalibrationCandidate]: ranked candidates (may be empty).
+        """
+        query = {
+            k: v
+            for k, v in (
+                ("max_angle_deg", max_angle_deg),
+                ("max_offset_px", max_offset_px),
+                ("min_confidence", min_confidence),
+            )
+            if v is not None
+        }
+        endpoint = f"/api/v1/dives/{dive_id}/calibration-candidates/"
+        if query:
+            endpoint = f"{endpoint}?{urlencode(query)}"
+        response = await self._get(endpoint)
+        response.raise_for_status()
+        return [CalibrationCandidate.model_validate(x) for x in response.json()]
 
     async def set_calibration_source(
         self, dive_id: int, source_dive_id: int
