@@ -4,6 +4,7 @@ from typing import List
 
 from fishsense_api_sdk.clients.client_base import ClientBase
 from fishsense_api_sdk.models.dive import Dive
+from fishsense_api_sdk.models.dive_laser_line import DiveLaserLine
 from fishsense_api_sdk.models.laser_extrinsics import LaserExtrinsics, _LaserExtrinsics
 
 
@@ -157,6 +158,46 @@ class DiveClient(ClientBase):
             json=laser_extrinsics._to_internal().model_dump(  # pylint: disable=protected-access
                 exclude_unset=True, mode="json"
             ),
+        )
+        response.raise_for_status()
+
+        return response.json()
+
+    async def get_dive_laser_line(self, dive_id: int) -> DiveLaserLine | None:
+        """Get the fitted laser-line fingerprint for a dive.
+
+        Args:
+            dive_id (int): The ID of the dive.
+
+        Returns:
+            DiveLaserLine | None: The dive's laser-line fingerprint, or None if
+            it has not been fitted yet.
+        """
+        response = await self._get(f"/api/v1/dives/{dive_id}/laser-line/")
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+
+        json = response.json()
+        if json is None:
+            return None
+        return DiveLaserLine.model_validate(json)
+
+    async def put_dive_laser_line(
+        self, dive_id: int, laser_line: DiveLaserLine
+    ) -> int:
+        """Upsert the laser-line fingerprint for a dive.
+
+        Args:
+            dive_id (int): The ID of the dive.
+            laser_line (DiveLaserLine): The fitted line + metrics to persist.
+
+        Returns:
+            int: The persisted row ID.
+        """
+        response = await self._put(
+            f"/api/v1/dives/{dive_id}/laser-line/",
+            json=laser_line.model_dump(exclude_unset=True, mode="json"),
         )
         response.raise_for_status()
 

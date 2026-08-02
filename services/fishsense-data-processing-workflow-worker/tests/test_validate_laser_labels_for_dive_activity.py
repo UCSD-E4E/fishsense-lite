@@ -58,6 +58,8 @@ def _make_fs(labels: List[LaserLabel]):
     fs.labels.put_laser_label = AsyncMock(
         side_effect=lambda image_id, label: label.id or 0
     )
+    fs.dives = MagicMock()
+    fs.dives.put_dive_laser_line = AsyncMock(return_value=1)
     return fs
 
 
@@ -105,9 +107,33 @@ async def test_clean_dive_flags_no_outliers_and_does_not_write(monkeypatch):
     env = ActivityEnvironment()
     result = await env.run(sut.validate_laser_labels_for_dive_activity, 99)
     assert result == 0
-    # No outliers → no writes. Pins that the activity doesn't ever
+    # No outliers → no label writes. Pins that the activity doesn't ever
     # supersede a clean dive's labels.
     fs.labels.put_laser_label.assert_not_called()
+    # ...but the line fingerprint is still persisted on a clean dive.
+    fs.dives.put_dive_laser_line.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_persists_line_fingerprint_matching_the_fit(monkeypatch):
+    fs = _make_fs(labels=_colinear_labels(40))  # y = 0.4*x + 100
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    env = ActivityEnvironment()
+    await env.run(sut.validate_laser_labels_for_dive_activity, 77)
+
+    fs.dives.put_dive_laser_line.assert_called_once()
+    (dive_id, line), _ = fs.dives.put_dive_laser_line.call_args
+    assert dive_id == 77
+    assert line.dive_id == 77
+    # The persisted Hesse-form line must vanish on points of y = 0.4x + 100.
+    for x in (200.0, 1200.0):
+        y = 0.4 * x + 100.0
+        assert abs(line.a * x + line.b * y + line.c) < 1.0  # within ~1px
+    assert abs((line.a * line.a + line.b * line.b) - 1.0) < 1e-6  # unit normal
+    assert line.n_points == 40
+    assert line.inlier_fraction > 0.9
+    assert line.line_confidence > 0  # clearly a line, not a blob
 
 
 @pytest.mark.asyncio
@@ -218,6 +244,8 @@ async def test_rerun_after_supersede_is_a_noop(monkeypatch):
     fs.labels = MagicMock()
     fs.labels.get_laser_labels = AsyncMock(side_effect=fake_get_laser_labels)
     fs.labels.put_laser_label = AsyncMock(side_effect=fake_put_laser_label)
+    fs.dives = MagicMock()
+    fs.dives.put_dive_laser_line = AsyncMock(return_value=1)
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
 
     env = ActivityEnvironment()
@@ -275,6 +303,8 @@ async def test_inlier_fraction_strictly_improves_after_supersede(
     fs.labels = MagicMock()
     fs.labels.get_laser_labels = AsyncMock(side_effect=fake_get_laser_labels)
     fs.labels.put_laser_label = AsyncMock(side_effect=fake_put_laser_label)
+    fs.dives = MagicMock()
+    fs.dives.put_dive_laser_line = AsyncMock(return_value=1)
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
 
     def _parse_inlier_fraction(records) -> float:
@@ -402,6 +432,8 @@ async def test_supersede_writes_run_concurrently(monkeypatch):
     fs.labels = MagicMock()
     fs.labels.get_laser_labels = AsyncMock(return_value=labels)
     fs.labels.put_laser_label = AsyncMock(side_effect=gated_put)
+    fs.dives = MagicMock()
+    fs.dives.put_dive_laser_line = AsyncMock(return_value=1)
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
 
     env = ActivityEnvironment()
