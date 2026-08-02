@@ -28,6 +28,7 @@ from fishsense_api_workflow_worker import worker as sut
 _DIVE_SELECTING_PARENT_SCHEDULE_IDS = (
     "preprocess-laser-images-workflow-schedule",
     "predict-laser-images-workflow-schedule",
+    "predict-slate-images-workflow-schedule",
     "populate-laser-labels-workflow-schedule",
     "cluster-dive-frames-workflow-schedule",
     "preprocess-species-images-workflow-schedule",
@@ -73,6 +74,12 @@ async def test_laser_predict_is_scheduled_hourly_at_10(registered):
     schedule = registered["predict-laser-images-workflow-schedule"]
     assert _every(schedule) == timedelta(hours=1)
     assert _offset(schedule) == timedelta(minutes=10)
+
+
+async def test_slate_predict_is_scheduled_hourly_at_35(registered):
+    schedule = registered["predict-slate-images-workflow-schedule"]
+    assert _every(schedule) == timedelta(hours=1)
+    assert _offset(schedule) == timedelta(minutes=35)
 
 
 async def test_laser_populate_is_scheduled_hourly_at_12(registered):

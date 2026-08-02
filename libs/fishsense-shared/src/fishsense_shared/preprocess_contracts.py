@@ -142,6 +142,56 @@ class LaserPredictionResult(BaseModel):
     height: int | None = None
 
 
+class PredictSlateImage(BaseModel):
+    """Per-image (checksum, image_id) pair for slate prediction.
+
+    The checksum fetches the raw bytes from Garage; the image_id keys the
+    prediction result back so the api-worker persists it against the right image.
+    """
+
+    image_id: int
+    checksum: str
+
+
+class PredictSlateImagesInput(BaseModel):
+    """Slate-detector (model-assisted labeling) workflow-level input.
+
+    Constructed by the api-worker parent (selector + resolver), passed to the
+    CPU data-worker `PredictSlateImagesWorkflow` child. Carries the dive's slate
+    template (id/name/dpi/reference points) + camera intrinsics so the
+    data-worker renders the template and estimates the board without extra
+    fishsense-api calls.
+    """
+
+    dive_id: int
+    slate_id: int
+    slate_name: str
+    dpi: float
+    template_points: List[List[float]]
+    camera_matrix: List[List[float]]
+    distortion_coefficients: List[float]
+    images: List[PredictSlateImage]
+
+
+class SlatePredictionResult(BaseModel):
+    """One frame's gated slate prediction, returned by the data-worker
+    `PredictSlateImagesWorkflow` and persisted by the api-worker parent.
+
+    `reference_points` are in rectified-photo pixels (the space the sync
+    activity stores `DiveSlateLabel.reference_points` after stripping the
+    composite panel offset), or None when the estimate was rejected — see
+    `rejected_reason`. Cross-worker, so it lives here rather than in the
+    data-worker workflow module.
+    """
+
+    image_id: int
+    reference_points: List[List[float]] | None = None
+    confidence: float = 0.0
+    rejected_reason: str | None = None
+    width: int = 0
+    height: int = 0
+
+
 class PreprocessSlateImagesInput(BaseModel):
     """Stage 9 (slate preprocess) workflow-level input.
 

@@ -96,6 +96,12 @@ from fishsense_api_workflow_worker.activities.resolve_laser_predict_inputs_activ
 from fishsense_api_workflow_worker.activities.persist_laser_predictions_activity import (  # noqa: E501  pylint: disable=line-too-long
     persist_laser_predictions_activity,
 )
+from fishsense_api_workflow_worker.activities.resolve_slate_predict_inputs_activity import (  # noqa: E501  pylint: disable=line-too-long
+    resolve_slate_predict_inputs_activity,
+)
+from fishsense_api_workflow_worker.activities.persist_slate_predictions_activity import (  # noqa: E501  pylint: disable=line-too-long
+    persist_slate_predictions_activity,
+)
 from fishsense_api_workflow_worker.activities.resolve_slate_preprocess_inputs_activity import (  # pylint: disable=line-too-long
     resolve_slate_preprocess_inputs_activity,
 )
@@ -207,6 +213,9 @@ from fishsense_api_workflow_worker.workflows.preprocess_headtail_images_parent_w
 )
 from fishsense_api_workflow_worker.workflows.predict_laser_images_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PredictLaserImagesParentWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.predict_slate_images_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    PredictSlateImagesParentWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.preprocess_laser_images_parent_workflow import (  # pylint: disable=line-too-long
     PreprocessLaserImagesParentWorkflow,
@@ -373,6 +382,22 @@ async def schedule_workflows(client: Client):
                     PredictLaserImagesParentWorkflow,
                     timedelta(hours=1),
                     offset=timedelta(minutes=10),
+                    run_timeout=timedelta(hours=2),
+                    overlap=ScheduleOverlapPolicy.SKIP,
+                )
+            )
+            # Slate-detector (model-assisted labeling) parent: hourly at
+            # +35 min (free slot). Stages raw + slate PDF, runs the CPU
+            # board-plane estimator per unpredicted slate frame, and persists
+            # SlatePrediction rows for the dive-slate populate step to serve as
+            # LS pre-annotations. SKIP overlap; drains one dive per firing.
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "predict-slate-images-workflow-schedule",
+                    PredictSlateImagesParentWorkflow,
+                    timedelta(hours=1),
+                    offset=timedelta(minutes=35),
                     run_timeout=timedelta(hours=2),
                     overlap=ScheduleOverlapPolicy.SKIP,
                 )
@@ -570,6 +595,7 @@ async def main():
                 UpdateDiveImageGroupsWorkflow,
                 ClusterDiveFramesParentWorkflow,
                 PredictLaserImagesParentWorkflow,
+                PredictSlateImagesParentWorkflow,
                 PreprocessLaserImagesParentWorkflow,
                 PreprocessSpeciesImagesParentWorkflow,
                 PreprocessHeadtailImagesParentWorkflow,
@@ -604,6 +630,8 @@ async def main():
                 resolve_laser_preprocess_inputs_activity,
                 resolve_laser_predict_inputs_activity,
                 persist_laser_predictions_activity,
+                resolve_slate_predict_inputs_activity,
+                persist_slate_predictions_activity,
                 resolve_species_preprocess_inputs_activity,
                 resolve_headtail_preprocess_inputs_activity,
                 resolve_slate_preprocess_inputs_activity,
