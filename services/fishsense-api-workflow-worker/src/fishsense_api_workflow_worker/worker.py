@@ -27,6 +27,9 @@ from temporalio.worker import Worker
 from fishsense_api_workflow_worker.activities.reconcile_labeling_configs_activity import (  # pylint: disable=line-too-long
     reconcile_labeling_configs_activity,
 )
+from fishsense_api_workflow_worker.activities.backfill_slate_predictions_activity import (  # pylint: disable=line-too-long
+    backfill_slate_predictions_for_dive_activity,
+)
 from fishsense_api_workflow_worker.activities.cleanup_raw_bytes_for_dive_activity import (  # pylint: disable=line-too-long
     cleanup_raw_bytes_for_dive_activity,
 )
@@ -216,6 +219,9 @@ from fishsense_api_workflow_worker.workflows.predict_laser_images_parent_workflo
 )
 from fishsense_api_workflow_worker.workflows.predict_slate_images_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PredictSlateImagesParentWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.backfill_slate_predictions_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    BackfillSlatePredictionsWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.preprocess_laser_images_parent_workflow import (  # pylint: disable=line-too-long
     PreprocessLaserImagesParentWorkflow,
@@ -596,6 +602,7 @@ async def main():
                 ClusterDiveFramesParentWorkflow,
                 PredictLaserImagesParentWorkflow,
                 PredictSlateImagesParentWorkflow,
+                BackfillSlatePredictionsWorkflow,
                 PreprocessLaserImagesParentWorkflow,
                 PreprocessSpeciesImagesParentWorkflow,
                 PreprocessHeadtailImagesParentWorkflow,
@@ -632,6 +639,7 @@ async def main():
                 persist_laser_predictions_activity,
                 resolve_slate_predict_inputs_activity,
                 persist_slate_predictions_activity,
+                backfill_slate_predictions_for_dive_activity,
                 resolve_species_preprocess_inputs_activity,
                 resolve_headtail_preprocess_inputs_activity,
                 resolve_slate_preprocess_inputs_activity,
