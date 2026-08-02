@@ -19,6 +19,7 @@ corpus), so every rejection returns a *reason* and the default is to decline.
 
 import asyncio
 import logging
+import os
 from typing import Any, Sequence
 
 from temporalio import activity
@@ -28,6 +29,48 @@ from fishsense_data_processing_workflow_worker.object_store import (
 )
 
 _log = logging.getLogger(__name__)
+
+# Optional learned board mask (BoardMasker, behind fishsense_core[slate]). A
+# local checkpoint path overrides the HuggingFace download. The classical path
+# (board_mask=None) is a supported fallback (~13 pts less coverage), so any
+# load/inference failure degrades gracefully instead of failing the frame.
+DEFAULT_SLATE_CHECKPOINT_PATH = os.environ.get("E4EFS_SLATE_DETECTOR__CHECKPOINT", "")
+_MASKER: Any = None
+_MASKER_LOADED = False
+
+
+def _get_masker() -> Any:
+    """Return the process-wide BoardMasker, or None if it can't be loaded.
+
+    Caches the outcome (including failure) so a missing mask doesn't retry the
+    load on every frame. Loads from a local checkpoint when
+    `E4EFS_SLATE_DETECTOR__CHECKPOINT` points at one, else from HuggingFace.
+    """
+    global _MASKER, _MASKER_LOADED  # pylint: disable=global-statement
+    if _MASKER_LOADED:
+        return _MASKER
+    _MASKER_LOADED = True
+    try:
+        # no-name-in-module: BoardMasker ships in fishsense-core[slate] >= 2.4.0
+        from fishsense_core.slate import (  # pylint: disable=import-outside-toplevel,import-error,no-name-in-module
+            BoardMasker,
+        )
+
+        if DEFAULT_SLATE_CHECKPOINT_PATH and os.path.exists(
+            DEFAULT_SLATE_CHECKPOINT_PATH
+        ):
+            _MASKER = BoardMasker.from_checkpoint(DEFAULT_SLATE_CHECKPOINT_PATH)
+        else:
+            _MASKER = BoardMasker.from_pretrained()
+        _log.info("loaded BoardMasker (learned board mask)")
+    except Exception as exc:  # pylint: disable=broad-except
+        # torch/hf missing, no network, or bad checkpoint — fall back to the
+        # classical estimator. The mask only adds coverage; it's never required.
+        _log.warning(
+            "BoardMasker unavailable (%s); using classical slate path", exc
+        )
+        _MASKER = None
+    return _MASKER
 
 # ECC >= 0.80 keeps ~58% of frames at median ~6 px (measured on the corpus in
 # slate_training/docs/design.md). Coverage matters more than the last few px for
@@ -138,13 +181,26 @@ def _predict_from_bytes(  # pylint: disable=too-many-locals
     height, width = bgr.shape[:2]
 
     template_gray = _render_template_gray(pdf_bytes, dpi=int(dpi))
+
+    # Learned board mask improves localization when available; None is the
+    # supported classical fallback.
+    board_mask = None
+    masker = _get_masker()
+    if masker is not None:
+        try:
+            board_mask = masker.predict(bgr)
+        except Exception as exc:  # pylint: disable=broad-except
+            _log.warning(
+                "board mask inference failed (%s); classical slate path", exc
+            )
+
     estimate = estimate_plane(
         bgr,
         template_gray,
         [[float(x), float(y)] for x, y in template_points],
         float(dpi),
         cam,
-        board_mask=None,
+        board_mask=board_mask,
     )
     points, confidence, reason = gate_estimate(
         estimate, slate_name, int(width), int(height), min_confidence
