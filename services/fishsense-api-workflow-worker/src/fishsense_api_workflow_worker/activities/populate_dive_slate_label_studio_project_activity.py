@@ -11,8 +11,10 @@ slate label so the workflow is idempotent.
 
 from typing import List
 
+from botocore.exceptions import BotoCoreError, ClientError
 from fishsense_api_sdk.models.dive_slate_label import DiveSlateLabel
 from fishsense_api_sdk.models.image import Image
+from fishsense_api_sdk.models.slate_prediction import SlatePrediction
 from fishsense_api_sdk.models.species_label import SpeciesLabel
 from temporalio import activity
 
@@ -21,12 +23,87 @@ from fishsense_api_workflow_worker.activities.populate_utils import (
     import_tasks_and_record_labels,
     publish_label_studio_project,
 )
+from fishsense_api_workflow_worker.activities.sync_dive_slate_labels_for_label_studio_project_activity import (  # noqa: E501  pylint: disable=line-too-long
+    compute_pdf_panel_aspect_ratio,
+    compute_pdf_panel_width_in_composite,
+)
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
+from fishsense_api_workflow_worker.object_store import open_object_store_client
 
 # Physical Garage prefix the data-worker writes slate JPEGs to (stage 9).
 # Was the nginx virtual name "dive_slate_jpgs"; now the real key prefix.
 DIVE_SLATE_FOLDER = "preprocess_slate_images_jpeg"
 SLATE_CONTENT_MARKER = "Slate, Laser on slate"
+
+# LS keypoint control names on the dive-slate labeling config (see
+# create_dive_slate_label_studio_project_activity's XML) + the sync parser.
+_KEYPOINT_FROM_NAME = "reference_points"
+_KEYPOINT_TO_NAME = "image"
+_REFERENCE_POINT_LABEL = "Reference Point"
+
+
+def _prediction_annotations(prediction, panel_width: float) -> list:
+    """Build the LS `predictions` list (one keypoint per reference point) from a
+    model `SlatePrediction`, or [] when there's nothing seedable.
+
+    The prediction's `reference_points` are in rectified-photo pixels; the LS
+    canvas is the composite (PDF panel left + photo right), so shift x right by
+    the rendered `panel_width` and express both as percentages of the composite
+    dimensions — the inverse of the panel-offset strip the sync activity applies
+    on write-back.
+    """
+    if prediction is None or not prediction.reference_points:
+        return []
+    if not prediction.width or not prediction.height:
+        return []
+    composite_width = float(panel_width) + float(prediction.width)
+    composite_height = float(prediction.height)
+    result = [
+        {
+            "from_name": _KEYPOINT_FROM_NAME,
+            "to_name": _KEYPOINT_TO_NAME,
+            "type": "keypointlabels",
+            "original_width": int(round(composite_width)),
+            "original_height": int(round(composite_height)),
+            "value": {
+                "x": (float(x) + float(panel_width)) / composite_width * 100.0,
+                "y": float(y) / composite_height * 100.0,
+                "width": 0.5,
+                "keypointlabels": [_REFERENCE_POINT_LABEL],
+            },
+        }
+        for x, y in prediction.reference_points
+    ]
+    return [
+        {
+            "model_version": "slate-detector",
+            "score": float(prediction.confidence),
+            "result": result,
+        }
+    ]
+
+
+async def _slate_panel_aspect(dive_id: int, fs) -> float | None:
+    """Fetch the dive's slate PDF from Garage and return its width/height aspect
+    (points), or None when it can't be resolved. A missing aspect just means no
+    pre-annotation (labeler places from scratch) — never fail populate over it,
+    unlike the sync activity where wrong-space *persistence* is the danger.
+    """
+    dive = await fs.dives.get(dive_id=dive_id)
+    slate_id = getattr(dive, "dive_slate_id", None) if dive is not None else None
+    if slate_id is None:
+        return None
+    try:
+        pdf_bytes = await open_object_store_client().download_slate_pdf(slate_id)
+    except (ClientError, BotoCoreError) as exc:
+        activity.logger.warning(
+            "slate PDF for slate_id=%s unavailable (%s); seeding slate tasks "
+            "without pre-annotations",
+            slate_id,
+            exc,
+        )
+        return None
+    return compute_pdf_panel_aspect_ratio(pdf_bytes)
 
 
 def _select_target_image_ids(
@@ -46,14 +123,15 @@ def _select_target_image_ids(
     ]
 
 
-def _build_task(image: Image) -> dict:
-    """Build an LS task. Emits both `image` and `img` keys to satisfy
-    legacy LS labeling-config XML across prod projects — see
-    `populate_laser_label_studio_project_activity._build_task`."""
+def _build_task(image: Image, prediction=None, panel_width: float = 0.0) -> dict:
+    """Build an LS task. Emits both `image` and `img` keys to satisfy legacy LS
+    labeling-config XML across prod projects. Seeds a keypoint pre-annotation
+    from the model `SlatePrediction` when one exists (assisted review) — a
+    labeler confirms/nudges the board points rather than placing all of them."""
     url = build_image_url(DIVE_SLATE_FOLDER, image.checksum)
     return {
         "data": {"image": url, "img": url},
-        "predictions": [],
+        "predictions": _prediction_annotations(prediction, panel_width),
         "annotations": [],
     }
 
@@ -72,6 +150,15 @@ async def populate_dive_slate_label_studio_project_activity(
 
         target_ids = _select_target_image_ids(species_labels, existing_slate)
 
+        # Model pre-annotations (assisted review). The predict parent (+35 min)
+        # writes SlatePrediction rows before this populate runs (stage-9 +45);
+        # a missing prediction just means no pre-annotation for that frame.
+        predictions: List[SlatePrediction] = (
+            await fs.labels.get_slate_predictions(dive_id) or []
+        )
+        prediction_by_image = {p.image_id: p for p in predictions}
+        aspect = await _slate_panel_aspect(dive_id, fs) if prediction_by_image else None
+
         new_count = 0
         images: List[Image] = []
         for image_id in target_ids:
@@ -81,7 +168,18 @@ async def populate_dive_slate_label_studio_project_activity(
             activity.heartbeat()
 
         if images:
-            tasks = [_build_task(image) for image in images]
+            def _task(image: Image) -> dict:
+                prediction = prediction_by_image.get(image.id)
+                panel_width = (
+                    compute_pdf_panel_width_in_composite(aspect, prediction.height)
+                    if aspect is not None
+                    and prediction is not None
+                    and prediction.height
+                    else 0.0
+                )
+                return _build_task(image, prediction, panel_width)
+
+            tasks = [_task(image) for image in images]
 
             async def _record(image: Image, task_id: int) -> None:
                 label = DiveSlateLabel(

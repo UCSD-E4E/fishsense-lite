@@ -153,6 +153,15 @@ class ObjectStoreClient:
             self._s3.put_object, Bucket=self._bucket, Key=key, Body=data
         )
 
+    async def _get(self, key: str, bucket: str | None = None) -> bytes:
+        target = bucket or self._bucket
+
+        def _do() -> bytes:
+            response = self._s3.get_object(Bucket=target, Key=key)
+            return response["Body"].read()
+
+        return await asyncio.to_thread(_do)
+
     async def _delete(self, key: str) -> None:
         # S3 delete_object is idempotent: deleting an absent key returns
         # success (no ClientError), so retries are naturally safe.
@@ -186,6 +195,15 @@ class ObjectStoreClient:
 
     async def upload_slate_pdf(self, slate_id: int, data: bytes) -> None:
         await self._put(slate_pdf_key(slate_id), data)
+
+    async def download_slate_pdf(self, slate_id: int) -> bytes:
+        """Read a staged slate template PDF back from Garage.
+
+        The dive-slate sync (panel-offset strip) and the slate populate
+        (pre-annotation composite conversion) both need the template's
+        aspect ratio; both read it through here.
+        """
+        return await self._get(slate_pdf_key(slate_id))
 
     # ----- scratch cleanup (Garage only — NEVER the NAS) -----
 
