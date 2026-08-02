@@ -124,6 +124,7 @@ def _make_fs_client(
     fs.labels.get_species_labels = AsyncMock(return_value=species_labels)
     fs.labels.get_dive_slate_labels = AsyncMock(return_value=existing_slate)
     fs.labels.put_dive_slate_label = AsyncMock()
+    fs.labels.get_slate_predictions = AsyncMock(return_value=[])
     return fs
 
 
@@ -240,3 +241,57 @@ async def test_does_not_publish_empty_project(monkeypatch):
     )
 
     ls.projects.update.assert_not_called()
+
+
+# --------------------- model pre-annotations (part 4) ---------------------
+
+
+def test_prediction_annotations_converts_photo_to_composite_percent():
+    pred = SimpleNamespace(
+        reference_points=[[100.0, 50.0], [3000.0, 2000.0]],
+        width=4014,
+        height=3016,
+        confidence=0.9,
+    )
+    panel_width = 4967.5  # V-Slate
+    anns = sut._prediction_annotations(pred, panel_width)  # pylint: disable=protected-access
+
+    assert len(anns) == 1
+    assert anns[0]["model_version"] == "slate-detector"
+    assert anns[0]["score"] == pytest.approx(0.9)
+    result = anns[0]["result"]
+    assert len(result) == 2
+    composite_width = panel_width + 4014
+    first = result[0]
+    assert first["from_name"] == "reference_points"
+    assert first["type"] == "keypointlabels"
+    assert first["value"]["keypointlabels"] == ["Reference Point"]
+    # photo x shifted right by the panel, then percent of the composite.
+    assert first["value"]["x"] == pytest.approx((100.0 + panel_width) / composite_width * 100.0)
+    assert first["value"]["y"] == pytest.approx(50.0 / 3016 * 100.0)
+    assert first["original_width"] == round(composite_width)
+    assert first["original_height"] == 3016
+
+
+def test_prediction_annotations_empty_paths():
+    # pylint: disable=protected-access
+    assert not sut._prediction_annotations(None, 100.0)
+    assert not sut._prediction_annotations(
+        SimpleNamespace(reference_points=None, width=4014, height=3016, confidence=0.9),
+        100.0,
+    )
+    # a rejected prediction (no dims) yields no pre-annotation.
+    assert not sut._prediction_annotations(
+        SimpleNamespace(reference_points=[[1.0, 2.0]], width=0, height=0, confidence=0.4),
+        100.0,
+    )
+
+
+def test_build_task_seeds_prediction_only_when_present():
+    # pylint: disable=protected-access
+    pred = SimpleNamespace(
+        reference_points=[[100.0, 50.0]], width=4014, height=3016, confidence=0.9
+    )
+    seeded = sut._build_task(_image(11, "c11"), pred, 4967.5)
+    assert seeded["predictions"] and seeded["predictions"][0]["result"]
+    assert not sut._build_task(_image(12, "c12"))["predictions"]
