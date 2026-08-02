@@ -260,6 +260,28 @@ class Priority(Enum):
     HIGH = 'HIGH'
 
 
+class SlatePrediction(BaseModel):
+    """
+    A model-predicted slate board for one image. One row per image —
+    re-prediction upserts on the natural key.
+
+    `reference_points` are in rectified-photo pixels (the space labelers place
+    `DiveSlateLabel.reference_points` after the composite panel offset is
+    stripped), or None when the estimate was rejected. `rejected_reason` records
+    why nothing was seeded (`unsupported_slate_family` / `no_board` /
+    `low_confidence` / `points_off_canvas`) for seed-rate monitoring.
+    """
+
+    id: int | None = Field(None, title='Id')
+    reference_points: list[list[float]] | None = Field(None, title='Reference Points')
+    confidence: float | None = Field(0.0, title='Confidence')
+    rejected_reason: str | None = Field(None, title='Rejected Reason')
+    width: int | None = Field(None, title='Width')
+    height: int | None = Field(None, title='Height')
+    created_at: AwareDatetime | None = Field(None, title='Created At')
+    image_id: int | None = Field(None, title='Image Id')
+
+
 class Species(BaseModel):
     """
     Species model representing a fish species in the database.

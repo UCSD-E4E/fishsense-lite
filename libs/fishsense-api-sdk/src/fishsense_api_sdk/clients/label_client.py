@@ -8,6 +8,7 @@ from fishsense_api_sdk.models.headtail_label import HeadTailLabel
 from fishsense_api_sdk.models.label_studio_sync_cursor import LabelStudioSyncCursor
 from fishsense_api_sdk.models.laser_label import LaserLabel
 from fishsense_api_sdk.models.laser_prediction import LaserPrediction
+from fishsense_api_sdk.models.slate_prediction import SlatePrediction
 from fishsense_api_sdk.models.species_label import SpeciesLabel
 
 
@@ -385,6 +386,39 @@ class LabelClient(ClientBase):
         response.raise_for_status()
         json = response.json()
         return [LaserPrediction.model_validate(row) for row in (json or [])]
+
+    async def put_slate_prediction(
+        self, image_id: int, prediction: SlatePrediction
+    ) -> int:
+        """Upsert the model's slate prediction for an image.
+
+        Args:
+            image_id (int): The image the prediction is for.
+            prediction (SlatePrediction): The predicted board reference points.
+
+        Returns:
+            int: The id of the upserted prediction row.
+        """
+        response = await self._put(
+            f"/api/v1/images/{image_id}/slate-prediction/",
+            json=prediction.model_dump(exclude_unset=True, mode="json"),
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def get_slate_predictions(self, dive_id: int) -> List[SlatePrediction]:
+        """Get every model slate prediction for a dive's images.
+
+        Args:
+            dive_id (int): The dive to retrieve predictions for.
+
+        Returns:
+            List[SlatePrediction]: Predictions (empty when the dive has none).
+        """
+        response = await self._get(f"/api/v1/dives/{dive_id}/slate-predictions/")
+        response.raise_for_status()
+        json = response.json()
+        return [SlatePrediction.model_validate(row) for row in (json or [])]
 
     async def put_laser_label(self, image_id: int, laser_label: LaserLabel) -> int:
         """Put a laser label to an image .

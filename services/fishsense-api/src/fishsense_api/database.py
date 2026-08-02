@@ -35,6 +35,7 @@ from fishsense_api.models.laser_extrinsics import LaserExtrinsics
 from fishsense_api.models.laser_label import LaserLabel
 from fishsense_api.models.laser_prediction import LaserPrediction
 from fishsense_api.models.measurement import Measurement
+from fishsense_api.models.slate_prediction import SlatePrediction
 from fishsense_api.models.species import Species
 from fishsense_api.models.species_label import SpeciesLabel
 from fishsense_api.models.user import User
