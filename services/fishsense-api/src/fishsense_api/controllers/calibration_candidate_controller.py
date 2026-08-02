@@ -24,13 +24,18 @@ from fishsense_api.server import app
 
 logger = logging.getLogger(__name__)
 
-# Default line-match tolerance. Starting values pending the labeling validation
-# experiment (pos/neg controls) that will lock them from data; overridable per
-# request. min_confidence mirrors the data-worker's LINE_CONFIDENCE_THRESHOLD
-# (kept as a literal to avoid importing the worker).
-_DEFAULT_MAX_ANGLE_DEG = 1.0
-_DEFAULT_MAX_OFFSET_PX = 30.0
-_DEFAULT_MIN_CONFIDENCE = 5.0
+# Default line-match tolerance — measurement-grade, still provisional pending the
+# cam-5 validation experiment that will lock them from data; overridable per
+# request. Empirically length is ~14%/deg sensitive to the laser axis, and a
+# 1.1deg line difference (dives 383/471) already gave 44-305% length error, so
+# the original 1deg default was 10-25x too loose. At the measured line->length
+# coupling (~38%/deg of line), 0.1deg line ~= 4% length, so 0.1deg is the
+# measurement-grade default. Offset tightened in step. min_confidence raised off
+# the bare "is it a line at all" floor (5.0) to drop the low-confidence outlier
+# fits (clear bad fits clustered <~1700; the good cluster was >2500).
+_DEFAULT_MAX_ANGLE_DEG = 0.1
+_DEFAULT_MAX_OFFSET_PX = 15.0
+_DEFAULT_MIN_CONFIDENCE = 1000.0
 
 
 class CalibrationCandidate(BaseModel):
