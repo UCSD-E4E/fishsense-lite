@@ -1317,6 +1317,101 @@ async def test_slate_preprocessing_excludes_dive_when_sentinel_coexists_with_rea
     assert await select_next_for_slate_preprocessing(session=session) is None
 
 
+# --------------------------- slate prediction ---------------------------
+
+
+async def test_slate_prediction_requires_marker_and_no_prediction_or_label(session):
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        SLATE_CONTENT_MARKER,
+        select_next_for_slate_prediction,
+    )
+    from fishsense_api.models.slate_prediction import (  # pylint: disable=import-outside-toplevel
+        SlatePrediction,
+    )
+    from fishsense_api.models.species_label import (  # pylint: disable=import-outside-toplevel
+        SpeciesLabel,
+    )
+
+    # dive 1: no dive_slate_id -> excluded.
+    # dive 2: slate frame already has a SlatePrediction -> excluded.
+    # dive 3: slate frame, no prediction, no completed label -> picked.
+    session.add_all(
+        [_dive(1, dive_slate_id=None), _dive(2, dive_slate_id=99), _dive(3, dive_slate_id=99)]
+    )
+    await session.flush()
+    session.add_all([_image(11, 1), _image(21, 2), _image(31, 3)])
+    await session.flush()
+    session.add_all(
+        [
+            SpeciesLabel(image_id=11, content_of_image=SLATE_CONTENT_MARKER),
+            SpeciesLabel(image_id=21, content_of_image=SLATE_CONTENT_MARKER),
+            SpeciesLabel(image_id=31, content_of_image=SLATE_CONTENT_MARKER),
+            SlatePrediction(image_id=21, confidence=0.9),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_slate_prediction(session=session) == 3
+
+
+async def test_slate_prediction_placeholder_label_still_needs_prediction(session):
+    """Unlike the preprocess cohort, an incomplete (populate-seeded) slate
+    label must NOT exclude the frame — it still needs a prediction. The
+    prediction cohort keys on `completed`, not on project_id."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        SLATE_CONTENT_MARKER,
+        select_next_for_slate_prediction,
+    )
+    from fishsense_api.models.dive_slate_label import (  # pylint: disable=import-outside-toplevel
+        DiveSlateLabel,
+    )
+    from fishsense_api.models.species_label import (  # pylint: disable=import-outside-toplevel
+        SpeciesLabel,
+    )
+
+    session.add(_dive(1, dive_slate_id=99))
+    await session.flush()
+    session.add(_image(11, 1))
+    session.add(SpeciesLabel(image_id=11, content_of_image=SLATE_CONTENT_MARKER))
+    session.add(
+        DiveSlateLabel(image_id=11, completed=False, label_studio_project_id=66)
+    )
+    await session.flush()
+
+    assert await select_next_for_slate_prediction(session=session) == 1
+
+
+async def test_slate_prediction_excludes_completed_but_reenters_when_superseded(session):
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        SLATE_CONTENT_MARKER,
+        select_next_for_slate_prediction,
+    )
+    from fishsense_api.models.dive_slate_label import (  # pylint: disable=import-outside-toplevel
+        DiveSlateLabel,
+    )
+    from fishsense_api.models.species_label import (  # pylint: disable=import-outside-toplevel
+        SpeciesLabel,
+    )
+
+    session.add(_dive(1, dive_slate_id=99))
+    await session.flush()
+    session.add(_image(11, 1))
+    session.add(SpeciesLabel(image_id=11, content_of_image=SLATE_CONTENT_MARKER))
+    label = DiveSlateLabel(
+        image_id=11, completed=True, superseded=False, label_studio_project_id=66
+    )
+    session.add(label)
+    await session.flush()
+    # completed + not superseded -> the only frame is done -> excluded.
+    assert await select_next_for_slate_prediction(session=session) is None
+
+    # supersede it -> invalidated -> the frame re-enters the cohort.
+    label.superseded = True
+    session.add(label)
+    await session.flush()
+    assert await select_next_for_slate_prediction(session=session) == 1
+
+
 async def test_slate_preprocessing_ignores_null_project_sentinels(session):
     """NULL-`project_id` DiveSlateLabel rows are legacy sentinels — see
     the dive-image cohort docstring. They must NOT drop a dive from
