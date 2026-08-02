@@ -48,7 +48,7 @@ def _dive(dive_id: int, camera_id: int | None, *, days: int = 0):
     )
 
 
-def _line(dive_id: int, angle_deg: float, c: float, *, confidence: float = 100.0):
+def _line(dive_id: int, angle_deg: float, c: float, *, confidence: float = 5000.0):
     """A unit-normal Hesse line rotated `angle_deg` from the x-axis normal."""
     from fishsense_api.models.dive_laser_line import (  # pylint: disable=import-outside-toplevel
         DiveLaserLine,
@@ -142,8 +142,23 @@ async def test_ranks_closer_line_first(session):
     )
     await session.flush()
 
-    result = await _candidates(session, 1)
+    # widen tolerance so the 0.5deg candidate is admitted (it's outside the
+    # tightened default) — this test is about ordering, not the gate.
+    result = await _candidates(session, 1, max_angle_deg=1.0, max_offset_px=30.0)
     assert [c.dive_id for c in result] == [3, 2]
+
+
+async def test_default_tolerance_excludes_a_half_degree_match(session):
+    # The tightened default (0.1deg) must reject a 0.5deg line match that the
+    # old 1deg default would have (wrongly) admitted — measurement-grade gate.
+    session.add_all([_dive(1, 5), _dive(2, 5)])
+    await session.flush()
+    session.add_all([_line(1, 0.0, -100.0), _line(2, 0.5, -100.0), _extrinsics(2, 5)])
+    await session.flush()
+
+    assert await _candidates(session, 1) == []  # excluded at default 0.1deg
+    # ...but admitted when tolerance is explicitly widened.
+    assert [c.dive_id for c in await _candidates(session, 1, max_angle_deg=1.0)] == [2]
 
 
 async def test_low_confidence_candidate_excluded(session):
@@ -179,7 +194,7 @@ async def test_sign_flipped_line_still_matches(session):
         DiveLaserLine(  # same line, sign-flipped
             dive_id=2, a=-1.0, b=0.0, c=100.0,
             n_points=30, inlier_count=29, inlier_fraction=0.96,
-            residual_std=0.5, label_noise_mad=0.4, line_confidence=100.0,
+            residual_std=0.5, label_noise_mad=0.4, line_confidence=5000.0,
         )
     )
     session.add(_extrinsics(2, 5))
