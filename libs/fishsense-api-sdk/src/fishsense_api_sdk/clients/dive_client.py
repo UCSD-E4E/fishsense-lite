@@ -11,7 +11,7 @@ from fishsense_api_sdk.models.laser_extrinsics import LaserExtrinsics, _LaserExt
 
 
 class DiveClient(ClientBase):
-    # pylint: disable=too-few-public-methods
+    # pylint: disable=too-few-public-methods,too-many-public-methods
     """Client for interacting with dive-related endpoints of the Fishsense API."""
 
     async def get(self, dive_id: int | None = None) -> Dive | List[Dive] | None:
@@ -111,6 +111,10 @@ class DiveClient(ClientBase):
     async def select_next_for_laser_prediction(self) -> int | None:
         """Laser-detector cohort selector. See `select_next_for_laser_preprocessing`."""
         return await self._select_next("laser-prediction")
+
+    async def select_next_for_slate_prediction(self) -> int | None:
+        """Slate-detector cohort selector. See `select_next_for_laser_preprocessing`."""
+        return await self._select_next("slate-prediction")
 
     async def select_next_for_laser_calibration(self) -> int | None:
         """Stage 13 cohort selector. See `select_next_for_laser_preprocessing`."""

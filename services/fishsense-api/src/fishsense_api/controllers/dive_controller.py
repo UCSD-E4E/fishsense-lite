@@ -28,6 +28,7 @@ from fishsense_api.models.laser_label import LaserLabel
 from fishsense_api.models.laser_prediction import LaserPrediction
 from fishsense_api.models.measurement import Measurement
 from fishsense_api.models.priority import Priority
+from fishsense_api.models.slate_prediction import SlatePrediction
 from fishsense_api.models.species_label import SpeciesLabel
 from fishsense_api.server import app
 
@@ -235,6 +236,54 @@ async def select_next_for_laser_prediction(
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
         .where(has_image_needing_prediction)
+        .order_by(Dive.id)
+        .limit(1)
+    )
+    return (await session.exec(query)).first()
+
+
+@app.get("/api/v1/dives/select-next/slate-prediction/")
+async def select_next_for_slate_prediction(
+    session: AsyncSession = Depends(get_async_session),
+) -> int | None:
+    """Model-assisted slate labeling: HIGH-priority + `dive_slate_id` set + at
+    least one slate frame with no `SlatePrediction` and no *completed*
+    `DiveSlateLabel`.
+
+    A slate frame is an image with a `SpeciesLabel.content_of_image =
+    'Slate, Laser on slate'` (the same frames stage 9 preprocesses). Such a
+    frame needs a prediction only if it has neither been predicted nor
+    labeled by a human yet — so a dive drops out once every slate frame is
+    predicted (one-shot per image), and human-labeled frames are never
+    predicted over. "Labeled" = `completed IS TRUE AND superseded IS FALSE`,
+    matching the laser-prediction cohort's rationale (populate seeds
+    placeholder rows that carry a project_id, so a project-id check would
+    starve the detector).
+    """
+    has_slate_frame_needing_prediction = (
+        select(SpeciesLabel.id)
+        .join(Image, Image.id == SpeciesLabel.image_id)
+        .where(Image.dive_id == Dive.id)
+        .where(SpeciesLabel.content_of_image == SLATE_CONTENT_MARKER)
+        .where(
+            ~select(SlatePrediction.id)
+            .where(SlatePrediction.image_id == Image.id)
+            .exists()
+        )
+        .where(
+            ~select(DiveSlateLabel.id)
+            .where(DiveSlateLabel.image_id == Image.id)
+            .where(DiveSlateLabel.completed == True)
+            .where(DiveSlateLabel.superseded == False)
+            .exists()
+        )
+        .exists()
+    )
+    query = (
+        select(Dive.id)
+        .where(Dive.priority == Priority.HIGH)
+        .where(Dive.dive_slate_id != None)
+        .where(has_slate_frame_needing_prediction)
         .order_by(Dive.id)
         .limit(1)
     )

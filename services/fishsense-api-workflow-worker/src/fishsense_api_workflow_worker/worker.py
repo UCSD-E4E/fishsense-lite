@@ -126,6 +126,9 @@ from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_measure_fish_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_measure_fish_activity,
 )
+from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_slate_prediction_activity import (  # pylint: disable=line-too-long
+    select_next_high_priority_dive_for_slate_prediction_activity,
+)
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_slate_preprocessing_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_slate_preprocessing_activity,
 )
@@ -608,6 +611,7 @@ async def main():
                 select_next_high_priority_dive_for_clustering_activity,
                 select_next_high_priority_dive_for_laser_preprocessing_activity,
                 select_next_high_priority_dive_for_laser_prediction_activity,
+                select_next_high_priority_dive_for_slate_prediction_activity,
                 select_next_high_priority_dive_for_species_preprocessing_activity,
                 select_dives_needing_laser_population_activity,
                 select_dives_needing_species_population_activity,
