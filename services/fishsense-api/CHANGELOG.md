@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.36.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.35.1...fishsense-api-v1.36.0) (2026-08-02)
+
+
+### Features
+
+* **calibration:** persist per-dive laser-line fingerprint ([#467](https://github.com/UCSD-E4E/fishsense-lite/issues/467)) ([629a334](https://github.com/UCSD-E4E/fishsense-lite/commit/629a3342a741e099d1693f07a8be981e2186d1e1))
+
 ## [1.35.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.35.0...fishsense-api-v1.35.1) (2026-07-29)
 
 

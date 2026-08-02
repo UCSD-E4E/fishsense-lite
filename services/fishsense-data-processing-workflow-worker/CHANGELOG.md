@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.10.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.9.2...fishsense-data-processing-workflow-worker-v2.10.0) (2026-08-02)
+
+
+### Features
+
+* **calibration:** persist per-dive laser-line fingerprint ([#467](https://github.com/UCSD-E4E/fishsense-lite/issues/467)) ([629a334](https://github.com/UCSD-E4E/fishsense-lite/commit/629a3342a741e099d1693f07a8be981e2186d1e1))
+
 ## [2.9.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.9.1...fishsense-data-processing-workflow-worker-v2.9.2) (2026-08-01)
 
 
