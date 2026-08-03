@@ -15,10 +15,11 @@ nothing here talks to Temporal.
 from __future__ import annotations
 
 from datetime import timedelta
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from temporalio.client import ScheduleOverlapPolicy
+from temporalio.service import RPCError, RPCStatusCode
 
 from fishsense_api_workflow_worker import worker as sut
 
@@ -48,7 +49,11 @@ async def registered(monkeypatch):
     async def _fake_ensure_schedule(_client, *, schedule_id, schedule):
         captured[schedule_id] = schedule
 
+    async def _fake_retire_schedule(_client, _schedule_id):
+        return None
+
     monkeypatch.setattr(sut, "ensure_schedule", _fake_ensure_schedule)
+    monkeypatch.setattr(sut, "retire_schedule", _fake_retire_schedule)
     await sut.schedule_workflows(MagicMock())
     return captured
 
@@ -82,6 +87,58 @@ async def test_slate_predict_is_not_scheduled(registered):
     off until the detector is validated on those conditions. The parent stays
     registered for on-demand use; only the schedule is withheld."""
     assert "predict-slate-images-workflow-schedule" not in registered
+
+
+async def test_slate_predict_schedule_is_actively_retired(monkeypatch):
+    """Not-created isn't enough: a prior deploy may already have created the
+    schedule, so startup must actively delete it (idempotently) or a stale
+    schedule keeps firing. Pins that `schedule_workflows` retires it."""
+    retired: list[str] = []
+
+    async def _fake_ensure_schedule(_client, *, schedule_id, schedule):
+        # pylint: disable=unused-argument
+        return None
+
+    async def _fake_retire_schedule(_client, schedule_id):
+        retired.append(schedule_id)
+
+    monkeypatch.setattr(sut, "ensure_schedule", _fake_ensure_schedule)
+    monkeypatch.setattr(sut, "retire_schedule", _fake_retire_schedule)
+    await sut.schedule_workflows(MagicMock())
+
+    assert "predict-slate-images-workflow-schedule" in retired
+
+
+def _handle_raising(exc):
+    handle = MagicMock()
+    handle.delete = AsyncMock(side_effect=exc)
+    client = MagicMock()
+    client.get_schedule_handle = MagicMock(return_value=handle)
+    return client, handle
+
+
+async def test_retire_schedule_deletes_when_present():
+    handle = MagicMock()
+    handle.delete = AsyncMock()
+    client = MagicMock()
+    client.get_schedule_handle = MagicMock(return_value=handle)
+
+    await sut.retire_schedule(client, "some-schedule")
+
+    client.get_schedule_handle.assert_called_once_with("some-schedule")
+    handle.delete.assert_awaited_once()
+
+
+async def test_retire_schedule_is_idempotent_on_not_found():
+    client, _ = _handle_raising(RPCError("missing", RPCStatusCode.NOT_FOUND, b""))
+    # Absent schedule is the desired state -> no raise.
+    await sut.retire_schedule(client, "some-schedule")
+
+
+async def test_retire_schedule_reraises_other_rpc_errors():
+    client, _ = _handle_raising(RPCError("boom", RPCStatusCode.INTERNAL, b""))
+    with pytest.raises(RPCError):
+        await sut.retire_schedule(client, "some-schedule")
 
 
 async def test_laser_populate_is_scheduled_hourly_at_12(registered):
