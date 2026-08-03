@@ -22,6 +22,7 @@ from temporalio.client import (
     ScheduleSpec,
     ScheduleState,
 )
+from temporalio.service import RPCError, RPCStatusCode
 from temporalio.worker import Worker
 
 from fishsense_api_workflow_worker.activities.reconcile_labeling_configs_activity import (  # pylint: disable=line-too-long
@@ -302,11 +303,36 @@ async def schedule_workflow(
     await ensure_schedule(client, schedule_id=schedule_id, schedule=schedule)
 
 
+# Schedules that must NOT exist. Removing a schedule's registration only stops
+# it from being (re)created; a prior deploy may already have created it. We
+# actively delete these on startup so a deliberately-unscheduled parent can't
+# keep firing from a stale schedule. `predict-slate-images-workflow-schedule`
+# is retired because the slate estimator's ECC gate does not transfer to
+# out-of-distribution conditions (high-ECC false fits on pool frames); see the
+# predict-slate note below.
+_RETIRED_SCHEDULE_IDS = ("predict-slate-images-workflow-schedule",)
+
+
+async def retire_schedule(client: Client, schedule_id: str) -> None:
+    """Delete a schedule that must not exist. Idempotent: a missing schedule is
+    the desired state, so NOT_FOUND is a success, not an error."""
+    log = logging.getLogger(__name__)
+    try:
+        await client.get_schedule_handle(schedule_id).delete()
+        log.info("retired schedule %s (must not exist)", schedule_id)
+    except RPCError as exc:
+        if exc.status == RPCStatusCode.NOT_FOUND:
+            return
+        raise
+
+
 async def schedule_workflows(client: Client):
     """Schedule workflows for the worker."""
 
     log = logging.getLogger(__name__)
     log.info("registering Temporal schedules")
+    for schedule_id in _RETIRED_SCHEDULE_IDS:
+        await retire_schedule(client, schedule_id)
     async with ExceptionGroupErrorLogging(log):
         async with asyncio.TaskGroup() as tg:
             tg.create_task(
@@ -401,9 +427,12 @@ async def schedule_workflows(client: Client):
             # pre-annotations in front of labelers. Until the detector is
             # validated on those conditions (pool data + recalibration /
             # retrain, upstream in slate_training/fishsense-core), the parent
-            # runs on-demand only. `PredictSlateImagesParentWorkflow` and
+            # runs on-demand only, and any stale schedule from a prior deploy is
+            # actively deleted on startup (see `_RETIRED_SCHEDULE_IDS`).
+            # `PredictSlateImagesParentWorkflow` and
             # `BackfillSlatePredictionsWorkflow` stay registered so it can be
-            # re-enabled without a code change once it's trustworthy.
+            # re-enabled (drop it from `_RETIRED_SCHEDULE_IDS` + re-add the
+            # schedule) once it's trustworthy.
             #
             # Laser populate parent: hourly at +12 min, just after the +10
             # laser-detector predict parent has written LaserPrediction rows.
