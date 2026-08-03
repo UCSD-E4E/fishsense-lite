@@ -392,22 +392,19 @@ async def schedule_workflows(client: Client):
                     overlap=ScheduleOverlapPolicy.SKIP,
                 )
             )
-            # Slate-detector (model-assisted labeling) parent: hourly at
-            # +35 min (free slot). Stages raw + slate PDF, runs the CPU
-            # board-plane estimator per unpredicted slate frame, and persists
-            # SlatePrediction rows for the dive-slate populate step to serve as
-            # LS pre-annotations. SKIP overlap; drains one dive per firing.
-            tg.create_task(
-                schedule_workflow(
-                    client,
-                    "predict-slate-images-workflow-schedule",
-                    PredictSlateImagesParentWorkflow,
-                    timedelta(hours=1),
-                    offset=timedelta(minutes=35),
-                    run_timeout=timedelta(hours=2),
-                    overlap=ScheduleOverlapPolicy.SKIP,
-                )
-            )
+            # Slate-detector (model-assisted labeling) parent is deliberately
+            # NOT scheduled. The fishsense-core slate estimator's ECC gate was
+            # calibrated only on clear-water reef dives and does not transfer to
+            # out-of-distribution conditions: pool calibration frames produce
+            # high-ECC (0.93-0.97) *false* fits that pass the 0.80 gate and land
+            # off the tape corners, so automated seeding would put wrong
+            # pre-annotations in front of labelers. Until the detector is
+            # validated on those conditions (pool data + recalibration /
+            # retrain, upstream in slate_training/fishsense-core), the parent
+            # runs on-demand only. `PredictSlateImagesParentWorkflow` and
+            # `BackfillSlatePredictionsWorkflow` stay registered so it can be
+            # re-enabled without a code change once it's trustworthy.
+            #
             # Laser populate parent: hourly at +12 min, just after the +10
             # laser-detector predict parent has written LaserPrediction rows.
             # Decoupled from the stage-0.1 preprocess parent (which no longer
