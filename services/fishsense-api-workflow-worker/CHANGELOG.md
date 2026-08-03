@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.48.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.48.0...fishsense-api-workflow-worker-v1.48.1) (2026-08-03)
+
+
+### Bug Fixes
+
+* **api-worker:** actively retire the slate-detector schedule on startup ([#498](https://github.com/UCSD-E4E/fishsense-lite/issues/498)) ([e32bd9b](https://github.com/UCSD-E4E/fishsense-lite/commit/e32bd9bc97108709793e75b818657fd88740c4e2))
+
 ## [1.48.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.47.0...fishsense-api-workflow-worker-v1.48.0) (2026-08-02)
 
 
