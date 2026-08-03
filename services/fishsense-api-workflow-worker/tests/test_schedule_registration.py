@@ -28,7 +28,6 @@ from fishsense_api_workflow_worker import worker as sut
 _DIVE_SELECTING_PARENT_SCHEDULE_IDS = (
     "preprocess-laser-images-workflow-schedule",
     "predict-laser-images-workflow-schedule",
-    "predict-slate-images-workflow-schedule",
     "populate-laser-labels-workflow-schedule",
     "cluster-dive-frames-workflow-schedule",
     "preprocess-species-images-workflow-schedule",
@@ -76,10 +75,13 @@ async def test_laser_predict_is_scheduled_hourly_at_10(registered):
     assert _offset(schedule) == timedelta(minutes=10)
 
 
-async def test_slate_predict_is_scheduled_hourly_at_35(registered):
-    schedule = registered["predict-slate-images-workflow-schedule"]
-    assert _every(schedule) == timedelta(hours=1)
-    assert _offset(schedule) == timedelta(minutes=35)
+async def test_slate_predict_is_not_scheduled(registered):
+    """Deliberately unscheduled: the slate estimator's ECC gate was calibrated
+    only on clear-water reef and produces high-ECC false fits on out-of-
+    distribution frames (e.g. pool calibration dives), so automated seeding is
+    off until the detector is validated on those conditions. The parent stays
+    registered for on-demand use; only the schedule is withheld."""
+    assert "predict-slate-images-workflow-schedule" not in registered
 
 
 async def test_laser_populate_is_scheduled_hourly_at_12(registered):
