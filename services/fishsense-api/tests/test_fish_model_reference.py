@@ -49,13 +49,20 @@ def test_known_models_cover_the_labeled_taxonomy():
     assert {"Snook", "Grouper", "Shark", "Purple Angel"} <= names
 
 
-def test_ruler_is_seeded_at_the_fourteen_inch_span():
-    """Every head/tail label on a ruler frame currently marks the 14-inch span,
-    so the ruler grades as a fixed-length reference. It is the only reference
-    with unambiguous endpoints, which is what lets it separate calibration
-    error from the models' tail-landmark convention."""
+def test_ruler_is_seeded_at_the_labeled_span_not_the_nominal_length():
+    """The ruler is a 14-inch ruler, but the LABELED span is 13.5 in.
+
+    Labelers click the first printed graduation — the 0.5 mark, the leftmost
+    thing on the scale — and the 14 mark. Measuring the ruler's own inch ticks
+    across 4 frames gave 13.500/13.505/13.481/13.468 in (SD 0.13%).
+
+    Pinned as a regression because 14 in is the intuitive-but-wrong value, and
+    getting it wrong cost a whole false explanation (an invented 22-degree tilt)
+    before anyone checked the head end of the scale.
+    """
     ruler = next(m for m in KNOWN_FISH_MODELS if m["name"] == "Ruler")
-    assert ruler["known_length_m"] == pytest.approx(0.3556)  # 14 in
+    assert ruler["known_length_m"] == pytest.approx(0.3429)  # 13.5 in
+    assert ruler["known_length_m"] != pytest.approx(0.3556), "14 in is the trap"
 
 
 def test_known_lengths_are_positive_and_plausible():
