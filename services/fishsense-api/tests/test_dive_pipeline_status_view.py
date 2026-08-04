@@ -989,6 +989,58 @@ def _measurement(image_id: int, fish_id: int = 100):
     return Measurement(image_id=image_id, fish_id=fish_id, length_m=0.3)
 
 
+def _fish_model_measurable_image(session, image_id: int, dive_id: int):
+    """Seed a fish-model image the way prod has it: top-three species label
+    (`Fish Model, <name>`) + valid laser + valid headtail, but **no**
+    LABEL_STUDIO cluster (models carry no grouping labels). Stage 14 measures
+    these by waiving the cluster gate, so `measured` must too."""
+    from fishsense_api.models.head_tail_label import HeadTailLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_image(image_id, dive_id))
+    session.add(
+        LaserLabel(image_id=image_id, completed=True, superseded=False, x=1.0, y=2.0)
+    )
+    session.add(
+        HeadTailLabel(
+            image_id=image_id, completed=True, superseded=False,
+            head_x=1.0, head_y=2.0, tail_x=3.0, tail_y=4.0,
+        )
+    )
+    session.add(
+        SpeciesLabel(
+            image_id=image_id, top_three_photos_of_group=True,
+            completed=True, superseded=False, label_studio_project_id=70,
+            content_of_image="Fish Model, Grouper",
+        )
+    )
+
+
+async def test_measured_true_for_fish_model_image_without_a_cluster(session):
+    """A fish-model dive drains: no LABEL_STUDIO cluster, but the model image
+    is measurable and, once measured, `measured` flips true."""
+    session.add(_dive(1))
+    await session.flush()
+    _fish_model_measurable_image(session, 11, 1)
+    await session.flush()
+    session.add(_measurement(11))
+    await session.flush()
+
+    assert (await _row(session, 1))["measured"] is True
+
+
+async def test_measured_false_for_unmeasured_fish_model_image(session):
+    """Same fish-model image, no measurement yet -> not measured (so the
+    stage-14 cohort keeps offering it)."""
+    session.add(_dive(1))
+    await session.flush()
+    _fish_model_measurable_image(session, 11, 1)
+    await session.flush()
+
+    assert (await _row(session, 1))["measured"] is False
+
+
 async def test_measured_true_when_every_measurable_image_has_a_measurement(session):
     session.add(_dive(1))
     await session.flush()
@@ -1077,18 +1129,19 @@ async def test_measured_ignores_non_top_three_images(session):
 async def test_measured_ignores_species_rows_without_a_scientific_name(session):
     """`measured` must mirror what stage 14 can actually measure.
 
-    A `Fish Model` / `Calibration Targets` row carries no
-    "Common (Scientific)" name, so `measure_fish_activity` skips it and no
+    A `Calibration Targets` row carries neither a "Common (Scientific)" name
+    nor a `Fish Model,` prefix, so `measure_fish_activity` skips it and no
     Measurement is ever written. Counting it as a measurable-but-unmeasured
     image pinned `measured` false forever — the same never-goes-false shape
-    b7c2e4d81a09 fixed one layer up, for unbound clusters.
+    b7c2e4d81a09 fixed one layer up, for unbound clusters. (Fish models ARE
+    measurable now — covered by test_measured_true_for_fish_model_image_*.)
     """
     session.add(_dive(1))
     await session.flush()
-    # One real fish (measured) + one Fish Model rig (never measurable).
+    # One real fish (measured) + one Calibration Targets row (never measurable).
     real = _measurable_image(session, 11, 1, cluster_id=1)
     rig = _measurable_image(
-        session, 12, 1, cluster_id=2, content_of_image="Fish Model, Weasly Fish"
+        session, 12, 1, cluster_id=2, content_of_image="Calibration Targets, Ruler"
     )
     await session.flush()
     session.add_all([real, rig])
@@ -1096,7 +1149,7 @@ async def test_measured_ignores_species_rows_without_a_scientific_name(session):
     await session.flush()
 
     assert (await _row(session, 1))["measured"] is True, (
-        "the Fish Model rig must not hold `measured` false"
+        "the Calibration Targets row must not hold `measured` false"
     )
 
 

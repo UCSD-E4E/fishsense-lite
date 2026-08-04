@@ -61,6 +61,54 @@ class TestFishClient:
                 fish = await client.get(fish_id=999)
                 assert fish is None
 
+    async def test_get_by_name_returns_fish(self):
+        """get_by_name resolves a model Fish by its name natural key."""
+        semaphore = asyncio.Semaphore(10)
+        client = FishClient(
+            base_url="http://test.com",
+            username="testuser",
+            password="testpass",
+            timeout=10,
+            semaphore=semaphore,
+        )
+
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"id": 7, "name": "Grouper", "species_id": None}
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            async with client:
+                fish = await client.get_by_name("Grouper")
+                assert isinstance(fish, Fish)
+                assert fish.id == 7
+                assert fish.name == "Grouper"
+                assert fish.species_id is None
+                mock_get.assert_called_once_with("/api/v1/fish/by-name/Grouper")
+
+    async def test_get_by_name_returns_none_on_404(self):
+        """No model with that name yet -> None, not an error."""
+        semaphore = asyncio.Semaphore(10)
+        client = FishClient(
+            base_url="http://test.com",
+            username="testuser",
+            password="testpass",
+            timeout=10,
+            semaphore=semaphore,
+        )
+
+        mock_response = Mock()
+        mock_response.status_code = 404
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            async with client:
+                assert await client.get_by_name("Nope") is None
+
     async def test_get_single_fish_returns_none_on_404(self):
         """A 404 from GET /fish/{id} returns None instead of raising."""
         semaphore = asyncio.Semaphore(10)

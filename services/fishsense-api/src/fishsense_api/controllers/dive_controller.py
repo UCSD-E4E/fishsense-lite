@@ -73,9 +73,27 @@ def _measurable_species_conditions():
     re-selected every hour forever. That is the same never-goes-false shape
     that blocked scheduling stage 14 before 2026-07-17.
 
+    Two measurable branches: real fish carry the `Common (Scientific)` shape
+    (parens); physical fish models carry a `Fish Model, <name>` prefix (no
+    parens) — `measure_fish_activity` resolves those to a name-keyed Fish.
+    Calibration Targets stay unmeasurable.
+
     Mirrors `views._MEASURABLE_SPECIES_SQL` — keep the two in step.
     """
-    return (SpeciesLabel.content_of_image.like("%(%)"),)  # pylint: disable=no-member
+    return (  # pylint: disable=no-member
+        or_(
+            SpeciesLabel.content_of_image.like("%(%)"),
+            SpeciesLabel.content_of_image.like("Fish Model,%"),
+        ),
+    )
+
+
+def _is_fish_model_condition():
+    """A physical fish-model species row. Models carry no grouping labels and
+    thus no LABEL_STUDIO cluster, so the stage-14 cohort waives the cluster
+    requirement for them (identity is the model name; length uses only
+    laser/head-tail/calibration). Mirrors `views._IS_FISH_MODEL_SQL`."""
+    return SpeciesLabel.content_of_image.like("Fish Model,%")  # pylint: disable=no-member
 
 
 def _valid_headtail_conditions():
@@ -699,7 +717,9 @@ async def select_next_for_measure_fish(
         .where(*_measurable_species_conditions())
         .where(valid_laser)
         .where(valid_headtail)
-        .where(in_label_studio_cluster)
+        # Real fish need a LABEL_STUDIO cluster; fish models carry none and
+        # need none (see `_is_fish_model_condition`).
+        .where(or_(in_label_studio_cluster, _is_fish_model_condition()))
         .where(~is_measured)
         .exists()
     )

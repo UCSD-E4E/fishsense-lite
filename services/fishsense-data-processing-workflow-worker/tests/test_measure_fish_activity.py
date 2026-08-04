@@ -176,6 +176,7 @@ def _make_fs(  # pylint: disable=too-many-arguments
     headtail_labels: dict[int, HeadTailLabel | None],
     clusters: List[DiveFrameCluster],
     species_lookup: dict[str, Species] | None = None,
+    model_fish_lookup: dict[str, Fish] | None = None,
     new_species_id: int = 500,
     new_fish_id: int = 700,
     existing_measurements: List[Measurement] | None = None,
@@ -211,6 +212,7 @@ def _make_fs(  # pylint: disable=too-many-arguments
     )
     fs.fish.post_species = AsyncMock(return_value=new_species_id)
     fs.fish.get = AsyncMock(return_value=None)
+    fs.fish.get_by_name = AsyncMock(side_effect=(model_fish_lookup or {}).get)
     fs.fish.post = AsyncMock(return_value=new_fish_id)
     fs.fish.post_measurement = AsyncMock(return_value=None)
     # `None` is the SDK's "dive has no measurements yet" signal (404).
@@ -547,12 +549,13 @@ async def test_measurements_are_fetched_once_per_dive(monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "content",
-    ["Fish Model, Weasly Fish", "Calibration Targets, Ruler", None],
-    ids=["fish-model", "calibration-target", "empty"],
+    ["Calibration Targets, Ruler", None],
+    ids=["calibration-target", "empty"],
 )
 async def test_skips_species_rows_that_carry_no_scientific_name(monkeypatch, content):
-    """The non-`Fish` taxonomy branches have no "Common (Scientific)" name,
-    so there is nothing to measure against.
+    """Taxonomy branches with neither a "Common (Scientific)" name nor a
+    `Fish Model,` prefix have nothing to measure against (Calibration Targets,
+    empty). Fish models ARE measurable now (see the model-branch tests below).
 
     These land in their own counter rather than `missing_laser_or_headtail`
     — they used to inflate that one, which pointed anyone reading the result
@@ -580,3 +583,165 @@ async def test_skips_species_rows_that_carry_no_scientific_name(monkeypatch, con
     assert result.skipped_unmeasurable_species == 1
     assert result.missing_laser_or_headtail == 0, "must not inflate the label counter"
     fs.fish.post_measurement.assert_not_called()
+
+
+# ── fish-model branch: name-keyed identity, cluster-independent ───────
+#
+# Models are labeled `content_of_image = "Fish Model, <name>"` (no parens),
+# carry no grouping labels, and so have no LABEL_STUDIO cluster. Identity is
+# the model name (one Fish per model across dives), and length uses only
+# laser/head-tail/calibration — no cluster. So the model branch: resolves the
+# Fish by name (find-or-create), waives the cluster gate, and never binds
+# `cluster.fish_id`.
+
+
+def _model_observation():
+    le = _laser_extrinsics()
+    head_pix, tail_pix, laser_pix = _build_observation(
+        le, np.array([-0.10, 0.00, 1.20]), np.array([0.20, 0.00, 1.20]), 1.20
+    )
+    return le, head_pix, tail_pix, laser_pix
+
+
+@pytest.mark.asyncio
+async def test_measures_a_fish_model_without_a_cluster(monkeypatch):
+    """The key case: a model image with NO LABEL_STUDIO cluster is still
+    measured. It creates a name-keyed Fish (species_id=None) and never binds a
+    cluster."""
+    image_id = 100
+    le, head_pix, tail_pix, laser_pix = _model_observation()
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_camera_intrinsics(),
+        laser_extrinsics=le,
+        species_labels=[_species_label(image_id, content="Fish Model, Grouper")],
+        laser_labels={image_id: _laser_label(image_id, *laser_pix)},
+        headtail_labels={image_id: _headtail_label(image_id, head_pix, tail_pix)},
+        clusters=[],  # <-- no clusters at all
+        model_fish_lookup={},  # not seen before -> create
+        new_fish_id=700,
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(sut.measure_fish_activity, 42)
+
+    assert result.measured == 1
+    assert result.missing_cluster == 0, "models don't require a cluster"
+    # Created a name-keyed model Fish, no Species.
+    fs.fish.post_species.assert_not_called()
+    fs.fish.post.assert_awaited_once()
+    created = fs.fish.post.call_args.args[0]
+    assert created.name == "Grouper"
+    assert created.species_id is None
+    # Never binds a cluster (there is none, and identity isn't per-cluster).
+    fs.images.put_cluster.assert_not_called()
+    fish_id, measurement = fs.fish.post_measurement.call_args.args
+    assert fish_id == 700
+    assert measurement.image_id == image_id
+
+
+@pytest.mark.asyncio
+async def test_reuses_existing_model_fish_by_name(monkeypatch):
+    """Same model across dives/cameras resolves to ONE Fish — get_by_name hit
+    means no new Fish is created."""
+    image_id = 100
+    le, head_pix, tail_pix, laser_pix = _model_observation()
+    existing = Fish(id=900, name="Grouper", species_id=None)
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_camera_intrinsics(),
+        laser_extrinsics=le,
+        species_labels=[_species_label(image_id, content="Fish Model, Grouper")],
+        laser_labels={image_id: _laser_label(image_id, *laser_pix)},
+        headtail_labels={image_id: _headtail_label(image_id, head_pix, tail_pix)},
+        clusters=[_cluster([image_id])],
+        model_fish_lookup={"Grouper": existing},
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(sut.measure_fish_activity, 42)
+
+    assert result.measured == 1
+    fs.fish.post.assert_not_called()  # reused, not created
+    fs.images.put_cluster.assert_not_called()
+    fish_id, _ = fs.fish.post_measurement.call_args.args
+    assert fish_id == 900
+
+
+@pytest.mark.asyncio
+async def test_two_models_in_one_cluster_resolve_to_distinct_fish(monkeypatch):
+    """The mixed-group case: two different models sharing a cluster must NOT
+    collapse to one Fish (the old per-cluster identity bug). Name-keyed
+    resolution keeps them distinct."""
+    img_g, img_s = 100, 101
+    le, head_pix, tail_pix, laser_pix = _model_observation()
+
+    ids_by_name = {"Grouper": 701, "Shark": 702}
+
+    async def _post(fish):
+        return ids_by_name[fish.name]
+
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_camera_intrinsics(),
+        laser_extrinsics=le,
+        species_labels=[
+            _species_label(img_g, content="Fish Model, Grouper"),
+            _species_label(img_s, content="Fish Model, Shark"),
+        ],
+        laser_labels={
+            img_g: _laser_label(img_g, *laser_pix),
+            img_s: _laser_label(img_s, *laser_pix),
+        },
+        headtail_labels={
+            img_g: _headtail_label(img_g, head_pix, tail_pix),
+            img_s: _headtail_label(img_s, head_pix, tail_pix),
+        },
+        clusters=[_cluster([img_g, img_s], fish_id=None)],  # one shared cluster
+        model_fish_lookup={},
+    )
+    fs.fish.post = AsyncMock(side_effect=_post)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(sut.measure_fish_activity, 42)
+
+    assert result.measured == 2
+    fish_ids = {c.args[0] for c in fs.fish.post_measurement.call_args_list}
+    assert fish_ids == {701, 702}, "two models -> two distinct Fish"
+    fs.images.put_cluster.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_same_model_across_clusters_resolves_to_one_fish(monkeypatch):
+    """Same model in two different clusters -> one Fish (name-keyed, cached
+    within the run so it isn't re-created per cluster)."""
+    img_a, img_b = 100, 101
+    le, head_pix, tail_pix, laser_pix = _model_observation()
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_camera_intrinsics(),
+        laser_extrinsics=le,
+        species_labels=[
+            _species_label(img_a, content="Fish Model, Grouper"),
+            _species_label(img_b, content="Fish Model, Grouper"),
+        ],
+        laser_labels={
+            img_a: _laser_label(img_a, *laser_pix),
+            img_b: _laser_label(img_b, *laser_pix),
+        },
+        headtail_labels={
+            img_a: _headtail_label(img_a, head_pix, tail_pix),
+            img_b: _headtail_label(img_b, head_pix, tail_pix),
+        },
+        clusters=[_cluster([img_a], 1), _cluster([img_b], 2)],
+        model_fish_lookup={},
+        new_fish_id=700,
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(sut.measure_fish_activity, 42)
+
+    assert result.measured == 2
+    fs.fish.post.assert_awaited_once()  # created once, reused for the second
+    fish_ids = {c.args[0] for c in fs.fish.post_measurement.call_args_list}
+    assert fish_ids == {700}, "same model -> one Fish"

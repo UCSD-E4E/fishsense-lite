@@ -39,6 +39,32 @@ class FishClient(ClientBase):
 
         return [Fish.model_validate(fish) for fish in json]
 
+    async def get_by_name(self, name: str) -> Fish | None:
+        """Retrieve a fish by its `name` natural key (physical fish models).
+
+        Returns None on 404 (no model with that name yet), mirroring
+        `get_species_by_scientific_name`. Stage 14 uses this to resolve-or-create
+        one Fish per model across dives.
+
+        Args:
+            name (str): The model name to look up.
+
+        Returns:
+            Fish | None: The fish if found, otherwise None.
+        """
+        response = await self._get(f"/api/v1/fish/by-name/{name}")
+        if response.status_code == 404:
+            self.logger.debug("No fish found with name %s", name)
+            return None
+        response.raise_for_status()
+
+        json = response.json()
+        if json is None:
+            self.logger.debug("No fish found with name %s", name)
+            return None
+
+        return Fish.model_validate(json)
+
     async def post(self, fish: Fish) -> int:
         """Create a new fish entry in the Fishsense API.
 

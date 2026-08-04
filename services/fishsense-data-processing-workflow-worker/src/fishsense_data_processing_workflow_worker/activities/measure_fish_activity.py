@@ -10,10 +10,14 @@ covered by synthetic-geometry tests in
 Lives on the data-processing worker for the same reason as stage 13 —
 it pulls in fishsense-core math kernels; the api-worker stays thin.
 
-Upstream dependency: clusters with `data_source=LABEL_STUDIO` must
-exist for the dive (stage 6.1). Species labels whose image isn't in
-any cluster are skipped with a warning — handles the partial-port
-case gracefully.
+Upstream dependency (real fish only): clusters with
+`data_source=LABEL_STUDIO` must exist for the dive (stage 6.1). A
+real-fish species label whose image isn't in any cluster is skipped
+with a warning. Physical fish models (`content_of_image = "Fish Model,
+<name>"`) are exempt — they carry no grouping labels and thus no
+cluster, their identity is the model name (not the cluster), and the
+length math uses only laser/head-tail/calibration; so the cluster gate
+is waived for them.
 """
 
 from __future__ import annotations
@@ -62,6 +66,29 @@ class MeasureFishResult:
 
 
 __all__ = ["MeasureFishResult", "measure_fish_activity"]
+
+
+# Taxonomy prefix for physical fish models. The leaf after it (e.g. "Grouper")
+# is the model's identity — the `name` natural key on Fish. Mirrors the
+# `LIKE 'Fish Model,%'` clause in `views._MEASURABLE_SPECIES_SQL` and
+# `dive_controller._measurable_species_conditions`; keep the three in step.
+_FISH_MODEL_PREFIX = "Fish Model,"
+
+
+def _parse_model_name(content_of_image: str | None) -> str | None:
+    """Return the model name for a `Fish Model, <name>` row, else None.
+
+    Real fish (`..., Common (Scientific)`) and other branches (Calibration
+    Targets) return None. An empty leaf ("Fish Model," with nothing after)
+    returns None — nothing to identify — matching the "skip rather than write a
+    malformed row" posture of `_parse_species_names`.
+    """
+    if not content_of_image:
+        return None
+    if not content_of_image.startswith(_FISH_MODEL_PREFIX):
+        return None
+    name = content_of_image[len(_FISH_MODEL_PREFIX):].strip()
+    return name or None
 
 
 def _parse_species_names(content_of_image: str | None) -> tuple[str, str] | None:
@@ -113,6 +140,29 @@ async def _ensure_fish(
         cluster.fish_id = fish.id
         await fs.images.put_cluster(cluster.dive_id, cluster.id, cluster)
 
+    return fish
+
+
+async def _ensure_model_fish(
+    fs: Client,
+    name: str,
+    cache: dict[str, Fish],
+) -> Fish:
+    """Find-or-create the Fish for a physical model, keyed GLOBALLY by name.
+
+    Unlike `_ensure_fish`, identity is the model name, not the cluster: the same
+    model resolves to one Fish across dives/cameras/time, and two models in one
+    cluster resolve to two Fish. `cluster.fish_id` is never touched. `cache`
+    dedups within a single dive run; `get_by_name` dedups across runs; and
+    `post` upserts on name, so a concurrent create still converges to one row.
+    """
+    if name in cache:
+        return cache[name]
+    fish = await fs.fish.get_by_name(name)
+    if fish is None:
+        fish = Fish(id=None, name=name, species_id=None)
+        fish.id = await fs.fish.post(fish)
+    cache[name] = fish
     return fish
 
 
@@ -244,6 +294,8 @@ async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
             missing_cluster=0,
             skipped_already_measured=0,
         )
+        # Name -> Fish for physical models, deduped within this dive run.
+        model_fish_cache: dict[str, Fish] = {}
 
         for species_label in top_three:
             image_id = species_label.image_id
@@ -256,8 +308,28 @@ async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
                 result.skipped_already_measured += 1
                 continue
 
+            # Classify the taxonomy branch first. Real fish carry a
+            # "Common (Scientific)" name; models carry a "Fish Model, <name>"
+            # prefix. Anything else (Calibration Targets, empty) is not
+            # measurable.
+            names = _parse_species_names(species_label.content_of_image)
+            model_name = _parse_model_name(species_label.content_of_image)
+            if names is None and model_name is None:
+                activity.logger.info(
+                    "dive_id=%d image_id=%d: content_of_image=%r is neither a "
+                    "'Common (Scientific)' name nor a 'Fish Model,' row; not "
+                    "measurable, skipping",
+                    dive_id, image_id, species_label.content_of_image,
+                )
+                result.skipped_unmeasurable_species += 1
+                continue
+
+            # Real fish anchor identity to their LABEL_STUDIO cluster, so a
+            # missing cluster is a hard skip. Models are keyed by name and use
+            # no cluster (they carry none — no grouping labels), so the gate is
+            # waived for them.
             cluster = cluster_by_image.get(image_id)
-            if cluster is None:
+            if names is not None and cluster is None:
                 activity.logger.warning(
                     "dive_id=%d image_id=%d: no LABEL_STUDIO cluster; skipping",
                     dive_id, image_id,
@@ -275,25 +347,12 @@ async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
                 result.missing_laser_or_headtail += 1
                 continue
 
-            names = _parse_species_names(species_label.content_of_image)
-            if names is None:
-                # Expected for the non-`Fish` taxonomy branches (Fish Model,
-                # Calibration Targets) — they carry no scientific name, so
-                # there is nothing to measure against. Info rather than
-                # warning, and its own counter: this used to increment
-                # `missing_laser_or_headtail`, which sent anyone reading the
-                # result at the labels rather than at the taxonomy branch.
-                activity.logger.info(
-                    "dive_id=%d image_id=%d: content_of_image=%r carries no "
-                    "'Common (Scientific)' name; not measurable, skipping",
-                    dive_id, image_id, species_label.content_of_image,
-                )
-                result.skipped_unmeasurable_species += 1
-                continue
-            common, scientific = names
-
-            species = await _ensure_species(fs, common, scientific)
-            fish = await _ensure_fish(fs, cluster, species)
+            if names is not None:
+                common, scientific = names
+                species = await _ensure_species(fs, common, scientific)
+                fish = await _ensure_fish(fs, cluster, species)
+            else:
+                fish = await _ensure_model_fish(fs, model_name, model_fish_cache)
 
             length_m = _measure_length(
                 laser_label, headtail_label, laser_extrinsics, camera_intrinsics

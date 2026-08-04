@@ -1608,6 +1608,58 @@ async def test_measure_fish_requires_extrinsics_and_an_unmeasured_measurable_ima
     assert await select_next_for_measure_fish(session=session) == 3
 
 
+def _fish_model_measurable_image(session, image_id: int, dive_id: int):
+    """A fish-model image the way prod has it: top-three `Fish Model, <name>`
+    species label + valid laser + valid headtail, but NO LABEL_STUDIO cluster
+    (models carry no grouping labels). The cohort must still select it."""
+    from fishsense_api.models.head_tail_label import HeadTailLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_image(image_id, dive_id))
+    session.add(
+        LaserLabel(image_id=image_id, completed=True, superseded=False, x=1.0, y=2.0)
+    )
+    session.add(
+        HeadTailLabel(
+            image_id=image_id, completed=True, superseded=False,
+            head_x=1.0, head_y=2.0, tail_x=3.0, tail_y=4.0,
+        )
+    )
+    session.add(
+        SpeciesLabel(
+            image_id=image_id, top_three_photos_of_group=True,
+            completed=True, superseded=False, label_studio_project_id=70,
+            content_of_image="Fish Model, Grouper",
+        )
+    )
+
+
+async def test_measure_fish_selects_fish_model_dive_without_cluster(session):
+    """A borrowed-calibration fish-model dive with no LABEL_STUDIO cluster is
+    selected once it has an unmeasured model image (the cluster gate is waived
+    for models)."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_measure_fish,
+    )
+    from fishsense_api.models.laser_extrinsics import (  # pylint: disable=import-outside-toplevel
+        LaserExtrinsics,
+    )
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(LaserExtrinsics(dive_id=1, camera_id=1))
+    _fish_model_measurable_image(session, 11, 1)
+    await session.flush()
+
+    assert await select_next_for_measure_fish(session=session) == 1
+
+    # …and it drops out once the model image is measured.
+    session.add(_measurement(11))
+    await session.flush()
+    assert await select_next_for_measure_fish(session=session) is None
+
+
 async def test_measure_fish_returns_none_when_everything_measurable_is_measured(
     session,
 ):
@@ -1842,8 +1894,9 @@ async def test_species_preprocessing_still_excludes_live_real_species_row(sessio
 
 
 async def test_measure_fish_skips_species_rows_without_a_scientific_name(session):
-    """Fish Model / Calibration Targets rows must not hold a dive in the
-    cohort — nothing downstream can ever measure them."""
+    """Calibration Targets / nameless rows must not hold a dive in the cohort —
+    nothing downstream can ever measure them. (Fish models ARE measurable now —
+    see test_measure_fish_selects_fish_model_dive_without_cluster.)"""
     from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_measure_fish,
     )
@@ -1851,7 +1904,7 @@ async def test_measure_fish_skips_species_rows_without_a_scientific_name(session
         LaserExtrinsics,
     )
 
-    for content in ("Fish Model, Weasly Fish", "Calibration Targets, Ruler", None):
+    for content in ("Calibration Targets, Ruler", None):
         session.add(_dive(1))
         await session.flush()
         session.add(LaserExtrinsics(dive_id=1, camera_id=1))

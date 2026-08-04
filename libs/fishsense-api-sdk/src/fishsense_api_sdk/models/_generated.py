@@ -136,6 +136,7 @@ class Fish(BaseModel):
     """
 
     id: int | None = Field(None, title='Id')
+    name: str | None = Field(None, title='Name')
     species_id: int | None = Field(None, title='Species Id')
 
 
