@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.48.5](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.48.4...fishsense-api-workflow-worker-v1.48.5) (2026-08-04)
+
+
+### Bug Fixes
+
+* **api-worker:** gate headtail + slate populate on JPEG presence ([#525](https://github.com/UCSD-E4E/fishsense-lite/issues/525)) ([588f833](https://github.com/UCSD-E4E/fishsense-lite/commit/588f833620e9aed422724465559dea005dab6107))
+
 ## [1.48.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.48.3...fishsense-api-workflow-worker-v1.48.4) (2026-08-04)
 
 
