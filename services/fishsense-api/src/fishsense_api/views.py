@@ -431,32 +431,33 @@ FISH_MODEL_MISLABEL_SUSPECTS_VIEW_NAME = "fish_model_species_mislabel_suspects"
 # them contiguous runs, i.e. a whole photo sequence of one model labeled as
 # another.
 #
-# The trap this view is built around: stage 14 measures the fish's PROJECTION
-# (head and tail are back-projected at a single laser-derived depth), so an
-# out-of-plane fish reads SHORT and never long. A Snook (455mm) angled ~21 deg
-# reads 360mm — exactly Grouper. "Short and matches another model" is therefore
-# ambiguous on its own. Two signals are immune to foreshortening:
+# The asymmetry this view is built around: stage 14 measures the fish's
+# PROJECTION (head and tail are back-projected at a single laser-derived
+# depth), so an out-of-plane fish reads SHORT and never long. Hence:
 #
-#   * over-measurement — projection loss cannot lengthen a fish, so a frame
-#     measuring well ABOVE its label is wrong regardless of geometry;
-#   * the group MAXIMUM — the least-foreshortened frame in a dive+model group.
-#     If the max still points at another model, the label is wrong for the run.
+#   * measured much LONGER than the label allows -> `high`. Foreshortening
+#     cannot lengthen a fish, so geometry can't explain it.
+#   * measured much SHORTER but matching another model -> `medium`. Genuinely
+#     ambiguous: a Snook (455mm) angled ~21 deg reads 360mm, exactly Grouper.
 #
-# Those are `high`; anything else is `medium` — a review queue, not a verdict.
-# Deliberately NOT a hard filter on the accuracy view: a suspect frame is still
-# a real measurement until a human re-labels it in Label Studio (which is
+# A group-maximum signal was tried and REMOVED after failing on real data:
+# (a) Purple Angel 0.192 / Gray Anthias 0.195 / Yellow Anthias 0.200 are within
+# 4%, so noise pushes a correct group's max into a neighbour's length and
+# condemns the whole group; (b) one genuinely-mislabeled frame inflates its
+# group's max and condemns the correct frames around it (prod dive 60: a single
+# 601mm frame flagged all 19 real Groupers). Length can only discriminate
+# models that differ by more than measurement noise plus foreshortening; where
+# it can't, this view stays quiet rather than guessing.
+#
+# Deliberately NOT a filter on the accuracy view: a suspect frame is still a
+# real measurement until a human re-labels it in Label Studio (which is
 # authoritative — the hourly species sync overwrites the DB).
-_MISLABEL_OVER_MEASURED_PCT = 15.0
-_MISLABEL_FITS_OTHER_PCT = 10.0
+_MISLABEL_MIN_OWN_PCT_ERROR = 15.0
+_MISLABEL_MAX_OTHER_PCT_ERROR = 10.0
 
 FISH_MODEL_MISLABEL_SUSPECTS_VIEW_SQL = f"""
 CREATE VIEW {FISH_MODEL_MISLABEL_SUSPECTS_VIEW_NAME} AS
-WITH grp AS (
-    SELECT dive_id, model_name, MAX(length_m) AS group_max_m, COUNT(*) AS group_n
-    FROM {FISH_MODEL_ACCURACY_VIEW_NAME}
-    GROUP BY dive_id, model_name
-),
-frame_fit AS (
+WITH frame_fit AS (
     SELECT a.image_id,
            r.name AS best_fit_model,
            100.0 * (a.length_m - r.known_length_m) / r.known_length_m
@@ -467,47 +468,25 @@ frame_fit AS (
            ) AS rk
     FROM {FISH_MODEL_ACCURACY_VIEW_NAME} a
     CROSS JOIN fishmodelreference r
-),
-group_fit AS (
-    SELECT g.dive_id, g.model_name,
-           r.name AS group_best_fit_model,
-           ROW_NUMBER() OVER (
-               PARTITION BY g.dive_id, g.model_name
-               ORDER BY ABS(g.group_max_m - r.known_length_m) / r.known_length_m
-           ) AS rk
-    FROM grp g
-    CROSS JOIN fishmodelreference r
 )
 SELECT
     a.image_id,
     a.dive_id,
-    a.model_name          AS labeled_model,
+    a.model_name AS labeled_model,
     a.known_length_m,
     a.length_m,
     a.pct_error,
     f.best_fit_model,
     f.best_fit_pct_error,
-    g.group_max_m,
-    g.group_n,
-    gf.group_best_fit_model,
     CASE
-        WHEN a.pct_error > {_MISLABEL_OVER_MEASURED_PCT}
-             OR gf.group_best_fit_model <> a.model_name
-        THEN 'high'
+        WHEN a.pct_error > {_MISLABEL_MIN_OWN_PCT_ERROR} THEN 'high'
         ELSE 'medium'
     END AS confidence
 FROM {FISH_MODEL_ACCURACY_VIEW_NAME} a
 JOIN frame_fit f ON f.image_id = a.image_id AND f.rk = 1
-JOIN grp g ON g.dive_id = a.dive_id AND g.model_name = a.model_name
-JOIN group_fit gf
-  ON gf.dive_id = a.dive_id AND gf.model_name = a.model_name AND gf.rk = 1
-WHERE
-    gf.group_best_fit_model <> a.model_name
-    OR (
-        f.best_fit_model <> a.model_name
-        AND ABS(a.pct_error) > {_MISLABEL_OVER_MEASURED_PCT}
-        AND ABS(f.best_fit_pct_error) < {_MISLABEL_FITS_OTHER_PCT}
-    )
+WHERE f.best_fit_model <> a.model_name
+  AND ABS(a.pct_error) > {_MISLABEL_MIN_OWN_PCT_ERROR}
+  AND ABS(f.best_fit_pct_error) < {_MISLABEL_MAX_OTHER_PCT_ERROR}
 """
 
 DROP_FISH_MODEL_MISLABEL_SUSPECTS_VIEW_SQL = (
