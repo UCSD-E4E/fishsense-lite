@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.43.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.42.0...fishsense-api-v1.43.0) (2026-08-04)
+
+
+### Features
+
+* **api:** expose calibration provenance on dive_pipeline_status ([#533](https://github.com/UCSD-E4E/fishsense-lite/issues/533)) ([0940ef1](https://github.com/UCSD-E4E/fishsense-lite/commit/0940ef1375a3444b63f62c8942ff994d8abdb1cf))
+
 ## [1.42.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.41.0...fishsense-api-v1.42.0) (2026-08-04)
 
 
