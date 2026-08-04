@@ -417,3 +417,99 @@ WHERE m.length_m IS NOT NULL
 DROP_FISH_MODEL_ACCURACY_VIEW_SQL = (
     f"DROP VIEW IF EXISTS {FISH_MODEL_ACCURACY_VIEW_NAME}"
 )
+
+
+# ---------------------------------------------------------------------------
+# Fish-model species-mislabel suspects
+# ---------------------------------------------------------------------------
+
+FISH_MODEL_MISLABEL_SUSPECTS_VIEW_NAME = "fish_model_species_mislabel_suspects"
+
+# A model's measured length is a strong prior on which model it is, so a frame
+# whose length fits a *different* known model far better than its own label is
+# a mislabel suspect. 18 real ones were found in prod on 2026-08-04 — 16 of
+# them contiguous runs, i.e. a whole photo sequence of one model labeled as
+# another.
+#
+# The trap this view is built around: stage 14 measures the fish's PROJECTION
+# (head and tail are back-projected at a single laser-derived depth), so an
+# out-of-plane fish reads SHORT and never long. A Snook (455mm) angled ~21 deg
+# reads 360mm — exactly Grouper. "Short and matches another model" is therefore
+# ambiguous on its own. Two signals are immune to foreshortening:
+#
+#   * over-measurement — projection loss cannot lengthen a fish, so a frame
+#     measuring well ABOVE its label is wrong regardless of geometry;
+#   * the group MAXIMUM — the least-foreshortened frame in a dive+model group.
+#     If the max still points at another model, the label is wrong for the run.
+#
+# Those are `high`; anything else is `medium` — a review queue, not a verdict.
+# Deliberately NOT a hard filter on the accuracy view: a suspect frame is still
+# a real measurement until a human re-labels it in Label Studio (which is
+# authoritative — the hourly species sync overwrites the DB).
+_MISLABEL_OVER_MEASURED_PCT = 15.0
+_MISLABEL_FITS_OTHER_PCT = 10.0
+
+FISH_MODEL_MISLABEL_SUSPECTS_VIEW_SQL = f"""
+CREATE VIEW {FISH_MODEL_MISLABEL_SUSPECTS_VIEW_NAME} AS
+WITH grp AS (
+    SELECT dive_id, model_name, MAX(length_m) AS group_max_m, COUNT(*) AS group_n
+    FROM {FISH_MODEL_ACCURACY_VIEW_NAME}
+    GROUP BY dive_id, model_name
+),
+frame_fit AS (
+    SELECT a.image_id,
+           r.name AS best_fit_model,
+           100.0 * (a.length_m - r.known_length_m) / r.known_length_m
+               AS best_fit_pct_error,
+           ROW_NUMBER() OVER (
+               PARTITION BY a.image_id
+               ORDER BY ABS(a.length_m - r.known_length_m) / r.known_length_m
+           ) AS rk
+    FROM {FISH_MODEL_ACCURACY_VIEW_NAME} a
+    CROSS JOIN fishmodelreference r
+),
+group_fit AS (
+    SELECT g.dive_id, g.model_name,
+           r.name AS group_best_fit_model,
+           ROW_NUMBER() OVER (
+               PARTITION BY g.dive_id, g.model_name
+               ORDER BY ABS(g.group_max_m - r.known_length_m) / r.known_length_m
+           ) AS rk
+    FROM grp g
+    CROSS JOIN fishmodelreference r
+)
+SELECT
+    a.image_id,
+    a.dive_id,
+    a.model_name          AS labeled_model,
+    a.known_length_m,
+    a.length_m,
+    a.pct_error,
+    f.best_fit_model,
+    f.best_fit_pct_error,
+    g.group_max_m,
+    g.group_n,
+    gf.group_best_fit_model,
+    CASE
+        WHEN a.pct_error > {_MISLABEL_OVER_MEASURED_PCT}
+             OR gf.group_best_fit_model <> a.model_name
+        THEN 'high'
+        ELSE 'medium'
+    END AS confidence
+FROM {FISH_MODEL_ACCURACY_VIEW_NAME} a
+JOIN frame_fit f ON f.image_id = a.image_id AND f.rk = 1
+JOIN grp g ON g.dive_id = a.dive_id AND g.model_name = a.model_name
+JOIN group_fit gf
+  ON gf.dive_id = a.dive_id AND gf.model_name = a.model_name AND gf.rk = 1
+WHERE
+    gf.group_best_fit_model <> a.model_name
+    OR (
+        f.best_fit_model <> a.model_name
+        AND ABS(a.pct_error) > {_MISLABEL_OVER_MEASURED_PCT}
+        AND ABS(f.best_fit_pct_error) < {_MISLABEL_FITS_OTHER_PCT}
+    )
+"""
+
+DROP_FISH_MODEL_MISLABEL_SUSPECTS_VIEW_SQL = (
+    f"DROP VIEW IF EXISTS {FISH_MODEL_MISLABEL_SUSPECTS_VIEW_NAME}"
+)
