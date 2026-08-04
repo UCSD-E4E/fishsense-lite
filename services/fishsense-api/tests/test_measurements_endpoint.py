@@ -202,3 +202,54 @@ async def test_post_measurement_binds_fish_id_from_path(session):
 
     rows = (await session.exec(select(Measurement))).all()
     assert rows[0].fish_id == 101
+
+
+# ── DELETE: invalidating a stale (image, fish) binding ───────────────
+#
+# A species relabel (e.g. "Fish Model, Snook" -> "Fish Model, Grouper") leaves
+# the measurement bound to the OLD model's Fish. It can't be fixed by
+# re-measuring: `post_measurement` upserts on (image_id, fish_id), so writing
+# the corrected binding ADDS a second row and the image is double-counted.
+# The stale row has to be deleted. Happened for real on prod images
+# 4375/4664/4868 (2026-08-04), fixed by hand.
+
+
+async def _delete(session, fish_id: int, image_id: int):
+    from fishsense_api.controllers.fish_controller import (  # pylint: disable=import-outside-toplevel
+        delete_measurement,
+    )
+
+    return await delete_measurement(fish_id, image_id, session=session)
+
+
+async def test_delete_measurement_removes_only_that_binding(session):
+    """Two fish in one frame is legitimate — deleting one must leave the other."""
+    await _seed_dive(session, 1, [11])
+    session.add_all([_fish(101), _fish(102)])
+    await session.flush()
+    session.add_all(
+        [_measurement(1, 11, 101, 0.30), _measurement(2, 11, 102, 0.40)]
+    )
+    await session.flush()
+
+    await _delete(session, 101, 11)
+    await session.flush()
+
+    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
+
+    rows = (await session.exec(select(Measurement))).all()
+    assert [(r.image_id, r.fish_id) for r in rows] == [(11, 102)]
+
+
+async def test_delete_measurement_is_idempotent(session):
+    """Deleting an absent binding is a no-op, so a retry can't fail."""
+    await _seed_dive(session, 1, [11])
+    session.add_all([_fish(101)])
+    await session.flush()
+
+    await _delete(session, 101, 11)  # nothing there — must not raise
+    await session.flush()
+
+    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
+
+    assert (await session.exec(select(Measurement))).all() == []

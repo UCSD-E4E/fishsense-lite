@@ -63,6 +63,11 @@ class MeasureFishResult:
     # previously tallied as `missing_laser_or_headtail`, which pointed
     # debugging at the labels instead of at the taxonomy branch.
     skipped_unmeasurable_species: int = 0
+    # Measurements deleted because their Fish binding no longer matches the
+    # image's species label — a model relabel (e.g. Snook -> Grouper) leaves
+    # the row bound to the old model's Fish, and `post_measurement` upserts on
+    # (image_id, fish_id) so re-measuring would ADD a row rather than replace.
+    invalidated_stale_binding: int = 0
 
 
 __all__ = ["MeasureFishResult", "measure_fish_activity"]
@@ -215,14 +220,20 @@ def _filter_top_three(
     ]
 
 
-async def _fetch_measured_image_ids(fs, dive_id: int) -> set[int]:
-    """Image ids in this dive that already carry a Measurement.
+async def _fetch_measurements_by_image(fs, dive_id: int) -> dict[int, list]:
+    """Existing measurements for this dive, grouped by image id.
 
     One fetch per dive, not per image — the caller loops over every
     top-three label. `None` is the SDK's "no measurements yet" signal.
+    Grouped (rather than a bare id set) so the caller can also check WHICH
+    Fish each row is bound to and invalidate stale bindings.
     """
     existing = await fs.fish.get_measurements(dive_id) or []
-    return {m.image_id for m in existing if m.image_id is not None}
+    by_image: dict[int, list] = {}
+    for measurement in existing:
+        if measurement.image_id is not None:
+            by_image.setdefault(measurement.image_id, []).append(measurement)
+    return by_image
 
 
 def _has_complete_keypoints(laser_label, headtail_label) -> bool:
@@ -241,7 +252,7 @@ def _has_complete_keypoints(laser_label, headtail_label) -> bool:
 
 @activity.defn
 async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
-    # pylint: disable=too-many-locals,too-many-statements
+    # pylint: disable=too-many-locals,too-many-statements,too-many-branches
     # Orchestration function — gathers dive/camera/laser/cluster/label
     # context plus per-iteration locals. Splitting it would just push
     # the same state into a parameter list of a helper. The same applies
@@ -285,7 +296,7 @@ async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
         # `post_measurement` upserts on (image_id, fish_id) so a duplicate
         # can't be recorded, but re-measuring still means re-deriving a
         # length and re-binding a fish for work already done — skip it.
-        already_measured = await _fetch_measured_image_ids(fs, dive_id)
+        measurements_by_image = await _fetch_measurements_by_image(fs, dive_id)
 
         result = MeasureFishResult(
             measured=0,
@@ -300,18 +311,11 @@ async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
         for species_label in top_three:
             image_id = species_label.image_id
 
-            if image_id in already_measured:
-                activity.logger.info(
-                    "dive_id=%d image_id=%d: already measured; skipping",
-                    dive_id, image_id,
-                )
-                result.skipped_already_measured += 1
-                continue
-
-            # Classify the taxonomy branch first. Real fish carry a
-            # "Common (Scientific)" name; models carry a "Fish Model, <name>"
-            # prefix. Anything else (Calibration Targets, empty) is not
-            # measurable.
+            # Classify the taxonomy branch first — the stale-binding check
+            # below needs to know which Fish this image *should* map to.
+            # Real fish carry a "Common (Scientific)" name; models carry a
+            # "Fish Model, <name>" prefix. Anything else (Calibration
+            # Targets, empty) is not measurable.
             names = _parse_species_names(species_label.content_of_image)
             model_name = _parse_model_name(species_label.content_of_image)
             if names is None and model_name is None:
@@ -322,6 +326,40 @@ async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
                     dive_id, image_id, species_label.content_of_image,
                 )
                 result.skipped_unmeasurable_species += 1
+                continue
+
+            existing_measurements = measurements_by_image.get(image_id, [])
+            if model_name is not None and existing_measurements:
+                # Model identity is the name, so the correct Fish is knowable
+                # up front. Any row bound to a different Fish is stale — the
+                # image was measured under a previous species label. Delete it
+                # rather than re-measuring around it: `post_measurement`
+                # upserts on (image_id, fish_id), so a corrected binding would
+                # be ADDED alongside and the image counted twice.
+                expected = await _ensure_model_fish(fs, model_name, model_fish_cache)
+                stale = [
+                    m for m in existing_measurements if m.fish_id != expected.id
+                ]
+                for measurement in stale:
+                    activity.logger.info(
+                        "dive_id=%d image_id=%d: measurement bound to fish_id=%s "
+                        "but the label now says %r (fish_id=%s); invalidating "
+                        "the stale binding",
+                        dive_id, image_id, measurement.fish_id,
+                        model_name, expected.id,
+                    )
+                    await fs.fish.delete_measurement(measurement.fish_id, image_id)
+                    result.invalidated_stale_binding += 1
+                existing_measurements = [
+                    m for m in existing_measurements if m.fish_id == expected.id
+                ]
+
+            if existing_measurements:
+                activity.logger.info(
+                    "dive_id=%d image_id=%d: already measured; skipping",
+                    dive_id, image_id,
+                )
+                result.skipped_already_measured += 1
                 continue
 
             # Real fish anchor identity to their LABEL_STUDIO cluster, so a
