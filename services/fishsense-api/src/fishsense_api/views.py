@@ -357,3 +357,63 @@ FROM dive d
 DROP_DIVE_PIPELINE_STATUS_VIEW_SQL = (
     f"DROP VIEW IF EXISTS {DIVE_PIPELINE_STATUS_VIEW_NAME}"
 )
+
+
+# ---------------------------------------------------------------------------
+# Fish-model measurement accuracy
+# ---------------------------------------------------------------------------
+
+FISH_MODEL_ACCURACY_VIEW_NAME = "fish_model_measurement_accuracy"
+
+# Ground-truth lengths of the physical fish models, in meters, as measured by
+# the team. Seeded into `fishmodelreference` by alembic; the constant is the
+# source of truth so a change is reviewable in a diff.
+#
+# These are the pipeline's held-out VALIDATION set — together with the ruler
+# (`Calibration Targets, Ruler`). They are compared against what stage 14
+# produces and are NEVER fed into laser calibration: a benchmark that
+# calibrates from its own answer key measures nothing. Calibration comes from
+# slates only.
+#
+# Field model dates: 2024-08-21 and 2024-10-16.
+KNOWN_FISH_MODELS = [
+    {"name": "Snook", "known_length_m": 0.455},
+    {"name": "Grouper", "known_length_m": 0.360},
+    {"name": "Shark", "known_length_m": 0.605},
+    {"name": "Gray Anthias", "known_length_m": 0.195},
+    {"name": "Purple Angel", "known_length_m": 0.192},
+    {"name": "Yellow Anthias", "known_length_m": 0.200},
+]
+
+# One row per fish-model measurement, with its error against the known length.
+#
+# Joins through `Fish.name` — the natural key stage 14 resolves model identity
+# by — so every new measurement lands in the view automatically. Real (wild)
+# fish carry `name IS NULL` and are excluded by the inner join; so are models
+# that have no reference row yet (ungradeable rather than compared to NULL).
+#
+# `pct_error` is signed: positive = measured long. Length is proportional to
+# the laser-derived depth, so a systematic offset here is a calibration
+# signal, not a labeling one.
+FISH_MODEL_ACCURACY_VIEW_SQL = f"""
+CREATE VIEW {FISH_MODEL_ACCURACY_VIEW_NAME} AS
+SELECT
+    m.id            AS measurement_id,
+    m.image_id      AS image_id,
+    i.dive_id       AS dive_id,
+    f.id            AS fish_id,
+    f.name          AS model_name,
+    r.known_length_m AS known_length_m,
+    m.length_m      AS length_m,
+    (m.length_m - r.known_length_m) AS error_m,
+    (100.0 * (m.length_m - r.known_length_m) / r.known_length_m) AS pct_error
+FROM measurement m
+JOIN image i ON i.id = m.image_id
+JOIN fish f ON f.id = m.fish_id
+JOIN fishmodelreference r ON r.name = f.name
+WHERE m.length_m IS NOT NULL
+"""
+
+DROP_FISH_MODEL_ACCURACY_VIEW_SQL = (
+    f"DROP VIEW IF EXISTS {FISH_MODEL_ACCURACY_VIEW_NAME}"
+)
