@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.13.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.12.1...fishsense-data-processing-workflow-worker-v2.13.0) (2026-08-04)
+
+
+### Features
+
+* make physical fish models measurable with per-model Fish identity ([#501](https://github.com/UCSD-E4E/fishsense-lite/issues/501)) ([6c7fa25](https://github.com/UCSD-E4E/fishsense-lite/commit/6c7fa2587d9dcf75160f68fbb190cf5333ebb652))
+
 ## [2.12.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.12.0...fishsense-data-processing-workflow-worker-v2.12.1) (2026-08-02)
 
 
