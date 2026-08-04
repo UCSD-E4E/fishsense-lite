@@ -413,12 +413,15 @@ KNOWN_FISH_MODELS = [
     {"name": "Purple Angel", "known_length_m": 0.192},
     {"name": "Yellow Anthias", "known_length_m": 0.200},
     # The ruler is a rigid known-length target measured through the same
-    # name-keyed path as the models. CAVEAT: this is the 14-inch span, which is
-    # what every head/tail label on a ruler frame currently marks. If labelers
-    # start marking a different span the reference is wrong for those frames —
-    # they would surface in `fish_model_species_mislabel_suspects` rather than
-    # silently skewing accuracy, but the reference would need splitting by span.
-    {"name": "Ruler", "known_length_m": 0.3556},
+    # name-keyed path as the models. 13.5 in, NOT the ruler's nominal 14 in:
+    # labelers click the first *printed* graduation (the 0.5 mark) and the 14
+    # mark, so the labeled span is 0.5->14. Measured off the ruler's own inch
+    # ticks on 4 frames: 13.500/13.505/13.481/13.468 in (SD 0.13%), and a
+    # second method (half-inch ticks + 1D projective fit, which also removes
+    # perspective) independently agreed. Do NOT "correct" this back to 14 in
+    # without re-instructing labelers to click a physical 0 that the scale does
+    # not print.
+    {"name": "Ruler", "known_length_m": 0.3429},
 ]
 
 # One row per fish-model measurement, with its error against the known length.
