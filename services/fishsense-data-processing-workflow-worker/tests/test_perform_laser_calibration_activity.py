@@ -1,3 +1,7 @@
+# pylint: disable=protected-access
+# The private kernels (`_drop_skipped`, `_laser_point_in_camera_space`) are
+# unit-tested directly — they carry the correspondence-pairing invariants that
+# a full-activity test can only exercise indirectly.
 """Unit tests for perform_laser_calibration_activity (stage 13).
 
 End-to-end synthetic-scene test pins down the math + SDK plumbing on a
@@ -274,6 +278,46 @@ async def test_recovers_known_laser_extrinsics_from_synthetic_scene(monkeypatch)
     fitted_pos = np.asarray(written_le.laser_position, dtype=float)
     pos_xy_l2 = float(np.linalg.norm(fitted_pos[:2] - laser_origin[:2]))
     assert pos_xy_l2 < 0.001
+
+
+@pytest.mark.asyncio
+async def test_reflection_contaminated_scene_is_rejected_not_persisted(monkeypatch):
+    """The prod-dive-77 regression: half the laser dots mislabeled onto a
+    parallel artifact line (specular reflection on the pool slate) produce a
+    fit that reprojects onto NEITHER dot population. The self-consistency
+    gate must raise and nothing may persist — the old behavior shipped the
+    broken calibration, and a borrowing fish-model dive measured +31..+137%
+    length errors."""
+    from fishsense_data_processing_workflow_worker.calibration_consistency import (  # pylint: disable=import-outside-toplevel
+        CalibrationInconsistentError,
+    )
+
+    laser_origin = np.array([-0.03, -0.10, 0.0])
+    laser_axis = np.array([0.005, -0.02, 1.0])
+    laser_axis = laser_axis / np.linalg.norm(laser_axis)
+
+    dive = _dive()
+    slate, intrinsics, labels, lasers = _build_synthetic_scene(
+        n_observations=8,
+        laser_origin_world=laser_origin,
+        laser_axis_world=laser_axis,
+        slate_distances=[0.40, 0.55, 0.70, 0.85, 1.00, 1.15, 1.30, 1.45],
+    )
+    # Contaminate: shift half the laser pixels +45px in x — the reflection
+    # artifact observed on prod dive 77 (labelers clicked the specular double).
+    for i, (_image_id, laser_label) in enumerate(sorted(lasers.items())):
+        if i % 2 == 0:
+            laser_label.x = float(laser_label.x) + 45.0
+
+    fs = _make_fs(dive, [slate], labels, lasers, intrinsics)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    with pytest.raises(CalibrationInconsistentError):
+        await ActivityEnvironment().run(
+            sut.perform_laser_calibration_activity, 42
+        )
+
+    fs.dives.put_laser_extrinsics.assert_not_called()
 
 
 # --------------------------- skipped-points (Bug 2) ---------------------------

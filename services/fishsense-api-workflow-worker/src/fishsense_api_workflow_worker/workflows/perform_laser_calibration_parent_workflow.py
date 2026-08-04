@@ -19,10 +19,18 @@ beyond a single replica:
   flight when the next firing arrives is dropped at the schedule level.
 * The child workflow is started with a deterministic id
   (`perform-laser-calibration-{dive_id}`) and
-  `id_reuse_policy=ALLOW_DUPLICATE_FAILED_ONLY`; if a parent run
-  somehow races past the schedule guard, the second child-workflow
-  start hits `WorkflowAlreadyStarted` and is caught — the parent
-  treats the prior success as authoritative.
+  `id_reuse_policy=ALLOW_DUPLICATE` (changed from FAILED_ONLY on
+  2026-08-04, mirroring the preprocess children's 2026-07-23 flip:
+  FAILED_ONLY means a *completed* child id can never re-dispatch, so
+  a dive whose bad calibration was remediated — labels cleaned, stale
+  extrinsics row deleted — could never be refit through the parent;
+  the re-dispatch was swallowed silently. Observed live on dive 77,
+  2026-08-04.) ALLOW_DUPLICATE is safe: the cohort only offers dives
+  with no extrinsics row, `put_laser_extrinsics` upserts on dive_id,
+  and the activity's self-consistency gate refuses to persist a fit
+  that disagrees with the dive's own laser dots.
+  `WorkflowAlreadyStartedError` is now only raised while a prior
+  child with the same id is still *running*; the parent catches it.
 * `put_laser_extrinsics` on the activity side is an upsert — even
   outright re-runs of a successful call land on the same row.
 """
@@ -86,11 +94,19 @@ class PerformLaserCalibrationParentWorkflow:
                 id=f"perform-laser-calibration-{dive_id}",
                 task_queue=DATA_PROCESSING_TASK_QUEUE,
                 execution_timeout=timedelta(minutes=15),
-                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+                # ALLOW_DUPLICATE (not FAILED_ONLY): a completed child id
+                # must not block a refit after remediation (bad extrinsics
+                # deleted, labels cleaned). Safe: cohort = no-extrinsics
+                # dives only, the PUT upserts on dive_id, and the activity's
+                # self-consistency gate rejects fits that disagree with the
+                # dive's own dots. See module docstring.
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
             )
         except WorkflowAlreadyStartedError:
+            # Only reachable while a prior child with this id is still
+            # RUNNING — a completed child no longer blocks.
             workflow.logger.info(
-                "perform-laser-calibration-%d already ran successfully; "
+                "perform-laser-calibration-%d is still running; "
                 "skipping duplicate dispatch",
                 dive_id,
             )

@@ -409,8 +409,14 @@ async def test_supersede_writes_run_concurrently(monkeypatch):
     n_outliers = 2 * sut.SUPERSEDE_CONCURRENCY
     labels = _colinear_labels(60)
     outlier_idxs = list(range(0, n_outliers * 2, 2))[:n_outliers]
-    for idx in outlier_idxs:
-        labels[idx].y = labels[idx].y + 50.0  # type: ignore[operator]
+    for k, idx in enumerate(outlier_idxs):
+        # Scattered offsets (varying magnitude, both sides): each is a clear
+        # 3-sigma outlier, but together they must NOT form a coherent second
+        # parallel line — that population is the reflection signature, on
+        # which the validator now deliberately stands down instead of
+        # superseding.
+        sign = 1.0 if k % 2 == 0 else -1.0
+        labels[idx].y = labels[idx].y + sign * (40.0 + (k * 37) % 97)  # type: ignore[operator]
 
     in_flight = 0
     peak_in_flight = 0
@@ -514,3 +520,35 @@ async def test_supersede_failure_propagates(monkeypatch):
     env = ActivityEnvironment()
     with pytest.raises(RuntimeError, match="simulated PUT failure"):
         await env.run(sut.validate_laser_labels_for_dive_activity, 99)
+
+
+@pytest.mark.asyncio
+async def test_reflection_split_logs_error_and_stands_down(monkeypatch, caplog):
+    """The prod-dive-77 population: dots split across two coherent parallel
+    lines (laser + its specular reflection on the pool slate). The validator
+    must name the failure loudly and must NOT supersede either line — with
+    the artifact in the majority, RANSAC anchors on the wrong line and
+    majority-vote superseding would kill the TRUE laser labels."""
+    labels = []
+    # Artifact (majority) line: 30 dots along x = 1945 + 0.3t.
+    for i in range(30):
+        t = i * 30.0
+        labels.append(_label(i, 100 + i, 1945.0 + 0.3 * t, 800.0 + t))
+    # True (minority) line: 20 dots, parallel, 45px to the left.
+    for i in range(20):
+        t = i * 45.0
+        labels.append(_label(50 + i, 200 + i, 1900.0 + 0.3 * t, 800.0 + t))
+
+    fs = _make_fs(labels)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    with caplog.at_level("ERROR"):
+        result = await ActivityEnvironment().run(
+            sut.validate_laser_labels_for_dive_activity, 77
+        )
+
+    assert result == 0
+    fs.labels.put_laser_label.assert_not_called()
+    assert any(
+        "REFLECTION SUSPECT" in rec.getMessage() for rec in caplog.records
+    ), "two-line split must be loudly reported"

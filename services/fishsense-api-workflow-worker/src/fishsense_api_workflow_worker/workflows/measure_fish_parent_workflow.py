@@ -43,14 +43,19 @@ Cluster-correctness invariants — relevant once the data-worker scales
 beyond a single replica:
 
 * The child workflow is started with a deterministic id
-  (`measure-fish-{dive_id}`) and
-  `id_reuse_policy=ALLOW_DUPLICATE_FAILED_ONLY`; a duplicate parent
-  run targeting the same dive hits `WorkflowAlreadyStarted` (whether
-  the prior child is still running or completed successfully) and
-  the parent catches it. This is now a don't-redo-work guard rather
-  than a correctness one — a duplicate dispatch would be harmless
-  since measurement is idempotent at both the write layer and in the
-  activity's skip.
+  (`measure-fish-{dive_id}`) and `id_reuse_policy=ALLOW_DUPLICATE`
+  (changed from FAILED_ONLY on 2026-08-04, mirroring the preprocess
+  children's 2026-07-23 flip and for the same reason: FAILED_ONLY
+  means a *completed* child id can never re-dispatch, so a dive whose
+  measurements were remediated — e.g. deleted after a bad borrowed
+  calibration was fixed — could never be re-measured through the
+  parent; the re-dispatch was swallowed silently. Observed live on
+  dive 59, 2026-08-04.) ALLOW_DUPLICATE is safe here: measurement is
+  idempotent at both the write layer (`post_measurement` upserts on
+  (image_id, fish_id)) and in the activity (skips already-measured
+  images). `WorkflowAlreadyStartedError` is now only raised when a
+  prior child with the same id is still *running* (a manual run
+  overlapping the schedule); the parent catches it.
 * Per-cluster `fish_id` rebinds via `put_cluster` on the activity side
   are idempotent under retry within a single child run.
 """
@@ -112,17 +117,20 @@ class MeasureFishParentWorkflow:
                 id=f"measure-fish-{dive_id}",
                 task_queue=DATA_PROCESSING_TASK_QUEUE,
                 execution_timeout=timedelta(hours=1),
-                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+                # ALLOW_DUPLICATE (not FAILED_ONLY): a completed child id
+                # must not block re-measurement after remediation (deleted
+                # bad measurements + fixed calibration). Safe because
+                # measurement is idempotent — upsert on (image_id, fish_id)
+                # + already-measured skip. See module docstring.
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
             )
         except WorkflowAlreadyStartedError:
-            # Not a safety gate any more — measurement is idempotent as of
-            # 2026-07-17 (`post_measurement` upserts on (image_id, fish_id)
-            # and the activity skips already-measured images), so a
-            # duplicate dispatch would be harmless. This just avoids
-            # re-doing work already done for this dive.
+            # Only reachable while a prior child with this id is still
+            # RUNNING (e.g. a manual run overlapping the schedule) — a
+            # completed child no longer blocks under ALLOW_DUPLICATE.
             workflow.logger.info(
-                "measure-fish-%d already ran successfully; skipping "
-                "duplicate dispatch (no re-work needed)",
+                "measure-fish-%d is still running; skipping duplicate "
+                "dispatch",
                 dive_id,
             )
 
