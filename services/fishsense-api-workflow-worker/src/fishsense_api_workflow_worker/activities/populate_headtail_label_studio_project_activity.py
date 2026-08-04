@@ -152,13 +152,26 @@ async def populate_headtail_label_studio_project_activity(
                 dive_id,
             )
 
-        # Supersede pass: mark all previously-incomplete headtail labels
-        # for this dive as superseded so newly-created rows are canonical.
-        # Mirrors the notebook's behavior. Only acts on rows with an `id`
-        # (i.e. already-persisted) — newly-inserted rows from the import
-        # block above don't yet have one in this scope.
+        refreshed_image_ids = {image.id for image in targets}
+
+        # Supersede pass: dead-letter incomplete headtail rows that belong to
+        # a DIFFERENT (legacy, pre-per-dive) project, so this project's rows
+        # are canonical. Only acts on rows with an `id` (already persisted).
+        #
+        # Rows for images THIS RUN just imported are exempt.
+        # `put_headtail_label` upserts on `image_id`, so there is only ever one
+        # row per image — the "old" row here IS the row the import refreshed.
+        # Superseding it undoes this run's own work, and because the pass
+        # reads a snapshot taken BEFORE the import (and skips already-
+        # superseded rows), the outcome ALTERNATES run to run: live ->
+        # superseded -> live... Prod dive 341 oscillated that way on every
+        # hourly firing and activity retry, so its images never held a usable
+        # pending row and the dive never drained from the stage-5.1 cohort.
+        # Mirrors the guard species populate already carries.
         for old in existing_headtail:
             if old.completed or old.superseded or old.id is None:
+                continue
+            if old.image_id in refreshed_image_ids:
                 continue
             old.superseded = True
             await fs.labels.put_headtail_label(old.image_id, old)
