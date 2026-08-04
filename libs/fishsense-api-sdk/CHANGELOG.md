@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.44.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.43.0...fishsense-api-sdk-v1.44.0) (2026-08-04)
+
+
+### Features
+
+* make physical fish models measurable with per-model Fish identity ([#501](https://github.com/UCSD-E4E/fishsense-lite/issues/501)) ([6c7fa25](https://github.com/UCSD-E4E/fishsense-lite/commit/6c7fa2587d9dcf75160f68fbb190cf5333ebb652))
+
 ## [1.43.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.42.0...fishsense-api-sdk-v1.43.0) (2026-08-02)
 
 
