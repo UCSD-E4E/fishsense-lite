@@ -49,6 +49,15 @@ def test_known_models_cover_the_labeled_taxonomy():
     assert {"Snook", "Grouper", "Shark", "Purple Angel"} <= names
 
 
+def test_ruler_is_seeded_at_the_fourteen_inch_span():
+    """Every head/tail label on a ruler frame currently marks the 14-inch span,
+    so the ruler grades as a fixed-length reference. It is the only reference
+    with unambiguous endpoints, which is what lets it separate calibration
+    error from the models' tail-landmark convention."""
+    ruler = next(m for m in KNOWN_FISH_MODELS if m["name"] == "Ruler")
+    assert ruler["known_length_m"] == pytest.approx(0.3556)  # 14 in
+
+
 def test_known_lengths_are_positive_and_plausible():
     for model in KNOWN_FISH_MODELS:
         assert 0.05 < model["known_length_m"] < 2.0, model

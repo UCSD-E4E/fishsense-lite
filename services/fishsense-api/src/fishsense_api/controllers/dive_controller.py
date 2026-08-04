@@ -84,6 +84,7 @@ def _measurable_species_conditions():
         or_(
             SpeciesLabel.content_of_image.like("%(%)"),
             SpeciesLabel.content_of_image.like("Fish Model,%"),
+            SpeciesLabel.content_of_image == "Calibration Targets, Ruler",
         ),
     )
 
@@ -93,7 +94,11 @@ def _is_fish_model_condition():
     thus no LABEL_STUDIO cluster, so the stage-14 cohort waives the cluster
     requirement for them (identity is the model name; length uses only
     laser/head-tail/calibration). Mirrors `views._IS_FISH_MODEL_SQL`."""
-    return SpeciesLabel.content_of_image.like("Fish Model,%")  # pylint: disable=no-member
+    # pylint: disable=no-member
+    return or_(
+        SpeciesLabel.content_of_image.like("Fish Model,%"),
+        SpeciesLabel.content_of_image == "Calibration Targets, Ruler",
+    )
 
 
 def _valid_headtail_conditions():

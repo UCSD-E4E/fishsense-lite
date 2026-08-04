@@ -550,13 +550,15 @@ async def test_measurements_are_fetched_once_per_dive(monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "content",
-    ["Calibration Targets, Ruler", None],
-    ids=["calibration-target", "empty"],
+    ["Slate, Laser on slate", "Calibration Targets, Slate", None],
+    ids=["slate-marker", "calibration-target", "empty"],
 )
 async def test_skips_species_rows_that_carry_no_scientific_name(monkeypatch, content):
     """Taxonomy branches with neither a "Common (Scientific)" name nor a
-    `Fish Model,` prefix have nothing to measure against (Calibration Targets,
-    empty). Fish models ARE measurable now (see the model-branch tests below).
+    `Fish Model,` prefix have nothing to measure against. `Slate, Laser on
+    slate` is the important one — it is stage 9's marker and measuring it would
+    be nonsense. Fish models and the ruler ARE measurable (see the
+    known-length-target tests below).
 
     These land in their own counter rather than `missing_laser_or_headtail`
     — they used to inflate that one, which pointed anyone reading the result
@@ -594,6 +596,23 @@ async def test_skips_species_rows_that_carry_no_scientific_name(monkeypatch, con
 # laser/head-tail/calibration — no cluster. So the model branch: resolves the
 # Fish by name (find-or-create), waives the cluster gate, and never binds
 # `cluster.fish_id`.
+
+
+# pylint: disable=protected-access
+def test_parse_model_name_maps_the_ruler_to_a_named_target():
+    """The ruler is a rigid known-length target, so it measures through the
+    same name-keyed path as the models — and unlike a model it carries no
+    fork-vs-tip landmark ambiguity, which is why it is worth grading."""
+    assert sut._parse_model_name("Calibration Targets, Ruler") == "Ruler"
+
+
+def test_parse_model_name_ignores_other_calibration_targets():
+    """Only the ruler is promoted; the slate branches stay unmeasurable."""
+    assert sut._parse_model_name("Calibration Targets, Slate") is None
+    assert sut._parse_model_name("Slate, Laser on slate") is None
+
+
+# pylint: enable=protected-access
 
 
 def _model_observation():
