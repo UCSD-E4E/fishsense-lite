@@ -26,6 +26,9 @@ from fishsense_core.world_point import WorldPointHandler
 from temporalio import activity
 
 from fishsense_data_processing_workflow_worker.activities.utils import get_fs_client
+from fishsense_data_processing_workflow_worker.calibration_consistency import (
+    check_fit_self_consistency,
+)
 
 INCH_TO_M = 0.0254
 MIN_LASER_POINTS = 2
@@ -113,8 +116,14 @@ async def _gather_laser_points(
     dive_slate_labels: list[DiveSlateLabel],
     slate: DiveSlate,
     camera_intrinsics: CameraIntrinsics,
-) -> list[np.ndarray]:
+) -> tuple[list[np.ndarray], list[tuple[float, float]]]:
+    """Lift each usable slate-laser observation to camera space.
+
+    Returns `(laser_points_3d, laser_dots_2d)` in lockstep — the 2D pixels
+    feed the post-fit self-consistency gate (the fitted ray must reproject
+    onto the very dots it was computed from)."""
     laser_points: list[np.ndarray] = []
+    laser_dots: list[tuple[float, float]] = []
     for label in dive_slate_labels:
         if label.image_id is None:
             activity.heartbeat()
@@ -128,8 +137,9 @@ async def _gather_laser_points(
         )
         if point is not None:
             laser_points.append(point)
+            laser_dots.append((float(laser_label.x), float(laser_label.y)))
         activity.heartbeat()
-    return laser_points
+    return laser_points, laser_dots
 
 
 @activity.defn
@@ -183,7 +193,7 @@ async def perform_laser_calibration_activity(dive_id: int) -> int | None:
                 f"camera_id={dive.camera_id} has no intrinsics"
             )
 
-        laser_points = await _gather_laser_points(
+        laser_points, laser_dots = await _gather_laser_points(
             fs, dive_slate_labels, slate, camera_intrinsics
         )
         if len(laser_points) < MIN_LASER_POINTS:
@@ -201,6 +211,18 @@ async def perform_laser_calibration_activity(dive_id: int) -> int | None:
             [float(origin[0]), float(origin[1]), 0.0], dtype=float
         )
         laser_axis = np.asarray(orientation, dtype=float)
+
+        # Self-consistency gate: the fitted ray must reproject onto the 2D
+        # dots it was computed from. Raises (no persist) when it doesn't —
+        # mixed dot populations (specular-reflection mislabels, prod dive 77)
+        # or corrupt slate poses otherwise ship a calibration whose length
+        # errors reach +137% downstream.
+        check_fit_self_consistency(
+            laser_position,
+            laser_axis,
+            camera_intrinsics.camera_matrix,
+            np.array(laser_dots, dtype=float),
+        )
 
         new_le = LaserExtrinsics(
             laser_position=laser_position,

@@ -43,6 +43,9 @@ from fishsense_data_processing_workflow_worker.laser_label_validation.line_fit i
     fit_dive_line,
     flag_outliers,
 )
+from fishsense_data_processing_workflow_worker.laser_label_validation.reflection import (
+    detect_reflection_split,
+)
 
 __all__ = [
     "validate_laser_labels_for_dive_activity",
@@ -129,6 +132,10 @@ def _positive_xy(labels: List[LaserLabel]) -> tuple[np.ndarray, List[LaserLabel]
 
 @activity.defn
 async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
+    # pylint: disable=too-many-return-statements
+    # Flat guard -> log -> return-0 per skip reason (no labels, too few
+    # positives, no fit, reflection split, no outliers, fraction gate);
+    # reads better inline than dispersed across helpers.
     """Run RANSAC line-fit validation for `dive_id` and supersede any
     flagged outliers. Returns the number of labels superseded (0 when
     the line isn't confident or there aren't enough positives to fit).
@@ -218,6 +225,35 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
             ),
         )
         activity.heartbeat()
+
+        # Two-line (specular reflection) detection. A dive whose dots split
+        # across two coherent parallel lines — labelers clicking the laser's
+        # reflection on the slate (prod dive 77) — defeats single-line
+        # validation in exactly the wrong way: with the artifact in the
+        # majority, RANSAC anchors on the WRONG line and 3-sigma flagging
+        # would supersede the true one; with a near-even split, confidence
+        # collapses and the dive is silently skipped while stage 13 consumes
+        # the poisoned mix. Choosing which line is real needs cross-dive
+        # consensus (sibling dives, same camera), which the per-dive validator
+        # doesn't have — so on detection it logs loudly and stands down,
+        # leaving the labels for operator remediation (supersede the artifact
+        # line, delete the extrinsics, refit — see the dive-77 recipe).
+        suspect = detect_reflection_split(xy, fit)
+        if suspect is not None:
+            activity.logger.error(
+                "dive_id=%d REFLECTION SUSPECT: laser dots form two parallel "
+                "lines — primary n=%d, secondary n=%d at %.1fpx separation "
+                "(angle %.2f deg). Likely specular-reflection mislabels; "
+                "single-line validation cannot resolve which is real. "
+                "Skipping supersede; manual remediation required before this "
+                "dive's labels feed stage 13.",
+                dive_id,
+                suspect.n_primary,
+                suspect.n_secondary,
+                suspect.separation_px,
+                suspect.angle_deg,
+            )
+            return 0
 
         outlier_mask = flag_outliers(xy, fit)
         n_outliers = int(outlier_mask.sum())
