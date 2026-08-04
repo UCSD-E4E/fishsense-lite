@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.48.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.48.1...fishsense-api-workflow-worker-v1.48.2) (2026-08-04)
+
+
+### Bug Fixes
+
+* gate laser calibration on self-consistency + detect reflection splits ([#509](https://github.com/UCSD-E4E/fishsense-lite/issues/509)) ([6103c50](https://github.com/UCSD-E4E/fishsense-lite/commit/6103c50a9f3e47b81c216a8e7ea0e62564e35aa1))
+
 ## [1.48.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.48.0...fishsense-api-workflow-worker-v1.48.1) (2026-08-03)
 
 
