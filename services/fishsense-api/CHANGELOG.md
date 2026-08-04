@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.44.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.44.0...fishsense-api-v1.44.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* correct the ruler reference to the labeled 13.5 in span ([#540](https://github.com/UCSD-E4E/fishsense-lite/issues/540)) ([39f7629](https://github.com/UCSD-E4E/fishsense-lite/commit/39f7629213ed75de820c17f7233ada02fb1b69dc))
+
 ## [1.44.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.43.0...fishsense-api-v1.44.0) (2026-08-04)
 
 
