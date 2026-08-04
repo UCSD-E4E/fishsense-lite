@@ -121,14 +121,15 @@ laser, 5.1 → headtail, 9 → dive-slate). After
 the parent runs
 `execute_child_workflow("Populate<Stage>LabelStudioProjectWorkflow",
 dive_id, id="populate-<stage>-{dive_id}",
-id_reuse_policy=ALLOW_DUPLICATE_FAILED_ONLY)`. Steady-state behavior
-on the same cohort dive: hour 1 imports tasks; hours 2+ catch
-`WorkflowAlreadyStartedError` and no-op rather than re-importing
-duplicate LS tasks. On-demand invocation is still supported for
-backfill or operator intervention; if you trigger it manually, use a
-non-colliding workflow id (e.g. `populate-laser-393-manual`) so the
-auto-chain's deterministic id stays available for future hourly
-firings.
+id_reuse_policy=ALLOW_DUPLICATE)`. Steady-state on the same cohort
+dive: each firing re-dispatches populate, which is a cheap no-op once
+every eligible image already has a row (the activity selects only
+images without a non-sentinel label row, and
+`import_tasks_and_record_labels` dedupes by URL against tasks already
+in the project). On-demand invocation is still supported for backfill
+or operator intervention; a manual run while the scheduled one is
+in flight still needs a non-colliding id (e.g.
+`populate-laser-393-manual`).
 
 `UpdateDiveImageGroupsWorkflow(dive_id)` is the stage-6.1 on-demand
 workflow: it walks the dive's PREDICTION clusters, looks up each
@@ -161,13 +162,13 @@ work split into two workflows:
      There is no NAS archive step — the JPEGs are durable in Garage.
   6. `execute_child_workflow("Populate<Stage>LabelStudioProjectWorkflow",
      dive_id, id="populate-<stage>-{dive_id}",
-     id_reuse_policy=ALLOW_DUPLICATE_FAILED_ONLY)` — on-demand
-     populate child runs against the same task queue. The reuse
-     policy + deterministic id deduplicate against re-firings of the
-     parent on the same cohort dive — once labels start completing,
-     the dive drops out of the cohort, but if the parent fires twice
-     on the same dive_id (for whatever reason) the second populate
-     hits `WorkflowAlreadyStartedError` and the parent catches it so
+     id_reuse_policy=ALLOW_DUPLICATE)` — on-demand
+     populate child runs against the same task queue. Re-firings on
+     the same cohort dive re-dispatch and no-op at the activity level
+     (dedup is inside the child, not in the reuse policy — see the
+     cluster-correctness section). `WorkflowAlreadyStartedError` is
+     only raised while a prior populate for that dive is still
+     *running*, and the parent catches it so
      the post-cleanup run still completes successfully.
 * **Child** on data-worker (`fishsense_data_processing_queue`). Thin
   pre-input workflow that fans out per-image activities. No SDK
@@ -223,11 +224,26 @@ one replica):
   `WorkflowAlreadyStartedError` is now only raised when a prior child
   with the same id is still *running* (manual run overlapping the
   schedule); the parent catches it and continues to cleanup.
-  The **populate** child (laser/headtail/slate parents) keeps
-  `ALLOW_DUPLICATE_FAILED_ONLY` — duplicate LS `import_tasks` is the
-  task-ballooning bug, so its dedup must stay. **Note:** temporalio's
-  default child `id_reuse_policy` is `ALLOW_DUPLICATE`, so the populate
-  child's FAILED_ONLY is set explicitly.
+  The **populate** child (laser/headtail/slate parents) also uses
+  `ALLOW_DUPLICATE`. It used to be `ALLOW_DUPLICATE_FAILED_ONLY`
+  because duplicate LS `import_tasks` was the task-ballooning bug —
+  but that made a *completed* populate burn the id forever, so a dive
+  that later gained an eligible image (a laser validated after
+  populate ran, an orphan clustered afterwards) could never get an LS
+  task for it, never got a label row, and therefore **never drained
+  from the preprocess cohort** — blocking every higher-id dive behind
+  it while re-staging its raw `.ORF`s from NAS every hour. Prod dive
+  60 (2 missing images) held up dives 84/465/471 that way until
+  2026-08-04. Dedup now lives *inside* the child, where it belongs and
+  where it also protects manual runs: the populate activity selects
+  only images with no non-sentinel label row, and
+  `import_tasks_and_record_labels` dedupes by URL against tasks
+  already in the project (the #343 fix). The laser populate parent had
+  already been flipped for the same reason; headtail/slate followed.
+  If you are tempted to restore FAILED_ONLY, note that it does not
+  actually prevent duplicate imports — a manual run with a different
+  id bypasses it entirely — so the in-child dedup is load-bearing
+  either way.
 * Per-image activities are idempotent: S3 PutObject overwrites,
   SDK upserts.
 

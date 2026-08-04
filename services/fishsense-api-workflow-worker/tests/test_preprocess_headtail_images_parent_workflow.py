@@ -223,3 +223,62 @@ async def test_skips_child_when_no_image_checksums():
     assert result == 440
     assert not child_runs
     assert not populate_runs
+
+
+@pytest.mark.asyncio
+async def test_populate_redispatches_on_a_later_firing_for_the_same_dive():
+    """The prod stall regression (dive 60, 2026-08-04).
+
+    Under `ALLOW_DUPLICATE_FAILED_ONLY` a *completed* `populate-headtail-{id}`
+    burned the id forever, so a dive that later gained an eligible image (a
+    laser validated after populate ran, an orphan clustered afterwards) could
+    never get an LS task for it -> never got a label row -> never drained from
+    the cohort -> blocked every higher-id dive behind it, while re-staging raw
+    .ORFs from NAS every hour. Dive 60 (2 missing images) held up 84/465/471.
+
+    Re-dispatch is safe because the populate child is idempotent twice over:
+    the activity selects only images with no non-sentinel label row, and
+    `import_tasks_and_record_labels` dedupes by URL against tasks already in
+    the project. The laser populate parent already runs ALLOW_DUPLICATE for
+    exactly this reason.
+    """
+    inputs = PreprocessHeadtailImagesInput(
+        dive_id=440,
+        image_checksums=["a", "b"],
+        camera_matrix=_K,
+        distortion_coefficients=_D,
+    )
+    activities = _make_stubs(440, inputs)
+    child_runs: List[tuple] = []
+    populate_runs: List[tuple] = []
+
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
+            task_queue="test-stage5-1-parent",
+            workflows=[
+                PreprocessHeadtailImagesParentWorkflow,
+                _StubPopulateWorkflow,
+            ],
+            activities=[
+                *activities,
+                _make_populate_recording_activity(populate_runs),
+            ],
+        ), Worker(
+            env.client,
+            task_queue=DATA_PROCESSING_TASK_QUEUE,
+            workflows=[_StubChildWorkflow],
+            activities=[_make_recording_activity(child_runs)],
+        ):
+            # Two hourly firings against the same cohort dive.
+            for _ in range(2):
+                await env.client.execute_workflow(
+                    PreprocessHeadtailImagesParentWorkflow.run,
+                    id=f"test-stage5-1-parent-{uuid.uuid4()}",
+                    task_queue="test-stage5-1-parent",
+                )
+
+    assert populate_runs == [
+        ("populate-headtail-440", 440),
+        ("populate-headtail-440", 440),
+    ], "the second firing must re-dispatch populate, or the dive can never drain"
