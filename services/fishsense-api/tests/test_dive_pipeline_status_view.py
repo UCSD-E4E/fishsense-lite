@@ -1233,3 +1233,60 @@ async def test_dive_images_preprocessed_false_when_only_species_row_superseded(s
     await session.flush()
 
     assert (await _row(session, 1))["dive_images_preprocessed"] is False
+
+
+# ---------- calibration_source (provenance) ----------
+#
+# `calibrated` says whether a dive HAS extrinsics; it does not say where they
+# came from, and that distinction is the strongest data-quality signal we have.
+# Measured 2026-08-04 against the known-length fish models: a dive using its
+# OWN slate measures at ~1%, while a BORROWED calibration adds a rig-state
+# systematic of -8..+2% (n=7) that no amount of software can recover — the
+# borrow is for a different rig deployment. Downstream analysis needs to be
+# able to filter or weight on this rather than treating all rows alike.
+
+
+async def test_calibration_source_own_when_the_dive_has_its_own_extrinsics(session):
+    from fishsense_api.models.laser_extrinsics import LaserExtrinsics  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    await session.flush()
+    session.add(LaserExtrinsics(dive_id=1, camera_id=1))
+    await session.flush()
+
+    assert (await _row(session, 1))["calibration_source"] == "own"
+
+
+async def test_calibration_source_borrowed_when_only_the_link_has_extrinsics(session):
+    from fishsense_api.models.laser_extrinsics import LaserExtrinsics  # pylint: disable=import-outside-toplevel
+
+    session.add_all([_dive(2), _dive(1, calibration_dive_id=2)])
+    await session.flush()
+    session.add(LaserExtrinsics(dive_id=2, camera_id=1))
+    await session.flush()
+
+    assert (await _row(session, 1))["calibration_source"] == "borrowed"
+
+
+async def test_calibration_source_own_wins_over_a_link(session):
+    """Mirrors `get_laser_extrinsics_for_dive`: a dive with its own row uses it
+    even when `calibration_dive_id` is also set, so provenance must say 'own'."""
+    from fishsense_api.models.laser_extrinsics import LaserExtrinsics  # pylint: disable=import-outside-toplevel
+
+    session.add_all([_dive(2), _dive(1, calibration_dive_id=2)])
+    await session.flush()
+    session.add_all(
+        [LaserExtrinsics(dive_id=1, camera_id=1), LaserExtrinsics(dive_id=2, camera_id=1)]
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["calibration_source"] == "own"
+
+
+async def test_calibration_source_none_when_uncalibrated(session):
+    session.add(_dive(1))
+    await session.flush()
+
+    row = await _row(session, 1)
+    assert row["calibration_source"] == "none"
+    assert row["calibrated"] is False
