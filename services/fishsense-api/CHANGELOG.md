@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.45.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.44.1...fishsense-api-v1.45.0) (2026-08-04)
+
+
+### Features
+
+* add fish_length_estimate view (p90 over a fish's frames) ([#543](https://github.com/UCSD-E4E/fishsense-lite/issues/543)) ([46e45b6](https://github.com/UCSD-E4E/fishsense-lite/commit/46e45b6402f2cff67b1f0b4fee718b61596199a0))
+
 ## [1.44.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.44.0...fishsense-api-v1.44.1) (2026-08-04)
 
 
