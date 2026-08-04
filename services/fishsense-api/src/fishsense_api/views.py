@@ -299,6 +299,31 @@ SELECT
         WHERE le.dive_id = d.calibration_dive_id
     )) AS calibrated,
 
+    -- WHERE the calibration came from — the strongest data-quality signal on a
+    -- measurement. `calibrated` only says a dive HAS extrinsics; provenance
+    -- says whether they describe THIS dive's rig deployment.
+    --
+    -- Measured 2026-08-04 against the known-length fish models: a dive on its
+    -- own slate measures to ~1%, while a BORROWED calibration carries an extra
+    -- rig-state systematic of -8..+2% (n=7, all seven model dives borrow).
+    -- That error is irreducible in software — laser-dot precision (~0.5%) and
+    -- the line fit (already at the label-noise floor) were both ruled out by
+    -- experiment — so downstream analysis must be able to filter or weight on
+    -- this rather than treat every measurement as equally trustworthy.
+    --
+    -- 'own' wins over 'borrowed' to mirror `get_laser_extrinsics_for_dive`'s
+    -- own-then-link resolution: a dive with its own row never uses the link.
+    CASE
+        WHEN EXISTS (
+            SELECT 1 FROM laserextrinsics le WHERE le.dive_id = d.id
+        ) THEN 'own'
+        WHEN EXISTS (
+            SELECT 1 FROM laserextrinsics le
+            WHERE le.dive_id = d.calibration_dive_id
+        ) THEN 'borrowed'
+        ELSE 'none'
+    END AS calibration_source,
+
     -- Stage 14: ≥1 measurement for the dive AND no measurable image left
     -- unmeasured. "Measurable" mirrors what measure_fish_activity
     -- actually attempts: a top-three species label whose image carries a
