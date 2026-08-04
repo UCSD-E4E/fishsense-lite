@@ -1608,7 +1608,12 @@ async def test_measure_fish_requires_extrinsics_and_an_unmeasured_measurable_ima
     assert await select_next_for_measure_fish(session=session) == 3
 
 
-def _fish_model_measurable_image(session, image_id: int, dive_id: int):
+def _fish_model_measurable_image(
+    session,
+    image_id: int,
+    dive_id: int,
+    content_of_image: str = "Fish Model, Grouper",
+):
     """A fish-model image the way prod has it: top-three `Fish Model, <name>`
     species label + valid laser + valid headtail, but NO LABEL_STUDIO cluster
     (models carry no grouping labels). The cohort must still select it."""
@@ -1630,7 +1635,7 @@ def _fish_model_measurable_image(session, image_id: int, dive_id: int):
         SpeciesLabel(
             image_id=image_id, top_three_photos_of_group=True,
             completed=True, superseded=False, label_studio_project_id=70,
-            content_of_image="Fish Model, Grouper",
+            content_of_image=content_of_image,
         )
     )
 
@@ -1904,7 +1909,7 @@ async def test_measure_fish_skips_species_rows_without_a_scientific_name(session
         LaserExtrinsics,
     )
 
-    for content in ("Calibration Targets, Ruler", None):
+    for content in ("Slate, Laser on slate", "Calibration Targets, Slate", None):
         session.add(_dive(1))
         await session.flush()
         session.add(LaserExtrinsics(dive_id=1, camera_id=1))

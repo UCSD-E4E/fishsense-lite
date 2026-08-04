@@ -989,7 +989,12 @@ def _measurement(image_id: int, fish_id: int = 100):
     return Measurement(image_id=image_id, fish_id=fish_id, length_m=0.3)
 
 
-def _fish_model_measurable_image(session, image_id: int, dive_id: int):
+def _fish_model_measurable_image(
+    session,
+    image_id: int,
+    dive_id: int,
+    content_of_image: str = "Fish Model, Grouper",
+):
     """Seed a fish-model image the way prod has it: top-three species label
     (`Fish Model, <name>`) + valid laser + valid headtail, but **no**
     LABEL_STUDIO cluster (models carry no grouping labels). Stage 14 measures
@@ -1012,8 +1017,44 @@ def _fish_model_measurable_image(session, image_id: int, dive_id: int):
         SpeciesLabel(
             image_id=image_id, top_three_photos_of_group=True,
             completed=True, superseded=False, label_studio_project_id=70,
-            content_of_image="Fish Model, Grouper",
+            content_of_image=content_of_image,
         )
+    )
+
+
+async def test_measured_counts_a_ruler_image_like_a_fish_model(session):
+    """The ruler is a known-length target measured through the same path, so a
+    ruler frame is measurable and holds `measured` false until it is measured.
+
+    Its value is that its endpoints are unambiguous: it grades pure calibration
+    error, with none of the fork-vs-tip uncertainty a fish model carries."""
+    session.add(_dive(1))
+    await session.flush()
+    _fish_model_measurable_image(
+        session, 11, 1, content_of_image="Calibration Targets, Ruler"
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["measured"] is False
+
+    session.add(_measurement(11))
+    await session.flush()
+    assert (await _row(session, 1))["measured"] is True
+
+
+async def test_measured_ignores_the_slate_marker(session):
+    """Promoting the ruler must not promote its sibling slate branches — the
+    stage-9 marker stays unmeasurable, so it can never hold a dive in the
+    stage-14 cohort forever."""
+    session.add(_dive(1))
+    await session.flush()
+    _fish_model_measurable_image(
+        session, 11, 1, content_of_image="Slate, Laser on slate"
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["measured"] is False, (
+        "vacuous: no measurable image, so nothing to measure"
     )
 
 
@@ -1129,19 +1170,20 @@ async def test_measured_ignores_non_top_three_images(session):
 async def test_measured_ignores_species_rows_without_a_scientific_name(session):
     """`measured` must mirror what stage 14 can actually measure.
 
-    A `Calibration Targets` row carries neither a "Common (Scientific)" name
-    nor a `Fish Model,` prefix, so `measure_fish_activity` skips it and no
-    Measurement is ever written. Counting it as a measurable-but-unmeasured
-    image pinned `measured` false forever — the same never-goes-false shape
-    b7c2e4d81a09 fixed one layer up, for unbound clusters. (Fish models ARE
-    measurable now — covered by test_measured_true_for_fish_model_image_*.)
+    A slate row carries neither a "Common (Scientific)" name nor a known-length
+    target name, so `measure_fish_activity` skips it and no Measurement is ever
+    written. Counting it as a measurable-but-unmeasured image pinned `measured`
+    false forever — the same never-goes-false shape b7c2e4d81a09 fixed one layer
+    up, for unbound clusters. (Fish models and the ruler ARE measurable — see
+    test_measured_true_for_fish_model_image_* and
+    test_measured_counts_a_ruler_image_like_a_fish_model.)
     """
     session.add(_dive(1))
     await session.flush()
-    # One real fish (measured) + one Calibration Targets row (never measurable).
+    # One real fish (measured) + one slate row (never measurable).
     real = _measurable_image(session, 11, 1, cluster_id=1)
     rig = _measurable_image(
-        session, 12, 1, cluster_id=2, content_of_image="Calibration Targets, Ruler"
+        session, 12, 1, cluster_id=2, content_of_image="Slate, Laser on slate"
     )
     await session.flush()
     session.add_all([real, rig])
@@ -1149,7 +1191,7 @@ async def test_measured_ignores_species_rows_without_a_scientific_name(session):
     await session.flush()
 
     assert (await _row(session, 1))["measured"] is True, (
-        "the Calibration Targets row must not hold `measured` false"
+        "the slate row must not hold `measured` false"
     )
 
 

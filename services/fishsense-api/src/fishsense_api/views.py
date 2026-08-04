@@ -76,12 +76,16 @@ _VALID_HEADTAIL_SQL = """htl.completed = TRUE
 # `measure_fish_activity` (`_parse_species_names` / `_parse_model_name`).
 _MEASURABLE_SPECIES_SQL = (
     "(sl.content_of_image LIKE '%(%)' "
-    "OR sl.content_of_image LIKE 'Fish Model,%')"
+    "OR sl.content_of_image LIKE 'Fish Model,%' "
+    "OR sl.content_of_image = 'Calibration Targets, Ruler')"
 )
 
 # A fish-model row (no cluster required — models carry no grouping labels).
 # Assumes the enclosing subquery aliases specieslabel as `sl`.
-_IS_FISH_MODEL_SQL = "sl.content_of_image LIKE 'Fish Model,%'"
+_IS_FISH_MODEL_SQL = (
+    "(sl.content_of_image LIKE 'Fish Model,%' "
+    "OR sl.content_of_image = 'Calibration Targets, Ruler')"
+)
 
 # "Complete" everywhere = ≥1 completed-non-superseded row AND zero
 # incomplete-non-superseded rows. Mirrors
@@ -408,6 +412,13 @@ KNOWN_FISH_MODELS = [
     {"name": "Gray Anthias", "known_length_m": 0.195},
     {"name": "Purple Angel", "known_length_m": 0.192},
     {"name": "Yellow Anthias", "known_length_m": 0.200},
+    # The ruler is a rigid known-length target measured through the same
+    # name-keyed path as the models. CAVEAT: this is the 14-inch span, which is
+    # what every head/tail label on a ruler frame currently marks. If labelers
+    # start marking a different span the reference is wrong for those frames —
+    # they would surface in `fish_model_species_mislabel_suspects` rather than
+    # silently skewing accuracy, but the reference would need splitting by span.
+    {"name": "Ruler", "known_length_m": 0.3556},
 ]
 
 # One row per fish-model measurement, with its error against the known length.

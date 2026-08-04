@@ -79,17 +79,31 @@ __all__ = ["MeasureFishResult", "measure_fish_activity"]
 # `dive_controller._measurable_species_conditions`; keep the three in step.
 _FISH_MODEL_PREFIX = "Fish Model,"
 
+# The ruler is a rigid known-length target like the models, so it measures
+# through the same name-keyed path. Its span is currently always the 14-inch
+# one (0.3556 m, seeded in `fishmodelreference`) — see the caveat there if
+# labelers ever start marking a different span.
+_RULER_CONTENT = "Calibration Targets, Ruler"
+_RULER_NAME = "Ruler"
+
 
 def _parse_model_name(content_of_image: str | None) -> str | None:
-    """Return the model name for a `Fish Model, <name>` row, else None.
+    """Return the target name for a known-length rigid target, else None.
 
-    Real fish (`..., Common (Scientific)`) and other branches (Calibration
-    Targets) return None. An empty leaf ("Fish Model," with nothing after)
-    returns None — nothing to identify — matching the "skip rather than write a
-    malformed row" posture of `_parse_species_names`.
+    Covers `Fish Model, <name>` and the ruler (`Calibration Targets, Ruler` ->
+    "Ruler"). Real fish (`..., Common (Scientific)`) and every other branch
+    return None. An empty leaf ("Fish Model," with nothing after) returns None
+    — nothing to identify — matching the "skip rather than write a malformed
+    row" posture of `_parse_species_names`.
+
+    The ruler earns its place here because, unlike a fish model, its endpoints
+    are unambiguous: it carries no tail-landmark (fork vs tip) uncertainty, so
+    it isolates calibration error from labeling convention.
     """
     if not content_of_image:
         return None
+    if content_of_image.strip() == _RULER_CONTENT:
+        return _RULER_NAME
     if not content_of_image.startswith(_FISH_MODEL_PREFIX):
         return None
     name = content_of_image[len(_FISH_MODEL_PREFIX):].strip()
