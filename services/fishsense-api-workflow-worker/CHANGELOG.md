@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.48.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.48.2...fishsense-api-workflow-worker-v1.48.3) (2026-08-04)
+
+
+### Bug Fixes
+
+* **api-worker:** stop the populate child permanently stalling preprocess cohorts ([#516](https://github.com/UCSD-E4E/fishsense-lite/issues/516)) ([8b46eea](https://github.com/UCSD-E4E/fishsense-lite/commit/8b46eeac0a4313ae11d17bf7eb2265260fab3f24))
+
 ## [1.48.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.48.1...fishsense-api-workflow-worker-v1.48.2) (2026-08-04)
 
 
