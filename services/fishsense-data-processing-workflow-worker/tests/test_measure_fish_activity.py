@@ -213,6 +213,7 @@ def _make_fs(  # pylint: disable=too-many-arguments
     fs.fish.post_species = AsyncMock(return_value=new_species_id)
     fs.fish.get = AsyncMock(return_value=None)
     fs.fish.get_by_name = AsyncMock(side_effect=(model_fish_lookup or {}).get)
+    fs.fish.delete_measurement = AsyncMock(return_value=None)
     fs.fish.post = AsyncMock(return_value=new_fish_id)
     fs.fish.post_measurement = AsyncMock(return_value=None)
     # `None` is the SDK's "dive has no measurements yet" signal (404).
@@ -745,3 +746,104 @@ async def test_same_model_across_clusters_resolves_to_one_fish(monkeypatch):
     fs.fish.post.assert_awaited_once()  # created once, reused for the second
     fish_ids = {c.args[0] for c in fs.fish.post_measurement.call_args_list}
     assert fish_ids == {700}, "same model -> one Fish"
+
+
+@pytest.mark.asyncio
+async def test_stale_model_binding_is_invalidated_and_remeasured(monkeypatch):
+    """A species relabel leaves the measurement bound to the OLD model's Fish.
+
+    Stage 14 skips already-measured images, so without this the wrong binding
+    is frozen forever — and it can't be fixed by re-measuring alone, because
+    `post_measurement` upserts on (image_id, fish_id) and would ADD the
+    corrected row alongside the stale one, double-counting the image.
+    Happened on prod images 4375/4664/4868 (2026-08-04), fixed by hand.
+
+    Here the image is now labeled Grouper but carries a measurement bound to
+    the Snook Fish: delete the stale binding, then measure against Grouper.
+    """
+    image_id = 100
+    le, head_pix, tail_pix, laser_pix = _model_observation()
+    snook = Fish(id=901, name="Snook", species_id=None)
+    grouper = Fish(id=902, name="Grouper", species_id=None)
+
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_camera_intrinsics(),
+        laser_extrinsics=le,
+        species_labels=[_species_label(image_id, content="Fish Model, Grouper")],
+        laser_labels={image_id: _laser_label(image_id, *laser_pix)},
+        headtail_labels={image_id: _headtail_label(image_id, head_pix, tail_pix)},
+        clusters=[],
+        model_fish_lookup={"Snook": snook, "Grouper": grouper},
+        existing_measurements=[
+            Measurement(id=1, length_m=0.44, image_id=image_id, fish_id=snook.id)
+        ],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(sut.measure_fish_activity, 42)
+
+    fs.fish.delete_measurement.assert_awaited_once_with(snook.id, image_id)
+    assert result.invalidated_stale_binding == 1
+    assert result.measured == 1
+    fish_id, _ = fs.fish.post_measurement.call_args.args
+    assert fish_id == grouper.id, "re-measured against the corrected model"
+
+
+@pytest.mark.asyncio
+async def test_correct_model_binding_is_left_alone(monkeypatch):
+    """The common case must stay a cheap skip: binding already matches the
+    label, so no delete and no re-measure."""
+    image_id = 100
+    le, head_pix, tail_pix, laser_pix = _model_observation()
+    grouper = Fish(id=902, name="Grouper", species_id=None)
+
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_camera_intrinsics(),
+        laser_extrinsics=le,
+        species_labels=[_species_label(image_id, content="Fish Model, Grouper")],
+        laser_labels={image_id: _laser_label(image_id, *laser_pix)},
+        headtail_labels={image_id: _headtail_label(image_id, head_pix, tail_pix)},
+        clusters=[],
+        model_fish_lookup={"Grouper": grouper},
+        existing_measurements=[
+            Measurement(id=1, length_m=0.36, image_id=image_id, fish_id=grouper.id)
+        ],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(sut.measure_fish_activity, 42)
+
+    fs.fish.delete_measurement.assert_not_awaited()
+    assert result.skipped_already_measured == 1
+    assert result.measured == 0
+
+
+@pytest.mark.asyncio
+async def test_real_fish_bindings_are_never_invalidated(monkeypatch):
+    """Real (wild) fish carry name=None and their identity is per-CLUSTER, not
+    per-label, so a species change doesn't invalidate the binding. Only named
+    model Fish are eligible for this self-heal."""
+    image_id = 100
+    le, head_pix, tail_pix, laser_pix = _model_observation()
+    wild = Fish(id=88, name=None, species_id=42)
+
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_camera_intrinsics(),
+        laser_extrinsics=le,
+        species_labels=[_species_label(image_id)],  # real "Common (Sci)" label
+        laser_labels={image_id: _laser_label(image_id, *laser_pix)},
+        headtail_labels={image_id: _headtail_label(image_id, head_pix, tail_pix)},
+        clusters=[_cluster([image_id], fish_id=wild.id)],
+        existing_measurements=[
+            Measurement(id=1, length_m=0.30, image_id=image_id, fish_id=wild.id)
+        ],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(sut.measure_fish_activity, 42)
+
+    fs.fish.delete_measurement.assert_not_awaited()
+    assert result.skipped_already_measured == 1

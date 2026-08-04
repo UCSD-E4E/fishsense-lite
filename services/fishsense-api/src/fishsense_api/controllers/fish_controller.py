@@ -155,6 +155,46 @@ async def post_measurement(
     return measurement_id
 
 
+@app.delete("/api/v1/fish/{fish_id}/measurements/{image_id}", status_code=204)
+async def delete_measurement(
+    fish_id: int,
+    image_id: int,
+    session: AsyncSession = Depends(get_async_session),
+) -> None:
+    """Delete the measurement binding `image_id` to `fish_id`.
+
+    Exists so stage 14 can invalidate a measurement whose fish identity went
+    stale — a species relabel (e.g. `Fish Model, Snook` -> `Fish Model,
+    Grouper`) leaves the row bound to the old model's Fish, and re-measuring
+    cannot fix it: `post_measurement` upserts on `(image_id, fish_id)`, so the
+    corrected binding would be ADDED alongside and the image double-counted.
+
+    Keyed on the same natural key as the upsert, not on `image_id` alone, so a
+    frame holding two fish only loses the binding named here. Idempotent: a
+    missing row is already the desired state, so no 404 — that keeps activity
+    retries safe.
+    """
+    logger.debug(
+        "Deleting measurement for image_id=%d fish_id=%d", image_id, fish_id
+    )
+    existing = (
+        await session.exec(
+            select(Measurement)
+            .where(Measurement.image_id == image_id)
+            .where(Measurement.fish_id == fish_id)
+        )
+    ).first()
+    if existing is None:
+        logger.debug(
+            "No measurement for image_id=%d fish_id=%d; nothing to delete",
+            image_id,
+            fish_id,
+        )
+        return
+    await session.delete(existing)
+    await session.flush()
+
+
 @app.get("/api/v1/fish/species/{scientific_name}")
 async def get_species_by_scientific_name(
     scientific_name: str, session: AsyncSession = Depends(get_async_session)

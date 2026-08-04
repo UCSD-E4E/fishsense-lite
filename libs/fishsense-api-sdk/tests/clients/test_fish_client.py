@@ -411,3 +411,27 @@ class TestFishClient:
 
             async with client:
                 assert await client.get_measurements(999) is None
+
+    async def test_delete_measurement(self):
+        """Stage 14 invalidates a stale (image, fish) binding after a relabel."""
+        semaphore = asyncio.Semaphore(10)
+        client = FishClient(
+            base_url="http://test.com",
+            username="testuser",
+            password="testpass",
+            timeout=10,
+            semaphore=semaphore,
+        )
+
+        mock_response = Mock()
+        mock_response.status_code = 204
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(client, "_delete", new_callable=AsyncMock) as mock_delete:
+            mock_delete.return_value = mock_response
+
+            async with client:
+                await client.delete_measurement(101, 11)
+                mock_delete.assert_called_once_with(
+                    "/api/v1/fish/101/measurements/11"
+                )

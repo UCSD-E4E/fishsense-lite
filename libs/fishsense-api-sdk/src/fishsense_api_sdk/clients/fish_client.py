@@ -123,6 +123,24 @@ class FishClient(ClientBase):
         response.raise_for_status()
         return response.json()
 
+    async def delete_measurement(self, fish_id: int, image_id: int) -> None:
+        """Delete the measurement binding `image_id` to `fish_id`.
+
+        Used by stage 14 to invalidate a measurement whose fish identity went
+        stale after a species relabel. Re-measuring alone can't fix that:
+        `post_measurement` upserts on `(image_id, fish_id)`, so the corrected
+        binding would be added alongside the old one. Idempotent server-side —
+        deleting an absent binding is a no-op.
+
+        Args:
+            fish_id (int): The fish the stale measurement is bound to.
+            image_id (int): The image whose binding should be removed.
+        """
+        response = await self._delete(
+            f"/api/v1/fish/{fish_id}/measurements/{image_id}"
+        )
+        response.raise_for_status()
+
     async def get_species_by_scientific_name(
         self, scientific_name: str
     ) -> Species | None:
