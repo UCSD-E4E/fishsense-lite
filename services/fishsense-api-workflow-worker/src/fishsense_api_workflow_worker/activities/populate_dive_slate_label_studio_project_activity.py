@@ -217,10 +217,20 @@ async def populate_dive_slate_label_studio_project_activity(
                 dive_id,
             )
 
-        # Supersede pass: retire previously-incomplete slate rows so new ones
-        # are canonical (mirrors headtail/species). Only already-persisted rows.
+        refreshed_image_ids = {image.id for image in images}
+
+        # Supersede pass: dead-letter incomplete slate rows belonging to a
+        # DIFFERENT (legacy) project so this project's rows are canonical.
+        # Rows for images this run just imported are exempt:
+        # `put_dive_slate_label` upserts on `image_id`, so the "old" row IS
+        # the one the import just refreshed —
+        # superseding it undoes this run's own work, and alternates run to run
+        # because the snapshot predates the import. Same bug hit headtail on
+        # prod dive 341 (2026-08-04); mirrors species populate's guard.
         for old in existing_slate:
             if old.completed or old.superseded or old.id is None:
+                continue
+            if old.image_id in refreshed_image_ids:
                 continue
             old.superseded = True
             await fs.labels.put_dive_slate_label(old.image_id, old)

@@ -186,11 +186,11 @@ def _make_ls_client(returned_task_ids: List[int]):
 
 @pytest.mark.asyncio
 async def test_imports_targets_and_supersedes_incomplete_old_rows(monkeypatch):
-    """Image 1 has a completed old row -> skip. Image 2 has an
-    incomplete old row with id -> get a new task AND old row gets
-    superseded. Image 3 is fresh -> get a new task. Image 4 has an
-    incomplete old row but no `id` -> superseded skipped (can't
-    update without an id) but the new task still goes through."""
+    """Image 1 has a completed old row -> skip. Image 2 has an incomplete old
+    row with id IN THIS PROJECT -> re-imported, and must NOT be superseded
+    (see the flip-flop regression below). Image 3 is fresh -> new task.
+    Image 4 has an incomplete old row but no `id` -> superseded skipped
+    (can't update without an id) but the new task still goes through."""
     laser = [
         _laser(1),
         _laser(2),
@@ -226,7 +226,10 @@ async def test_imports_targets_and_supersedes_incomplete_old_rows(monkeypatch):
     superseded_writes = [w for w in written if w.id is not None and w.superseded]
 
     assert {w.image_id for w in new_writes} == {2, 3, 4}
-    assert {w.image_id for w in superseded_writes} == {2}
+    assert not superseded_writes, (
+        "rows in the project being populated were just refreshed by the "
+        "import; superseding them undoes this run's own work"
+    )
 
 
 @pytest.mark.asyncio
@@ -290,3 +293,68 @@ async def test_does_not_publish_empty_project(monkeypatch):
     )
 
     ls.projects.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_running_twice_does_not_flip_rows_back_to_superseded(monkeypatch):
+    """The prod flip-flop (dive 341, 2026-08-04).
+
+    `put_headtail_label` upserts on `image_id`, so there is only ever ONE row
+    per image — meaning the "old" row the supersede pass retires IS the row the
+    import just created. The pass reads a snapshot taken BEFORE the import and
+    skips rows already superseded, so the outcome ALTERNATES between runs:
+    superseded -> live -> superseded -> ... Each hourly firing (and each
+    activity retry) toggled it, so the dive oscillated in and out of the
+    stage-5.1 cohort and its labeler tasks flickered between live and
+    dead-lettered.
+
+    Second run must be a no-op on the row state. Mirrors the guard species
+    populate already has (`old.label_studio_project_id == project_id`).
+    """
+    laser = [_laser(1)]
+    images_by_id = {1: _image(1, "a")}
+    # State after a first populate: a live, incomplete row in THIS project.
+    existing = [_headtail_label(1, completed=False, has_id=True)]
+
+    fs = _make_fs_client(laser, existing, images_by_id)
+    ls = _make_ls_client(returned_task_ids=[4001])
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    await ActivityEnvironment().run(
+        sut.populate_headtail_label_studio_project_activity, 42, 71
+    )
+
+    written = [c.args[1] for c in fs.labels.put_headtail_label.await_args_list]
+    assert not [w for w in written if w.superseded], (
+        "a re-run must leave the pending row live, or the dive never drains"
+    )
+
+
+@pytest.mark.asyncio
+async def test_stale_rows_for_non_target_images_are_still_superseded(monkeypatch):
+    """The supersede pass keeps its job. Image 2's laser is no longer valid, so
+    it is NOT re-imported this run — its lingering incomplete row is genuinely
+    stale and must be dead-lettered. Only images the import just refreshed are
+    exempt."""
+    laser = [_laser(1), _laser(2, superseded=True)]
+    images_by_id = {1: _image(1, "a"), 2: _image(2, "b")}
+    existing = [
+        _headtail_label(1, completed=False, has_id=True),  # target -> exempt
+        _headtail_label(2, completed=False, has_id=True),  # not a target -> stale
+    ]
+
+    fs = _make_fs_client(laser, existing, images_by_id)
+    ls = _make_ls_client(returned_task_ids=[4002])
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    await ActivityEnvironment().run(
+        sut.populate_headtail_label_studio_project_activity, 42, 71
+    )
+
+    written = [c.args[1] for c in fs.labels.put_headtail_label.await_args_list]
+    superseded = [w for w in written if w.id is not None and w.superseded]
+    assert {w.image_id for w in superseded} == {2}
