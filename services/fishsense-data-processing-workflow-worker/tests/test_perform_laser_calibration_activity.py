@@ -1,3 +1,7 @@
+# pylint: disable=protected-access
+# The private kernels (`_drop_skipped`, `_laser_point_in_camera_space`) are
+# unit-tested directly — they carry the correspondence-pairing invariants that
+# a full-activity test can only exercise indirectly.
 """Unit tests for perform_laser_calibration_activity (stage 13).
 
 End-to-end synthetic-scene test pins down the math + SDK plumbing on a
@@ -301,7 +305,7 @@ async def test_reflection_contaminated_scene_is_rejected_not_persisted(monkeypat
     )
     # Contaminate: shift half the laser pixels +45px in x — the reflection
     # artifact observed on prod dive 77 (labelers clicked the specular double).
-    for i, (image_id, laser_label) in enumerate(sorted(lasers.items())):
+    for i, (_image_id, laser_label) in enumerate(sorted(lasers.items())):
         if i % 2 == 0:
             laser_label.x = float(laser_label.x) + 45.0
 
