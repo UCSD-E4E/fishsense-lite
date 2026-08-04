@@ -459,6 +459,78 @@ DROP_FISH_MODEL_ACCURACY_VIEW_SQL = (
 
 
 # ---------------------------------------------------------------------------
+# Per-fish length estimate
+# ---------------------------------------------------------------------------
+
+FISH_LENGTH_ESTIMATE_VIEW_NAME = "fish_length_estimate"
+
+# One row per (fish, dive) giving the length estimate to actually USE, plus the
+# alternatives for comparison.
+#
+# **Use `length_p90_m`, not the mean.** Stage 14 back-projects head and tail at
+# a single laser-derived depth, so it measures the fish's *projection*: any
+# out-of-plane angle can only ever SHORTEN it. Per-frame error is therefore
+# one-sided-negative — measured on 437 fish-model frames, the within-group IQR
+# is only 2.2pp and the median +0.3%, but the skew is -4.87, with 2.3% of
+# frames below -10pp against 0.5% above +10pp. Averaging drags the estimate
+# into that tail; a high quantile rejects it.
+#
+# Measured over 23 dive x model groups (n>=8): mean 4.35% absolute error,
+# median 3.58%, p75 2.68%, p90 2.26%. p90 rather than max because max chases
+# the single most-favourable frame and so inherits its label noise, while p90
+# keeps the one-sided-tail rejection.
+#
+# Covers every fish, not just models: `species_id` and `name` are both exposed
+# so wild fish (name NULL) and models (species_id NULL) are distinguishable.
+# `n_frames` is the honest caveat — a p90 over 2 frames is not a p90, so
+# consumers should filter on it.
+# Nearest-rank quantiles via ROW_NUMBER rather than `percentile_cont`, because
+# the view tests run on SQLite and it has no ordered-set aggregates. Integer
+# arithmetic gives ceil(q*n) portably: (9n+9)/10 = ceil(0.9n), (n+1)/2 =
+# ceil(0.5n). Nearest-rank also avoids interpolating between two frames, which
+# for a one-sided tail is the wrong thing anyway.
+#
+# Note p90 degenerates to the max for n<=8 (ceil(0.9*8)=8) — inherent to
+# nearest-rank, and the reason `n_frames` is exposed.
+FISH_LENGTH_ESTIMATE_VIEW_SQL = f"""
+CREATE VIEW {FISH_LENGTH_ESTIMATE_VIEW_NAME} AS
+WITH ranked AS (
+    SELECT
+        m.length_m   AS length_m,
+        i.dive_id    AS dive_id,
+        f.id         AS fish_id,
+        f.name       AS model_name,
+        f.species_id AS species_id,
+        ROW_NUMBER() OVER (
+            PARTITION BY f.id, i.dive_id ORDER BY m.length_m
+        ) AS rn,
+        COUNT(*) OVER (PARTITION BY f.id, i.dive_id) AS n
+    FROM measurement m
+    JOIN image i ON i.id = m.image_id
+    JOIN fish f ON f.id = m.fish_id
+    WHERE m.length_m IS NOT NULL
+)
+SELECT
+    fish_id,
+    dive_id,
+    model_name,
+    species_id,
+    n AS n_frames,
+    MAX(CASE WHEN rn = (9 * n + 9) / 10 THEN length_m END) AS length_p90_m,
+    MAX(CASE WHEN rn = (n + 1) / 2      THEN length_m END) AS length_median_m,
+    MAX(length_m) AS length_max_m,
+    MIN(length_m) AS length_min_m,
+    AVG(length_m) AS length_mean_m
+FROM ranked
+GROUP BY fish_id, dive_id, model_name, species_id, n
+"""
+
+DROP_FISH_LENGTH_ESTIMATE_VIEW_SQL = (
+    f"DROP VIEW IF EXISTS {FISH_LENGTH_ESTIMATE_VIEW_NAME}"
+)
+
+
+# ---------------------------------------------------------------------------
 # Fish-model species-mislabel suspects
 # ---------------------------------------------------------------------------
 
