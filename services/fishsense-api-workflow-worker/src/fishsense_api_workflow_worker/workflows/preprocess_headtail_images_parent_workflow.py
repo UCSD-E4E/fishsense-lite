@@ -123,12 +123,24 @@ class PreprocessHeadtailImagesParentWorkflow:
                 dive_id,
                 id=f"populate-headtail-{dive_id}",
                 execution_timeout=timedelta(minutes=30),
-                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+                # ALLOW_DUPLICATE (not FAILED_ONLY): a completed populate must
+                # not burn the id, or a dive that later gains an eligible image
+                # can never get an LS task for it -> never gets a label row ->
+                # never drains from the cohort, blocking every higher-id dive
+                # behind it while re-staging raw .ORFs every hour (prod dive 60
+                # held up 84/465/471, 2026-08-04). Safe: the child is
+                # idempotent twice over — the activity selects only images with
+                # no non-sentinel label row, and `import_tasks_and_record_labels`
+                # dedupes by URL against tasks already in the project. Matches
+                # the laser populate parent, which already runs ALLOW_DUPLICATE.
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
             )
         except WorkflowAlreadyStartedError:
+            # Only reachable while a prior populate for this dive is still
+            # RUNNING (manual run overlapping the schedule).
             workflow.logger.info(
-                "populate-headtail-%d already ran in a prior hourly firing; "
-                "skipping LS task import",
+                "populate-headtail-%d is still running; skipping duplicate "
+                "dispatch",
                 dive_id,
             )
 

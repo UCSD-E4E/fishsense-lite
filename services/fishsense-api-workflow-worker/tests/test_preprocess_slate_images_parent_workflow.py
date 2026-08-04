@@ -235,3 +235,58 @@ async def test_skips_child_when_no_image_checksums():
     assert result == 440
     assert not child_runs
     assert not populate_runs
+
+
+@pytest.mark.asyncio
+async def test_populate_redispatches_on_a_later_firing_for_the_same_dive():
+    """Same stall regression as the headtail parent (prod dive 60, 2026-08-04).
+
+    `ALLOW_DUPLICATE_FAILED_ONLY` let a *completed* populate burn the child id
+    forever, so a dive that later gained an eligible image never got an LS task
+    for it, never got a label row, and never drained from the cohort — blocking
+    every higher-id dive behind it. Re-dispatch is safe: the populate activity
+    selects only images without a completed label row, and
+    `import_tasks_and_record_labels` dedupes by URL against the project.
+    """
+    inputs = PreprocessSlateImagesInput(
+        dive_id=440,
+        image_checksums=["a"],
+        slate_id=7,
+        slate_dpi=300,
+        reference_points=[(0.0, 0.0), (1.0, 1.0)],
+        camera_matrix=_K,
+        distortion_coefficients=_D,
+    )
+    activities = _make_stubs(440, inputs)
+    child_runs: List[tuple] = []
+    populate_runs: List[tuple] = []
+
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
+            task_queue="test-stage9-parent-redispatch",
+            workflows=[
+                PreprocessSlateImagesParentWorkflow,
+                _StubPopulateWorkflow,
+            ],
+            activities=[
+                *activities,
+                _make_populate_recording_activity(populate_runs),
+            ],
+        ), Worker(
+            env.client,
+            task_queue=DATA_PROCESSING_TASK_QUEUE,
+            workflows=[_StubChildWorkflow],
+            activities=[_make_recording_activity(child_runs)],
+        ):
+            for _ in range(2):
+                await env.client.execute_workflow(
+                    PreprocessSlateImagesParentWorkflow.run,
+                    id=f"test-stage9-parent-redispatch-{uuid.uuid4()}",
+                    task_queue="test-stage9-parent-redispatch",
+                )
+
+    assert populate_runs == [
+        ("populate-dive-slate-440", 440),
+        ("populate-dive-slate-440", 440),
+    ], "the second firing must re-dispatch populate, or the dive can never drain"

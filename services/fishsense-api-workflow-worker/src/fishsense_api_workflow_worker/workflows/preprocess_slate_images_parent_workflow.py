@@ -132,12 +132,20 @@ class PreprocessSlateImagesParentWorkflow:
                 dive_id,
                 id=f"populate-dive-slate-{dive_id}",
                 execution_timeout=timedelta(minutes=30),
-                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+                # ALLOW_DUPLICATE (not FAILED_ONLY) — see the headtail parent:
+                # a completed populate burning the id permanently stalls any
+                # dive that later gains an eligible image, and stalls every
+                # higher-id dive behind it. Safe: the child is idempotent twice
+                # over (activity selects only images without a completed label
+                # row; `import_tasks_and_record_labels` dedupes by URL).
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
             )
         except WorkflowAlreadyStartedError:
+            # Only reachable while a prior populate for this dive is still
+            # RUNNING (manual run overlapping the schedule).
             workflow.logger.info(
-                "populate-dive-slate-%d already ran in a prior hourly firing; "
-                "skipping LS task import",
+                "populate-dive-slate-%d is still running; skipping duplicate "
+                "dispatch",
                 dive_id,
             )
 
