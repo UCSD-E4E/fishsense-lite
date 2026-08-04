@@ -417,3 +417,78 @@ WHERE m.length_m IS NOT NULL
 DROP_FISH_MODEL_ACCURACY_VIEW_SQL = (
     f"DROP VIEW IF EXISTS {FISH_MODEL_ACCURACY_VIEW_NAME}"
 )
+
+
+# ---------------------------------------------------------------------------
+# Fish-model species-mislabel suspects
+# ---------------------------------------------------------------------------
+
+FISH_MODEL_MISLABEL_SUSPECTS_VIEW_NAME = "fish_model_species_mislabel_suspects"
+
+# A model's measured length is a strong prior on which model it is, so a frame
+# whose length fits a *different* known model far better than its own label is
+# a mislabel suspect. 18 real ones were found in prod on 2026-08-04 — 16 of
+# them contiguous runs, i.e. a whole photo sequence of one model labeled as
+# another.
+#
+# The asymmetry this view is built around: stage 14 measures the fish's
+# PROJECTION (head and tail are back-projected at a single laser-derived
+# depth), so an out-of-plane fish reads SHORT and never long. Hence:
+#
+#   * measured much LONGER than the label allows -> `high`. Foreshortening
+#     cannot lengthen a fish, so geometry can't explain it.
+#   * measured much SHORTER but matching another model -> `medium`. Genuinely
+#     ambiguous: a Snook (455mm) angled ~21 deg reads 360mm, exactly Grouper.
+#
+# A group-maximum signal was tried and REMOVED after failing on real data:
+# (a) Purple Angel 0.192 / Gray Anthias 0.195 / Yellow Anthias 0.200 are within
+# 4%, so noise pushes a correct group's max into a neighbour's length and
+# condemns the whole group; (b) one genuinely-mislabeled frame inflates its
+# group's max and condemns the correct frames around it (prod dive 60: a single
+# 601mm frame flagged all 19 real Groupers). Length can only discriminate
+# models that differ by more than measurement noise plus foreshortening; where
+# it can't, this view stays quiet rather than guessing.
+#
+# Deliberately NOT a filter on the accuracy view: a suspect frame is still a
+# real measurement until a human re-labels it in Label Studio (which is
+# authoritative — the hourly species sync overwrites the DB).
+_MISLABEL_MIN_OWN_PCT_ERROR = 15.0
+_MISLABEL_MAX_OTHER_PCT_ERROR = 10.0
+
+FISH_MODEL_MISLABEL_SUSPECTS_VIEW_SQL = f"""
+CREATE VIEW {FISH_MODEL_MISLABEL_SUSPECTS_VIEW_NAME} AS
+WITH frame_fit AS (
+    SELECT a.image_id,
+           r.name AS best_fit_model,
+           100.0 * (a.length_m - r.known_length_m) / r.known_length_m
+               AS best_fit_pct_error,
+           ROW_NUMBER() OVER (
+               PARTITION BY a.image_id
+               ORDER BY ABS(a.length_m - r.known_length_m) / r.known_length_m
+           ) AS rk
+    FROM {FISH_MODEL_ACCURACY_VIEW_NAME} a
+    CROSS JOIN fishmodelreference r
+)
+SELECT
+    a.image_id,
+    a.dive_id,
+    a.model_name AS labeled_model,
+    a.known_length_m,
+    a.length_m,
+    a.pct_error,
+    f.best_fit_model,
+    f.best_fit_pct_error,
+    CASE
+        WHEN a.pct_error > {_MISLABEL_MIN_OWN_PCT_ERROR} THEN 'high'
+        ELSE 'medium'
+    END AS confidence
+FROM {FISH_MODEL_ACCURACY_VIEW_NAME} a
+JOIN frame_fit f ON f.image_id = a.image_id AND f.rk = 1
+WHERE f.best_fit_model <> a.model_name
+  AND ABS(a.pct_error) > {_MISLABEL_MIN_OWN_PCT_ERROR}
+  AND ABS(f.best_fit_pct_error) < {_MISLABEL_MAX_OTHER_PCT_ERROR}
+"""
+
+DROP_FISH_MODEL_MISLABEL_SUSPECTS_VIEW_SQL = (
+    f"DROP VIEW IF EXISTS {FISH_MODEL_MISLABEL_SUSPECTS_VIEW_NAME}"
+)
