@@ -128,6 +128,33 @@ def _select_target_image_ids(
     ]
 
 
+async def _gate_on_jpeg_presence(images: List[Image]) -> List[Image]:
+    """Keep only images whose stage-9 slate JPEG is already in Garage.
+
+    A task whose `s3://` URI has no object behind it shows the labeler a
+    missing image, and recording the row also drops the dive out of the
+    stage-9 cohort so the JPEG can never be rendered afterwards. Deferring
+    costs nothing — the image returns on a later run. Mirrors species and
+    headtail populate; see the dive-84 incident (2026-08-04).
+    """
+    if not images:
+        return images
+    store = open_object_store_client()
+    present: List[Image] = []
+    for image in images:
+        if await store.has_processed_jpeg(DIVE_SLATE_FOLDER, image.checksum):
+            present.append(image)
+        else:
+            activity.logger.info(
+                "slate JPEG not yet in Garage for image %d (checksum=%s); "
+                "deferring to a later populate run",
+                image.id,
+                image.checksum,
+            )
+        activity.heartbeat()
+    return present
+
+
 def _build_task(image: Image, prediction=None, panel_width: float = 0.0) -> dict:
     """Build an LS task. Emits both `image` and `img` keys to satisfy legacy LS
     labeling-config XML across prod projects. Seeds a keypoint pre-annotation
@@ -171,6 +198,8 @@ async def populate_dive_slate_label_studio_project_activity(
             if image is not None:
                 images.append(image)
             activity.heartbeat()
+
+        images = await _gate_on_jpeg_presence(images)
 
         if images:
             def _task(image: Image) -> dict:

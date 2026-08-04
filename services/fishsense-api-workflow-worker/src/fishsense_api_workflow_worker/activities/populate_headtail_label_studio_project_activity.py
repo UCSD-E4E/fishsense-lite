@@ -36,6 +36,7 @@ from fishsense_api_workflow_worker.activities.populate_utils import (
     publish_label_studio_project,
 )
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
+from fishsense_api_workflow_worker.object_store import open_object_store_client
 
 # Physical Garage prefix the data-worker writes head/tail JPEGs to
 # (stage 5.1). Was the nginx virtual name "headtail_jpeg".
@@ -78,6 +79,36 @@ def _select_target_images(
     return selected
 
 
+async def _gate_on_jpeg_presence(images: List[Image]) -> List[Image]:
+    """Keep only images whose stage-5.1 head/tail JPEG is already in Garage.
+
+    A task whose `s3://` URI has no object behind it shows the labeler a
+    missing image — and because recording it writes a non-sentinel row, the
+    dive also drops out of the stage-5.1 cohort, so the JPEG can never be
+    rendered afterwards. Prod dive 84 wedged exactly that way on 2026-08-04
+    (36 of 39 tasks pointed at nothing) after populate was run standalone.
+    Deferring costs nothing: the image is picked up on a later run once
+    preprocess has written it, and this is a no-op when populate is chained
+    right after preprocess. Mirrors species populate's gate.
+    """
+    if not images:
+        return images
+    store = open_object_store_client()
+    present: List[Image] = []
+    for image in images:
+        if await store.has_processed_jpeg(HEADTAIL_FOLDER, image.checksum):
+            present.append(image)
+        else:
+            activity.logger.info(
+                "headtail JPEG not yet in Garage for image %d (checksum=%s); "
+                "deferring to a later populate run",
+                image.id,
+                image.checksum,
+            )
+        activity.heartbeat()
+    return present
+
+
 def _build_task(image: Image) -> dict:
     """Build an LS task. Emits both `image` and `img` keys to satisfy
     legacy LS labeling-config XML across prod projects — see
@@ -116,6 +147,8 @@ async def populate_headtail_label_studio_project_activity(
         targets = _select_target_images(
             laser_labels, images_by_id, existing_headtail
         )
+        # Never seed a task for an image the data-worker hasn't rendered.
+        targets = await _gate_on_jpeg_presence(targets)
 
         new_count = 0
         if targets:

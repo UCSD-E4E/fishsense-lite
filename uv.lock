@@ -741,7 +741,7 @@ dev = [
 
 [[package]]
 name = "fishsense-api-workflow-worker"
-version = "1.48.3"
+version = "1.48.4"
 source = { editable = "services/fishsense-api-workflow-worker" }
 dependencies = [
     { name = "boto3" },

@@ -77,6 +77,15 @@ def _slate_label(image_id: int, *, completed: bool) -> DiveSlateLabel:
     )
 
 
+@pytest.fixture(autouse=True)
+def _all_jpegs_present(monkeypatch):
+    """Default the JPEG gate to "present"; the gate test overrides it."""
+    store = MagicMock()
+    store.has_processed_jpeg = AsyncMock(return_value=True)
+    monkeypatch.setattr(sut, "open_object_store_client", lambda: store)
+    return store
+
+
 def test_select_targets_filters_by_slate_marker_and_completion():
     species = [
         _species_label(1, content=sut.SLATE_CONTENT_MARKER),
@@ -295,3 +304,32 @@ def test_build_task_seeds_prediction_only_when_present():
     seeded = sut._build_task(_image(11, "c11"), pred, 4967.5)
     assert seeded["predictions"] and seeded["predictions"][0]["result"]
     assert not sut._build_task(_image(12, "c12"))["predictions"]
+
+
+@pytest.mark.asyncio
+async def test_defers_images_whose_jpeg_is_not_in_garage(monkeypatch):
+    """Same gate as species/headtail: never seed a task for an unrendered
+    image, or the labeler sees a missing image and the dive leaves the
+    stage-9 cohort that would have rendered it."""
+    species = [
+        _species_label(1, content=sut.SLATE_CONTENT_MARKER),
+        _species_label(3, content=sut.SLATE_CONTENT_MARKER),
+    ]
+    images_by_id = {1: _image(1, "a"), 3: _image(3, "c")}
+    fs = _make_fs_client(species, existing_slate=[], images_by_id=images_by_id)
+    ls = _make_ls_client(returned_task_ids=[6001])
+
+    store = MagicMock()
+    store.has_processed_jpeg = AsyncMock(side_effect=lambda folder, checksum: checksum == "a")
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+    monkeypatch.setattr(sut, "open_object_store_client", lambda: store)
+
+    n = await ActivityEnvironment().run(
+        sut.populate_dive_slate_label_studio_project_activity, 42, 66
+    )
+
+    assert n == 1
+    written = [c.args[1] for c in fs.labels.put_dive_slate_label.await_args_list]
+    assert {w.image_id for w in written} == {1}
