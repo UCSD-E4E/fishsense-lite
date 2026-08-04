@@ -67,7 +67,21 @@ _VALID_HEADTAIL_SQL = """htl.completed = TRUE
 # `dive_controller._measurable_species_conditions`.
 #
 # Assumes the enclosing subquery aliases specieslabel as `sl`.
-_MEASURABLE_SPECIES_SQL = "sl.content_of_image LIKE '%(%)'"
+#
+# Two measurable branches: real fish carry a `Common (Scientific)` name
+# (parens); physical fish models carry a `Fish Model, <name>` prefix (no
+# parens) — measure_fish_activity resolves those to a name-keyed Fish. Any
+# other branch (Calibration Targets) stays unmeasurable. Mirrors
+# `dive_controller._measurable_species_conditions` and
+# `measure_fish_activity` (`_parse_species_names` / `_parse_model_name`).
+_MEASURABLE_SPECIES_SQL = (
+    "(sl.content_of_image LIKE '%(%)' "
+    "OR sl.content_of_image LIKE 'Fish Model,%')"
+)
+
+# A fish-model row (no cluster required — models carry no grouping labels).
+# Assumes the enclosing subquery aliases specieslabel as `sl`.
+_IS_FISH_MODEL_SQL = "sl.content_of_image LIKE 'Fish Model,%'"
 
 # "Complete" everywhere = ≥1 completed-non-superseded row AND zero
 # incomplete-non-superseded rows. Mirrors
@@ -321,12 +335,15 @@ SELECT
                WHERE htl.image_id = i.id
                  AND {_VALID_HEADTAIL_SQL}
            )
-           AND EXISTS (
-               SELECT 1 FROM diveframeclusterimagemapping mm
-               JOIN diveframecluster dfc
-                 ON dfc.id = mm.dive_frame_cluster_id
-               WHERE mm.image_id = i.id
-                 AND dfc.data_source = 'LABEL_STUDIO'
+           AND (
+               EXISTS (
+                   SELECT 1 FROM diveframeclusterimagemapping mm
+                   JOIN diveframecluster dfc
+                     ON dfc.id = mm.dive_frame_cluster_id
+                   WHERE mm.image_id = i.id
+                     AND dfc.data_source = 'LABEL_STUDIO'
+               )
+               OR {_IS_FISH_MODEL_SQL}
            )
            AND NOT EXISTS (
                SELECT 1 FROM measurement m

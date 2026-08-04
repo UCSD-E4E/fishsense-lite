@@ -44,13 +44,48 @@ async def get_fish(
     return fish
 
 
+@app.get("/api/v1/fish/by-name/{name}")
+async def get_fish_by_name(
+    name: str, session: AsyncSession = Depends(get_async_session)
+) -> Fish | None:
+    """Retrieve a fish by its `name` natural key (physical fish models).
+
+    404s when absent, matching `get_species_by_scientific_name`. Real fish carry
+    `name=None` and are not reachable here — only named models are.
+    """
+    logger.debug("Retrieving fish with name=%s", name)
+    query = select(Fish).where(Fish.name == name)
+
+    fish = (await session.exec(query)).first()
+    if fish is None:
+        logger.warning("Fish with name=%s not found", name)
+        raise HTTPException(status_code=404, detail="Fish not found")
+    return fish
+
+
 @app.post("/api/v1/fish", status_code=201)
 async def post_fish(
     fish: Fish,
     session: AsyncSession = Depends(get_async_session),
 ) -> int:
-    """Create a new fish."""
+    """Create or update a fish, upserting on the `name` natural key.
+
+    `session.merge` keys on the primary key alone, so a body with `id=None`
+    always INSERTs — which would hit `uq_fish_name` the second time the same
+    model is measured. Resolving a named row to its existing id first turns the
+    merge into an UPDATE (mirrors `post_measurement`). Real fish (`name=None`)
+    skip the lookup and always insert — multiple NULLs are allowed under the
+    unique constraint, so per-cluster real-fish identity is unaffected.
+    """
     logger.debug("Creating a new fish")
+
+    if fish.id is None and fish.name is not None:
+        existing = (
+            await session.exec(select(Fish).where(Fish.name == fish.name))
+        ).first()
+        if existing is not None:
+            fish.id = existing.id
+
     fish = await session.merge(fish)
     await session.flush()
 
