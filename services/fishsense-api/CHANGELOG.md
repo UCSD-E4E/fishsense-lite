@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.42.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.41.0...fishsense-api-v1.42.0) (2026-08-04)
+
+
+### Features
+
+* invalidate stale measurement bindings after a species relabel ([#527](https://github.com/UCSD-E4E/fishsense-lite/issues/527)) ([9e15091](https://github.com/UCSD-E4E/fishsense-lite/commit/9e15091c1d2c261e96a85cdd3cb9a58e345317ee))
+
 ## [1.41.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.40.0...fishsense-api-v1.41.0) (2026-08-04)
 
 

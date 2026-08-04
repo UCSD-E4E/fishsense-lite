@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.14.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.13.1...fishsense-data-processing-workflow-worker-v2.14.0) (2026-08-04)
+
+
+### Features
+
+* invalidate stale measurement bindings after a species relabel ([#527](https://github.com/UCSD-E4E/fishsense-lite/issues/527)) ([9e15091](https://github.com/UCSD-E4E/fishsense-lite/commit/9e15091c1d2c261e96a85cdd3cb9a58e345317ee))
+
 ## [2.13.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.13.0...fishsense-data-processing-workflow-worker-v2.13.1) (2026-08-04)
 
 
