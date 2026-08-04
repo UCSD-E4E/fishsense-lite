@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.41.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.40.0...fishsense-api-v1.41.0) (2026-08-04)
+
+
+### Features
+
+* **api:** add foreshortening-aware fish-model species-mislabel view ([#519](https://github.com/UCSD-E4E/fishsense-lite/issues/519)) ([76f8a7b](https://github.com/UCSD-E4E/fishsense-lite/commit/76f8a7b099ccb39e3555bb56d1eef4ea0575d8cf))
+
 ## [1.40.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.39.0...fishsense-api-v1.40.0) (2026-08-04)
 
 
