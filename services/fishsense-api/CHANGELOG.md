@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.44.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.43.0...fishsense-api-v1.44.0) (2026-08-04)
+
+
+### Features
+
+* grade the ruler as a known-length reference target ([#536](https://github.com/UCSD-E4E/fishsense-lite/issues/536)) ([5460d99](https://github.com/UCSD-E4E/fishsense-lite/commit/5460d996869b744d4ff3b50b6e6829569fde3170))
+
 ## [1.43.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.42.0...fishsense-api-v1.43.0) (2026-08-04)
 
 
