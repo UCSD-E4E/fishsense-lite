@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.40.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.39.0...fishsense-api-v1.40.0) (2026-08-04)
+
+
+### Features
+
+* **api:** persist known fish-model lengths + measurement-accuracy view ([#513](https://github.com/UCSD-E4E/fishsense-lite/issues/513)) ([c721643](https://github.com/UCSD-E4E/fishsense-lite/commit/c721643dd47c2d85d66fd0f905479e5d720d6d37))
+
 ## [1.39.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.38.0...fishsense-api-v1.39.0) (2026-08-04)
 
 
