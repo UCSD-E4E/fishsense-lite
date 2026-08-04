@@ -91,6 +91,17 @@ def _headtail_label(
     )
 
 
+@pytest.fixture(autouse=True)
+def _all_jpegs_present(monkeypatch):
+    """Default the JPEG gate to "present" so activity tests exercise the
+    import path; the gate test overrides this with a selective fake.
+    Mirrors the species populate test harness."""
+    store = MagicMock()
+    store.has_processed_jpeg = AsyncMock(return_value=True)
+    monkeypatch.setattr(sut, "open_object_store_client", lambda: store)
+    return store
+
+
 def test_select_targets_filters_by_valid_laser_and_drops_completed():
     laser = [
         _laser(1),                             # valid + completed headtail -> drop
@@ -358,3 +369,41 @@ async def test_stale_rows_for_non_target_images_are_still_superseded(monkeypatch
     written = [c.args[1] for c in fs.labels.put_headtail_label.await_args_list]
     superseded = [w for w in written if w.id is not None and w.superseded]
     assert {w.image_id for w in superseded} == {2}
+
+
+@pytest.mark.asyncio
+async def test_defers_images_whose_jpeg_is_not_in_garage(monkeypatch):
+    """Never seed a task for an image the data-worker hasn't rendered yet.
+
+    A task whose `s3://` URI has no object behind it shows the labeler a
+    missing image, and — because the new row is non-sentinel — it also drops
+    the dive out of the stage-5.1 cohort, so the JPEG can never be rendered.
+    Prod dive 84 landed in exactly that state on 2026-08-04 (36 of 39 tasks
+    pointed at nothing) after populate was run standalone to unblock it.
+    Species populate has gated on JPEG presence for this reason; headtail
+    didn't. Deferring is safe: the image returns on a later run.
+    """
+    laser = [_laser(1), _laser(2)]
+    images_by_id = {1: _image(1, "a"), 2: _image(2, "b")}
+
+    fs = _make_fs_client(laser, [], images_by_id)
+    ls = _make_ls_client(returned_task_ids=[5001])
+
+    # Only image 1's JPEG exists.
+    class _Store:
+        async def has_processed_jpeg(self, folder, checksum):
+            assert folder == sut.HEADTAIL_FOLDER
+            return checksum == "a"
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+    store = _Store()
+    monkeypatch.setattr(sut, "open_object_store_client", lambda: store)
+
+    n = await ActivityEnvironment().run(
+        sut.populate_headtail_label_studio_project_activity, 42, 71
+    )
+
+    assert n == 1, "only the image with a rendered JPEG is seeded"
+    written = [c.args[1] for c in fs.labels.put_headtail_label.await_args_list]
+    assert {w.image_id for w in written} == {1}
