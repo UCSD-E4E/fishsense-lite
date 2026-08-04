@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.48.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.48.3...fishsense-api-workflow-worker-v1.48.4) (2026-08-04)
+
+
+### Bug Fixes
+
+* **api-worker:** stop the populate supersede pass clobbering its own import ([#522](https://github.com/UCSD-E4E/fishsense-lite/issues/522)) ([6a8a461](https://github.com/UCSD-E4E/fishsense-lite/commit/6a8a461c3e9dd9a0e8a9a91cecf6b5893c686f8c))
+
 ## [1.48.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.48.2...fishsense-api-workflow-worker-v1.48.3) (2026-08-04)
 
 
