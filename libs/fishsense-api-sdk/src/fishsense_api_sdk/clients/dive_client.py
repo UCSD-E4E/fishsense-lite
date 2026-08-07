@@ -44,6 +44,30 @@ class DiveClient(ClientBase):
 
         return [Dive.model_validate(dive) for dive in json]
 
+    async def post(self, dive: Dive) -> int:
+        """Create or update a dive, keyed on its NAS-relative `path`.
+
+        The endpoint upserts on `path`, so there is no create-vs-update
+        decision here: ingest posts a dive at `priority=LOW` when it first sees
+        the folder, then posts the same path again once every image has landed
+        to flip it to HIGH. Both calls come through this method.
+
+        `mode="json"` is required -- `dive_datetime` is a `datetime`, which
+        httpx cannot encode.
+
+        Args:
+            dive (Dive): The dive to create or update.
+
+        Returns:
+            int: The ID of the created or updated dive.
+        """
+        response = await self._post(
+            "/api/v1/dives/",
+            json=dive.model_dump(exclude_unset=True, mode="json"),
+        )
+        response.raise_for_status()
+        return response.json()
+
     async def get_canonical(self) -> List[Dive] | None:
         """Get canonical dives.
 

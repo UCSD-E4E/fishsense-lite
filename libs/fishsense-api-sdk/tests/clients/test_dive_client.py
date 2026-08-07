@@ -367,3 +367,64 @@ class TestDiveClient:
 
             async with client:
                 assert await client.get_dives_needing_species_population() == []
+
+
+class TestDiveClientPost:
+    """`dives.post` — the dive-creation half of ingest.
+
+    Ingest posts the same dive twice by design: once at `priority=LOW` when the
+    folder is first seen, then again after every image has landed to flip it to
+    HIGH. The endpoint upserts on `path`, so the client just posts; there is no
+    create-vs-update decision on this side.
+    """
+
+    async def test_post_sends_the_dive_and_returns_the_new_id(self):
+        client = _make_client()
+        mock_response = Mock()
+        mock_response.status_code = 201
+        mock_response.raise_for_status = Mock()
+        mock_response.json = Mock(return_value=42)
+
+        with patch.object(client, "_post", new_callable=AsyncMock) as mock_post:
+            mock_post.return_value = mock_response
+            dive_id = await client.post(Dive.model_validate(_dive_payload()))
+
+        assert dive_id == 42
+        args, kwargs = mock_post.call_args
+        assert args[0] == "/api/v1/dives/"
+        assert kwargs["json"]["path"] == "/data/dives/test"
+
+    async def test_post_serialises_datetimes_for_the_wire(self):
+        """`dive_datetime` must go out as a JSON string, not a datetime object —
+        httpx cannot encode the latter and would raise at request time."""
+        client = _make_client()
+        mock_response = Mock()
+        mock_response.status_code = 201
+        mock_response.raise_for_status = Mock()
+        mock_response.json = Mock(return_value=1)
+
+        with patch.object(client, "_post", new_callable=AsyncMock) as mock_post:
+            mock_post.return_value = mock_response
+            await client.post(Dive.model_validate(_dive_payload()))
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert isinstance(payload["dive_datetime"], str)
+        assert payload["priority"] == "HIGH"
+
+    async def test_post_raises_for_status_so_validation_failures_surface(self):
+        """The endpoint 422s on a camera with no intrinsics, an over-long path,
+        a dangling calibration source. Those must not be swallowed — a silently
+        dropped dive is the failure mode ingest exists to prevent."""
+        client = _make_client()
+        mock_response = Mock()
+        mock_response.status_code = 422
+        mock_response.raise_for_status = Mock(side_effect=RuntimeError("422"))
+
+        with patch.object(client, "_post", new_callable=AsyncMock) as mock_post:
+            mock_post.return_value = mock_response
+            try:
+                await client.post(Dive.model_validate(_dive_payload()))
+            except RuntimeError:
+                pass
+            else:
+                raise AssertionError("post must not swallow a non-2xx response")

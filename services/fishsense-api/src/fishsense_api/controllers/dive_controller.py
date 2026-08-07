@@ -1,4 +1,12 @@
 # pylint: disable=C0121
+# pylint: disable=too-many-lines
+#   This module is a route registry: ~20 endpoints, most of them a single
+#   cohesive SELECT, plus the shared cohort predicates they splat into
+#   those selects. Adding `post_dive` tipped it past pylint's 1000-line
+#   ceiling. Splitting the stage-cohort selectors into their own module
+#   is the real fix and is worth doing, but it would move ~600 lines and
+#   every worker activity that imports them — not something to bundle
+#   into an unrelated feature PR.
 """Dive Controller for FishSense API."""
 
 import logging
@@ -12,6 +20,8 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from fishsense_api.database import get_async_session
+from fishsense_api.models.camera import Camera
+from fishsense_api.models.camera_intrinsics import CameraIntrinsics
 from fishsense_api.models.data_source import DataSource
 from fishsense_api.models.dive import Dive
 from fishsense_api.models.dive_frame_cluster import (
@@ -153,6 +163,120 @@ async def get_canonical_dives(
 
     result = await session.exec(query)
     return result.all()
+
+
+# Maximum length of `Dive.path` / `Image.path`, mirroring `max_length=255` on
+# the models. Postgres would reject an over-long value, but sqlite silently
+# stores it, so the check is explicit rather than left to the driver.
+MAX_PATH_LENGTH = 255
+
+
+@app.post("/api/v1/dives/", status_code=201)
+async def post_dive(
+    dive: Dive,
+    session: AsyncSession = Depends(get_async_session),
+) -> int:
+    """Create or update a dive, keyed on its NAS-relative `path`.
+
+    **Upserts on `path`.** `session.merge` keys on the primary key alone, so a
+    body with `id=None` always INSERTs — which trips the unique index on
+    `path` (the dive-shaped form of the #347 duplicate-key 500). Ingest
+    re-posts the same path routinely: resuming a partial scan, and the
+    finalize step re-POSTing to flip `priority` LOW -> HIGH. Resolving the
+    natural key to an existing row id first turns the merge into an UPDATE.
+
+    Validation is deliberately loud, because each of these breaks a *later*
+    stage silently rather than here:
+
+      * A dive whose camera has no `CameraIntrinsics` can never be measured by
+        stage 14. Nothing errors — the dive just never reaches `measured`.
+      * An over-long path is silently truncated by some backends, and the
+        resulting `Image.path` no longer resolves on the NAS.
+      * A self-referential or dangling `calibration_dive_id` makes
+        `get_laser_extrinsics_for_dive`'s fallback either loop or 404.
+
+    `priority` is NOT validated here: ingest deliberately creates dives at LOW
+    and flips them to HIGH only once every image has landed, so LOW is a
+    legitimate intermediate state (see the ingest workflow's commit flag).
+    """
+    logger.debug("Creating or updating dive with path=%s", dive.path)
+
+    # Path checks run BEFORE `model_validate`. SQLModel's `max_length=255`
+    # already rejects an over-long path for any normally-constructed body (so
+    # an HTTP caller gets a 422 from request validation), but a body built via
+    # `model_construct` bypasses that — and re-validating here would raise a
+    # bare ValidationError instead of a useful 422.
+    if not dive.path:
+        raise HTTPException(status_code=422, detail="Dive path is required")
+    if len(dive.path) > MAX_PATH_LENGTH:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Dive path exceeds {MAX_PATH_LENGTH} characters "
+                f"({len(dive.path)}): {dive.path}"
+            ),
+        )
+
+    dive = Dive.model_validate(jsonable_encoder(dive))
+
+    if dive.camera_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="camera_id is required; without it stage 14 cannot measure the dive",
+        )
+    camera = (
+        await session.exec(select(Camera).where(Camera.id == dive.camera_id))
+    ).first()
+    if camera is None:
+        raise HTTPException(
+            status_code=422, detail=f"Camera {dive.camera_id} does not exist"
+        )
+    intrinsics = (
+        await session.exec(
+            select(CameraIntrinsics).where(
+                CameraIntrinsics.camera_id == dive.camera_id
+            )
+        )
+    ).first()
+    if intrinsics is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Camera {dive.camera_id} has no intrinsics; stage 14 could never "
+                "measure this dive"
+            ),
+        )
+
+    # Natural-key upsert on `path`.
+    if dive.id is None:
+        existing = (
+            await session.exec(select(Dive).where(Dive.path == dive.path))
+        ).first()
+        if existing is not None:
+            dive.id = existing.id
+
+    if dive.calibration_dive_id is not None:
+        if dive.calibration_dive_id == dive.id:
+            raise HTTPException(
+                status_code=422, detail="A dive cannot borrow its own calibration"
+            )
+        source = (
+            await session.exec(
+                select(Dive).where(Dive.id == dive.calibration_dive_id)
+            )
+        ).first()
+        if source is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Calibration source dive {dive.calibration_dive_id} does not exist",
+            )
+
+    dive = await session.merge(dive)
+    await session.flush()
+
+    dive_id = dive.id
+
+    return dive_id
 
 
 # Cohort selectors used by the api-workflow-worker hourly schedules.
