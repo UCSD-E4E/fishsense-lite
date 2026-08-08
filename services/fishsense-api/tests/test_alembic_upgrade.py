@@ -30,14 +30,23 @@ def _patch_run_alembic(has_alembic_version: bool):
     fake_cfg = MagicMock()
     fake_config_cls.return_value = fake_cfg
 
+    # The fresh-DB branch also (re)creates the views, which would otherwise
+    # open a real connection. Record the calls so tests can assert on them.
+    views_created = MagicMock()
+
+    async def _fake_create_views():
+        views_created()
+
     return (
         fake_command,
         fake_cfg,
+        views_created,
         patch.multiple(
             database,
             alembic_command=fake_command,
             AlembicConfig=fake_config_cls,
             _has_alembic_version_table=_fake_check,
+            _create_all_views=_fake_create_views,
         ),
     )
 
@@ -57,12 +66,17 @@ def _assert_script_location_set(fake_cfg):
 def test_run_alembic_upgrade_existing_db_invokes_upgrade_to_head():
     """When alembic_version exists, this is an existing DB — apply any
     new pending migrations via `alembic upgrade head`."""
-    fake_command, fake_cfg, patcher = _patch_run_alembic(has_alembic_version=True)
+    fake_command, fake_cfg, views_created, patcher = _patch_run_alembic(
+        has_alembic_version=True
+    )
     with patcher:
         database.run_alembic_upgrade()
 
     fake_command.upgrade.assert_called_once_with(fake_cfg, "head")
     fake_command.stamp.assert_not_called()
+    # The migrations themselves own the views on this path; re-creating them
+    # here would drop and rebuild every view on every restart.
+    views_created.assert_not_called()
     _assert_script_location_set(fake_cfg)
 
 
@@ -72,13 +86,22 @@ def test_run_alembic_upgrade_fresh_db_stamps_head_without_running_ddl():
     head to mark the DB as fully migrated — running the historical
     migration tail on top would crash on every pre-existing column /
     table / constraint that `add_column` / `create_table` /
-    `create_unique_constraint` ops try to (re-)add."""
-    fake_command, fake_cfg, patcher = _patch_run_alembic(has_alembic_version=False)
+    `create_unique_constraint` ops try to (re-)add.
+
+    Stamping means those migrations never run, so anything they create that
+    `create_all` cannot — the views — has to be created explicitly here.
+    Without that a fresh environment ends up with every table and no views,
+    and never recovers: the next restart finds `alembic_version` present and
+    nothing to upgrade."""
+    fake_command, fake_cfg, views_created, patcher = _patch_run_alembic(
+        has_alembic_version=False
+    )
     with patcher:
         database.run_alembic_upgrade()
 
     fake_command.stamp.assert_called_once_with(fake_cfg, "head")
     fake_command.upgrade.assert_not_called()
+    views_created.assert_called_once()
     _assert_script_location_set(fake_cfg)
 
 

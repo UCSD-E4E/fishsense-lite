@@ -603,3 +603,37 @@ WHERE f.best_fit_model <> a.model_name
 DROP_FISH_MODEL_MISLABEL_SUSPECTS_VIEW_SQL = (
     f"DROP VIEW IF EXISTS {FISH_MODEL_MISLABEL_SUSPECTS_VIEW_NAME}"
 )
+
+
+# ---------------------------------------------------------------------------
+# Every view, for the fresh-database bootstrap
+# ---------------------------------------------------------------------------
+
+# `(drop_sql, create_sql)` for each view, in creation order.
+#
+# Views are raw SQL owned by migrations, NOT part of `SQLModel.metadata`, so
+# `create_all` cannot produce them. On a fresh database `run_alembic_upgrade`
+# *stamps* head instead of upgrading (the historical migrations aren't
+# idempotent against `create_all`), which used to leave every table present and
+# every view missing — and because head was stamped, the next restart found
+# nothing to do and it never self-healed. `database.create_all_views` replays
+# this list on that path.
+#
+# Adding a view means adding it here as well as in its migration, or a fresh
+# environment silently won't have it.
+ALL_VIEW_DDL = (
+    (DROP_DIVE_PIPELINE_STATUS_VIEW_SQL, DIVE_PIPELINE_STATUS_VIEW_SQL),
+    (DROP_FISH_MODEL_ACCURACY_VIEW_SQL, FISH_MODEL_ACCURACY_VIEW_SQL),
+    (DROP_FISH_LENGTH_ESTIMATE_VIEW_SQL, FISH_LENGTH_ESTIMATE_VIEW_SQL),
+    (
+        DROP_FISH_MODEL_MISLABEL_SUSPECTS_VIEW_SQL,
+        FISH_MODEL_MISLABEL_SUSPECTS_VIEW_SQL,
+    ),
+)
+
+ALL_VIEW_NAMES = (
+    DIVE_PIPELINE_STATUS_VIEW_NAME,
+    FISH_MODEL_ACCURACY_VIEW_NAME,
+    FISH_LENGTH_ESTIMATE_VIEW_NAME,
+    FISH_MODEL_MISLABEL_SUSPECTS_VIEW_NAME,
+)

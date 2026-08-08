@@ -16,6 +16,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from fishsense_api import views
 from fishsense_api.config import pg_connection_string
 from fishsense_api.models.camera import Camera
 from fishsense_api.models.camera_intrinsics import CameraIntrinsics
@@ -86,6 +87,22 @@ async def _has_alembic_version_table() -> bool:
         await engine.dispose()
 
 
+async def _create_all_views() -> None:
+    """(Re)create every view in `views.ALL_VIEW_DDL`.
+
+    Only needed on the fresh-DB path — see `run_alembic_upgrade`. Each entry
+    is DROP-then-CREATE, so this is idempotent and safe to re-run.
+    """
+    engine = create_async_engine(pg_connection_string())
+    try:
+        async with engine.begin() as conn:
+            for drop_sql, create_sql in views.ALL_VIEW_DDL:
+                await conn.execute(sa.text(drop_sql))
+                await conn.execute(sa.text(create_sql))
+    finally:
+        await engine.dispose()
+
+
 def run_alembic_upgrade() -> None:
     """Apply pending migrations OR stamp head on a fresh DB.
 
@@ -135,6 +152,15 @@ def run_alembic_upgrade() -> None:
             "alembic_version missing; stamping head (fresh DB after create_all)"
         )
         alembic_command.stamp(cfg, "head")
+        # Stamping marks every migration as applied without running any of
+        # them, so the views those migrations create are never made. They
+        # aren't in `SQLModel.metadata` either, so `create_all` didn't make
+        # them. Without this a fresh environment ends up with every table and
+        # no views, and never recovers: the next restart sees `alembic_version`
+        # and finds nothing to upgrade.
+        _log.info("creating views for fresh DB")
+        asyncio.run(_create_all_views())
+        _log.info("views created")
 
 
 _session_factory: sessionmaker | None = None  # pylint: disable=invalid-name
