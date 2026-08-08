@@ -659,7 +659,7 @@ wheels = [
 
 [[package]]
 name = "fishsense-api"
-version = "1.45.0"
+version = "1.45.1"
 source = { editable = "services/fishsense-api" }
 dependencies = [
     { name = "alembic" },
@@ -802,7 +802,7 @@ dev = [
 
 [[package]]
 name = "fishsense-backup-worker"
-version = "0.4.1"
+version = "0.4.2"
 source = { editable = "services/fishsense-backup-worker" }
 dependencies = [
     { name = "dynaconf" },
@@ -1000,7 +1000,7 @@ dev = [
 
 [[package]]
 name = "fishsense-shared"
-version = "0.7.0"
+version = "0.7.1"
 source = { editable = "libs/fishsense-shared" }
 dependencies = [
     { name = "dynaconf" },
