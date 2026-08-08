@@ -71,8 +71,8 @@ def _make_fs():
     fs.images = MagicMock()
     fs.images.get = AsyncMock(
         return_value=[
-            SimpleNamespace(id=11, checksum="c11"),
-            SimpleNamespace(id=12, checksum="c12"),
+            SimpleNamespace(id=11, checksum="c11", is_canonical=True),
+            SimpleNamespace(id=12, checksum="c12", is_canonical=True),
         ]
     )
     fs.labels = MagicMock()

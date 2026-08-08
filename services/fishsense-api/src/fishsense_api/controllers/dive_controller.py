@@ -45,6 +45,24 @@ from fishsense_api.server import app
 logger = logging.getLogger(__name__)
 
 
+# Every cohort selector below correlates `Image` to `Dive` and then adds
+# `Image.is_canonical == True`. That filter is not an optimisation -- it is
+# what stops a duplicate dive wedging the pipeline.
+#
+# The same physical frames legitimately live under several dive rows (half of
+# prod's image table is duplicate content; 207 of 479 dives are duplicates end
+# to end), and `is_canonical` marks which copy is the real one. Without the
+# filter, a duplicate dive promoted to HIGH satisfies "has an image with no
+# label row" forever: populate declines to make LS tasks for frames that
+# already exist elsewhere, so no label row appears, so the dive never drains --
+# re-staging its raw `.ORF`s from the NAS every hour and blocking every
+# higher-id dive behind it. That is the prod dive 60 failure.
+#
+# Duplicate dives are all LOW priority today, so this is currently latent. That
+# is a property of the data, not of the code. `test_canonical_only_pipeline_work.py`
+# pins both the behaviour and the "every selector has it" registry property.
+
+
 def _valid_laser_conditions():
     """The repo-wide definition of a *valid* laser label.
 
@@ -371,6 +389,7 @@ async def select_next_for_laser_preprocessing(
     has_image_without_real_laser_label = (
         select(Image.id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(
             ~select(LaserLabel.id)
             .where(LaserLabel.image_id == Image.id)
@@ -418,6 +437,7 @@ async def select_next_for_laser_prediction(
     has_image_needing_prediction = (
         select(Image.id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(
             ~select(LaserPrediction.id)
             .where(LaserPrediction.image_id == Image.id)
@@ -464,6 +484,7 @@ async def select_next_for_slate_prediction(
         select(SpeciesLabel.id)
         .join(Image, Image.id == SpeciesLabel.image_id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(SpeciesLabel.content_of_image == SLATE_CONTENT_MARKER)
         .where(
             ~select(SlatePrediction.id)
@@ -510,6 +531,7 @@ async def select_next_for_dive_frame_clustering(
         select(LaserLabel.id)
         .join(Image, Image.id == LaserLabel.image_id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(*_valid_laser_conditions())
         .exists()
     )
@@ -579,6 +601,7 @@ async def select_next_for_species_preprocessing(
         select(LaserLabel.id)
         .join(Image, Image.id == LaserLabel.image_id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(*_valid_laser_conditions())
         .where(
             ~select(SpeciesLabel.id)
@@ -650,6 +673,7 @@ async def select_dives_needing_species_population(
         select(LaserLabel.id)
         .join(Image, Image.id == LaserLabel.image_id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(LaserLabel.completed == True)
         .where(LaserLabel.superseded == False)
         .where(LaserLabel.x != None)
@@ -694,6 +718,7 @@ async def select_dives_needing_laser_population(
     has_predicted_incomplete_image = (
         select(Image.id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(
             select(LaserPrediction.id)
             .where(LaserPrediction.image_id == Image.id)
@@ -740,6 +765,7 @@ async def select_next_for_headtail_preprocessing(
         select(LaserLabel.id)
         .join(Image, Image.id == LaserLabel.image_id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(*_valid_laser_conditions())
         .where(
             ~select(HeadTailLabel.id)
@@ -776,6 +802,7 @@ async def select_next_for_slate_preprocessing(
         select(SpeciesLabel.id)
         .join(Image, Image.id == SpeciesLabel.image_id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(SpeciesLabel.content_of_image == SLATE_CONTENT_MARKER)
         .where(
             ~select(DiveSlateLabel.id)
@@ -811,6 +838,7 @@ async def select_next_for_laser_calibration(
         select(func.count(DiveSlateLabel.id))  # pylint: disable=not-callable
         .join(Image, Image.id == DiveSlateLabel.image_id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(DiveSlateLabel.completed == True)
         # A dead-lettered slate label doesn't count toward the calibration
         # readiness gate — same validity convention laser calibration uses.
@@ -895,6 +923,7 @@ async def select_next_for_measure_fish(
         select(SpeciesLabel.id)
         .join(Image, Image.id == SpeciesLabel.image_id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(SpeciesLabel.top_three_photos_of_group == True)
         .where(*_measurable_species_conditions())
         .where(valid_laser)

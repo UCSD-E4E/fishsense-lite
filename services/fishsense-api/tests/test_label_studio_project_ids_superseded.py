@@ -41,7 +41,7 @@ def _image(image_id: int):
         id=image_id,
         path=f"/dev/null/img-{image_id}",
         taken_datetime=datetime(2025, 1, 1, tzinfo=timezone.utc),
-        checksum=f"img-{image_id:032d}"[:32],
+        checksum=f"{image_id:032d}",
         dive_id=1,
     )
 

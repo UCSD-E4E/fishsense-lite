@@ -23,7 +23,14 @@ async def resolve_dive_frame_clustering_inputs_activity(
     )
     async with get_fs_client() as fs:
         images = await fs.images.get(dive_id=dive_id) or []
-
+        # Canonical frames only. The same physical frames live under several
+        # dive rows (half of prod's image table is duplicate content), and
+        # `is_canonical` marks which copy is the real one. The cohort selectors
+        # gate on it, and CLAUDE.md requires resolvers to mirror the selector
+        # predicate exactly -- otherwise the dispatched per-image work would not
+        # match what the cohort promised, and the dive could never drain.
+        # This also covers on-demand/backfill runs, which bypass the cohort.
+        images = [image for image in images if image.is_canonical]
     cluster_images = [
         ClusterDiveFrameImage(
             image_id=image.id,

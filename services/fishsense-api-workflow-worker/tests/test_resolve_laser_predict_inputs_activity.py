@@ -15,8 +15,12 @@ from fishsense_api_workflow_worker.activities import (
 )
 
 
-def _image(image_id, checksum):
-    return SimpleNamespace(id=image_id, checksum=checksum)
+def _image(image_id, checksum, *, is_canonical=True):
+    # Canonical by default — the resolvers filter on it, mirroring the
+    # cohort selectors. Pass False to model a duplicate frame.
+    return SimpleNamespace(
+        id=image_id, checksum=checksum, is_canonical=is_canonical
+    )
 
 
 def _make_fs(*, camera_id=1, images=None, predictions=None, labels=None, intrinsics=True):
@@ -95,3 +99,31 @@ async def test_activity_raises_without_intrinsics(monkeypatch):
         await ActivityEnvironment().run(
             sut.resolve_laser_predict_inputs_activity, 1
         )
+
+
+async def test_duplicate_frames_are_not_dispatched_as_work(monkeypatch):
+    """Resolvers must mirror the cohort selectors, which gate on
+    `is_canonical`.
+
+    The same physical frames live under several dive rows — half of prod's
+    image table is duplicate content — and `is_canonical` marks which copy is
+    real. If a resolver dispatched a duplicate the selector had excluded, the
+    per-image work would not match what the cohort promised, and (worse) the
+    dive could never drain: no label row would ever appear for it, so the
+    cohort predicate stays true forever. That is the prod dive 60 wedge.
+    """
+    fs = _make_fs(
+        images=[
+            _image(11, "c11", is_canonical=True),
+            _image(12, "c12", is_canonical=False),
+        ]
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(
+        sut.resolve_laser_predict_inputs_activity, 1
+    )
+
+    dispatched = {img.checksum for img in result.images}
+    assert "c11" in dispatched
+    assert "c12" not in dispatched, "a duplicate frame was dispatched as work"

@@ -64,6 +64,14 @@ async def resolve_species_preprocess_inputs_activity(
             or []
         )
         images = await fs.images.get(dive_id=dive_id) or []
+        # Canonical frames only. The same physical frames live under several
+        # dive rows (half of prod's image table is duplicate content), and
+        # `is_canonical` marks which copy is the real one. The cohort selectors
+        # gate on it, and CLAUDE.md requires resolvers to mirror the selector
+        # predicate exactly -- otherwise the dispatched per-image work would not
+        # match what the cohort promised, and the dive could never drain.
+        # This also covers on-demand/backfill runs, which bypass the cohort.
+        images = [image for image in images if image.is_canonical]
         checksum_by_id = {image.id: image.checksum for image in images}
 
         laser_labels = await fs.labels.get_laser_labels(dive_id) or []

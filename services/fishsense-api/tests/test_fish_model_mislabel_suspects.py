@@ -100,7 +100,7 @@ async def _measure(session, *, dive_id, model_name, length_m):
             id=image_id,
             path=f"/dev/null/img-{image_id}",
             taken_datetime=datetime(2023, 8, 29, tzinfo=timezone.utc),
-            checksum=f"img-{image_id:032d}"[:32],
+            checksum=f"{image_id:032d}",
             dive_id=dive_id,
         )
     )

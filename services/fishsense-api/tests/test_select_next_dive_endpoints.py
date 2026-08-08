@@ -48,14 +48,24 @@ def _dive(dive_id: int, *, priority="HIGH", dive_slate_id=None, calibration_dive
     )
 
 
-def _image(image_id: int, dive_id: int):
+def _image(image_id: int, dive_id: int, *, is_canonical: bool = True):
+    """Canonical by default — the normal case, and what the cohort selectors
+    now require.
+
+    `Image.is_canonical` defaults to False on the *model*, which made every
+    image seeded here a duplicate. That was invisible while nothing read the
+    flag; now that the selectors gate on it, the default has to reflect
+    reality. Pass `is_canonical=False` to model a duplicate frame — see
+    test_canonical_only_pipeline_work.py.
+    """
     from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
 
     return Image(
         id=image_id,
         path=f"/dev/null/img-{image_id}",
         taken_datetime=datetime(2025, 1, 1, tzinfo=timezone.utc),
-        checksum=f"img-{image_id:032d}"[:32],
+        checksum=f"{image_id:032d}",
+        is_canonical=is_canonical,
         dive_id=dive_id,
     )
 
