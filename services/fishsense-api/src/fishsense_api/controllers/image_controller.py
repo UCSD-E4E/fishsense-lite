@@ -77,6 +77,10 @@ async def post_image(
     image: Image,
     session: AsyncSession = Depends(get_async_session),
 ) -> int:
+    # pylint: disable=too-many-branches
+    # Same shape as `post_dive`: each branch is one guard on a distinct field,
+    # and the 422 detail it produces is the point -- every one of these
+    # failures is otherwise silent in a later pipeline stage.
     """Create or update an image, keyed on its NAS-relative `path`.
 
     **Upserts on `path`** for the same reason `post_dive` does: a resumed scan
@@ -92,10 +96,16 @@ async def post_image(
     appear under two dive rows -- prod dives 64 and 66 are both
     `082929_FishModels_FSL07` -- and `checksum` is how that is recognised.
 
-    Computing it server-side matters: a client-side "has this checksum been
-    seen yet" check races itself, and two concurrent posts would both conclude
-    they were first. An explicit `is_canonical` in the body still wins, so an
-    operator can promote a re-ingested copy.
+    Computing it server-side narrows the window but does **not** close it: this
+    is still a read-then-write, and under READ COMMITTED two concurrent
+    requests can both find no existing row and both claim canonical. The
+    `uq_image_canonical_checksum` partial unique index is what actually
+    enforces it -- the loser gets an IntegrityError, and its retry re-reads,
+    sees the winner, and writes `is_canonical=False`. So the check here is the
+    fast path and a good error message; the index is the guarantee.
+
+    An explicit `is_canonical` in the body still wins, so an operator can
+    promote a re-ingested copy.
     """
     logger.debug("Creating or updating image with path=%s", image.path)
 
@@ -163,6 +173,20 @@ async def post_image(
             merged["id"] = existing.id
             merged["dive_id"] = dive_id
             image = Image(**merged)
+
+    if explicit_is_canonical and image.is_canonical:
+        # "Promote this copy" is only coherent if it also demotes the incumbent
+        # -- there can be exactly one canonical row per checksum, and
+        # `uq_image_canonical_checksum` enforces that. Before the index existed
+        # this silently produced two canonical rows for one checksum.
+        incumbents = select(Image).where(Image.checksum == image.checksum)
+        if image.id is not None:
+            incumbents = incumbents.where(Image.id != image.id)
+        for incumbent in (await session.exec(incumbents)).all():
+            if incumbent.is_canonical:
+                incumbent.is_canonical = False
+                session.add(incumbent)
+        await session.flush()
 
     if not explicit_is_canonical:
         # "Is there already a row with this checksum that ISN'T this one?"

@@ -159,9 +159,13 @@ async def test_reposting_the_same_path_does_not_demote_it_to_non_canonical(sessi
     assert row.is_canonical is True
 
 
-async def test_an_explicit_is_canonical_in_the_body_overrides_the_computation(session):
-    """Operator override — e.g. promoting a re-ingested copy after the original
-    dive's files were lost."""
+async def test_promoting_a_copy_demotes_the_incumbent(session):
+    """Operator override — promoting a re-ingested copy after the original
+    dive's files were lost.
+
+    Promotion must be a *swap*, not an addition: exactly one row per checksum
+    is canonical. Before `uq_image_canonical_checksum` existed this endpoint
+    happily produced two, and nothing complained."""
     from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
         post_image,
     )
@@ -170,13 +174,14 @@ async def test_an_explicit_is_canonical_in_the_body_overrides_the_computation(se
     await _seed_dive(session, 64, "d/64")
     await _seed_dive(session, 66, "d/66")
 
-    await post_image(64, _image("d/64/P1.ORF", CK_A), session=session)
+    original = await post_image(64, _image("d/64/P1.ORF", CK_A), session=session)
     dupe = await post_image(
         66, _image("d/66/P1.ORF", CK_A, is_canonical=True), session=session
     )
 
-    row = (await session.exec(select(Image).where(Image.id == dupe))).first()
-    assert row.is_canonical is True
+    rows = {r.id: r for r in (await session.exec(select(Image))).all()}
+    assert rows[dupe].is_canonical is True
+    assert rows[original].is_canonical is False   # swapped, not duplicated
 
 
 # ── validation ────────────────────────────────────────────────────────
@@ -375,3 +380,63 @@ async def test_checksum_lookup_deduplicates_repeated_checksums(session):
 
     assert list(result) == [CK_A]
     assert len(result[CK_A]) == 1
+
+
+# ── the canonical invariant is enforced by the DB, not just by the read ──
+
+
+async def test_the_database_refuses_a_second_canonical_row_for_one_checksum(session):
+    """`post_image`'s "is there already a row with this checksum?" is a
+    read-then-write. Under READ COMMITTED two concurrent requests can both find
+    nothing and both claim canonical, so the application check cannot be the
+    guarantee — `uq_image_canonical_checksum` is.
+
+    This drives the constraint directly, bypassing the endpoint, because that
+    is precisely the state the endpoint's own logic cannot rule out.
+    """
+    from sqlalchemy.exc import IntegrityError  # pylint: disable=import-outside-toplevel
+
+    await _seed_dive(session, 64, "d/64")
+    session.add(_image("d/64/P1.ORF", CK_A, dive_id=64, is_canonical=True))
+    await session.flush()
+
+    session.add(_image("d/64/P2.ORF", CK_A, dive_id=64, is_canonical=True))
+    with pytest.raises(IntegrityError):
+        await session.flush()
+
+
+async def test_the_constraint_allows_many_non_canonical_rows_per_checksum(session):
+    """The duplicate case is the normal case — only *canonical* is exclusive.
+    A unique index on `checksum` alone would break dives 64/66 outright."""
+    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+        post_image,
+    )
+    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
+
+    for dive_id in (64, 66, 70):
+        await _seed_dive(session, dive_id, f"d/{dive_id}")
+        await post_image(dive_id, _image(f"d/{dive_id}/P1.ORF", CK_A), session=session)
+
+    rows = (await session.exec(select(Image).where(Image.checksum == CK_A))).all()
+    assert len(rows) == 3
+    assert sum(1 for r in rows if r.is_canonical) == 1
+
+
+async def test_post_image_honours_an_explicit_id_instead_of_resolving_by_path(session):
+    """The `id is not None` branch — an update targeted by primary key, which
+    skips natural-key resolution entirely."""
+    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+        post_image,
+    )
+    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
+
+    await _seed_dive(session, 7, "d/7")
+    image_id = await post_image(7, _image("d/7/P1.ORF", CK_A), session=session)
+
+    same = await post_image(
+        7, _image("d/7/renamed.ORF", CK_A, id=image_id), session=session
+    )
+
+    assert same == image_id
+    row = (await session.exec(select(Image).where(Image.id == image_id))).first()
+    assert row.path == "d/7/renamed.ORF"

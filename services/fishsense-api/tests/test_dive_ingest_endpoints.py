@@ -355,3 +355,21 @@ async def test_post_dive_rejects_an_empty_path(session):
     with pytest.raises(HTTPException) as exc:
         await post_dive(_dive(""), session=session)
     assert exc.value.status_code == 422
+
+
+async def test_post_dive_honours_an_explicit_id_instead_of_resolving_by_path(session):
+    """The `id is not None` branch — an update targeted by primary key, which
+    skips natural-key resolution (and so also skips the partial overlay)."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        post_dive,
+    )
+    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
+
+    await _seed_camera(session)
+    dive_id = await post_dive(_dive("d/original"), session=session)
+
+    same = await post_dive(_dive("d/renamed", id=dive_id), session=session)
+
+    assert same == dive_id
+    row = (await session.exec(select(Dive).where(Dive.id == dive_id))).first()
+    assert row.path == "d/renamed"

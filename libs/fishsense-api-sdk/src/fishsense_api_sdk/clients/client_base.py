@@ -10,7 +10,7 @@ from retry import retry
 
 
 class ClientBase(ABC):
-    # pylint: disable=too-few-public-methods
+    # pylint: disable=too-few-public-methods,too-many-instance-attributes
     """Base client for interacting with the Fishsense API."""
 
     @property
@@ -38,10 +38,17 @@ class ClientBase(ABC):
         password: str | None,
         timeout: int,
         semaphore: asyncio.Semaphore,
+        transport: httpx.AsyncBaseTransport | None = None,
     ):  # pylint: disable=too-many-arguments, too-many-positional-arguments
         self.base_url = base_url
         self.timeout = timeout
         self.semaphore = semaphore
+        # Optional httpx transport. Production leaves this None and gets the
+        # default network transport; passing `httpx.ASGITransport(app=...)`
+        # drives a FastAPI app in-process, which is how the SDK<->API contract
+        # is tested without standing up a server. Mocking `_post` cannot catch
+        # a URL or payload the API would actually reject.
+        self.transport = transport
 
         self.__token = (
             base64.b64encode(f"{username}:{password}".encode("utf-8"))
@@ -53,7 +60,11 @@ class ClientBase(ABC):
         self.__logger = getLogger(__name__)
 
     def __create_client(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout)
+        return httpx.AsyncClient(
+            base_url=self.base_url,
+            timeout=self.timeout,
+            transport=self.transport,
+        )
 
     async def __aenter__(self) -> "ClientBase":
         self.logger.debug("Entering async context manager for ClientBase")
