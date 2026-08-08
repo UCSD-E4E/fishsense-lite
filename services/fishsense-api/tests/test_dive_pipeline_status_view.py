@@ -71,14 +71,19 @@ def _dive(
     )
 
 
-def _image(image_id: int, dive_id: int):
+def _image(image_id: int, dive_id: int, *, is_canonical: bool = True):
+    """Canonical by default — the normal case. `Image.is_canonical` defaults to
+    False on the model, which made every seeded image a duplicate; harmless
+    while nothing read the flag, misleading now that the cohort selectors gate
+    on it."""
     from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
 
     return Image(
         id=image_id,
         path=f"/dev/null/img-{image_id}",
         taken_datetime=datetime(2025, 1, 1, tzinfo=timezone.utc),
-        checksum=f"img-{image_id:032d}"[:32],
+        checksum=f"{image_id:032d}",
+        is_canonical=is_canonical,
         dive_id=dive_id,
     )
 

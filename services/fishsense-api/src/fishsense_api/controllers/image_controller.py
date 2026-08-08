@@ -2,7 +2,8 @@
 
 import asyncio
 import logging
-from typing import Dict, List
+import re
+from typing import Any, Dict, List
 
 from fastapi import Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
@@ -16,6 +17,7 @@ from fishsense_api.models.dive_frame_cluster import (
     DiveFrameClusterImageMapping,
     DiveFrameClusterJson,
 )
+from fishsense_api.models.dive import Dive
 from fishsense_api.models.image import Image
 from fishsense_api.server import app
 
@@ -50,6 +52,211 @@ async def get_image_by_checksum(
         logger.warning("Image with checksum=%s not found", checksum)
         raise HTTPException(status_code=404, detail="Image not found")
     return image
+
+
+# Mirrors `max_length=255` on `Image.path`; see `post_dive` for why this is
+# checked explicitly rather than left to the driver.
+MAX_PATH_LENGTH = 255
+
+# `Image.checksum` is a 32-char lowercase MD5 hexdigest of the whole file --
+# `hashlib.md5(<entire file>).hexdigest()`, matching `get_file_checksum` in the
+# (now archived) fishsense-data-processing-spider, which is what wrote every
+# `image_md5` the current rows were migrated from. A value of any other shape
+# means the hashing changed underneath us, and duplicate detection would stop
+# matching *silently* -- so it is rejected rather than stored.
+_MD5_HEXDIGEST = re.compile(r"^[0-9a-f]{32}$")
+
+# Cap on one `post_checksum_lookup` batch. A dive is a few hundred frames, so
+# this is generous; it exists to stop an unbounded IN (...) from a bad caller.
+MAX_CHECKSUM_LOOKUP = 1000
+
+
+@app.post("/api/v1/dives/{dive_id}/images/", status_code=201)
+async def post_image(
+    dive_id: int,
+    image: Image,
+    session: AsyncSession = Depends(get_async_session),
+) -> int:
+    # pylint: disable=too-many-branches
+    # Same shape as `post_dive`: each branch is one guard on a distinct field,
+    # and the 422 detail it produces is the point -- every one of these
+    # failures is otherwise silent in a later pipeline stage.
+    """Create or update an image, keyed on its NAS-relative `path`.
+
+    **Upserts on `path`** for the same reason `post_dive` does: a resumed scan
+    re-posts paths that already exist, and a blind `session.merge(id=None)`
+    would INSERT and trip the unique index (#347). The update is *partial* --
+    only fields the caller actually sent are written -- except `path`,
+    `checksum` and `taken_datetime`, which the model cannot represent as
+    absent and so must always be supplied.
+
+    **`is_canonical` is computed here, not by the caller.** The rule comes from
+    the original migration (`9e5bc64`): the first row for a given checksum is
+    canonical, later duplicates are not. The same physical frames legitimately
+    appear under two dive rows -- prod dives 64 and 66 are both
+    `082929_FishModels_FSL07` -- and `checksum` is how that is recognised.
+
+    Computing it server-side narrows the window but does **not** close it: this
+    is still a read-then-write, and under READ COMMITTED two concurrent
+    requests can both find no existing row and both claim canonical. The
+    `uq_image_canonical_checksum` partial unique index is what actually
+    enforces it -- the loser gets an IntegrityError, and its retry re-reads,
+    sees the winner, and writes `is_canonical=False`. So the check here is the
+    fast path and a good error message; the index is the guarantee.
+
+    An explicit `is_canonical` in the body still wins, so an operator can
+    promote a re-ingested copy.
+    """
+    logger.debug("Creating or updating image with path=%s", image.path)
+
+    # Path/checksum checks run before `model_validate` -- see `post_dive`.
+    if not image.path:
+        raise HTTPException(status_code=422, detail="Image path is required")
+    if len(image.path) > MAX_PATH_LENGTH:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Image path exceeds {MAX_PATH_LENGTH} characters "
+                f"({len(image.path)}): {image.path}"
+            ),
+        )
+    if not image.checksum or not _MD5_HEXDIGEST.match(image.checksum):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "checksum must be a 32-character lowercase MD5 hexdigest of the "
+                f"whole file; got {image.checksum!r}"
+            ),
+        )
+    if image.taken_datetime is None:
+        # Always required, even on a partial re-post: `Image.taken_datetime` is
+        # annotated non-optional, so `model_validate` below would reject a None
+        # with a bare ValidationError instead of a usable 422. Stage-1
+        # clustering is pure timestamp math, so a defaulted value would corrupt
+        # it silently anyway.
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "taken_datetime is required; stage-1 clustering is pure timestamp "
+                "math, so a missing value would corrupt it silently"
+            ),
+        )
+    dive = (await session.exec(select(Dive).where(Dive.id == dive_id))).first()
+    if dive is None:
+        raise HTTPException(status_code=422, detail=f"Dive {dive_id} does not exist")
+
+    # Which fields did the caller actually send? Captured BEFORE
+    # `model_validate`, which marks every field as set.
+    provided = set(image.model_fields_set)
+    explicit_is_canonical = "is_canonical" in provided
+
+    image = Image.model_validate(jsonable_encoder(image))
+    image.dive_id = dive_id
+
+    # Natural-key upsert on `path`.
+    if image.id is None:
+        existing = (
+            await session.exec(select(Image).where(Image.path == image.path))
+        ).first()
+        if existing is not None:
+            image.id = existing.id
+            # PARTIAL update, same reasoning as `post_dive`: `session.merge`
+            # replaces every column, so a resumed scan re-posting a path with a
+            # narrower body would wipe whatever it omitted (`camera_id`, and
+            # `is_canonical` itself). Overlay only what was sent.
+            # `model_dump()` (python mode), not `jsonable_encoder` -- see
+            # `post_dive`: a JSON round-trip through a table model loses typed
+            # values (datetimes, enums) because it doesn't coerce them back.
+            merged = existing.model_dump()
+            for field in provided:
+                merged[field] = getattr(image, field)
+            merged["id"] = existing.id
+            merged["dive_id"] = dive_id
+            image = Image(**merged)
+
+    if explicit_is_canonical and image.is_canonical:
+        # "Promote this copy" is only coherent if it also demotes the incumbent
+        # -- there can be exactly one canonical row per checksum, and
+        # `uq_image_canonical_checksum` enforces that. Before the index existed
+        # this silently produced two canonical rows for one checksum.
+        incumbents = select(Image).where(Image.checksum == image.checksum)
+        if image.id is not None:
+            incumbents = incumbents.where(Image.id != image.id)
+        for incumbent in (await session.exec(incumbents)).all():
+            if incumbent.is_canonical:
+                incumbent.is_canonical = False
+                session.add(incumbent)
+        await session.flush()
+
+    if not explicit_is_canonical:
+        # "Is there already a row with this checksum that ISN'T this one?"
+        # Excluding self matters: a resumed scan re-posts existing paths, and
+        # without the exclusion every re-run would demote a whole dive to
+        # non-canonical by colliding with itself.
+        duplicate_query = select(Image).where(Image.checksum == image.checksum)
+        if image.id is not None:
+            duplicate_query = duplicate_query.where(Image.id != image.id)
+        duplicate = (await session.exec(duplicate_query)).first()
+        image.is_canonical = duplicate is None
+
+    image = await session.merge(image)
+    await session.flush()
+
+    image_id = image.id
+
+    return image_id
+
+
+@app.post("/api/v1/images/checksums/lookup")
+async def post_checksum_lookup(
+    checksums: List[str],
+    session: AsyncSession = Depends(get_async_session),
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Batch form of `GET /api/v1/images/checksum/{checksum}`.
+
+    Returns `{checksum: [{image_id, dive_id, is_canonical}, ...]}` with an
+    **empty list** for checksums that aren't known -- callers computing
+    `|new & existing| / |new|` shouldn't have to guard every lookup.
+
+    This backs duplicate-dive detection at ingest time. It replaces the
+    approach the legacy spider used -- a whole-dive digest,
+    `MD5(STRING_AGG(basename || ':' || image_md5 ORDER BY path))` -- which was
+    all-or-nothing (one extra frame made two near-identical folders look
+    entirely unrelated), basename-sensitive (a rename broke the match even when
+    the bytes were identical), and offered no similarity measure. A set
+    operation over content hashes has none of those properties: it is immune to
+    filenames and ordering, and it degrades gracefully to a partial overlap.
+    """
+    unique = list(dict.fromkeys(checksums))
+    if len(unique) > MAX_CHECKSUM_LOOKUP:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Too many checksums in one lookup ({len(unique)}); "
+                f"maximum is {MAX_CHECKSUM_LOOKUP}"
+            ),
+        )
+    logger.debug("Looking up %d checksums", len(unique))
+
+    result: Dict[str, List[Dict[str, Any]]] = {checksum: [] for checksum in unique}
+    if not unique:
+        return result
+
+    rows = (
+        await session.exec(
+            select(Image).where(Image.checksum.in_(unique))  # pylint: disable=no-member
+        )
+    ).all()
+    for row in rows:
+        result[row.checksum].append(
+            {
+                "image_id": row.id,
+                "dive_id": row.dive_id,
+                "is_canonical": row.is_canonical,
+            }
+        )
+
+    return result
 
 
 @app.get("/api/v1/dives/{dive_id}/images/")

@@ -1,4 +1,12 @@
 # pylint: disable=C0121
+# pylint: disable=too-many-lines
+#   This module is a route registry: ~20 endpoints, most of them a single
+#   cohesive SELECT, plus the shared cohort predicates they splat into
+#   those selects. Adding `post_dive` tipped it past pylint's 1000-line
+#   ceiling. Splitting the stage-cohort selectors into their own module
+#   is the real fix and is worth doing, but it would move ~600 lines and
+#   every worker activity that imports them — not something to bundle
+#   into an unrelated feature PR.
 """Dive Controller for FishSense API."""
 
 import logging
@@ -12,6 +20,8 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from fishsense_api.database import get_async_session
+from fishsense_api.models.camera import Camera
+from fishsense_api.models.camera_intrinsics import CameraIntrinsics
 from fishsense_api.models.data_source import DataSource
 from fishsense_api.models.dive import Dive
 from fishsense_api.models.dive_frame_cluster import (
@@ -33,6 +43,24 @@ from fishsense_api.models.species_label import SpeciesLabel
 from fishsense_api.server import app
 
 logger = logging.getLogger(__name__)
+
+
+# Every cohort selector below correlates `Image` to `Dive` and then adds
+# `Image.is_canonical == True`. That filter is not an optimisation -- it is
+# what stops a duplicate dive wedging the pipeline.
+#
+# The same physical frames legitimately live under several dive rows (half of
+# prod's image table is duplicate content; 207 of 479 dives are duplicates end
+# to end), and `is_canonical` marks which copy is the real one. Without the
+# filter, a duplicate dive promoted to HIGH satisfies "has an image with no
+# label row" forever: populate declines to make LS tasks for frames that
+# already exist elsewhere, so no label row appears, so the dive never drains --
+# re-staging its raw `.ORF`s from the NAS every hour and blocking every
+# higher-id dive behind it. That is the prod dive 60 failure.
+#
+# Duplicate dives are all LOW priority today, so this is currently latent. That
+# is a property of the data, not of the code. `test_canonical_only_pipeline_work.py`
+# pins both the behaviour and the "every selector has it" registry property.
 
 
 def _valid_laser_conditions():
@@ -155,6 +183,173 @@ async def get_canonical_dives(
     return result.all()
 
 
+# Maximum length of `Dive.path` / `Image.path`, mirroring `max_length=255` on
+# the models. Postgres would reject an over-long value, but sqlite silently
+# stores it, so the check is explicit rather than left to the driver.
+MAX_PATH_LENGTH = 255
+
+
+@app.post("/api/v1/dives/", status_code=201)
+async def post_dive(
+    dive: Dive,
+    session: AsyncSession = Depends(get_async_session),
+) -> int:
+    # pylint: disable=too-many-branches
+    # Each branch is one independent guard on a distinct field. Collapsing them
+    # into a helper would hide which check produced which 422 detail, and the
+    # detail strings are the point -- every one of these failures is otherwise
+    # silent in a *later* pipeline stage.
+    """Create or update a dive, keyed on its NAS-relative `path`.
+
+    **Upserts on `path`.** `session.merge` keys on the primary key alone, so a
+    body with `id=None` always INSERTs — which trips the unique index on
+    `path` (the dive-shaped form of the #347 duplicate-key 500). Ingest
+    re-posts the same path routinely: resuming a partial scan, and the
+    finalize step re-POSTing to flip `priority` LOW -> HIGH. Resolving the
+    natural key to an existing row id first turns the merge into an UPDATE.
+
+    Validation is deliberately loud, because each of these breaks a *later*
+    stage silently rather than here:
+
+      * A dive whose camera has no `CameraIntrinsics` can never be measured by
+        stage 14. Nothing errors — the dive just never reaches `measured`.
+      * An over-long path is silently truncated by some backends, and the
+        resulting `Image.path` no longer resolves on the NAS.
+      * A self-referential or dangling `calibration_dive_id` makes
+        `get_laser_extrinsics_for_dive`'s fallback either loop or 404.
+
+    `priority` is NOT validated here: ingest deliberately creates dives at LOW
+    and flips them to HIGH only once every image has landed, so LOW is a
+    legitimate intermediate state (see the ingest workflow's commit flag).
+    """
+    logger.debug("Creating or updating dive with path=%s", dive.path)
+
+    # Path checks run BEFORE `model_validate`. SQLModel's `max_length=255`
+    # already rejects an over-long path for any normally-constructed body (so
+    # an HTTP caller gets a 422 from request validation), but a body built via
+    # `model_construct` bypasses that — and re-validating here would raise a
+    # bare ValidationError instead of a useful 422.
+    if not dive.path:
+        raise HTTPException(status_code=422, detail="Dive path is required")
+    if len(dive.path) > MAX_PATH_LENGTH:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Dive path exceeds {MAX_PATH_LENGTH} characters "
+                f"({len(dive.path)}): {dive.path}"
+            ),
+        )
+
+    # Which fields did the caller actually send? Captured BEFORE
+    # `model_validate`, which rebuilds the object and marks every field as set.
+    provided = set(dive.model_fields_set)
+
+    # SQLModel `table=True` models skip pydantic coercion, so FastAPI hands us a
+    # `Dive` whose `priority` is still the raw JSON `str`. Two consequences, both
+    # fixed by coercing here rather than after `model_validate`:
+    #   * an unrecognised value reaches `model_validate` and surfaces as a bare
+    #     ValidationError -- a 500 where the caller deserves a 422;
+    #   * `jsonable_encoder` below re-serializes the uncoerced object and emits a
+    #     pydantic serializer warning on every single request.
+    if dive.priority is not None and not isinstance(dive.priority, Priority):
+        try:
+            dive.priority = Priority(dive.priority)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422, detail=f"Unknown priority {dive.priority!r}"
+            ) from exc
+
+    if dive.dive_datetime is None:
+        # `Dive.dive_datetime` is annotated non-optional but carries
+        # `default=None`, so FastAPI's request validation happily accepts a body
+        # that omits it -- and the `model_validate` below then raises a bare
+        # ValidationError, which surfaces as a 500. Guard explicitly.
+        raise HTTPException(status_code=422, detail="dive_datetime is required")
+
+    dive = Dive.model_validate(jsonable_encoder(dive))
+
+    # Natural-key upsert on `path`.
+    if dive.id is None:
+        existing = (
+            await session.exec(select(Dive).where(Dive.path == dive.path))
+        ).first()
+        if existing is not None:
+            dive.id = existing.id
+            # PARTIAL update. `session.merge` replaces every column of the
+            # target row, so merging a body that only mentioned `priority`
+            # would null `name`, `dive_slate_id` and `calibration_dive_id`.
+            # That is data loss: `dive_slate_id` is written only by the
+            # species-label sync (nulling it discards labeler work and stops
+            # stages 9/12/13), and `calibration_dive_id` is the
+            # borrowed-calibration link (nulling it stops stage 14 measuring
+            # the dive). Neither failure reports anything.
+            #
+            # So overlay only what was sent onto the row as it stands. An
+            # explicit `None` still clears a field -- it is in `provided`.
+            # `model_dump()` (python mode), NOT `jsonable_encoder`: the latter
+            # stringifies `priority`, and a table model doesn't coerce it back,
+            # so the row would end up holding a raw str in an Enum column.
+            merged = existing.model_dump()
+            for field in provided:
+                merged[field] = getattr(dive, field)
+            merged["id"] = existing.id
+            dive = Dive(**merged)
+
+    # Validation runs on the EFFECTIVE row, after the overlay -- a partial
+    # re-post that omits `camera_id` inherits the existing one and must not be
+    # rejected for a field it never intended to change.
+    if dive.camera_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="camera_id is required; without it stage 14 cannot measure the dive",
+        )
+    camera = (
+        await session.exec(select(Camera).where(Camera.id == dive.camera_id))
+    ).first()
+    if camera is None:
+        raise HTTPException(
+            status_code=422, detail=f"Camera {dive.camera_id} does not exist"
+        )
+    intrinsics = (
+        await session.exec(
+            select(CameraIntrinsics).where(
+                CameraIntrinsics.camera_id == dive.camera_id
+            )
+        )
+    ).first()
+    if intrinsics is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Camera {dive.camera_id} has no intrinsics; stage 14 could never "
+                "measure this dive"
+            ),
+        )
+
+    if dive.calibration_dive_id is not None:
+        if dive.calibration_dive_id == dive.id:
+            raise HTTPException(
+                status_code=422, detail="A dive cannot borrow its own calibration"
+            )
+        source = (
+            await session.exec(
+                select(Dive).where(Dive.id == dive.calibration_dive_id)
+            )
+        ).first()
+        if source is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Calibration source dive {dive.calibration_dive_id} does not exist",
+            )
+
+    dive = await session.merge(dive)
+    await session.flush()
+
+    dive_id = dive.id
+
+    return dive_id
+
+
 # Cohort selectors used by the api-workflow-worker hourly schedules.
 # Each returns the lowest-id HIGH-priority dive whose pipeline state
 # matches the per-stage cohort, or None when the cohort is empty. The
@@ -194,6 +389,7 @@ async def select_next_for_laser_preprocessing(
     has_image_without_real_laser_label = (
         select(Image.id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(
             ~select(LaserLabel.id)
             .where(LaserLabel.image_id == Image.id)
@@ -241,6 +437,7 @@ async def select_next_for_laser_prediction(
     has_image_needing_prediction = (
         select(Image.id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(
             ~select(LaserPrediction.id)
             .where(LaserPrediction.image_id == Image.id)
@@ -287,6 +484,7 @@ async def select_next_for_slate_prediction(
         select(SpeciesLabel.id)
         .join(Image, Image.id == SpeciesLabel.image_id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(SpeciesLabel.content_of_image == SLATE_CONTENT_MARKER)
         .where(
             ~select(SlatePrediction.id)
@@ -333,6 +531,7 @@ async def select_next_for_dive_frame_clustering(
         select(LaserLabel.id)
         .join(Image, Image.id == LaserLabel.image_id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(*_valid_laser_conditions())
         .exists()
     )
@@ -402,6 +601,7 @@ async def select_next_for_species_preprocessing(
         select(LaserLabel.id)
         .join(Image, Image.id == LaserLabel.image_id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(*_valid_laser_conditions())
         .where(
             ~select(SpeciesLabel.id)
@@ -473,6 +673,7 @@ async def select_dives_needing_species_population(
         select(LaserLabel.id)
         .join(Image, Image.id == LaserLabel.image_id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(LaserLabel.completed == True)
         .where(LaserLabel.superseded == False)
         .where(LaserLabel.x != None)
@@ -517,6 +718,7 @@ async def select_dives_needing_laser_population(
     has_predicted_incomplete_image = (
         select(Image.id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(
             select(LaserPrediction.id)
             .where(LaserPrediction.image_id == Image.id)
@@ -563,6 +765,7 @@ async def select_next_for_headtail_preprocessing(
         select(LaserLabel.id)
         .join(Image, Image.id == LaserLabel.image_id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(*_valid_laser_conditions())
         .where(
             ~select(HeadTailLabel.id)
@@ -599,6 +802,7 @@ async def select_next_for_slate_preprocessing(
         select(SpeciesLabel.id)
         .join(Image, Image.id == SpeciesLabel.image_id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(SpeciesLabel.content_of_image == SLATE_CONTENT_MARKER)
         .where(
             ~select(DiveSlateLabel.id)
@@ -634,6 +838,7 @@ async def select_next_for_laser_calibration(
         select(func.count(DiveSlateLabel.id))  # pylint: disable=not-callable
         .join(Image, Image.id == DiveSlateLabel.image_id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(DiveSlateLabel.completed == True)
         # A dead-lettered slate label doesn't count toward the calibration
         # readiness gate — same validity convention laser calibration uses.
@@ -718,6 +923,7 @@ async def select_next_for_measure_fish(
         select(SpeciesLabel.id)
         .join(Image, Image.id == SpeciesLabel.image_id)
         .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
         .where(SpeciesLabel.top_three_photos_of_group == True)
         .where(*_measurable_species_conditions())
         .where(valid_laser)

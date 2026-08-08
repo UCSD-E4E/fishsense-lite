@@ -1,6 +1,6 @@
 """Client for interacting with image-related endpoints of the Fishsense API."""
 
-from typing import List
+from typing import Any, Dict, List
 
 from fishsense_api_sdk.clients.client_base import ClientBase
 from fishsense_api_sdk.models.dive_frame_cluster import DiveFrameCluster
@@ -8,7 +8,6 @@ from fishsense_api_sdk.models.image import Image
 
 
 class ImageClient(ClientBase):
-    # pylint: disable=too-few-public-methods
     """Client for interacting with image-related endpoints of the Fishsense API."""
 
     async def get(
@@ -17,6 +16,9 @@ class ImageClient(ClientBase):
         image_id: int | None = None,
         checksum: str | None = None,
     ) -> Image | List[Image] | None:
+        # pylint: disable=too-many-return-statements
+        # Three lookup modes x (404 -> None, null body -> None, hit) is
+        # inherently branchy; splitting it would change the public surface.
         """Get images from dive .
 
         Raises:
@@ -65,6 +67,68 @@ class ImageClient(ClientBase):
             return Image.model_validate(json)
 
         raise NotImplementedError("Getting all images is not supported.")
+
+    async def post(
+        self, dive_id: int, image: Image, *, set_canonical: bool = False
+    ) -> int:
+        """Create or update an image within a dive, keyed on its `path`.
+
+        **`is_canonical` is stripped from the payload by default.** The server
+        computes it -- the first row for a given checksum is canonical, later
+        duplicates are not -- and an explicit value in the body overrides that.
+        Since `Image.is_canonical` is a required field on this model, it always
+        carries *some* value, so `exclude_unset` alone cannot keep it off the
+        wire; posting it unconditionally would mark every duplicate frame
+        canonical and silently destroy the distinction that lets the same
+        physical frames live under two dive rows (prod dives 64 and 66).
+
+        Pass `set_canonical=True` only to deliberately override the server --
+        e.g. promoting a re-ingested copy after the original dive's files were
+        lost.
+
+        Args:
+            dive_id (int): The dive the image belongs to.
+            image (Image): The image to create or update.
+            set_canonical (bool): Send `is_canonical` and override the
+                server-side computation. Defaults to False.
+
+        Returns:
+            int: The ID of the created or updated image.
+        """
+        payload = image.model_dump(exclude_unset=True, mode="json")
+        if not set_canonical:
+            payload.pop("is_canonical", None)
+
+        response = await self._post(
+            f"/api/v1/dives/{dive_id}/images/",
+            json=payload,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def lookup_checksums(
+        self, checksums: List[str]
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """Look up which dives already hold each of `checksums`.
+
+        Returns `{checksum: [{image_id, dive_id, is_canonical}, ...]}`, with an
+        empty list for checksums that aren't known. Used at ingest time to
+        report content overlap with existing dives -- e.g. "48 of 55 frames
+        already exist in dive 64, so those will land non-canonical" -- before
+        the dive is committed.
+
+        Args:
+            checksums (List[str]): MD5 hexdigests to look up.
+
+        Returns:
+            Dict[str, List[Dict[str, Any]]]: Per-checksum hits.
+        """
+        response = await self._post(
+            "/api/v1/images/checksums/lookup",
+            json=list(checksums),
+        )
+        response.raise_for_status()
+        return response.json()
 
     async def get_clusters(
         self, dive_id: int, data_source: str
