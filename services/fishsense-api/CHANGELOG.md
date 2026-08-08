@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.45.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.45.0...fishsense-api-v1.45.1) (2026-08-08)
+
+
+### Bug Fixes
+
+* **api:** create views on a fresh DB; Postgres integration tests; coverage ratchet ([#550](https://github.com/UCSD-E4E/fishsense-lite/issues/550)) ([dbdda9e](https://github.com/UCSD-E4E/fishsense-lite/commit/dbdda9eb4acc99d35125909dccb2c413c402fdf4))
+
 ## [1.45.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.44.1...fishsense-api-v1.45.0) (2026-08-04)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.9.0...fishsense-lite-web-v0.9.1) (2026-08-08)
+
+
+### Bug Fixes
+
+* **ci:** run every package's tests; fix E4EFS_DOCKER; cover the portal auth gate ([#546](https://github.com/UCSD-E4E/fishsense-lite/issues/546)) ([e3d01b5](https://github.com/UCSD-E4E/fishsense-lite/commit/e3d01b5419b5dc01452e7907fe13c101932e0942))
+
 ## [0.9.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.8.0...fishsense-lite-web-v0.9.0) (2026-07-23)
 
 
