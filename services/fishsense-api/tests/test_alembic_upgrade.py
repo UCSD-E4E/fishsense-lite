@@ -15,7 +15,7 @@ import pytest
 from fishsense_api import database
 
 
-def _patch_run_alembic(has_alembic_version: bool):
+def _patch_run_alembic(has_alembic_version: bool, missing_views=()):
     """Helper: mock the alembic deps + the fresh-vs-existing detector.
 
     Returns the (fake_command, fake_cfg) so the caller can assert on
@@ -30,23 +30,31 @@ def _patch_run_alembic(has_alembic_version: bool):
     fake_cfg = MagicMock()
     fake_config_cls.return_value = fake_cfg
 
-    # The fresh-DB branch also (re)creates the views, which would otherwise
-    # open a real connection. Record the calls so tests can assert on them.
-    views_created = MagicMock()
+    # Both branches can touch the views, which would otherwise open a real
+    # connection. Record calls in order so tests can assert on sequencing as
+    # well as on whether they happened at all.
+    calls = []
+    views_created = MagicMock(side_effect=lambda: calls.append("create_views"))
+    fake_command.stamp.side_effect = lambda *_a, **_kw: calls.append("stamp")
 
     async def _fake_create_views():
         views_created()
+
+    async def _fake_missing_views():
+        return list(missing_views)
 
     return (
         fake_command,
         fake_cfg,
         views_created,
+        calls,
         patch.multiple(
             database,
             alembic_command=fake_command,
             AlembicConfig=fake_config_cls,
             _has_alembic_version_table=_fake_check,
             _create_all_views=_fake_create_views,
+            _missing_views=_fake_missing_views,
         ),
     )
 
@@ -66,7 +74,7 @@ def _assert_script_location_set(fake_cfg):
 def test_run_alembic_upgrade_existing_db_invokes_upgrade_to_head():
     """When alembic_version exists, this is an existing DB — apply any
     new pending migrations via `alembic upgrade head`."""
-    fake_command, fake_cfg, views_created, patcher = _patch_run_alembic(
+    fake_command, fake_cfg, views_created, _calls, patcher = _patch_run_alembic(
         has_alembic_version=True
     )
     with patcher:
@@ -74,10 +82,28 @@ def test_run_alembic_upgrade_existing_db_invokes_upgrade_to_head():
 
     fake_command.upgrade.assert_called_once_with(fake_cfg, "head")
     fake_command.stamp.assert_not_called()
-    # The migrations themselves own the views on this path; re-creating them
-    # here would drop and rebuild every view on every restart.
+    # Nothing is missing, so the views are left alone. The migrations own them
+    # on this path, and rebuilding on every restart would drop them out from
+    # under whatever Superset is querying.
     views_created.assert_not_called()
     _assert_script_location_set(fake_cfg)
+
+
+def test_run_alembic_upgrade_repairs_an_existing_db_that_is_missing_views():
+    """The stamped-and-viewless databases the old code left behind.
+
+    They have `alembic_version`, so they take the upgrade branch and alembic
+    finds nothing to do — nothing would ever recreate their views. This is the
+    only thing that repairs them.
+    """
+    fake_command, fake_cfg, views_created, _calls, patcher = _patch_run_alembic(
+        has_alembic_version=True, missing_views=["dive_pipeline_status"]
+    )
+    with patcher:
+        database.run_alembic_upgrade()
+
+    fake_command.upgrade.assert_called_once_with(fake_cfg, "head")
+    views_created.assert_called_once()
 
 
 def test_run_alembic_upgrade_fresh_db_stamps_head_without_running_ddl():
@@ -93,7 +119,7 @@ def test_run_alembic_upgrade_fresh_db_stamps_head_without_running_ddl():
     Without that a fresh environment ends up with every table and no views,
     and never recovers: the next restart finds `alembic_version` present and
     nothing to upgrade."""
-    fake_command, fake_cfg, views_created, patcher = _patch_run_alembic(
+    fake_command, fake_cfg, views_created, calls, patcher = _patch_run_alembic(
         has_alembic_version=False
     )
     with patcher:
@@ -102,7 +128,27 @@ def test_run_alembic_upgrade_fresh_db_stamps_head_without_running_ddl():
     fake_command.stamp.assert_called_once_with(fake_cfg, "head")
     fake_command.upgrade.assert_not_called()
     views_created.assert_called_once()
+    # Views BEFORE the stamp. If creation fails, `alembic_version` stays
+    # absent and the next restart retries the whole path; stamping first would
+    # mark the DB fully-migrated with no views and no way back.
+    assert calls == ["create_views", "stamp"]
     _assert_script_location_set(fake_cfg)
+
+
+def test_a_failure_creating_views_leaves_the_database_unstamped():
+    """So the next restart retries rather than inheriting a permanent gap."""
+    fake_command, _fake_cfg, _views_created, _calls, patcher = _patch_run_alembic(
+        has_alembic_version=False
+    )
+
+    async def _boom():
+        raise RuntimeError("view DDL failed")
+
+    with patcher, patch.object(database, "_create_all_views", _boom):
+        with pytest.raises(RuntimeError):
+            database.run_alembic_upgrade()
+
+    fake_command.stamp.assert_not_called()
 
 
 @pytest.mark.asyncio

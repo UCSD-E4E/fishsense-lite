@@ -31,22 +31,44 @@ import os
 
 import pytest
 
-# Must be set BEFORE anything imports `fishsense_api.config`: dynaconf reads
-# the environment on first attribute access and caches it, and
-# `run_alembic_upgrade` resolves its URL through `pg_connection_string()`.
 _PG_HOST = os.environ.get("FISHSENSE_POSTGRES_HOST", "postgres")
 _PG_PORT = os.environ.get("FISHSENSE_POSTGRES_PORT", "5432")
 _PG_USER = os.environ.get("FISHSENSE_POSTGRES_USER", "postgres")
 _PG_PASSWORD = os.environ.get("FISHSENSE_POSTGRES_PASSWORD", "fishsense_local")
 _SCRATCH_DB = os.environ.get("FISHSENSE_POSTGRES_ITEST_DB", "fishsense_api_itest")
 
-os.environ["E4EFS_POSTGRES__HOST"] = _PG_HOST
-os.environ["E4EFS_POSTGRES__PORT"] = _PG_PORT
-os.environ["E4EFS_POSTGRES__USERNAME"] = _PG_USER
-os.environ["E4EFS_POSTGRES__PASSWORD"] = _PG_PASSWORD
-os.environ["E4EFS_POSTGRES__DATABASE"] = _SCRATCH_DB
-
 pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _point_settings_at_the_scratch_database():
+    """Repoint dynaconf at the scratch DB, but only while these tests run.
+
+    Emphatically NOT module-level `os.environ[...] = ...`: pytest imports every
+    test module during collection, including on a default `-m 'not
+    integration'` run, so that would overwrite the session's Postgres settings
+    for suites that never asked for it — and the sibling modules' deliberate
+    `os.environ.setdefault(..., "ignored")` would then silently no-op, pointing
+    them at a real database.
+
+    Dynaconf caches on first attribute access, so setting the environment isn't
+    enough on its own; `reload()` re-runs the loaders. Both are undone
+    afterwards so the rest of the session sees what it did before.
+    """
+    from _pytest.monkeypatch import MonkeyPatch  # pylint: disable=import-outside-toplevel
+
+    from fishsense_api.config import settings  # pylint: disable=import-outside-toplevel
+
+    monkeypatch = MonkeyPatch()
+    monkeypatch.setenv("E4EFS_POSTGRES__HOST", _PG_HOST)
+    monkeypatch.setenv("E4EFS_POSTGRES__PORT", _PG_PORT)
+    monkeypatch.setenv("E4EFS_POSTGRES__USERNAME", _PG_USER)
+    monkeypatch.setenv("E4EFS_POSTGRES__PASSWORD", _PG_PASSWORD)
+    monkeypatch.setenv("E4EFS_POSTGRES__DATABASE", _SCRATCH_DB)
+    settings.reload()
+    yield
+    monkeypatch.undo()
+    settings.reload()
 
 
 def _admin_dsn(dbname: str = "postgres") -> str:
@@ -248,3 +270,78 @@ def test_dive_pipeline_status_reports_a_seeded_dive_on_postgres():
     # Vacuous truth reads as False throughout — a dive with no labels at all is
     # not "complete". Same rule the SQLite tests pin.
     assert rows[0][2] is False
+
+
+# ── regressions found by review of the first cut ──────────────────────
+
+
+@pytest.mark.usefixtures("empty_schema")
+def test_recreating_the_views_when_they_already_exist_does_not_fail():
+    """`fish_model_species_mislabel_suspects` selects from
+    `fish_model_measurement_accuracy`, so dropping the latter while the former
+    exists raises `DependentObjectsStillExistError`.
+
+    The original per-view drop-then-create loop hit exactly that on any second
+    run, which meant the "safe to re-run" claim was false and a startup on a
+    database with views but no `alembic_version` would crash-loop the API.
+    Dropping everything in reverse order first fixes it — and this is the test
+    that would have caught it, because SQLite has no such dependency tracking.
+    """
+    from fishsense_api.database import (  # pylint: disable=import-outside-toplevel
+        _create_all_views,
+    )
+
+    _run_lifespan_sequence()
+    assert len(_views()) >= 4
+
+    asyncio.run(_create_all_views())      # must not raise
+    asyncio.run(_create_all_views())
+
+    assert len(_views()) >= 4
+
+
+@pytest.mark.usefixtures("empty_schema")
+def test_an_already_stamped_database_with_no_views_is_repaired():
+    """The state the previous implementation left behind.
+
+    `alembic_version` is present, so startup takes the upgrade branch and
+    alembic finds nothing to do. Without an explicit repair those databases
+    stay viewless permanently.
+    """
+    import psycopg  # pylint: disable=import-outside-toplevel
+
+    _run_lifespan_sequence()
+
+    with psycopg.connect(_admin_dsn(_SCRATCH_DB), autocommit=True) as conn:
+        for view in ("fish_model_species_mislabel_suspects", "dive_pipeline_status"):
+            conn.execute(f"DROP VIEW {view}")
+    assert "dive_pipeline_status" not in _views()
+
+    _run_lifespan_sequence()
+
+    assert "dive_pipeline_status" in _views()
+    assert "fish_model_species_mislabel_suspects" in _views()
+
+
+@pytest.mark.usefixtures("empty_schema")
+def test_a_healthy_database_is_not_rebuilt_on_every_restart():
+    """The repair must be conditional. Dropping and recreating every view on
+    each startup would break whatever Superset had mid-query, for no reason."""
+    from fishsense_api import database as db_module  # pylint: disable=import-outside-toplevel
+
+    _run_lifespan_sequence()
+
+    calls = []
+    original = db_module._create_all_views  # pylint: disable=protected-access
+
+    async def _counting():
+        calls.append(1)
+        await original()
+
+    db_module._create_all_views = _counting  # pylint: disable=protected-access
+    try:
+        _run_lifespan_sequence()
+    finally:
+        db_module._create_all_views = original  # pylint: disable=protected-access
+
+    assert not calls

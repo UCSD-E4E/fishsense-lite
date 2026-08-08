@@ -87,17 +87,47 @@ async def _has_alembic_version_table() -> bool:
         await engine.dispose()
 
 
-async def _create_all_views() -> None:
-    """(Re)create every view in `views.ALL_VIEW_DDL`.
+async def _missing_views() -> list[str]:
+    """Which of `views.ALL_VIEW_NAMES` are absent from the database."""
+    engine = create_async_engine(pg_connection_string())
+    try:
+        async with engine.connect() as conn:
+            result = await conn.execute(
+                sa.text(
+                    "SELECT table_name FROM information_schema.views "
+                    "WHERE table_schema = current_schema()"
+                )
+            )
+            present = {row[0] for row in result}
+        return [name for name in views.ALL_VIEW_NAMES if name not in present]
+    finally:
+        await engine.dispose()
 
-    Only needed on the fresh-DB path — see `run_alembic_upgrade`. Each entry
-    is DROP-then-CREATE, so this is idempotent and safe to re-run.
+
+async def _create_all_views() -> None:
+    """(Re)create every view in `views.ALL_VIEW_DDL`, idempotently.
+
+    **Drop every view first, in reverse registry order, then create them in
+    forward order.** Interleaving drop-and-create per view fails as soon as one
+    view depends on another: `fish_model_species_mislabel_suspects` selects
+    from `fish_model_measurement_accuracy`, so dropping the latter while the
+    former still exists raises `DependentObjectsStillExistError`. Two phases
+    means every dependent is gone before its dependency is touched.
+
+    That makes `ALL_VIEW_DDL`'s order load-bearing: it must be dependency
+    order, dependents last.
+
+    Deliberately NOT `DROP ... CASCADE`. Cascade would succeed by silently
+    destroying anything *outside* this registry that depends on these views —
+    a Superset-created view over `dive_pipeline_status`, say. Failing loudly on
+    an unexpected dependent is the better outcome.
     """
     engine = create_async_engine(pg_connection_string())
     try:
         async with engine.begin() as conn:
-            for drop_sql, create_sql in views.ALL_VIEW_DDL:
+            for drop_sql, _create_sql in reversed(views.ALL_VIEW_DDL):
                 await conn.execute(sa.text(drop_sql))
+            for _drop_sql, create_sql in views.ALL_VIEW_DDL:
                 await conn.execute(sa.text(create_sql))
     finally:
         await engine.dispose()
@@ -147,20 +177,37 @@ def run_alembic_upgrade() -> None:
         _log.info("alembic_version present; running upgrade head")
         alembic_command.upgrade(cfg, "head")
         _log.info("alembic upgrade complete")
+
+        # Repair, not routine maintenance. Databases bootstrapped by the older
+        # stamp path were marked fully-migrated without ever creating the
+        # views, and nothing brought them back — this is the only thing that
+        # will. Gated on something actually being absent so a healthy database
+        # doesn't drop and rebuild its views on every restart while Superset is
+        # querying them.
+        missing = asyncio.run(_missing_views())
+        if missing:
+            _log.warning(
+                "views missing after upgrade (%s); recreating", ", ".join(missing)
+            )
+            asyncio.run(_create_all_views())
     else:
         _log.info(
-            "alembic_version missing; stamping head (fresh DB after create_all)"
+            "alembic_version missing; fresh DB after create_all"
         )
-        alembic_command.stamp(cfg, "head")
-        # Stamping marks every migration as applied without running any of
-        # them, so the views those migrations create are never made. They
-        # aren't in `SQLModel.metadata` either, so `create_all` didn't make
-        # them. Without this a fresh environment ends up with every table and
-        # no views, and never recovers: the next restart sees `alembic_version`
-        # and finds nothing to upgrade.
+        # Views BEFORE the stamp, deliberately. Stamping marks every migration
+        # as applied without running any of them, so the views those migrations
+        # create are never made — and they aren't in `SQLModel.metadata`
+        # either, so `create_all` didn't make them.
+        #
+        # Order matters for failure, not success: if view creation raises,
+        # `alembic_version` is still absent, so the next restart retries this
+        # whole path. Stamping first would leave the database marked
+        # fully-migrated with no views and no way back, which is precisely the
+        # non-self-healing failure this exists to fix.
         _log.info("creating views for fresh DB")
         asyncio.run(_create_all_views())
-        _log.info("views created")
+        _log.info("views created; stamping head")
+        alembic_command.stamp(cfg, "head")
 
 
 _session_factory: sessionmaker | None = None  # pylint: disable=invalid-name
