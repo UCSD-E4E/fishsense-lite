@@ -12,7 +12,23 @@ from urllib.parse import urlparse
 
 import platformdirs
 
-IS_DOCKER = bool(os.environ.get("E4EFS_DOCKER", False))
+# True only when E4EFS_DOCKER is an explicitly-truthy value. NOT
+# `bool(os.environ.get("E4EFS_DOCKER"))` — that treats *any* non-empty string
+# as true, so `E4EFS_DOCKER=false` would (wrongly) read as Docker mode and send
+# config/log paths to `/e4efs/*` even where those don't exist. That is not
+# hypothetical: `deploy/compose.local.yml` sets it to "false" on the
+# devcontainer. Anything unrecognised fails safe to local-dev paths.
+#
+# This is the implementation CLAUDE.md has always described. It reached main
+# late: the fix was written in 4978163 but only ever landed on
+# `feat/data-worker-nrp` and `docs/claude-md-plumbing-gotchas`, so main carried
+# the footgun the docs warned about. See tests/test_config.py.
+IS_DOCKER = os.environ.get("E4EFS_DOCKER", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 
 def get_config_path() -> Path:
