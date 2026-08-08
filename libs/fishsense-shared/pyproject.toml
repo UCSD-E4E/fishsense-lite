@@ -21,6 +21,30 @@ dev = [
 testpaths = ["tests"]
 asyncio_mode = "auto"
 
+# Coverage is ratcheted at 100%. The point isn't the number — it's that
+# anything genuinely not worth covering has to be *declared* here, so a real
+# gap can't hide behind a comfortable-looking 94%. If a new line can't
+# sensibly be tested, add it to `exclude_also` (or mark it `# pragma: no
+# cover`) with a reason, rather than lowering the bar.
+#
+# `branch = true` because line coverage answers "did this run", and the bugs
+# in this repo have been "did the *other* side of the if run" — the
+# E4EFS_DOCKER footgun was on a line executed by every single test.
+[tool.coverage.run]
+branch = true
+source = ["src/fishsense_shared"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+exclude_also = [
+    # Never executed at runtime; TYPE_CHECKING blocks exist for the checker.
+    "if TYPE_CHECKING:",
+    # Abstract methods have no body to exercise.
+    "raise NotImplementedError",
+    "@(abc\\.)?abstractmethod",
+]
+
 [build-system]
 requires = ["uv_build>=0.8.12,<0.9.0"]
 build-backend = "uv_build"
