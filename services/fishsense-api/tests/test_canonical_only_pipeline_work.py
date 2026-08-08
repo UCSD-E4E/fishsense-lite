@@ -150,3 +150,83 @@ def test_every_cohort_selector_filters_on_is_canonical():
         f"{gated} `Image.is_canonical` filters — a selector is missing the "
         "gate and would wedge on a duplicate dive"
     )
+
+
+# ── the view must agree with the selectors ────────────────────────────
+
+
+async def _pipeline_row(session, dive_id: int):
+    from sqlalchemy import text  # pylint: disable=import-outside-toplevel
+
+    from fishsense_api.views import (  # pylint: disable=import-outside-toplevel
+        DIVE_PIPELINE_STATUS_VIEW_SQL,
+    )
+
+    await session.exec(text(DIVE_PIPELINE_STATUS_VIEW_SQL))
+    result = await session.exec(
+        text(
+            "SELECT laser_preprocessed, headtail_preprocessed "
+            f"FROM dive_pipeline_status WHERE dive_id = {dive_id}"
+        )
+    )
+    row = result.first()
+    # SQLite hands back 1/0 for view booleans, not Python bools — the same
+    # coercion `test_dive_pipeline_status_view.py` does.
+    return None if row is None else tuple(bool(v) for v in row)
+
+
+async def test_the_view_ignores_duplicate_frames_like_the_selectors_do(session):
+    """The view and the cohort selectors are the same predicate in two files,
+    and CLAUDE.md requires them to stay in step.
+
+    Without this, a duplicate dive reads as perpetually incomplete on the
+    Superset dashboard while the worker correctly never picks it up — the
+    silent disagreement the cross-controller drift guard exists to catch.
+
+    A dive of only duplicate frames must look the way a dive with no images
+    looks: vacuously False, nothing outstanding.
+    """
+    session.add(_dive(1))
+    session.add(_image(11, 1, is_canonical=False))
+    await session.flush()
+
+    row = await _pipeline_row(session, 1)
+
+    # `laser_preprocessed` requires "an image exists AND none lack a label".
+    # With the duplicate excluded there is no image, so it is vacuously False —
+    # exactly as for an empty dive, and consistent with the selector returning
+    # None rather than treating it as outstanding work.
+    assert row[0] is False
+
+
+async def test_the_view_still_reports_canonical_frames(session):
+    """The gate must not blind the dashboard to real work."""
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+
+    session.add(_dive(1))
+    session.add(_image(11, 1, is_canonical=True))
+    await session.flush()
+    session.add(LaserLabel(image_id=11, label_studio_project_id=73))
+    await session.flush()
+
+    row = await _pipeline_row(session, 1)
+
+    assert row[0] is True   # every canonical image has a laser label row
+
+
+async def test_view_and_selector_agree_on_a_duplicate_dive(session):
+    """The property, stated directly: for the same dive, the view must not
+    claim outstanding work that the selector refuses to schedule."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_laser_preprocessing,
+    )
+
+    session.add(_dive(1))
+    session.add(_image(11, 1, is_canonical=False))
+    await session.flush()
+
+    selected = await select_next_for_laser_preprocessing(session=session)
+    row = await _pipeline_row(session, 1)
+
+    assert selected is None          # worker: nothing to do
+    assert row[0] is False           # view: nothing claimed as done either
