@@ -176,6 +176,11 @@ async def post_dive(
     dive: Dive,
     session: AsyncSession = Depends(get_async_session),
 ) -> int:
+    # pylint: disable=too-many-branches
+    # Each branch is one independent guard on a distinct field. Collapsing them
+    # into a helper would hide which check produced which 422 detail, and the
+    # detail strings are the point -- every one of these failures is otherwise
+    # silent in a *later* pipeline stage.
     """Create or update a dive, keyed on its NAS-relative `path`.
 
     **Upserts on `path`.** `session.merge` keys on the primary key alone, so a
@@ -217,8 +222,64 @@ async def post_dive(
             ),
         )
 
+    # Which fields did the caller actually send? Captured BEFORE
+    # `model_validate`, which rebuilds the object and marks every field as set.
+    provided = set(dive.model_fields_set)
+
+    # SQLModel `table=True` models skip pydantic coercion, so FastAPI hands us a
+    # `Dive` whose `priority` is still the raw JSON `str`. Two consequences, both
+    # fixed by coercing here rather than after `model_validate`:
+    #   * an unrecognised value reaches `model_validate` and surfaces as a bare
+    #     ValidationError -- a 500 where the caller deserves a 422;
+    #   * `jsonable_encoder` below re-serializes the uncoerced object and emits a
+    #     pydantic serializer warning on every single request.
+    if dive.priority is not None and not isinstance(dive.priority, Priority):
+        try:
+            dive.priority = Priority(dive.priority)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422, detail=f"Unknown priority {dive.priority!r}"
+            ) from exc
+
+    if dive.dive_datetime is None:
+        # `Dive.dive_datetime` is annotated non-optional but carries
+        # `default=None`, so FastAPI's request validation happily accepts a body
+        # that omits it -- and the `model_validate` below then raises a bare
+        # ValidationError, which surfaces as a 500. Guard explicitly.
+        raise HTTPException(status_code=422, detail="dive_datetime is required")
+
     dive = Dive.model_validate(jsonable_encoder(dive))
 
+    # Natural-key upsert on `path`.
+    if dive.id is None:
+        existing = (
+            await session.exec(select(Dive).where(Dive.path == dive.path))
+        ).first()
+        if existing is not None:
+            dive.id = existing.id
+            # PARTIAL update. `session.merge` replaces every column of the
+            # target row, so merging a body that only mentioned `priority`
+            # would null `name`, `dive_slate_id` and `calibration_dive_id`.
+            # That is data loss: `dive_slate_id` is written only by the
+            # species-label sync (nulling it discards labeler work and stops
+            # stages 9/12/13), and `calibration_dive_id` is the
+            # borrowed-calibration link (nulling it stops stage 14 measuring
+            # the dive). Neither failure reports anything.
+            #
+            # So overlay only what was sent onto the row as it stands. An
+            # explicit `None` still clears a field -- it is in `provided`.
+            # `model_dump()` (python mode), NOT `jsonable_encoder`: the latter
+            # stringifies `priority`, and a table model doesn't coerce it back,
+            # so the row would end up holding a raw str in an Enum column.
+            merged = existing.model_dump()
+            for field in provided:
+                merged[field] = getattr(dive, field)
+            merged["id"] = existing.id
+            dive = Dive(**merged)
+
+    # Validation runs on the EFFECTIVE row, after the overlay -- a partial
+    # re-post that omits `camera_id` inherits the existing one and must not be
+    # rejected for a field it never intended to change.
     if dive.camera_id is None:
         raise HTTPException(
             status_code=422,
@@ -246,14 +307,6 @@ async def post_dive(
                 "measure this dive"
             ),
         )
-
-    # Natural-key upsert on `path`.
-    if dive.id is None:
-        existing = (
-            await session.exec(select(Dive).where(Dive.path == dive.path))
-        ).first()
-        if existing is not None:
-            dive.id = existing.id
 
     if dive.calibration_dive_id is not None:
         if dive.calibration_dive_id == dive.id:

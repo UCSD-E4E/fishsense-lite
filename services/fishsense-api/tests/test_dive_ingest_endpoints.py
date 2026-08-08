@@ -259,3 +259,99 @@ async def test_post_dive_accepts_a_valid_calibration_source(session):
 
     row = (await session.exec(select(Dive).where(Dive.id == fish_dive))).first()
     assert row.calibration_dive_id == slate_dive
+
+
+# ── partial update semantics ──────────────────────────────────────────
+
+
+async def test_reposting_a_dive_preserves_fields_the_body_did_not_mention(session):
+    """The destructive-upsert regression.
+
+    `session.merge` replaces **every** column of the target row, so a second
+    POST that only cares about `priority` used to null `name`, `dive_slate_id`
+    and `calibration_dive_id`. That is data loss, not a cosmetic issue:
+
+      * `dive_slate_id` is written only by the species-label sync. Nulling it
+        discards labeler work and stops stages 9 / 12 / 13 for that dive.
+      * `calibration_dive_id` is the borrowed-calibration link. Nulling it
+        means the dive can never be calibrated, so stage 14 silently stops
+        measuring it.
+
+    Ingest itself re-POSTs the dive at finalize, so it would have tripped this
+    on its own. Only fields the caller actually sent may be written.
+    """
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        post_dive,
+    )
+    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
+
+    await _seed_camera(session)
+    slate_dive = await post_dive(_dive("d/slate"), session=session)
+    fish_dive = await post_dive(
+        _dive(
+            "d/fish",
+            name="fish dive",
+            dive_slate_id=3,
+            calibration_dive_id=slate_dive,
+        ),
+        session=session,
+    )
+
+    # A caller that only cares about priority.
+    await post_dive(
+        Dive(
+            path="d/fish",
+            dive_datetime=datetime(2024, 8, 21, tzinfo=timezone.utc),
+            camera_id=1,
+            priority=Priority.HIGH,
+        ),
+        session=session,
+    )
+
+    row = (await session.exec(select(Dive).where(Dive.id == fish_dive))).first()
+    assert row.priority == Priority.HIGH      # what the caller asked for
+    assert row.name == "fish dive"            # ... and nothing else moved
+    assert row.dive_slate_id == 3
+    assert row.calibration_dive_id == slate_dive
+
+
+async def test_reposting_a_dive_can_still_clear_a_field_explicitly(session):
+    """Partial update must not become "you can never null anything". An
+    explicit `None` in the body is a real instruction — that is how an
+    operator drops a wrong calibration link."""
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        post_dive,
+    )
+    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
+
+    await _seed_camera(session)
+    slate_dive = await post_dive(_dive("d/slate"), session=session)
+    fish_dive = await post_dive(
+        _dive("d/fish", calibration_dive_id=slate_dive), session=session
+    )
+
+    await post_dive(
+        Dive(
+            path="d/fish",
+            dive_datetime=datetime(2024, 8, 21, tzinfo=timezone.utc),
+            camera_id=1,
+            calibration_dive_id=None,
+        ),
+        session=session,
+    )
+
+    row = (await session.exec(select(Dive).where(Dive.id == fish_dive))).first()
+    assert row.calibration_dive_id is None
+
+
+async def test_post_dive_rejects_an_empty_path(session):
+    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+        post_dive,
+    )
+
+    await _seed_camera(session)
+
+    with pytest.raises(HTTPException) as exc:
+        await post_dive(_dive(""), session=session)
+    assert exc.value.status_code == 422

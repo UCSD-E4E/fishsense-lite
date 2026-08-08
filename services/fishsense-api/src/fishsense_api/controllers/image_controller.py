@@ -81,7 +81,10 @@ async def post_image(
 
     **Upserts on `path`** for the same reason `post_dive` does: a resumed scan
     re-posts paths that already exist, and a blind `session.merge(id=None)`
-    would INSERT and trip the unique index (#347).
+    would INSERT and trip the unique index (#347). The update is *partial* --
+    only fields the caller actually sent are written -- except `path`,
+    `checksum` and `taken_datetime`, which the model cannot represent as
+    absent and so must always be supplied.
 
     **`is_canonical` is computed here, not by the caller.** The rule comes from
     the original migration (`9e5bc64`): the first row for a given checksum is
@@ -116,6 +119,11 @@ async def post_image(
             ),
         )
     if image.taken_datetime is None:
+        # Always required, even on a partial re-post: `Image.taken_datetime` is
+        # annotated non-optional, so `model_validate` below would reject a None
+        # with a bare ValidationError instead of a usable 422. Stage-1
+        # clustering is pure timestamp math, so a defaulted value would corrupt
+        # it silently anyway.
         raise HTTPException(
             status_code=422,
             detail=(
@@ -123,12 +131,14 @@ async def post_image(
                 "math, so a missing value would corrupt it silently"
             ),
         )
-
     dive = (await session.exec(select(Dive).where(Dive.id == dive_id))).first()
     if dive is None:
         raise HTTPException(status_code=422, detail=f"Dive {dive_id} does not exist")
 
-    explicit_is_canonical = "is_canonical" in image.model_fields_set
+    # Which fields did the caller actually send? Captured BEFORE
+    # `model_validate`, which marks every field as set.
+    provided = set(image.model_fields_set)
+    explicit_is_canonical = "is_canonical" in provided
 
     image = Image.model_validate(jsonable_encoder(image))
     image.dive_id = dive_id
@@ -140,6 +150,19 @@ async def post_image(
         ).first()
         if existing is not None:
             image.id = existing.id
+            # PARTIAL update, same reasoning as `post_dive`: `session.merge`
+            # replaces every column, so a resumed scan re-posting a path with a
+            # narrower body would wipe whatever it omitted (`camera_id`, and
+            # `is_canonical` itself). Overlay only what was sent.
+            # `model_dump()` (python mode), not `jsonable_encoder` -- see
+            # `post_dive`: a JSON round-trip through a table model loses typed
+            # values (datetimes, enums) because it doesn't coerce them back.
+            merged = existing.model_dump()
+            for field in provided:
+                merged[field] = getattr(image, field)
+            merged["id"] = existing.id
+            merged["dive_id"] = dive_id
+            image = Image(**merged)
 
     if not explicit_is_canonical:
         # "Is there already a row with this checksum that ISN'T this one?"

@@ -277,3 +277,101 @@ async def test_checksum_lookup_is_a_set_operation_not_an_ordered_digest(session)
 
     shared = [ck for ck in incoming if any(h["dive_id"] == 64 for h in result[ck])]
     assert len(shared) / len(incoming) == pytest.approx(2 / 3)
+
+
+# ── partial update semantics + remaining guards ───────────────────────
+
+
+async def test_reposting_an_image_preserves_fields_the_body_did_not_mention(session):
+    """Same destructive-upsert class as the dive endpoint. A resumed scan
+    re-posts paths it has already written; anything it omits must survive."""
+    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+        post_image,
+    )
+    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
+
+    await _seed_dive(session, 7, "d/7")
+    path = "d/7/P8210001.ORF"
+    image_id = await post_image(7, _image(path, CK_A, camera_id=3), session=session)
+
+    await post_image(
+        7,
+        Image(
+            path=path,
+            checksum=CK_A,
+            taken_datetime=datetime(2024, 8, 21, 8, 56, 51, tzinfo=timezone.utc),
+        ),
+        session=session,
+    )
+
+    row = (await session.exec(select(Image).where(Image.id == image_id))).first()
+    assert row.camera_id == 3
+
+
+async def test_post_image_rejects_an_empty_path(session):
+    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+        post_image,
+    )
+
+    await _seed_dive(session, 7, "d/7")
+
+    with pytest.raises(HTTPException) as exc:
+        await post_image(7, _image("", CK_A), session=session)
+    assert exc.value.status_code == 422
+
+
+async def test_post_image_rejects_a_missing_taken_datetime(session):
+    """Stage-1 clustering is pure timestamp math, so a defaulted or absent
+    `taken_datetime` would corrupt it with nothing to show for it."""
+    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+        post_image,
+    )
+    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
+
+    await _seed_dive(session, 7, "d/7")
+    no_date = Image(path="d/7/P1.ORF", checksum=CK_A, taken_datetime=None)
+
+    with pytest.raises(HTTPException) as exc:
+        await post_image(7, no_date, session=session)
+    assert exc.value.status_code == 422
+
+
+async def test_checksum_lookup_rejects_an_oversized_batch(session):
+    """Unbounded `IN (...)` from a bad caller."""
+    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+        MAX_CHECKSUM_LOOKUP,
+        post_checksum_lookup,
+    )
+
+    too_many = [f"{i:032x}" for i in range(MAX_CHECKSUM_LOOKUP + 1)]
+
+    with pytest.raises(HTTPException) as exc:
+        await post_checksum_lookup(too_many, session=session)
+    assert exc.value.status_code == 422
+
+
+async def test_checksum_lookup_handles_an_empty_batch(session):
+    """A dive folder that turned out to hold nothing new still calls this."""
+    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+        post_checksum_lookup,
+    )
+
+    assert await post_checksum_lookup([], session=session) == {}
+
+
+async def test_checksum_lookup_deduplicates_repeated_checksums(session):
+    """Duplicate frames inside one folder are exactly the case this is for, so
+    the same checksum arriving twice must not double-count toward the cap or
+    produce duplicate hits."""
+    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+        post_checksum_lookup,
+        post_image,
+    )
+
+    await _seed_dive(session, 64, "d/64")
+    await post_image(64, _image("d/64/P1.ORF", CK_A), session=session)
+
+    result = await post_checksum_lookup([CK_A, CK_A, CK_A], session=session)
+
+    assert list(result) == [CK_A]
+    assert len(result[CK_A]) == 1
