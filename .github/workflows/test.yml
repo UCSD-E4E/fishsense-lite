@@ -11,13 +11,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Keep in step with PACKAGES in check.sh — that list is what a
+        # developer runs locally as `./check.sh unit`, and what
+        # integration.yml drives via `./check.sh integration`. This matrix
+        # had drifted from it: fishsense-shared and fishsense-backup-worker
+        # carried 50 passing tests that CI never executed, so a regression
+        # in either would have reached main silently. fishsense-shared is
+        # the worst place for that — every service depends on it.
         include:
           - package: libs/fishsense-api-sdk
             cov: fishsense_api_sdk
+          - package: libs/fishsense-shared
+            cov: fishsense_shared
           - package: services/fishsense-api
             cov: fishsense_api
           - package: services/fishsense-api-workflow-worker
             cov: fishsense_api_workflow_worker
+          - package: services/fishsense-backup-worker
+            cov: fishsense_backup_worker
           - package: services/fishsense-data-processing-workflow-worker
             cov: fishsense_data_processing_workflow_worker
     name: pytest (${{ matrix.package }})
