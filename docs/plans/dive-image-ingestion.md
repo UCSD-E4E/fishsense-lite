@@ -180,6 +180,38 @@ adding a `GET /cameras/serial/{sn}` route. Cheaper than N lookups, one less rout
 rig therefore cannot be ingested until someone inserts the row (DB-direct today).
 Deliberately out of scope — noted in §9.
 
+### 0.9 Prod state, measured 2026-08-07 — the canonical invariant holds
+
+Checked directly against the prod `fishsense` DB before shipping the
+`uq_image_canonical_checksum` partial unique index, because a unique index that
+fails on existing rows would crash-loop the API (`lifespan` runs
+`run_alembic_upgrade` on startup, and there is no staging tier):
+
+```
+total_images                      = 131,430
+canonical_rows                    =  65,981
+distinct_checksums                =  65,981
+checksums_with_multiple_canonical =       0
+```
+
+`canonical_rows == distinct_checksums` with zero multi-canonical groups means
+every distinct checksum has **exactly one** canonical row. So the migration
+takes the create path, not the `REFUSING` path, and no operator repair is
+needed. (The same arithmetic rules out checksums with *zero* canonical rows —
+the counts would differ — and any NULL `is_canonical` could only sit among
+duplicates, which a `WHERE is_canonical` partial index does not constrain.)
+
+**49.8 % of image rows are duplicate content** (131,430 total vs 65,981
+distinct). That reframes two things:
+
+* `is_canonical` is not an edge case — it decides the identity of half the
+  table. The promotion-must-demote bug the constraint caught was live on a much
+  bigger surface than the dives-64/66 anecdote implied.
+* Duplicate detection (§4.2.1) will fire constantly, not rarely. It also
+  explains why the legacy whole-dive MD5 aggregate disappointed: an
+  all-or-nothing digest over a corpus that is half near-duplicates is wrong
+  most of the times it is consulted.
+
 ### 0.6 Security call-out — resolved
 
 The `fabricant-prod` Postgres password committed in plaintext (this repo's `9e5bc64`
@@ -931,8 +963,11 @@ must merge before PR 2's worker image can see the new client methods.
 4. **No `POST /cameras` endpoint exists**, so a genuinely new rig blocks ingest until
    its `Camera` row is inserted DB-direct. Out of scope; flag if a new rig is due.
 5. **Duplicate detection replaced** (§4.2.1) — leaf-name warning + content-set
-   containment, instead of the whole-dive MD5 aggregate. Confirm the containment
-   threshold (0.9?) at which you want an explicit acknowledgement.
+   containment, instead of the whole-dive MD5 aggregate. **Threshold still open,
+   and the prod numbers argue against 0.9** (see §0.9): a folder that is 60 %
+   already-present is the common case, not the exception, and that is exactly
+   when an operator wants telling. Suggest 0.5, or reporting containment always
+   and gating the acknowledgement on 1.0 (wholly contained).
 6. **Weasly Fish widths** — mid-body and caudal-peduncle, in mm.
 7. **Weasly Fish 30 cm** — provisional; §7.2's diagnostic band tells you when to
    recaliper.
