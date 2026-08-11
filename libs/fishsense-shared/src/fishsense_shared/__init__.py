@@ -9,6 +9,16 @@ from fishsense_shared.config import (
 )
 from fishsense_shared.exception_group import ExceptionGroupErrorLogging
 from fishsense_shared.logging import configure_log_handler, configure_logging
+from fishsense_shared.ingest_contracts import (
+    DuplicateOverlap,
+    IngestDiveRequest,
+    IngestPreflight,
+    IngestProgress,
+    IngestReport,
+    PreflightImage,
+    RejectedImage,
+    SubfolderReport,
+)
 from fishsense_shared.preprocess_contracts import (
     ClusterDiveFrameImage,
     ClusterDiveFramesInput,
@@ -31,6 +41,14 @@ from fishsense_shared.temporal import (
 
 __all__ = [
     "IS_DOCKER",
+    "DuplicateOverlap",
+    "IngestDiveRequest",
+    "IngestPreflight",
+    "IngestProgress",
+    "IngestReport",
+    "PreflightImage",
+    "RejectedImage",
+    "SubfolderReport",
     "ClusterDiveFrameImage",
     "ClusterDiveFramesInput",
     "ExceptionGroupErrorLogging",
