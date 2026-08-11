@@ -47,7 +47,12 @@ async def cleanup_raw_bytes_for_dive_activity(
 ) -> CleanupRawBytesResult:
     async with get_fs_client() as fs:
         images = await fs.images.get(dive_id=dive_id) or []
-
+        # Deliberately NOT filtered to canonical images, unlike staging and
+        # the resolvers. Cleanup should be broader than whatever produced the
+        # scratch, so it still evicts objects staged before the canonical gate
+        # existed. Harmless either way -- scratch is keyed by checksum, and a
+        # duplicate shares its canonical twin's key -- but broader is the safe
+        # direction for a delete that only touches Garage scratch.
     activity.logger.info(
         "cleaning up raw bytes dive_id=%d images=%d", dive_id, len(images)
     )

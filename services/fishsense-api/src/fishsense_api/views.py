@@ -91,6 +91,17 @@ _IS_FISH_MODEL_SQL = (
 # incomplete-non-superseded rows. Mirrors
 # `get_dives_with_complete_laser_labeling`'s semantics so a dive with
 # zero labels of a kind doesn't vacuously read as complete.
+# Every image correlation below reads `i.dive_id = d.id AND i.is_canonical`.
+#
+# The same physical frames live under several dive rows (half of prod's image
+# table is duplicate content; 207 of 479 dives are duplicates end to end), and
+# `is_canonical` marks which copy is real. The cohort selectors in
+# `dive_controller` gate on it so a duplicate dive can never become pipeline
+# work, and this view has to use the identical predicate or the two drift:
+# the dashboard would report a dive as perpetually incomplete while the worker
+# correctly does nothing with it. `test_dive_pipeline_status_view.py` pins that
+# agreement explicitly.
+
 DIVE_PIPELINE_STATUS_VIEW_SQL = f"""
 CREATE VIEW {DIVE_PIPELINE_STATUS_VIEW_NAME} AS
 SELECT
@@ -102,10 +113,10 @@ SELECT
     -- Stage 0.1: every image in the dive has at least one LaserLabel
     -- row (any project, any state). The cohort selector is the
     -- inverse of this predicate.
-    (EXISTS (SELECT 1 FROM image i WHERE i.dive_id = d.id)
+    (EXISTS (SELECT 1 FROM image i WHERE i.dive_id = d.id AND i.is_canonical)
      AND NOT EXISTS (
          SELECT 1 FROM image i
-         WHERE i.dive_id = d.id
+         WHERE i.dive_id = d.id AND i.is_canonical
            AND NOT EXISTS (
                SELECT 1 FROM laserlabel ll WHERE ll.image_id = i.id
            )
@@ -116,14 +127,14 @@ SELECT
     (EXISTS (
          SELECT 1 FROM laserlabel ll
          JOIN image i ON i.id = ll.image_id
-         WHERE i.dive_id = d.id
+         WHERE i.dive_id = d.id AND i.is_canonical
            AND ll.superseded = FALSE
            AND ll.completed = TRUE
      )
      AND NOT EXISTS (
          SELECT 1 FROM laserlabel ll
          JOIN image i ON i.id = ll.image_id
-         WHERE i.dive_id = d.id
+         WHERE i.dive_id = d.id AND i.is_canonical
            AND ll.superseded = FALSE
            AND (ll.completed = FALSE OR ll.completed IS NULL)
      )) AS laser_labeling_complete,
@@ -136,13 +147,13 @@ SELECT
     (EXISTS (
          SELECT 1 FROM laserlabel ll
          JOIN image i ON i.id = ll.image_id
-         WHERE i.dive_id = d.id
+         WHERE i.dive_id = d.id AND i.is_canonical
            AND {_VALID_LASER_SQL}
      )
      AND NOT EXISTS (
          SELECT 1 FROM laserlabel ll
          JOIN image i ON i.id = ll.image_id
-         WHERE i.dive_id = d.id
+         WHERE i.dive_id = d.id AND i.is_canonical
            AND {_VALID_LASER_SQL}
            AND NOT EXISTS (
                SELECT 1 FROM headtaillabel htl
@@ -156,14 +167,14 @@ SELECT
     (EXISTS (
          SELECT 1 FROM headtaillabel htl
          JOIN image i ON i.id = htl.image_id
-         WHERE i.dive_id = d.id
+         WHERE i.dive_id = d.id AND i.is_canonical
            AND htl.superseded = FALSE
            AND htl.completed = TRUE
      )
      AND NOT EXISTS (
          SELECT 1 FROM headtaillabel htl
          JOIN image i ON i.id = htl.image_id
-         WHERE i.dive_id = d.id
+         WHERE i.dive_id = d.id AND i.is_canonical
            AND htl.superseded = FALSE
            AND (htl.completed = FALSE OR htl.completed IS NULL)
      )) AS headtail_labeling_complete,
@@ -200,7 +211,7 @@ SELECT
     (EXISTS (
          SELECT 1 FROM laserlabel ll
          JOIN image i ON i.id = ll.image_id
-         WHERE i.dive_id = d.id
+         WHERE i.dive_id = d.id AND i.is_canonical
            AND {_VALID_LASER_SQL}
            AND EXISTS (
                SELECT 1 FROM diveframeclusterimagemapping mm
@@ -213,7 +224,7 @@ SELECT
      AND NOT EXISTS (
          SELECT 1 FROM laserlabel ll
          JOIN image i ON i.id = ll.image_id
-         WHERE i.dive_id = d.id
+         WHERE i.dive_id = d.id AND i.is_canonical
            AND {_VALID_LASER_SQL}
            AND EXISTS (
                SELECT 1 FROM diveframeclusterimagemapping mm
@@ -236,14 +247,14 @@ SELECT
     (EXISTS (
          SELECT 1 FROM specieslabel sl
          JOIN image i ON i.id = sl.image_id
-         WHERE i.dive_id = d.id
+         WHERE i.dive_id = d.id AND i.is_canonical
            AND sl.superseded = FALSE
            AND sl.completed = TRUE
      )
      AND NOT EXISTS (
          SELECT 1 FROM specieslabel sl
          JOIN image i ON i.id = sl.image_id
-         WHERE i.dive_id = d.id
+         WHERE i.dive_id = d.id AND i.is_canonical
            AND sl.superseded = FALSE
            AND (sl.completed = FALSE OR sl.completed IS NULL)
      )) AS species_labeling_complete,
@@ -258,13 +269,13 @@ SELECT
      AND EXISTS (
          SELECT 1 FROM specieslabel sl
          JOIN image i ON i.id = sl.image_id
-         WHERE i.dive_id = d.id
+         WHERE i.dive_id = d.id AND i.is_canonical
            AND sl.content_of_image = '{_SLATE_CONTENT_MARKER}'
      )
      AND NOT EXISTS (
          SELECT 1 FROM specieslabel sl
          JOIN image i ON i.id = sl.image_id
-         WHERE i.dive_id = d.id
+         WHERE i.dive_id = d.id AND i.is_canonical
            AND sl.content_of_image = '{_SLATE_CONTENT_MARKER}'
            AND NOT EXISTS (
                SELECT 1 FROM diveslatelabel dsl
@@ -278,14 +289,14 @@ SELECT
     (EXISTS (
          SELECT 1 FROM diveslatelabel dsl
          JOIN image i ON i.id = dsl.image_id
-         WHERE i.dive_id = d.id
+         WHERE i.dive_id = d.id AND i.is_canonical
            AND dsl.superseded = FALSE
            AND dsl.completed = TRUE
      )
      AND NOT EXISTS (
          SELECT 1 FROM diveslatelabel dsl
          JOIN image i ON i.id = dsl.image_id
-         WHERE i.dive_id = d.id
+         WHERE i.dive_id = d.id AND i.is_canonical
            AND dsl.superseded = FALSE
            AND (dsl.completed = FALSE OR dsl.completed IS NULL)
      )) AS slate_labeling_complete,
@@ -346,12 +357,12 @@ SELECT
     (EXISTS (
          SELECT 1 FROM measurement m
          JOIN image i ON i.id = m.image_id
-         WHERE i.dive_id = d.id
+         WHERE i.dive_id = d.id AND i.is_canonical
      )
      AND NOT EXISTS (
          SELECT 1 FROM specieslabel sl
          JOIN image i ON i.id = sl.image_id
-         WHERE i.dive_id = d.id
+         WHERE i.dive_id = d.id AND i.is_canonical
            AND sl.top_three_photos_of_group = TRUE
            AND {_MEASURABLE_SPECIES_SQL}
            AND EXISTS (
