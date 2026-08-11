@@ -10,10 +10,22 @@ Status: **approved; in progress.** Two independent deliverables:
 
 | PR | Scope | State |
 |---|---|---|
-| 1 | fishsense-api write endpoints + SDK client methods (§2.1, §2.2, §4.2.1 lookup) | **landed** on `feat/dive-image-ingest-endpoints` |
-| 2 | api-worker: `NasClient` listing/ranged read, `exif.py`, 5 activities, `IngestDiveWorkflow` (§4), Temporal client in the API (§2.7) | not started |
+| 1 | fishsense-api write endpoints + SDK client methods (§2.1, §2.2, §4.2.1 lookup) | **merged** — #554 |
+| 1b | canonical-only pipeline work: 11 cohort selectors, 8 resolvers, `dive_pipeline_status` | **merged** — #555, folded into #554's branch |
+| 2 | api-worker ingest workflow | **in progress** — see below |
 | 3 | `/portal/ingest` page (§5) | not started |
 | 4 | Part 2 — `Weasly Fish` reference row (§7) | blocked on the calipered widths |
+
+**PR 2 breakdown** (branch `feat/ingest-workflow`):
+
+| Piece | State |
+|---|---|
+| `exif.py` — stdlib ORF reader, tag 0x0132 + Olympus MakerNote serial | done, 13 tests |
+| `NasClient.list_dir` + `download_range` | done, 7 tests |
+| `fishsense_shared.ingest_contracts` | done, 14 tests |
+| 5 activities (§4.1–4.5) | not started |
+| `IngestDiveWorkflow` + `progress` query | not started |
+| Temporal client + `ingest_controller` in fishsense-api (§2.7) | not started |
 
 Read §0 first: one required verification is **blocked in this session**, and one
 finding **contradicts an assumption in the brief**.
