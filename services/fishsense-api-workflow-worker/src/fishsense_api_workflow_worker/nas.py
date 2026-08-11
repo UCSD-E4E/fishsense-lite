@@ -20,6 +20,13 @@ Operations:
   * `download_to(src_path, dest_dir)` — Phase 3a staging-in.
   * `upload(dest_dir, src_file_path)` — Phase 3b archive.
   * `exists(file_path)` — idempotency HEAD-equivalent for archive.
+  * `list_dir(folder_path)` — enumerate a dive folder (ingest).
+  * `download_range(file_path, offset, length)` — ranged read (ingest).
+
+The last two exist for ingest, which has to discover what is in a dive folder
+and read each frame's EXIF header. Both are thin mappings onto methods the
+`synology-filestation` wheel already provides, so neither adds a dependency,
+and both are reads — the api-worker's NAS access stays read-only by policy.
 
 The wrapper class preserves its previous external shape so call sites
 in `stage_raw_bytes_for_dive_activity`, `archive_processed_jpegs_to_nas_activity`,
@@ -30,6 +37,8 @@ from __future__ import annotations
 
 import logging
 import os
+from dataclasses import dataclass
+from typing import List
 from urllib.parse import urlparse
 
 from synology_filestation import (
@@ -38,6 +47,37 @@ from synology_filestation import (
 )
 
 _log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class NasEntry:
+    """One child of a NAS folder.
+
+    Deliberately minimal: ingest only needs to tell files from directories,
+    match `.ORF` by name, and report sizes. Everything else DSM returns is
+    passed over rather than modelled.
+    """
+
+    path: str
+    name: str
+    is_dir: bool
+    size: int
+
+    @classmethod
+    def from_dsm(cls, entry: dict) -> "NasEntry":
+        """Build from a DSM `list_dir` row.
+
+        Optional fields are defaulted rather than required — DSM omits `size`
+        on some entries, and a KeyError here would fail an entire dive over one
+        odd row.
+        """
+        path = entry.get("path") or ""
+        return cls(
+            path=path,
+            name=entry.get("name") or os.path.basename(path.rstrip("/")),
+            is_dir=bool(entry.get("isdir", False)),
+            size=int(entry.get("size") or 0),
+        )
 
 
 class NasClient:
@@ -99,6 +139,30 @@ class NasClient:
         self._ensure_dir(dest_dir)
         self._fs.upload(src_file_path, dest_dir, overwrite=True)
         _log.info("nas upload done dest=%s", dest_dir)
+
+    def list_dir(self, *, folder_path: str) -> List["NasEntry"]:
+        """Enumerate `folder_path`, one `NasEntry` per child.
+
+        Ingest needs to know what is in a dive folder before it can stage
+        anything. The underlying client already has `list_dir`; this maps its
+        loosely-typed dicts onto a shape the activities can rely on, tolerating
+        the optional fields DSM sometimes omits (a missing `size` must not fail
+        the whole dive).
+        """
+        raw = self._fs.list_dir(folder_path)
+        return [NasEntry.from_dsm(entry) for entry in raw]
+
+    def download_range(
+        self, *, file_path: str, offset: int = 0, length: int = 0
+    ) -> bytes:
+        """Read `length` bytes of `file_path` starting at `offset`.
+
+        `length=0` means "to the end", matching the underlying client. The
+        point is the ingest dry run: EXIF lives in the first megabyte, so a
+        preflight over a 500-image dive moves ~0.5 GB instead of ~7.5 GB across
+        FileStation's fragile shared download backend.
+        """
+        return self._fs.download(file_path, offset=offset, length=length)
 
     def exists(self, *, file_path: str) -> bool:
         """Return True if `file_path` exists on the NAS, False otherwise.

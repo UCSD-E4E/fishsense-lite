@@ -118,3 +118,94 @@ def test_download_to_raises_when_underlying_client_signals_failure(
             "read_bytes() and upload them to the file-exchange as `.ORF`, "
             "reproducing the 2026-05-07 stage 2 corruption."
         )
+
+
+# ── ingest additions: directory listing + ranged reads ────────────────
+
+
+def _client_with(monkeypatch, fake_fs):
+    from fishsense_api_workflow_worker import nas as sut  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(sut.Client, "login", lambda *a, **kw: fake_fs)
+    return sut.NasClient(
+        nas_url="https://nas.example.com:6021", username="u", password="p"
+    )
+
+
+def test_list_dir_returns_typed_entries(monkeypatch):
+    """Ingest has to enumerate a dive folder, which `NasClient` could not do.
+
+    The underlying `synology-filestation` wheel already exposes `list_dir`, so
+    this is a thin mapping rather than a new capability — no new dependency,
+    and NAS access stays read-only.
+    """
+    fake_fs = MagicMock()
+    fake_fs.list_dir.return_value = [
+        {"path": "/d/P8210001.ORF", "isdir": False, "size": 15_232_982},
+        {"path": "/d/sub", "isdir": True, "size": 0},
+    ]
+    client = _client_with(monkeypatch, fake_fs)
+
+    entries = client.list_dir(folder_path="/d")
+
+    fake_fs.list_dir.assert_called_once_with("/d")
+    assert [e.name for e in entries] == ["P8210001.ORF", "sub"]
+    assert [e.is_dir for e in entries] == [False, True]
+    assert entries[0].size == 15_232_982
+    assert entries[0].path == "/d/P8210001.ORF"
+
+
+def test_list_dir_tolerates_entries_missing_optional_fields(monkeypatch):
+    """DSM omits `size` on some entries. A KeyError here would fail the whole
+    dive rather than one file."""
+    fake_fs = MagicMock()
+    fake_fs.list_dir.return_value = [{"path": "/d/x.ORF"}]
+    client = _client_with(monkeypatch, fake_fs)
+
+    entry = client.list_dir(folder_path="/d")[0]
+
+    assert entry.name == "x.ORF"
+    assert entry.is_dir is False
+    assert entry.size == 0
+
+
+def test_download_range_requests_only_the_asked_for_bytes(monkeypatch):
+    """The dry run reads EXIF from the first megabyte of each frame rather than
+    pulling ~15 MB. On a 500-image dive that is ~0.5 GB instead of ~7.5 GB over
+    FileStation's fragile download backend."""
+    fake_fs = MagicMock()
+    fake_fs.download.return_value = b"IIRO" + b"\x00" * 100
+    client = _client_with(monkeypatch, fake_fs)
+
+    data = client.download_range(file_path="/d/x.ORF", offset=0, length=1024)
+
+    fake_fs.download.assert_called_once_with("/d/x.ORF", offset=0, length=1024)
+    assert data.startswith(b"IIRO")
+
+
+def test_download_range_defaults_to_the_whole_file(monkeypatch):
+    """`length=0` is the underlying client's "rest of the file" sentinel."""
+    fake_fs = MagicMock()
+    fake_fs.download.return_value = b""
+    client = _client_with(monkeypatch, fake_fs)
+
+    client.download_range(file_path="/d/x.ORF")
+
+    fake_fs.download.assert_called_once_with("/d/x.ORF", offset=0, length=0)
+
+
+def test_the_new_methods_are_read_only(monkeypatch):
+    """NAS access from the api-worker is read-only by policy. Neither addition
+    may reach a mutating call on the underlying client."""
+    fake_fs = MagicMock()
+    fake_fs.list_dir.return_value = []
+    fake_fs.download.return_value = b""
+    client = _client_with(monkeypatch, fake_fs)
+
+    client.list_dir(folder_path="/d")
+    client.download_range(file_path="/d/x.ORF")
+
+    fake_fs.delete.assert_not_called()
+    fake_fs.upload.assert_not_called()
+    fake_fs.upload_bytes.assert_not_called()
+    fake_fs.create_folder.assert_not_called()
