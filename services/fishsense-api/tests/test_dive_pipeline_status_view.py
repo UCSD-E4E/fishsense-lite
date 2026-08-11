@@ -672,7 +672,7 @@ async def test_view_and_selector_agree_on_species_predicate(session):
       B. dive done       → view True,  selector returns None
       C. dive ineligible → view False, selector returns None
     """
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_species_preprocessing,
     )
     from fishsense_api.models.dive_frame_cluster import (  # pylint: disable=import-outside-toplevel

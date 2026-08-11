@@ -82,7 +82,7 @@ async def test_a_dive_of_only_duplicate_frames_is_not_laser_preprocessing_work(s
     appears, so the dive never drains — re-staging raw `.ORF`s from the NAS
     every hour and blocking every higher-id dive.
     """
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_laser_preprocessing,
     )
 
@@ -95,7 +95,7 @@ async def test_a_dive_of_only_duplicate_frames_is_not_laser_preprocessing_work(s
 
 async def test_a_canonical_frame_is_still_laser_preprocessing_work(session):
     """The other half — the gate must not swallow real work."""
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_laser_preprocessing,
     )
 
@@ -109,7 +109,7 @@ async def test_a_canonical_frame_is_still_laser_preprocessing_work(session):
 async def test_a_mixed_dive_is_still_work_for_its_canonical_frames(session):
     """A dive holding one original and one duplicate is real work. Excluding
     the whole dive would strand the original."""
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_laser_preprocessing,
     )
 
@@ -137,10 +137,18 @@ def test_every_cohort_selector_filters_on_is_canonical():
     import re  # pylint: disable=import-outside-toplevel
 
     from fishsense_api.controllers import (  # pylint: disable=import-outside-toplevel
+        dive_cohort_controller,
         dive_controller,
     )
 
-    source = inspect.getsource(dive_controller)
+    # Both modules, deliberately: the selectors live in `dive_cohort_controller`
+    # but `dive_controller` still correlates Image to Dive (canonical dives), and
+    # a future selector could land in either. Checking only where they happen to
+    # live today is how this guard would quietly stop guarding.
+    source = "\n".join(
+        inspect.getsource(module)
+        for module in (dive_cohort_controller, dive_controller)
+    )
     correlations = len(re.findall(r"Image\.dive_id == Dive\.id", source))
     gated = len(re.findall(r"Image\.is_canonical == True", source))
 
@@ -217,7 +225,7 @@ async def test_the_view_still_reports_canonical_frames(session):
 async def test_view_and_selector_agree_on_a_duplicate_dive(session):
     """The property, stated directly: for the same dive, the view must not
     claim outstanding work that the selector refuses to schedule."""
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_laser_preprocessing,
     )
 
