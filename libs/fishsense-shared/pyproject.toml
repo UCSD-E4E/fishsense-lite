@@ -11,10 +11,24 @@ dependencies = [
     "validators>=0.35.0",
 ]
 
+# boto3 is an EXTRA, not a base dependency. `fishsense_shared.object_store`
+# is imported only by the two workers that talk to Garage; fishsense-api and
+# fishsense-backup-worker also depend on this package and must not inherit
+# botocore's ~100MB into their runtime images. Both workers already declare
+# boto3 directly, so nothing needs to opt in today — the extra exists so a
+# future consumer can express the dependency honestly.
+[project.optional-dependencies]
+s3 = [
+    "boto3>=1.35.0",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.25.2",
+    # Needed to exercise `object_store` at the 100% coverage bar below.
+    "boto3>=1.35.0",
+    "moto[s3]>=5.0.0",
 ]
 
 [tool.pytest.ini_options]
