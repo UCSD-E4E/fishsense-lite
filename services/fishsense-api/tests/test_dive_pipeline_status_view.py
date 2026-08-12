@@ -1337,3 +1337,171 @@ async def test_calibration_source_none_when_uncalibrated(session):
     row = await _row(session, 1)
     assert row["calibration_source"] == "none"
     assert row["calibrated"] is False
+
+
+# ---------------------------------------------------------------------------
+# SQL <-> Python parity for the measurable-species predicate
+# ---------------------------------------------------------------------------
+
+
+async def test_measurable_species_sql_agrees_with_taxonomy_is_measurable(session):
+    """The one predicate that exists in three languages must mean one thing.
+
+    `taxonomy.is_measurable` is the definition of record — it is literally
+    "can `measure_fish_activity` bind this row to a Measurement". The SQL here
+    and the SQLAlchemy conditions in `dive_cohort_controller` are `LIKE`-based
+    approximations, because the view runs on Postgres in prod and SQLite under
+    test and can't use either one's string functions.
+
+    Approximations are fine; *unverified* approximations are how the cohort
+    starts offering images the activity always skips, which never resolves and
+    re-selects the dive every hour forever. So both representations are run
+    over the same corpus and compared row by row.
+    """
+    from fishsense_shared import taxonomy  # pylint: disable=import-outside-toplevel
+
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.views import (  # pylint: disable=import-outside-toplevel
+        _MEASURABLE_SPECIES_SQL,
+    )
+
+    corpus = taxonomy.MEASURABILITY_CORPUS
+    session.add_all(
+        [
+            SpeciesLabel(
+                image_id=1000 + i,
+                label_studio_project_id=70,
+                content_of_image=content,
+            )
+            for i, (content, _) in enumerate(corpus)
+        ]
+    )
+    await session.flush()
+
+    result = await session.execute(
+        text(
+            "SELECT sl.image_id FROM specieslabel sl "
+            f"WHERE {_MEASURABLE_SPECIES_SQL}"
+        )
+    )
+    matched_by_sql = {row[0] for row in result}
+
+    expected = {
+        1000 + i for i, (_, measurable) in enumerate(corpus) if measurable
+    }
+    assert matched_by_sql == expected, (
+        "SQL and taxonomy.is_measurable disagree on: "
+        + repr(
+            sorted(
+                corpus[i - 1000][0]
+                for i in matched_by_sql.symmetric_difference(expected)
+            )
+        )
+    )
+
+
+async def test_measurable_species_sql_agrees_with_the_sqlalchemy_conditions(session):
+    """The view's raw SQL and the cohort selector's SQLAlchemy build the same
+    predicate from the same constants; assert they select the same rows."""
+    from sqlmodel import select  # pylint: disable=import-outside-toplevel
+
+    from fishsense_shared import taxonomy  # pylint: disable=import-outside-toplevel
+
+    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+        _measurable_species_conditions,
+    )
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.views import (  # pylint: disable=import-outside-toplevel
+        _MEASURABLE_SPECIES_SQL,
+    )
+
+    corpus = taxonomy.MEASURABILITY_CORPUS
+    session.add_all(
+        [
+            SpeciesLabel(
+                image_id=2000 + i,
+                label_studio_project_id=70,
+                content_of_image=content,
+            )
+            for i, (content, _) in enumerate(corpus)
+        ]
+    )
+    await session.flush()
+
+    via_sql = {
+        row[0]
+        for row in await session.execute(
+            text(
+                "SELECT sl.image_id FROM specieslabel sl "
+                f"WHERE {_MEASURABLE_SPECIES_SQL} AND sl.image_id >= 2000"
+            )
+        )
+    }
+    via_orm = set(
+        (
+            await session.exec(
+                select(SpeciesLabel.image_id)
+                .where(*_measurable_species_conditions())
+                .where(SpeciesLabel.image_id >= 2000)
+            )
+        ).all()
+    )
+    assert via_sql == via_orm
+
+
+async def test_sql_is_broader_than_python_only_where_pinned(session):
+    """A *new* SQL/Python divergence must fail the build.
+
+    The dangerous direction is SQL-broader: the cohort offers an image the
+    activity skips, no Measurement is written, and the dive is re-selected
+    every hour forever. `taxonomy.SQL_BROADER_THAN_PYTHON` is the pinned,
+    known-unreachable set (the empty-name guard the LIKE patterns can't
+    express). This asserts the real SQL matches exactly those and no others,
+    so widening the predicate — or tightening the Python parser, which is how
+    this regressed once already — is caught here rather than in prod.
+    """
+    from fishsense_shared import taxonomy  # pylint: disable=import-outside-toplevel
+
+    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.views import (  # pylint: disable=import-outside-toplevel
+        _MEASURABLE_SPECIES_SQL,
+    )
+
+    probes = [c for c, _ in taxonomy.MEASURABILITY_CORPUS if c is not None]
+    probes += list(taxonomy.SQL_BROADER_THAN_PYTHON)
+    session.add_all(
+        [
+            SpeciesLabel(
+                image_id=3000 + i,
+                label_studio_project_id=70,
+                content_of_image=content,
+            )
+            for i, content in enumerate(probes)
+        ]
+    )
+    await session.flush()
+
+    matched_by_sql = {
+        row[0]
+        for row in await session.execute(
+            text(
+                "SELECT sl.image_id FROM specieslabel sl "
+                f"WHERE {_MEASURABLE_SPECIES_SQL} AND sl.image_id >= 3000"
+            )
+        )
+    }
+    sql_broader = {
+        probes[i - 3000]
+        for i in matched_by_sql
+        if not taxonomy.is_measurable(probes[i - 3000])
+    }
+    assert sql_broader == set(taxonomy.SQL_BROADER_THAN_PYTHON)
+
+    # And the reverse direction — Python measurable, SQL not — must be empty:
+    # that would silently under-measure a dive while reporting it complete.
+    python_broader = {
+        c
+        for i, c in enumerate(probes)
+        if taxonomy.is_measurable(c) and (3000 + i) not in matched_by_sql
+    }
+    assert python_broader == set()

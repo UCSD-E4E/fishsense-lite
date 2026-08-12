@@ -142,7 +142,7 @@ def test_every_cohort_selector_filters_on_is_canonical():
     )
 
     # Both modules, deliberately: the selectors live in `dive_cohort_controller`
-    # but `dive_controller` still correlates Image to Dive (canonical dives), and
+    # but `dive_cohort_controller` still correlates Image to Dive (canonical dives), and
     # a future selector could land in either. Checking only where they happen to
     # live today is how this guard would quietly stop guarding.
     source = "\n".join(

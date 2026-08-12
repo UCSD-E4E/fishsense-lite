@@ -27,9 +27,11 @@ import logging
 from typing import List
 
 from fastapi import Depends
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
+
+from fishsense_shared import taxonomy
 
 from fishsense_api.database import get_async_session
 from fishsense_api.models.data_source import DataSource
@@ -81,6 +83,7 @@ def _valid_laser_conditions():
 
     Mirrors `views._VALID_LASER_SQL` — the view and these selectors are
     two representations of the same predicate and must stay in step.
+    `test_dive_pipeline_status_view.py` pins that agreement.
     """
     return (
         LaserLabel.completed == True,
@@ -93,47 +96,55 @@ def _valid_laser_conditions():
 def _measurable_species_conditions():
     """A species row stage 14 can actually turn into a Measurement.
 
-    `measure_fish_activity._parse_species_names` reads the species name from
-    the LAST ", "-separated chunk of `content_of_image` and requires the
-    `Common Name (Scientific name)` shape, returning None otherwise — the
-    activity then skips the image rather than writing a malformed Species
-    row. Only the `Fish` taxonomy branch carries that shape:
+    Three measurable branches, matching `taxonomy.is_measurable`:
 
-        "Fish, Hogfish (Lachnolaimus maximus)"  -> measurable
-        "Fish Model, Weasly Fish"               -> skipped (no parens)
-        "Calibration Targets, Ruler"            -> skipped (no parens)
+        "Fish, Hogfish (Lachnolaimus maximus)"  -> real fish, `Common
+                                                   (Scientific)` leaf
+        "Fish Model, Weasly Fish"               -> rigid model, name-keyed
+        "Calibration Targets, Ruler"            -> the ruler, name-keyed
 
-    Without this, the cohort and the activity disagree in a way that cannot
-    resolve: the selector keeps offering an image the activity always skips,
-    so no Measurement is written, `~is_measured` stays true, and the dive is
-    re-selected every hour forever. That is the same never-goes-false shape
-    that blocked scheduling stage 14 before 2026-07-17.
+    Everything else — `"Slate, Laser on slate"`, other Calibration Targets —
+    is not measurable. (An earlier version of this docstring listed the
+    bottom two branches as *skipped*, six lines above the code matching them.
+    It was written when only the first branch existed and never updated when
+    models and the ruler were added; the ruler clause in particular looks
+    like dead code if you believe the comment.)
 
-    Two measurable branches: real fish carry the `Common (Scientific)` shape
-    (parens); physical fish models carry a `Fish Model, <name>` prefix (no
-    parens) — `measure_fish_activity` resolves those to a name-keyed Fish.
-    Calibration Targets stay unmeasurable.
+    Without this condition the cohort and the activity disagree in a way that
+    cannot resolve: the selector keeps offering an image the activity always
+    skips, so no Measurement is written, `~is_measured` stays true, and the
+    dive is re-selected every hour forever. That is the same never-goes-false
+    shape that blocked scheduling stage 14 before 2026-07-17.
 
-    Mirrors `views._MEASURABLE_SPECIES_SQL` — keep the two in step.
+    These `LIKE` patterns approximate `taxonomy.is_measurable`, which is the
+    definition of record. `test_dive_pipeline_status_view.py` runs the SQL
+    over `taxonomy.MEASURABILITY_CORPUS` and asserts the two agree.
     """
     return (  # pylint: disable=no-member
         or_(
-            SpeciesLabel.content_of_image.like("%(%)"),
-            SpeciesLabel.content_of_image.like("Fish Model,%"),
-            SpeciesLabel.content_of_image == "Calibration Targets, Ruler",
+            SpeciesLabel.content_of_image.like(taxonomy.REAL_FISH_LIKE),
+            _is_fish_model_condition(),
         ),
     )
 
 
 def _is_fish_model_condition():
-    """A physical fish-model species row. Models carry no grouping labels and
-    thus no LABEL_STUDIO cluster, so the stage-14 cohort waives the cluster
-    requirement for them (identity is the model name; length uses only
-    laser/head-tail/calibration). Mirrors `views._IS_FISH_MODEL_SQL`."""
+    """A rigid known-length target (fish model or the ruler).
+
+    These carry no grouping labels and thus no LABEL_STUDIO cluster, so the
+    stage-14 cohort waives the cluster requirement for them: identity is the
+    target name, and length uses only laser/head-tail/calibration.
+    Mirrors `views._IS_FISH_MODEL_SQL`.
+    """
     # pylint: disable=no-member
     return or_(
-        SpeciesLabel.content_of_image.like("Fish Model,%"),
-        SpeciesLabel.content_of_image == "Calibration Targets, Ruler",
+        and_(
+            SpeciesLabel.content_of_image.like(taxonomy.FISH_MODEL_LIKE),
+            # Excludes the empty leaf "Fish Model," — see
+            # `taxonomy.rigid_target_sql` for why that one matters.
+            func.trim(SpeciesLabel.content_of_image) != taxonomy.FISH_MODEL_PREFIX,
+        ),
+        SpeciesLabel.content_of_image == taxonomy.RULER_CONTENT,
     )
 
 
@@ -161,8 +172,9 @@ def _valid_headtail_conditions():
 # raises and re-fires every hour.
 MIN_COMPLETED_SLATE_LABELS = 2
 
-# Stage-9 species_label.content_of_image marker.
-SLATE_CONTENT_MARKER = "Slate, Laser on slate"
+# Stage-9 species_label.content_of_image marker (re-exported from the
+# shared taxonomy vocabulary so the view and the worker read the same one).
+SLATE_CONTENT_MARKER = taxonomy.SLATE_CONTENT_MARKER
 
 
 # Cohort selectors used by the api-workflow-worker hourly schedules.

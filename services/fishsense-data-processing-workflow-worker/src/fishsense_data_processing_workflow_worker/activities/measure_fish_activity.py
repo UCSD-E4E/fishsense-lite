@@ -38,6 +38,7 @@ from fishsense_api_sdk.models.measurement import Measurement
 from fishsense_api_sdk.models.species import Species
 from fishsense_api_sdk.models.species_label import SpeciesLabel
 from fishsense_core.world_point import WorldPointHandler
+from fishsense_shared import taxonomy
 from temporalio import activity
 
 from fishsense_data_processing_workflow_worker.activities.utils import get_fs_client
@@ -73,60 +74,16 @@ class MeasureFishResult:
 __all__ = ["MeasureFishResult", "measure_fish_activity"]
 
 
-# Taxonomy prefix for physical fish models. The leaf after it (e.g. "Grouper")
-# is the model's identity — the `name` natural key on Fish. Mirrors the
-# `LIKE 'Fish Model,%'` clause in `views._MEASURABLE_SPECIES_SQL` and
-# `dive_controller._measurable_species_conditions`; keep the three in step.
-_FISH_MODEL_PREFIX = "Fish Model,"
-
-# The ruler is a rigid known-length target like the models, so it measures
-# through the same name-keyed path. Its span is currently always the 14-inch
-# one (0.3556 m, seeded in `fishmodelreference`) — see the caveat there if
-# labelers ever start marking a different span.
-_RULER_CONTENT = "Calibration Targets, Ruler"
-_RULER_NAME = "Ruler"
-
-
-def _parse_model_name(content_of_image: str | None) -> str | None:
-    """Return the target name for a known-length rigid target, else None.
-
-    Covers `Fish Model, <name>` and the ruler (`Calibration Targets, Ruler` ->
-    "Ruler"). Real fish (`..., Common (Scientific)`) and every other branch
-    return None. An empty leaf ("Fish Model," with nothing after) returns None
-    — nothing to identify — matching the "skip rather than write a malformed
-    row" posture of `_parse_species_names`.
-
-    The ruler earns its place here because, unlike a fish model, its endpoints
-    are unambiguous: it carries no tail-landmark (fork vs tip) uncertainty, so
-    it isolates calibration error from labeling convention.
-    """
-    if not content_of_image:
-        return None
-    if content_of_image.strip() == _RULER_CONTENT:
-        return _RULER_NAME
-    if not content_of_image.startswith(_FISH_MODEL_PREFIX):
-        return None
-    name = content_of_image[len(_FISH_MODEL_PREFIX):].strip()
-    return name or None
-
-
-def _parse_species_names(content_of_image: str | None) -> tuple[str, str] | None:
-    """Pull (common_name, scientific_name) out of the species label's
-    `content_of_image` field. Format: "..., Common Name (Scientific name)".
-
-    Returns None if the field is empty or doesn't match the expected
-    shape (we'd rather skip than write a malformed Species row).
-    """
-    if not content_of_image:
-        return None
-    last_chunk = content_of_image.split(", ")[-1]
-    if "(" not in last_chunk or not last_chunk.endswith(")"):
-        return None
-    common = last_chunk.split(" (")[0].strip()
-    scientific = last_chunk.split(" (")[-1][:-1].strip()
-    if not common or not scientific:
-        return None
-    return common, scientific
+# The `content_of_image` taxonomy vocabulary — markers and parsers — lives in
+# `fishsense_shared.taxonomy`, imported above. It used to be spelled here and
+# again in the api's cohort selector and `dive_pipeline_status` view, kept in
+# step by comments that had already drifted: both api copies documented
+# "Fish Model, ..." and "Calibration Targets, Ruler" as *skipped* while their
+# code matched both as measurable. One definition now, cross-checked against
+# the SQL by `test_dive_pipeline_status_view.py` over
+# `taxonomy.MEASURABILITY_CORPUS`.
+_parse_model_name = taxonomy.parse_model_name
+_parse_species_names = taxonomy.parse_species_names
 
 
 async def _ensure_species(fs: Client, common: str, scientific: str) -> Species:
