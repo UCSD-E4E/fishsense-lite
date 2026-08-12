@@ -16,7 +16,10 @@ and never need the `[laser-detector]` extra installed:
 from __future__ import annotations
 
 import sys
+import threading
+import time
 import types
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -112,6 +115,41 @@ def test_get_detector_loads_once_and_caches(monkeypatch):
 
     assert first is second
     assert loads == ["/models/run3.pt"]  # loaded exactly once
+
+
+def test_get_detector_loads_once_under_concurrency(monkeypatch):
+    """Activities run in a real ThreadPoolExecutor (see `worker.py`'s
+    `activity_executor` + `max_concurrent_activities`), so N threads can enter
+    the lazy init together on a cold pod. Unguarded, each one sees
+    `_DETECTOR is None` and loads its own copy of a GPU checkpoint — N times
+    the VRAM, on the machine least able to spare it.
+
+    The second caller is released only once the first is *inside* the load, so
+    this pins the overlap rather than hoping for it.
+    """
+    monkeypatch.setattr(sut, "_DETECTOR", None)
+    loads: list[str] = []
+    loading_started = threading.Event()
+
+    def _slow_load(checkpoint_path):
+        loading_started.set()
+        time.sleep(0.2)
+        loads.append(checkpoint_path)
+        return SimpleNamespace(name="detector")
+
+    monkeypatch.setattr(sut, "_load_detector", _slow_load)
+
+    def _late_caller():
+        assert loading_started.wait(timeout=5)
+        return sut._get_detector("/models/run3.pt")
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        first = pool.submit(sut._get_detector, "/models/run3.pt")
+        late = [pool.submit(_late_caller) for _ in range(2)]
+        results = [first.result(timeout=10)] + [f.result(timeout=10) for f in late]
+
+    assert loads == ["/models/run3.pt"], f"checkpoint loaded {len(loads)}x, want 1"
+    assert all(r is results[0] for r in results)
 
 
 # --------------------------------- activity ----------------------------------

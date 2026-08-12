@@ -11,6 +11,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 
 from fishsense_data_processing_workflow_worker.activities import (
@@ -71,6 +75,46 @@ def test_gate_confidence_boundary_is_inclusive():
     est = _estimate(sut.DEFAULT_MIN_CONFIDENCE, [[1.0, 1.0]])
     pts, _conf, reason = sut.gate_estimate(est, "V-Slate 1", 4000, 3000)
     assert reason is None and pts == [[1.0, 1.0]]
+
+
+def test_get_masker_returns_the_masker_to_a_concurrent_caller(monkeypatch):
+    # pylint: disable=protected-access
+    """The "cache the outcome" flag must not be set before the outcome exists.
+
+    Activities run in a real thread pool, and `BoardMasker.from_pretrained()`
+    reaches HuggingFace — seconds, not microseconds. A caller arriving during
+    that window used to see `_MASKER_LOADED = True`, read a still-unset
+    `_MASKER`, and silently take the classical path. Silently, because the
+    degradation warning only fires in the `except` branch and nothing raised.
+    So the whole first concurrent batch of frames lost the learned mask, with
+    nothing in the logs to say so.
+    """
+    import fishsense_core.slate as slate_mod  # pylint: disable=import-outside-toplevel
+
+    sentinel = object()
+    loading_started = threading.Event()
+
+    def _slow_from_pretrained(*_a, **_k):
+        loading_started.set()
+        time.sleep(0.2)
+        return sentinel
+
+    monkeypatch.setattr(slate_mod.BoardMasker, "from_pretrained", _slow_from_pretrained)
+    monkeypatch.setattr(sut, "DEFAULT_SLATE_CHECKPOINT_PATH", "")
+    monkeypatch.setattr(sut, "_MASKER", None)
+    monkeypatch.setattr(sut, "_MASKER_LOADED", False)
+
+    def _late_caller():
+        assert loading_started.wait(timeout=5)
+        return sut._get_masker()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(sut._get_masker)
+        late = pool.submit(_late_caller)
+        assert first.result(timeout=10) is sentinel
+        assert late.result(timeout=10) is sentinel, (
+            "concurrent caller got the classical fallback while the mask was loading"
+        )
 
 
 def test_get_masker_falls_back_to_none_and_caches(monkeypatch):
