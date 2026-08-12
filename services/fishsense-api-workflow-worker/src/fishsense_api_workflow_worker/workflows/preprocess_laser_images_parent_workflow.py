@@ -1,73 +1,44 @@
 """Stage 0.1 parent workflow (api-worker side).
 
 Picks the next HIGH-priority dive needing laser preprocessing, resolves
-its unlabeled-image-set + camera intrinsics via SDK, and dispatches
-the resolved inputs to the data-worker's `PreprocessLaserImagesWorkflow`
-on `fishsense_data_processing_queue`. After the raw-scratch cleanup,
-chains into `PopulateLaserLabelStudioProjectWorkflow` on the api-worker
-so a fresh dive lands in Label Studio in the same hourly run that
-produced its JPEGs — no operator-triggered populate needed.
+its unlabeled-image-set + camera intrinsics via SDK, and dispatches the
+resolved inputs to the data-worker's `PreprocessLaserImagesWorkflow` on
+`fishsense_data_processing_queue`.
 
-Cohort: HIGH-priority + at least one image with no completed
-`LaserLabel` in any project. Mirrors the work-state shape of the
-other three preprocess parents (dive-image / headtail / slate). The
-earlier "no `LaserExtrinsics`" cohort tied stage 0.1 to a downstream
-gate it doesn't actually advance, so dives whose laser side was done
-but slate-side blocked stage-13 calibration kept getting re-selected
-hourly with no work for the resolver to return — see
-`select_next_for_laser_preprocessing` in the api's `dive_controller`.
+Cohort: HIGH-priority + at least one canonical image with no non-sentinel
+`LaserLabel` row (any real project). The earlier "no `LaserExtrinsics`"
+cohort tied stage 0.1 to a downstream gate it doesn't advance, so dives
+whose laser side was done but whose slate side blocked stage-13
+calibration kept getting re-selected hourly with no work for the resolver
+to return — see `select_next_for_laser_preprocessing` in the api's
+`dive_cohort_controller`.
 
-Cluster-correctness invariants — relevant once the data-worker scales
-beyond a single replica:
+Laser populate is **decoupled** from this workflow (2026-07-28,
+model-assisted labeling): it runs as its own scheduled parent,
+`PopulateLaserLabelStudioProjectParentWorkflow` (+12 min), AFTER the
+laser-detector predict stage (+10). Populate seeds non-sentinel
+`LaserLabel` rows and the predict cohort excludes any image that already
+has one, so populating here (at +0) would starve the predictor before it
+ever ran.
 
-* Per-image activities (in the child workflow) PUT to Garage (S3),
-  which overwrites idempotently. Retried activities don't double-write.
-* SDK upserts on the resolver side don't mutate state — read-only.
-* The schedule that fires this workflow uses
-  `overlap_policy=ScheduleOverlapPolicy.SKIP`, so a run still in
-  flight when the next firing arrives is dropped at the schedule level.
-* The data-worker child workflow is started with a deterministic id
-  (`preprocess-laser-{dive_id}`) and
-  `id_reuse_policy=ALLOW_DUPLICATE_FAILED_ONLY`; if a parent run
-  somehow races past the schedule guard (manual + scheduled trigger
-  overlap), or if a previous parent run failed *after* the child
-  succeeded but *before* archive completed and the next firing
-  re-targets the same dive, the second child dispatch hits
-  `WorkflowAlreadyStarted` and the parent catches it. Archive +
-  cleanup + populate then still run, so a child-then-parent split
-  failure self-heals on the next firing rather than redoing
-  per-image work.
-* The populate child uses the same deterministic-id trick
-  (`populate-laser-{dive_id}`). With the work-state cohort, dives
-  drop out as labels complete, so re-firings on the same dive_id are
-  the exception (resurrected re-incomplete labels, manual triggers)
-  rather than the steady state — but the dedup still matters when
-  they happen, since populate's task-import would otherwise create
-  duplicate LS tasks for any image still flagged incomplete.
+The shared steps — and the cluster-correctness invariants behind each
+(schedule SKIP overlap, deterministic child ids, ALLOW_DUPLICATE reuse,
+idempotent per-image work) — live in `_dispatch`.
 """
 
 from datetime import timedelta
 
 from fishsense_shared import PreprocessLaserImagesInput
 from temporalio import workflow
-from temporalio.common import WorkflowIDReusePolicy
-from temporalio.exceptions import WorkflowAlreadyStartedError
 
-with workflow.unsafe.imports_passed_through():
-    from fishsense_api_workflow_worker.workflows._retry_policies import (
-        SCALING_RETRY_POLICY,
-        SDK_FAIL_FAST_RETRY_POLICY,
-        STAGE_RAW_RETRY_POLICY,
-    )
-
-DATA_PROCESSING_TASK_QUEUE = "fishsense_data_processing_queue"
+from fishsense_api_workflow_worker.workflows import _dispatch
 
 
 @workflow.defn
 class PreprocessLaserImagesParentWorkflow:
     # pylint: disable=too-few-public-methods
-    """Auto-pick the next HIGH-priority dive without laser extrinsics
-    and dispatch its preprocessing to the data-worker.
+    """Auto-pick the next HIGH-priority dive needing laser preprocessing
+    and dispatch its work to the data-worker.
 
     Returns the dive_id processed (or None when the backlog is empty).
     Each invocation drains exactly one dive — an N-dive backlog clears
@@ -76,21 +47,16 @@ class PreprocessLaserImagesParentWorkflow:
 
     @workflow.run
     async def run(self) -> int | None:
-        dive_id = await workflow.execute_activity(
-            "select_next_high_priority_dive_for_laser_preprocessing_activity",
-            args=(),
-            schedule_to_close_timeout=timedelta(minutes=5),
-            retry_policy=SDK_FAIL_FAST_RETRY_POLICY,
+        dive_id = await _dispatch.select_dive(
+            "select_next_high_priority_dive_for_laser_preprocessing_activity"
         )
         if dive_id is None:
             return None
 
-        inputs = await workflow.execute_activity(
+        inputs = await _dispatch.resolve_inputs(
             "resolve_laser_preprocess_inputs_activity",
-            args=(dive_id,),
-            schedule_to_close_timeout=timedelta(minutes=5),
-            retry_policy=SDK_FAIL_FAST_RETRY_POLICY,
-            result_type=PreprocessLaserImagesInput,
+            dive_id,
+            PreprocessLaserImagesInput,
         )
 
         workflow.logger.info(
@@ -102,72 +68,14 @@ class PreprocessLaserImagesParentWorkflow:
         if not inputs.image_checksums:
             return inputs.dive_id
 
-        # Wake the NRP data-worker before its child workflow lands on
-        # the queue (it scales to zero when idle). Idempotent — converges
-        # on the configured replica count, never accumulates; a no-op
-        # when k8s scaling isn't configured. Returns immediately, so the
-        # pod's cold start overlaps the NAS-staging step below.
-        await workflow.execute_activity(
-            "ensure_data_worker_running_activity",
-            args=(),
-            schedule_to_close_timeout=timedelta(minutes=5),
-            retry_policy=SCALING_RETRY_POLICY,
+        await _dispatch.wake_data_worker()
+        await _dispatch.stage_raw(dive_id)
+        await _dispatch.dispatch_child(
+            "PreprocessLaserImagesWorkflow",
+            inputs,
+            child_id=f"preprocess-laser-{dive_id}",
+            execution_timeout=timedelta(hours=1),
         )
+        await _dispatch.cleanup_raw(dive_id)
 
-        # Phase 3a: stage raw .ORF bytes from NAS to file-exchange
-        # before the data-worker child runs. Failure here is fatal —
-        # we don't want to dispatch a child that will 404 on every
-        # download_raw. The next schedule firing retries; HEAD-check
-        # in the staging activity makes the retry cheap for already-
-        # staged checksums.
-        await workflow.execute_activity(
-            "stage_raw_bytes_for_dive_activity",
-            args=(dive_id,),
-            schedule_to_close_timeout=timedelta(hours=1),
-            heartbeat_timeout=timedelta(minutes=5),
-            retry_policy=STAGE_RAW_RETRY_POLICY,
-        )
-
-        try:
-            await workflow.execute_child_workflow(
-                "PreprocessLaserImagesWorkflow",
-                inputs,
-                id=f"preprocess-laser-{dive_id}",
-                task_queue=DATA_PROCESSING_TASK_QUEUE,
-                execution_timeout=timedelta(hours=1),
-                # ALLOW_DUPLICATE so a dive can reprocess images that became
-                # processable after its first successful run (see the species
-                # parent for the full rationale). Safe: the resolver returns only
-                # still-needed images and per-image work is idempotent. The populate
-                # child below keeps FAILED_ONLY to dedupe LS task imports.
-                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
-            )
-        except WorkflowAlreadyStartedError:
-            workflow.logger.info(
-                "preprocess-laser-%d already ran successfully in a prior "
-                "firing; skipping data-worker dispatch and continuing to "
-                "archive + cleanup + populate",
-                dive_id,
-            )
-
-        # Drop the staged raw `.ORF` scratch objects from Garage now
-        # that the data-worker has produced the JPEGs. The JPEGs are the
-        # durable artifact and live in Garage (LS reads them via
-        # presign); only the reproducible-from-NAS raw scratch is
-        # evicted. The NAS source is never touched.
-        await workflow.execute_activity(
-            "cleanup_raw_bytes_for_dive_activity",
-            args=(dive_id,),
-            schedule_to_close_timeout=timedelta(minutes=15),
-            heartbeat_timeout=timedelta(minutes=5),
-        )
-
-        # Laser populate is DECOUPLED from preprocess (2026-07-28, model-
-        # assisted labeling). It now runs as its own scheduled parent
-        # (PopulateLaserLabelStudioProjectParentWorkflow, +12 min) AFTER the
-        # laser-detector predict stage (+10), because populate seeds
-        # non-sentinel LaserLabel rows and the predict cohort excludes any
-        # image that already has a LaserLabel — populating here (at +0) would
-        # starve the predictor before it ever ran. See that parent + the
-        # `needing-laser-population` cohort.
         return inputs.dive_id

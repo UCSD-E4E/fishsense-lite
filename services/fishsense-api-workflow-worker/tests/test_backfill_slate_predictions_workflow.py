@@ -24,11 +24,13 @@ from fishsense_shared import (
     PredictSlateImagesInput,
     SlatePredictionResult,
 )
+from fishsense_api_workflow_worker.workflows._dispatch import (
+    DATA_PROCESSING_TASK_QUEUE,
+)
 from fishsense_api_workflow_worker.workflows.backfill_slate_predictions_workflow import (  # noqa: E501  pylint: disable=line-too-long
     BackfillSlatePredictionsWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.predict_slate_images_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
-    DATA_PROCESSING_TASK_QUEUE,
     PredictSlateImagesParentWorkflow,
 )
 

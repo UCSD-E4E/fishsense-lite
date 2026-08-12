@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from temporalio.testing import ActivityEnvironment
 
+from fishsense_api_workflow_worker.activities import cohort_selection
 from fishsense_api_workflow_worker.activities import (
     select_next_high_priority_dive_for_measure_fish_activity as sut,
 )
@@ -30,7 +31,7 @@ def _make_fs(*, dive_id: int | None):
 @pytest.mark.asyncio
 async def test_passes_through_dive_id_from_sdk(monkeypatch):
     fs = _make_fs(dive_id=42)
-    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(cohort_selection, "get_fs_client", lambda: fs)
 
     result = await ActivityEnvironment().run(
         sut.select_next_high_priority_dive_for_measure_fish_activity
@@ -43,7 +44,7 @@ async def test_passes_through_dive_id_from_sdk(monkeypatch):
 @pytest.mark.asyncio
 async def test_returns_none_when_sdk_returns_none(monkeypatch):
     fs = _make_fs(dive_id=None)
-    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(cohort_selection, "get_fs_client", lambda: fs)
 
     result = await ActivityEnvironment().run(
         sut.select_next_high_priority_dive_for_measure_fish_activity

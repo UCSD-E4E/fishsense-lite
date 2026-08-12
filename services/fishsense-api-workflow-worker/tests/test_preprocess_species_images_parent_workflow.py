@@ -12,8 +12,10 @@ from temporalio import activity, workflow
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
-from fishsense_api_workflow_worker.workflows.preprocess_species_images_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
+from fishsense_api_workflow_worker.workflows._dispatch import (
     DATA_PROCESSING_TASK_QUEUE,
+)
+from fishsense_api_workflow_worker.workflows.preprocess_species_images_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PreprocessSpeciesImagesParentWorkflow,
 )
 from fishsense_shared import PreprocessSpeciesImagesInput
