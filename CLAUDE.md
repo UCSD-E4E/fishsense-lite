@@ -16,6 +16,62 @@ integration + parity, see the data-worker activity pattern section)
 is the gold standard; smaller modules don't need all four legs but do
 need a failing test before the implementation lands.
 
+**Never suppress `duplicate-code` / `R0801`.** The check is **enabled**
+workspace-wide — confirm with
+`uv run python -m pylint --list-msgs-enabled | grep duplicate-code`,
+which reports it under *Enabled*. Do not add
+`# pylint: disable=duplicate-code` (or its `R0801` alias) anywhere.
+
+It was blanket-disabled in the root `pyproject.toml` for years, which
+made the 14 inline pragmas scattered through the SDK/API label models
+and sync workflows no-ops — they suppressed nothing, while making it
+look like an otherwise-live check had been consciously waived at those
+spots. The global entry is gone, all 14 pragmas are deleted (removing
+them added zero findings, which is how we know they were dead weight),
+and the tuned knobs live in `[tool.pylint.similarities]`:
+`ignore-comments/docstrings/imports/signatures` so a hit means
+duplicated *logic*, and `min-similarity-lines = 12`, calibrated against
+the six package source roots rather than guessed. Re-measure before
+changing it; the command is in a comment above the setting.
+
+Two limits worth knowing:
+
+* `duplicate-code` only compares files within a single pylint
+  invocation, and `check.sh lint` (like CI) passes only the files
+  changed since `origin/main`. It therefore fires when both copies of a
+  clone move in the same PR — useful, but not a safety net. Clones
+  shorter than 12 lines after stripping boilerplate never fire at all.
+* It is genuinely noisy on tests, where fixture boilerplate is repeated
+  by design. The `src/`-only invocation above is the one to use when
+  sweeping for clones by hand.
+* **It is textual, so systematic renames are invisible to it.** The four
+  `put_*_label` handlers in `label_controller.py` were ~35 near-identical
+  lines each and scored zero, because `LaserLabel.image_id == image_id`
+  and `SpeciesLabel.image_id == image_id` are different strings. That is
+  the shape most duplication in this repo takes — one model or DTO swapped
+  throughout — so a green `duplicate-code` says nothing about it. Those
+  four now share `_resolve_label_natural_key`; the class is worth watching
+  for by hand.
+
+When duplication is flagged, extract the shared part (helper, base
+class, parameterized factory) or change the design. Where duplication
+is genuinely load-bearing — the per-image data-worker overlay
+activities are the standing example (distinct overlay shapes and DTOs,
+see "Data-worker activity pattern") — record *why* the shapes must stay
+separate in an ordinary comment, and put any lint exemption in the root
+`pyproject.toml` where it is reviewable in one place. Never inline.
+
+This is not a style rule. Copied files kept their source's comments:
+`preprocess_laser_images_parent_workflow` documented an
+`ALLOW_DUPLICATE_FAILED_ONLY` policy its own code contradicted and a
+populate child that had been decoupled, and the measurable-species
+predicate was spelled three times with its cross-references pointing at
+`dive_controller._measurable_species_conditions`, a symbol that had
+moved to `dive_cohort_controller`. Unpoliced copy-paste is how those
+landed; the clones behind them are now collapsed into
+`workflows/_dispatch.py`, `activities/cohort_selection.py`,
+`fishsense_shared.object_store` and `fishsense_shared.taxonomy`.
+
 ## Service map
 
 | Service | Purpose | Task queue |
@@ -67,11 +123,19 @@ DB (negligible). To add or remove, override
 
 Create and populate are split into separate workflows per stage. LS
 projects are now **per-dive**: each dive gets its own LS project
-titled `"{dive.name} - <Stage> Labeling"` (e.g. `"2024-08-21 reef
-dive 3 - HeadTail Labeling"`), with `f"Dive {dive_id}"` as a
-fallback when `Dive.name` is NULL. Per-dive scoping lets labelers
-track per-dive progress and keeps each project's task list focused
-on one cohort.
+titled `"{dive.name} #{dive_id} - <Stage> Labeling"` (e.g.
+`"2024-08-21 reef dive 3 #412 - HeadTail Labeling"`), falling back to
+`"#{dive_id} - <Stage> Labeling"` when `Dive.name` is NULL. Per-dive
+scoping lets labelers track per-dive progress and keeps each project's
+task list focused on one cohort.
+
+The `#{dive_id}` is **always** present and is not decoration: dive
+names are not unique in prod (mislabelled captures, duplicate-named
+dives, same-site/same-camera repeats), and the create activity finds
+its project by title — so keying on the name alone silently merged two
+dives into one LS project. `dive.name` is what gets truncated to fit
+LS's 50-char cap, never the id tail. See
+`populate_utils.build_per_dive_title`.
 
 * **`Create<Stage>LabelStudioProjectWorkflow(dive_id)`** — calls
   `create_<stage>_label_studio_project_activity(dive_id)` which
@@ -146,6 +210,25 @@ manually drop the existing LABEL_STUDIO clusters first.
 The api-worker is the brains; the data-worker is the executor. Stages
 that need both SDK-side decision-making *and* CPU-heavy per-image
 work split into two workflows:
+
+The six dispatch parents (preprocess laser / species / headtail / slate,
+predict laser / slate) share their steps via
+[workflows/_dispatch.py](services/fishsense-api-workflow-worker/src/fishsense_api_workflow_worker/workflows/_dispatch.py)
+— `select_dive`, `resolve_inputs`, `wake_data_worker`, `stage_raw`,
+`stage_slate_pdf`, `dispatch_child`, `run_sdk_activity`, `cleanup_raw`,
+`dispatch_populate`. They were copy-pasted from each other until
+2026-08-11 and had drifted badly: the laser parent's docstring described
+an `ALLOW_DUPLICATE_FAILED_ONLY` policy its code hadn't used in months,
+its inline comment referenced a populate child that had been decoupled,
+and its `except` branch logged an archive step that no longer existed.
+
+**The helpers emit the same Temporal commands, in the same order, that
+the inlined code did** — a workflow's command sequence is its replay
+contract, so runs in flight at deploy still replay. Per-stage timeouts
+are therefore parameters, not constants, and keep their existing values
+even where they look arbitrary (slate-PDF staging is 5 min in the
+preprocess parent, 15 min in the predict parent). If you unify those,
+do it as a deliberate, separate change and drain the queue first.
 
 * **Parent** on api-worker (`fishsense_api_queue`). Hourly schedule.
   Activity calls per dive, bracketing the data-worker child plus the
@@ -330,6 +413,50 @@ species sync activity's laser-keypoint/slate-upside-down extraction
 paths are stripped accordingly. New labels write only the still-
 present columns; historical species rows keep whatever they had.
 
+## `content_of_image` taxonomy vocabulary
+
+`SpeciesLabel.content_of_image` is a ", "-joined Label Studio taxonomy
+path, and four things read it: `measure_fish_activity` (Python,
+data-worker), the stage-14 cohort selector (SQLAlchemy, api), the
+`dive_pipeline_status` view (raw SQL, api), and the stage-9 slate
+cohort. The markers and parsers live **once**, in
+[fishsense_shared.taxonomy](libs/fishsense-shared/src/fishsense_shared/taxonomy.py):
+
+| Branch | Meaning |
+|---|---|
+| `"Fish, Hogfish (Lachnolaimus maximus)"` | real fish — `Common (Scientific)` leaf |
+| `"Fish Model, Weasly Fish"` | rigid model, name-keyed |
+| `"Calibration Targets, Ruler"` | the ruler, name-keyed |
+| `"Slate, Laser on slate"` | stage-9 slate frame (not measurable) |
+
+`taxonomy.is_measurable` is the **definition of record**: measurable
+means `measure_fish_activity` will actually bind a Measurement. The
+`LIKE` predicates in the view and the cohort selector are
+approximations of it — the view has to run on Postgres in prod and
+SQLite under test, which rules out the string functions an exact port
+would need. Both are built from
+`taxonomy.measurable_species_sql` / `rigid_target_sql`, and
+`test_dive_pipeline_status_view.py` runs the real SQL and the Python
+over the shared `taxonomy.MEASURABILITY_CORPUS` and asserts they select
+the same rows.
+
+That parity test is not ceremony. Before it existed the three copies
+were kept in step by comments, and the comments had drifted into
+claiming fish models and the ruler were *unmeasurable* — six lines
+above code matching both. It also immediately found a live bug:
+`LIKE 'Fish Model,%'` matched the **empty leaf** `"Fish Model,"` (a
+labeler picking the parent node and no model), which
+`parse_model_name` rejects. Cohort says measurable, activity says skip
+→ no Measurement is ever written → the dive is re-selected every hour
+forever. Fixed by the `AND TRIM(...) <> 'Fish Model,'` guard in
+`rigid_target_sql` (migration `a2f7c31d9e64`).
+
+**When adding a taxonomy branch**: add the literal + any parser to
+`fishsense_shared.taxonomy`, add a row to `MEASURABILITY_CORPUS`, and
+let the parity test tell you whether the SQL approximation still
+holds. Do not spell a marker inline in a controller, a view, or an
+activity.
+
 ## `dive_pipeline_status` view
 
 Postgres view that exposes a wide row per dive with one boolean
@@ -512,8 +639,15 @@ is messier than four small, self-contained activities.
 
 One bucket (`object_store.bucket`), content-type prefixes — the
 cross-worker key contract (the analog of the old file-exchange URL
-contract). Defined by the key helpers in each worker's
-`object_store.py`:
+contract). Defined **once**, by the key helpers in
+[fishsense_shared.object_store](libs/fishsense-shared/src/fishsense_shared/object_store.py)
+— it lives beside `preprocess_contracts.py` for the same reason those
+DTOs do: it is an agreement *between* the two workers, so neither owns
+it. Each worker's own `object_store.py` is now just its permitted method
+subset (`BaseObjectStoreClient` subclass) — the api-worker stages and
+deletes scratch, the data-worker reads scratch and writes JPEGs. That
+asymmetry is a real safety boundary, which is why the base class holds
+the primitives and the subclasses hold the vocabulary:
 
 ```
 raw/{checksum}.ORF            # api-worker stages (PUT), data-worker reads (GET); scratch
@@ -523,11 +657,24 @@ slate_pdf/{slate_id}.pdf      # api-worker stages (PUT), data-worker reads (GET)
 
 `{jpeg_prefix}` ∈ {`preprocess_jpeg`, `preprocess_groups_jpeg`,
 `preprocess_headtail_jpeg`, `preprocess_slate_images_jpeg`}. Adding a
-new convention is an `object_store.py` change only.
+new convention is a `fishsense_shared/object_store.py` change only.
+
+The two copies were merged 2026-08-11 after `duplicate-code` was
+re-enabled and flagged ~92 duplicated lines. They had already drifted:
+only the data-worker's `_get` closed the botocore `StreamingBody`, so
+the api-worker leaked a pooled HTTP connection on every
+`download_slate_pdf`. The shared `_get` closes it, and
+`libs/fishsense-shared/tests/test_object_store.py` pins that so one side
+can't regress alone. The api-worker's `processed_jpeg_key` and the
+data-worker's `jpeg_key` — same body, different name — are now the one
+`jpeg_key`.
 
 **Auth + addressing.** Garage uses S3 access keys (work from any IP)
 and **path-style** addressing (no virtual-host bucket DNS) — both set
-in `object_store.build_s3_client`. The api-worker key needs
+in `fishsense_shared.object_store.build_s3_client`, and the
+settings→client mapping in `open_client` (each worker keeps a thin
+`open_object_store_client()` so the `config` import stays function-local
+— see the Dynaconf eager-validation gotcha). The api-worker key needs
 rw+delete on `raw/`+`slate_pdf/` and write on the JPEG prefixes; the
 data-worker key needs read on scratch + write on JPEGs; Label Studio
 gets a read-only key (optional `object_store.presign_*`) to presign
@@ -589,7 +736,10 @@ image instead calls `run_alembic_upgrade` programmatically — see
 [libs/fishsense-api-sdk/pyproject.toml](libs/fishsense-api-sdk/pyproject.toml)
 sets `asyncio_mode = "auto"` — async tests do **not** need the
 `@pytest.mark.asyncio` decorator. All clients inherit `ClientBase`
-(httpx + retry on `HTTPStatusError`) and **must be used inside
+(httpx + a real async retry: GET/PUT/DELETE replay 5xx and transport
+errors 3× with backoff; POST replays only `ConnectError`, because
+`post_species`/`post_fish`/`post_cluster` create rows and a 5xx can come
+from a server that already committed) and **must be used inside
 `async with`** — instantiating a raw client and calling a method
 outside the context manager raises `RuntimeError`.
 
@@ -1038,6 +1188,28 @@ After the first successful release-please run cuts a release PR + tag,
 this becomes self-maintaining (release-please uses its own tags as the
 walk floor) and bootstrap-sha can stay pinned forever or be removed.
 
+## Dormant: the slate detector (stage "predict slate")
+
+Model-assisted dive-slate labeling shipped 2026-08-02 and was **shut
+down 2026-08-03**. The ECC >= 0.80 acceptance gate doesn't transfer out
+of distribution — pool dives produced high-ECC (0.93-0.97) *false* fits
+that passed it (prod dives 65/71/77/80/83, all pool) — and the team
+declined an active-learning loop.
+
+`predict-slate-images-workflow-schedule` is now **actively deleted** at
+api-worker startup (`worker._RETIRED_SCHEDULE_IDS` -> `retire_schedule`),
+and the 130 seeded LS predictions were removed.
+
+The code is still registered on both workers so a future evaluation can
+start it by hand: `PredictSlateImagesParentWorkflow`,
+`BackfillSlatePredictionsWorkflow`, `predict_slate_image`,
+`resolve_slate_predict_inputs_activity`,
+`persist_slate_predictions_activity`,
+`backfill_slate_predictions_activity`. Every one of those modules now
+carries a `RETIRED 2026-08-03` banner in its docstring — dormant, not
+dead, and not part of the live pipeline. If you are tracing why a slate
+frame has no prediction, this is why; nothing is broken.
+
 ## Operational ground truth (read before touching prod)
 
 ### No staging / test environment
@@ -1193,7 +1365,7 @@ runs.
 Eight workflows: Create + Populate × {Laser, Species, HeadTail,
 DiveSlate}. Populate self-bootstraps: it calls the matching Create
 activity inside the workflow body to materialize the per-dive
-project (titled `"{dive.name} - <Stage> Labeling"`), then runs the
+project (titled `"{dive.name} #{dive_id} - <Stage> Labeling"`), then runs the
 populate activity against that one project. The four
 `<STAGE>_LABELING_CONFIG_XML` constants are real pasted-from-prod
 XML (species XML refreshed 2026-05-05 — laser keypoints removed,
