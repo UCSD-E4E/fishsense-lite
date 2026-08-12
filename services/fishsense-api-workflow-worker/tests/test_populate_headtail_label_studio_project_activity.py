@@ -73,11 +73,12 @@ def _headtail_label(
     completed: bool,
     superseded: bool = False,
     has_id: bool = True,
+    project_id: int = 71,
 ) -> HeadTailLabel:
     return HeadTailLabel(
         id=image_id * 1000 if has_id else None,
         label_studio_task_id=image_id * 11,
-        label_studio_project_id=71,
+        label_studio_project_id=project_id,
         head_x=None,
         head_y=None,
         tail_x=None,
@@ -407,3 +408,47 @@ async def test_defers_images_whose_jpeg_is_not_in_garage(monkeypatch):
     assert n == 1, "only the image with a rendered JPEG is seeded"
     written = [c.args[1] for c in fs.labels.put_headtail_label.await_args_list]
     assert {w.image_id for w in written} == {1}
+
+
+@pytest.mark.asyncio
+async def test_legacy_other_project_rows_are_superseded_even_when_refreshed(monkeypatch):
+    """A legacy-project row must be dead-lettered even if this run re-imported
+    its image.
+
+    `get_headtail_labels(dive_id)` returns every non-superseded row for the
+    dive across ALL projects, and `put_headtail_label` upserts on
+    `(image_id, label_studio_project_id)` — so one image really can hold both a
+    legacy row and this project's row. The exemption used to be image-based
+    ("this run refreshed image 1, so skip everything for image 1"), which let
+    the legacy row survive forever. Since `dive_pipeline_status`
+    `headtail_labeling_complete` requires ZERO incomplete non-superseded rows,
+    that dive read incomplete on the dashboard permanently, even after
+    labelers finished the per-dive project.
+
+    The exemption is now (same project AND refreshed), so this run's own row
+    stays live while the legacy one retires.
+    """
+    laser = [_laser(1)]
+    images_by_id = {1: _image(1, "a")}
+    existing = [
+        # This project's live row for image 1 — must stay live (dive 341).
+        _headtail_label(1, completed=False, has_id=True, project_id=71),
+        # A legacy shared-project row for the SAME image — must be superseded.
+        _headtail_label(1, completed=False, has_id=True, project_id=66),
+    ]
+
+    fs = _make_fs_client(laser, existing, images_by_id)
+    ls = _make_ls_client(returned_task_ids=[4003])
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    await ActivityEnvironment().run(
+        sut.populate_headtail_label_studio_project_activity, 42, 71
+    )
+
+    written = [c.args[1] for c in fs.labels.put_headtail_label.await_args_list]
+    superseded = [w for w in written if w.superseded]
+    assert [w.label_studio_project_id for w in superseded] == [66], (
+        "only the legacy-project row should be dead-lettered"
+    )

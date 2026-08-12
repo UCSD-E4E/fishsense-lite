@@ -248,18 +248,45 @@ async def populate_dive_slate_label_studio_project_activity(
 
         refreshed_image_ids = {image.id for image in images}
 
-        # Supersede pass: dead-letter incomplete slate rows belonging to a
-        # DIFFERENT (legacy) project so this project's rows are canonical.
-        # Rows for images this run just imported are exempt:
-        # `put_dive_slate_label` upserts on `image_id`, so the "old" row IS
-        # the one the import just refreshed —
-        # superseding it undoes this run's own work, and alternates run to run
-        # because the snapshot predates the import. Same bug hit headtail on
-        # prod dive 341 (2026-08-04); mirrors species populate's guard.
+        # Supersede pass: dead-letter incomplete rows that this project no
+        # longer owns, so its own rows are canonical. Two kinds qualify:
+        #   * rows in a DIFFERENT (legacy, pre-per-dive) project, and
+        #   * rows in THIS project whose image is no longer a target (its
+        #     laser stopped being valid), which are stale tasks to collect.
+        # Only acts on rows with an `id` (already persisted).
+        #
+        # The exemption is "same project AND refreshed this run", and needs
+        # both halves:
+        #
+        #   refreshed — superseding a row this run just re-imported undoes the
+        #     run's own work, and because the pass reads a snapshot taken
+        #     BEFORE the import and skips already-superseded rows, the outcome
+        #     ALTERNATES run to run: live -> superseded -> live... Prod dive
+        #     341 oscillated that way on every hourly firing and activity
+        #     retry, so its images never held a usable pending row and the
+        #     dive never drained from the cohort.
+        #
+        #   same project — `get_dive_slate_labels(dive_id)` returns every
+        #     non-superseded row for the dive across ALL projects, and
+        #     `put_dive_slate_label` upserts on `(image_id, label_studio_project_id)`, so
+        #     ONE IMAGE CAN HOLD TWO ROWS. Exempting by image alone let a
+        #     legacy row on a refreshed image survive forever; since
+        #     `dive_pipeline_status`'s `*_labeling_complete` needs zero
+        #     incomplete non-superseded rows, the dive read incomplete on the
+        #     dashboard permanently. (An earlier comment here claimed the
+        #     upsert keyed on `image_id` alone, "so there is only ever one row
+        #     per image". That was never true.)
+        #
+        # Species populate exempts by project only — it has no same-project GC
+        # because its cohort can't drop an image mid-flight the way a laser
+        # revalidation can.
         for old in existing_slate:
             if old.completed or old.superseded or old.id is None:
                 continue
-            if old.image_id in refreshed_image_ids:
+            if (
+                old.label_studio_project_id == project_id
+                and old.image_id in refreshed_image_ids
+            ):
                 continue
             old.superseded = True
             await fs.labels.put_dive_slate_label(old.image_id, old)
