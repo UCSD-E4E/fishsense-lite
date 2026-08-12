@@ -70,9 +70,6 @@ ignore-paths = ["^deploy/.*$"]
 # fail-under=10 with all checks on is unworkable for a real codebase;
 # disable the high-noise checks and require the rest to be clean.
 disable = [
-    # Famously noisy across test files where fixture boilerplate is
-    # repeated by design. Most projects disable.
-    "duplicate-code",
     # Tests document themselves by name; no need to require docstrings
     # on `def test_<thing_being_asserted>`.
     "missing-function-docstring",
@@ -86,6 +83,35 @@ disable = [
     "too-few-public-methods",
 ]
 
+# `duplicate-code` (R0801) is ENABLED on purpose — see CLAUDE.md's
+# "Never suppress duplicate-code / R0801". It was blanket-disabled here
+# for years, which made the 14 inline `# pylint: disable=duplicate-code`
+# pragmas scattered through the SDK/API models and sync workflows
+# no-ops, and let copy-pasted workflow parents drift until their
+# comments documented behavior their own code contradicted.
+#
+# The knobs below are what make it usable rather than noisy:
+#   * ignore-* strip the parts that are duplicated by design — imports,
+#     signatures, docstrings, comments — so a hit means duplicated
+#     *logic*, not duplicated boilerplate.
+#   * min-similarity-lines=12 is calibrated, not guessed: across the six
+#     package source roots it yields 6 findings, all genuine (the
+#     two-copy `object_store.py` key contract at ~92 lines, and five
+#     preprocess/predict parent-workflow clones at 20-31 lines). Dropping
+#     to 8 adds 15 more, mostly per-service `config.py`/`nas.py` pairs
+#     that are legitimately separate. Re-measure before changing it:
+#     pylint --disable=all --enable=duplicate-code --output-format=json
+#     <the six src/<pkg> roots>
+#
+# Note this only compares files within a single pylint invocation, and
+# `check.sh lint` passes only files changed since origin/main — so it
+# fires when both copies of a clone move in one PR, not on every run.
+[tool.pylint.similarities]
+min-similarity-lines = 12
+ignore-comments = true
+ignore-docstrings = true
+ignore-imports = true
+ignore-signatures = true
 [tool.pylint.basic]
 # Linear-algebra / pinhole-camera variable names + a few helper names
 # that read worse in snake_case (camera matrix `_make_K`, OpenCV's
