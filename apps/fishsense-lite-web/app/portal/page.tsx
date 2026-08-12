@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth, signOut } from "@/auth";
+import { isPortalAuthorized, portalAllowedGroups } from "@/lib/authz";
 import { getDives } from "@/lib/dives";
 import { CalibrationLinks } from "./calibration-links";
 
@@ -11,6 +12,40 @@ export default async function PortalPage() {
     redirect(`/api/auth/signin?callbackUrl=${encodeURIComponent("/portal")}`);
   }
   const user = session.user;
+
+  // Authenticated is not authorized: signing in only proves an account in
+  // the Authentik realm. Render a dead end rather than redirecting to
+  // sign-in, which would loop forever for a user who is already signed in
+  // and simply lacks the group.
+  if (!isPortalAuthorized(session)) {
+    return (
+      <main className="mx-auto max-w-2xl px-6 py-12">
+        <h1 className="text-2xl font-semibold tracking-tight">Portal</h1>
+        <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">
+          Signed in as {user?.email ?? "unknown"}, but this account is not in a
+          group permitted to use the portal.
+        </p>
+        <p className="mt-2 text-sm text-slate-500">
+          {portalAllowedGroups().length === 0
+            ? "No portal groups are configured (PORTAL_ALLOWED_GROUPS is unset), so access is denied for everyone. An operator needs to set it."
+            : `Ask an operator to add you to one of: ${portalAllowedGroups().join(", ")}.`}
+        </p>
+        <form
+          action={async () => {
+            "use server";
+            await signOut({ redirectTo: "/" });
+          }}
+        >
+          <button
+            type="submit"
+            className="mt-6 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
+          >
+            Sign out
+          </button>
+        </form>
+      </main>
+    );
+  }
 
   let dives: Awaited<ReturnType<typeof getDives>> = [];
   let divesError: string | null = null;

@@ -1,3 +1,4 @@
+import { fishsenseApiAuthHeader } from "./api-auth";
 import { env } from "./env";
 
 /** The dive fields the portal needs. The API returns more (path, camera_id,
@@ -10,13 +11,6 @@ export type Dive = {
   dive_slate_id: number | null;
   calibration_dive_id: number | null;
 };
-
-function basicAuthHeader(): string {
-  const token = Buffer.from(
-    `${env.fishsenseApiUsername}:${env.fishsenseApiPassword}`,
-  ).toString("base64");
-  return `Basic ${token}`;
-}
 
 /** Validate a dive id before it goes into a request URL.
  *
@@ -38,7 +32,7 @@ function safeId(value: number, label: string): number {
 export async function getDives(revalidate = 0): Promise<Dive[]> {
   const url = `${env.fishsenseApiUrl}/api/v1/dives/`;
   const response = await fetch(url, {
-    headers: { Authorization: basicAuthHeader() },
+    headers: { Authorization: fishsenseApiAuthHeader() },
     next: { revalidate },
   });
 
@@ -64,7 +58,7 @@ export async function setCalibrationSource(
   const url = `${env.fishsenseApiUrl}/api/v1/dives/${safeId(diveId, "diveId")}/calibration-source/${safeId(sourceId, "sourceId")}`;
   const response = await fetch(url, {
     method: "PUT",
-    headers: { Authorization: basicAuthHeader() },
+    headers: { Authorization: fishsenseApiAuthHeader() },
     cache: "no-store",
   });
 
@@ -85,7 +79,7 @@ export async function clearCalibrationSource(diveId: number): Promise<void> {
   const url = `${env.fishsenseApiUrl}/api/v1/dives/${safeId(diveId, "diveId")}/calibration-source/`;
   const response = await fetch(url, {
     method: "DELETE",
-    headers: { Authorization: basicAuthHeader() },
+    headers: { Authorization: fishsenseApiAuthHeader() },
     cache: "no-store",
   });
 
