@@ -1,5 +1,18 @@
 """Model-assisted slate labeling (data-worker, CPU).
 
+**RETIRED 2026-08-03 — registered, but nothing schedules it.** The
+ECC >= 0.80 acceptance gate does not transfer out of distribution: pool
+dives produced high-ECC (0.93-0.97) *false* fits that sailed through it
+(prod dives 65/71/77/80/83, all pool). The team declined an
+active-learning loop; `predict-slate-images-workflow-schedule` is now
+actively deleted at worker startup (`worker._RETIRED_SCHEDULE_IDS`) and
+the 130 seeded Label Studio predictions were removed.
+
+The code is kept registered so a future evaluation can start it by hand
+— it is dormant, not dead — but nothing invokes it on its own. Do not
+read it as part of the live pipeline.
+
+
 Runs the fishsense-core dive-slate estimator (`fishsense_core.slate`, v2.4.0+)
 on one rectified frame and returns the board's reference points in
 rectified-photo pixels — the same space the sync activity stores
@@ -20,6 +33,7 @@ corpus), so every rejection returns a *reason* and the default is to decline.
 import asyncio
 import logging
 import os
+import threading
 from typing import Any, Sequence
 
 from temporalio import activity
@@ -37,6 +51,9 @@ _log = logging.getLogger(__name__)
 DEFAULT_SLATE_CHECKPOINT_PATH = os.environ.get("E4EFS_SLATE_DETECTOR__CHECKPOINT", "")
 _MASKER: Any = None
 _MASKER_LOADED = False
+# See `_get_masker` — the flag must only ever be published *after* `_MASKER`,
+# and the lock is what stops a concurrent caller reading the pair mid-load.
+_MASKER_LOCK = threading.Lock()
 
 
 def _get_masker() -> Any:
@@ -45,32 +62,45 @@ def _get_masker() -> Any:
     Caches the outcome (including failure) so a missing mask doesn't retry the
     load on every frame. Loads from a local checkpoint when
     `E4EFS_SLATE_DETECTOR__CHECKPOINT` points at one, else from HuggingFace.
+
+    `_MASKER_LOADED` is set in a `finally`, *after* `_MASKER` is assigned, and
+    the whole cold path is serialized. Setting the flag first was a real bug:
+    `from_pretrained()` reaches HuggingFace and takes seconds, and activities
+    run in a real thread pool, so every frame arriving during that window read
+    the flag as True, got a still-unset `_MASKER`, and silently fell back to
+    the classical path. Silently, because nothing raised — the degradation
+    warning below only fires for an actual load failure.
     """
     global _MASKER, _MASKER_LOADED  # pylint: disable=global-statement
     if _MASKER_LOADED:
         return _MASKER
-    _MASKER_LOADED = True
-    try:
-        # no-name-in-module: BoardMasker ships in fishsense-core[slate] >= 2.4.0
-        from fishsense_core.slate import (  # pylint: disable=import-outside-toplevel,import-error,no-name-in-module
-            BoardMasker,
-        )
+    with _MASKER_LOCK:
+        if _MASKER_LOADED:
+            return _MASKER
+        try:
+            # no-name-in-module: BoardMasker ships in fishsense_core[slate] >= 2.4.0
+            from fishsense_core.slate import (  # pylint: disable=import-outside-toplevel,import-error,no-name-in-module
+                BoardMasker,
+            )
 
-        if DEFAULT_SLATE_CHECKPOINT_PATH and os.path.exists(
-            DEFAULT_SLATE_CHECKPOINT_PATH
-        ):
-            _MASKER = BoardMasker.from_checkpoint(DEFAULT_SLATE_CHECKPOINT_PATH)
-        else:
-            _MASKER = BoardMasker.from_pretrained()
-        _log.info("loaded BoardMasker (learned board mask)")
-    except Exception as exc:  # pylint: disable=broad-except
-        # torch/hf missing, no network, or bad checkpoint — fall back to the
-        # classical estimator. The mask only adds coverage; it's never required.
-        _log.warning(
-            "BoardMasker unavailable (%s); using classical slate path", exc
-        )
-        _MASKER = None
+            if DEFAULT_SLATE_CHECKPOINT_PATH and os.path.exists(
+                DEFAULT_SLATE_CHECKPOINT_PATH
+            ):
+                _MASKER = BoardMasker.from_checkpoint(DEFAULT_SLATE_CHECKPOINT_PATH)
+            else:
+                _MASKER = BoardMasker.from_pretrained()
+            _log.info("loaded BoardMasker (learned board mask)")
+        except Exception as exc:  # pylint: disable=broad-except
+            # torch/hf missing, no network, or bad checkpoint — fall back to the
+            # classical estimator. The mask only adds coverage; it's never required.
+            _log.warning(
+                "BoardMasker unavailable (%s); using classical slate path", exc
+            )
+            _MASKER = None
+        finally:
+            _MASKER_LOADED = True
     return _MASKER
+
 
 # ECC >= 0.80 keeps ~58% of frames at median ~6 px (measured on the corpus in
 # slate_training/docs/design.md). Coverage matters more than the last few px for

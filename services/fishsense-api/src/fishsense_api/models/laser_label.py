@@ -11,7 +11,6 @@ from fishsense_api.models.model_base import ModelBase
 
 
 class LaserLabel(ModelBase, table=True):
-    # pylint: disable=R0801
     """Model representing a laser label."""
 
     __table_args__ = (

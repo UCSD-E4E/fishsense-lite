@@ -38,29 +38,12 @@ def _keys(s3) -> set[str]:
     return {o["Key"] for o in resp.get("Contents", [])}
 
 
-def test_key_helpers():
-    assert sut.raw_key("abc123") == "raw/abc123.ORF"
-    assert sut.slate_pdf_key(7) == "slate_pdf/7.pdf"
-    assert sut.processed_jpeg_key("preprocess_jpeg", "abc") == (
-        "preprocess_jpeg/abc.JPG"
-    )
-    assert sut.processed_jpeg_key("preprocess_jpeg", "abc", "fishsense-lite") == (
-        "fishsense-lite/preprocess_jpeg/abc.JPG"
-    )
-
-
-def test_build_s3_client_uses_path_style_addressing_for_garage():
-    """Garage has no virtual-host bucket DNS, so the client MUST use
-    path-style addressing. A regression to virtual-host addressing
-    would make every request hit `bucket.garage.example.com` and fail."""
-    client = sut.build_s3_client(
-        endpoint_url="http://garage.example.com",
-        region="garage",
-        access_key="k",
-        secret_key="s",
-    )
-    assert client.meta.config.s3["addressing_style"] == "path"
-    assert client.meta.endpoint_url == "http://garage.example.com"
+# The key contract (`raw_key` / `slate_pdf_key` / `jpeg_key`) and
+# `build_s3_client`'s path-style addressing now live in
+# `fishsense_shared.object_store` and are pinned by
+# `libs/fishsense-shared/tests/test_object_store.py`. Asserting them again
+# here would be the same duplication this module was just refactored out of.
+# What stays below is what is genuinely this worker's: its method subset.
 
 
 async def test_upload_raw_writes_expected_key_and_bytes(s3):

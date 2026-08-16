@@ -1,5 +1,18 @@
 """Attach persisted `SlatePrediction` rows to EXISTING dive-slate LS tasks.
 
+**RETIRED 2026-08-03 — registered, but nothing schedules it.** The
+ECC >= 0.80 acceptance gate does not transfer out of distribution: pool
+dives produced high-ECC (0.93-0.97) *false* fits that sailed through it
+(prod dives 65/71/77/80/83, all pool). The team declined an
+active-learning loop; `predict-slate-images-workflow-schedule` is now
+actively deleted at worker startup (`worker._RETIRED_SCHEDULE_IDS`) and
+the 130 seeded Label Studio predictions were removed.
+
+The code is kept registered so a future evaluation can start it by hand
+— it is dormant, not dead — but nothing invokes it on its own. Do not
+read it as part of the live pipeline.
+
+
 The dive-slate populate seeds model pre-annotations only at *import* time and
 runs exactly once per dive (stage-9-cohort gated: a slate frame with no
 `DiveSlateLabel` row). So a dive whose LS tasks were imported before the slate

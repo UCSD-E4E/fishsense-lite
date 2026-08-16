@@ -1,23 +1,15 @@
+import { fishsenseApiAuthHeader } from "./api-auth";
 import { env } from "./env";
 
 type LabelKind = "laser" | "species" | "headtail" | "dive-slate";
 
-const KIND_TO_PATH: Record<LabelKind, string> = {
-  laser: "laser",
-  species: "species",
-  headtail: "headtail",
-  "dive-slate": "dive-slate",
-};
-
 async function getProjectIds(kind: LabelKind, revalidate: number): Promise<number[]> {
-  const path = KIND_TO_PATH[kind];
-  const url = `${env.fishsenseApiUrl}/api/v1/labels/${path}/label-studio-project-ids?incomplete=true`;
-  const auth = Buffer.from(
-    `${env.fishsenseApiUsername}:${env.fishsenseApiPassword}`,
-  ).toString("base64");
+  // `LabelKind` values are the URL segments verbatim — there was a
+  // `KIND_TO_PATH` map here that mapped each key to itself.
+  const url = `${env.fishsenseApiUrl}/api/v1/labels/${kind}/label-studio-project-ids?incomplete=true`;
 
   const response = await fetch(url, {
-    headers: { Authorization: `Basic ${auth}` },
+    headers: { Authorization: fishsenseApiAuthHeader() },
     next: { revalidate },
   });
 

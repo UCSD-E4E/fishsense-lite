@@ -32,7 +32,6 @@ class SyncLabelStudioLaserLabelsWorkflow:
     @workflow.run
     async def run(self):
         """Run the workflow to sync laser labels from Label Studio."""
-        # pylint: disable=duplicate-code
         await workflow.execute_activity(
             "sync_users_label_studio_activity",
             args=(),

@@ -15,6 +15,7 @@ the unit tests mock the detector.
 import asyncio
 import logging
 import os
+import threading
 from typing import Any
 
 from temporalio import activity
@@ -33,7 +34,14 @@ DEFAULT_CHECKPOINT_PATH = os.environ.get(
 
 # Module-level cache: the detector loads its weights once per worker process
 # (loading is expensive and every per-image activity in the fan-out reuses it).
+#
+# The lock is load-bearing, not defensive. Activities run in a real
+# ThreadPoolExecutor (`worker.py`'s `activity_executor` +
+# `max_concurrent_activities`), so on a cold pod the whole first batch of
+# per-image activities enters this together. Unguarded, each thread sees
+# `_DETECTOR is None` and loads its own copy of the checkpoint onto the GPU.
 _DETECTOR: Any = None
+_DETECTOR_LOCK = threading.Lock()
 
 
 def _load_detector(checkpoint_path: str) -> Any:
@@ -49,11 +57,20 @@ def _load_detector(checkpoint_path: str) -> Any:
 
 
 def _get_detector(checkpoint_path: str = DEFAULT_CHECKPOINT_PATH) -> Any:
-    """Return the process-wide detector, loading it on first use."""
+    """Return the process-wide detector, loading it on first use.
+
+    Double-checked locking: the fast path is a bare read for the common case
+    (already loaded), and only the cold path pays for the lock. Safe under
+    CPython because `_DETECTOR` is published by a single atomic assignment —
+    a thread that sees a non-None value sees a fully-constructed detector.
+    """
     global _DETECTOR  # pylint: disable=global-statement
-    if _DETECTOR is None:
-        _log.info("loading LaserDetector checkpoint=%s", checkpoint_path)
-        _DETECTOR = _load_detector(checkpoint_path)
+    if _DETECTOR is not None:
+        return _DETECTOR
+    with _DETECTOR_LOCK:
+        if _DETECTOR is None:
+            _log.info("loading LaserDetector checkpoint=%s", checkpoint_path)
+            _DETECTOR = _load_detector(checkpoint_path)
     return _DETECTOR
 
 

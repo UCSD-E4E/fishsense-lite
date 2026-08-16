@@ -37,14 +37,14 @@ Dry-run (default — no writes):
     uv run --package fishsense-api python tools/apply_image_path_patch.py \\
         --patch-file rollover_scan_with_orphans.json \\
         --db-host fabricant-prod.ucsd.edu \\
-        --db-name fishsense --db-user postgres --db-pass "$PG_PASS"
+        --db-name fishsense --db-user postgres    # PGPASSWORD in env
 
 Apply for real:
 
     uv run --package fishsense-api python tools/apply_image_path_patch.py \\
         --patch-file rollover_scan_with_orphans.json \\
         --db-host fabricant-prod.ucsd.edu \\
-        --db-name fishsense --db-user postgres --db-pass "$PG_PASS" \\
+        --db-name fishsense --db-user postgres    # PGPASSWORD in env \\
         --apply
 
 Per-cohort rollout (recommended): `--dive-id 237` first, eyeball the
@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections import Counter
 from dataclasses import dataclass
@@ -261,6 +262,15 @@ def _run(args: argparse.Namespace) -> int:
         print("no patch rows to process — exiting.")
         return 0
 
+    db_pass = args.db_pass or os.environ.get("PGPASSWORD")
+    if not db_pass:
+        print(
+            "No password supplied. Set PGPASSWORD (preferred) or pass "
+            "--db-pass.",
+            file=sys.stderr,
+        )
+        return 2
+
     print(
         f"connecting to {args.db_user}@{args.db_host}:{args.db_port}/"
         f"{args.db_name}"
@@ -268,7 +278,7 @@ def _run(args: argparse.Namespace) -> int:
     conninfo = (
         f"host={args.db_host} port={args.db_port} "
         f"dbname={args.db_name} user={args.db_user} "
-        f"password={args.db_pass}"
+        f"password={db_pass}"
     )
 
     # Single transaction: either every row commits or none. psycopg
@@ -324,7 +334,16 @@ def _parse_args(argv: Iterable[str]) -> argparse.Namespace:
     p.add_argument("--db-port", type=int, default=5432)
     p.add_argument("--db-name", required=True)
     p.add_argument("--db-user", required=True)
-    p.add_argument("--db-pass", required=True)
+    # NOT required, and prefer the env var: an argv password is visible to
+    # every user on the box via `ps aux` and lands in shell history. libpq's
+    # own convention is PGPASSWORD, so scripted callers already expect it.
+    p.add_argument(
+        "--db-pass",
+        default=None,
+        help="Prod Postgres password. Prefer setting PGPASSWORD instead — "
+             "a password passed here is exposed in `ps` output and shell "
+             "history.",
+    )
     p.add_argument(
         "--dive-id",
         type=int,

@@ -21,7 +21,6 @@ from fishsense_api.models.model_base import ModelBase
 
 
 class LabelStudioSyncCursor(ModelBase, table=True):
-    # pylint: disable=R0801
     """Per-(kind, project) high-water mark for Label Studio sync."""
 
     __table_args__ = (

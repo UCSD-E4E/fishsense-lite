@@ -23,17 +23,8 @@ from typing import List
 
 from fishsense_shared import LaserPredictionResult, PredictLaserImagesInput
 from temporalio import workflow
-from temporalio.common import WorkflowIDReusePolicy
-from temporalio.exceptions import WorkflowAlreadyStartedError
 
-with workflow.unsafe.imports_passed_through():
-    from fishsense_api_workflow_worker.workflows._retry_policies import (
-        SCALING_RETRY_POLICY,
-        SDK_FAIL_FAST_RETRY_POLICY,
-        STAGE_RAW_RETRY_POLICY,
-    )
-
-DATA_PROCESSING_TASK_QUEUE = "fishsense_data_processing_queue"
+from fishsense_api_workflow_worker.workflows import _dispatch
 
 
 @workflow.defn
@@ -47,21 +38,16 @@ class PredictLaserImagesParentWorkflow:
 
     @workflow.run
     async def run(self) -> int | None:
-        dive_id = await workflow.execute_activity(
-            "select_next_high_priority_dive_for_laser_prediction_activity",
-            args=(),
-            schedule_to_close_timeout=timedelta(minutes=5),
-            retry_policy=SDK_FAIL_FAST_RETRY_POLICY,
+        dive_id = await _dispatch.select_dive(
+            "select_next_high_priority_dive_for_laser_prediction_activity"
         )
         if dive_id is None:
             return None
 
-        inputs = await workflow.execute_activity(
+        inputs = await _dispatch.resolve_inputs(
             "resolve_laser_predict_inputs_activity",
-            args=(dive_id,),
-            schedule_to_close_timeout=timedelta(minutes=5),
-            retry_policy=SDK_FAIL_FAST_RETRY_POLICY,
-            result_type=PredictLaserImagesInput,
+            dive_id,
+            PredictLaserImagesInput,
         )
 
         workflow.logger.info(
@@ -73,62 +59,21 @@ class PredictLaserImagesParentWorkflow:
         if not inputs.images:
             return inputs.dive_id
 
-        # Wake the NRP GPU data-worker before its child lands on the queue
-        # (scales to zero when idle). Idempotent; no-op when k8s scaling
-        # isn't configured.
-        await workflow.execute_activity(
-            "ensure_data_worker_running_activity",
-            args=(),
-            schedule_to_close_timeout=timedelta(minutes=5),
-            retry_policy=SCALING_RETRY_POLICY,
+        await _dispatch.wake_data_worker()
+        await _dispatch.stage_raw(dive_id)
+        results: List[LaserPredictionResult] = await _dispatch.dispatch_child(
+            "PredictLaserImagesWorkflow",
+            inputs,
+            child_id=f"predict-laser-{dive_id}",
+            execution_timeout=timedelta(hours=2),
+            result_type=List[LaserPredictionResult],
         )
-
-        await workflow.execute_activity(
-            "stage_raw_bytes_for_dive_activity",
-            args=(dive_id,),
-            schedule_to_close_timeout=timedelta(hours=1),
-            heartbeat_timeout=timedelta(minutes=5),
-            retry_policy=STAGE_RAW_RETRY_POLICY,
-        )
-
-        results: List[LaserPredictionResult] = []
-        try:
-            results = await workflow.execute_child_workflow(
-                "PredictLaserImagesWorkflow",
-                inputs,
-                id=f"predict-laser-{dive_id}",
-                task_queue=DATA_PROCESSING_TASK_QUEUE,
-                execution_timeout=timedelta(hours=2),
-                # ALLOW_DUPLICATE so a dive can re-predict images that became
-                # eligible after a prior run; the resolver returns only
-                # still-unpredicted images and put_laser_prediction upserts.
-                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
-                result_type=List[LaserPredictionResult],
-            )
-        except WorkflowAlreadyStartedError:
-            # A prior child with this id is still running (manual run
-            # overlapping the schedule). It's doing the work; skip persist
-            # this firing and let cleanup run.
-            workflow.logger.info(
-                "predict-laser-%d already running; skipping duplicate dispatch",
-                dive_id,
-            )
 
         if results:
-            await workflow.execute_activity(
-                "persist_laser_predictions_activity",
-                args=(results,),
-                schedule_to_close_timeout=timedelta(minutes=15),
-                retry_policy=SDK_FAIL_FAST_RETRY_POLICY,
+            await _dispatch.run_sdk_activity(
+                "persist_laser_predictions_activity", results
             )
 
-        # Drop the staged raw `.ORF` scratch from Garage; the NAS source is
-        # never touched.
-        await workflow.execute_activity(
-            "cleanup_raw_bytes_for_dive_activity",
-            args=(dive_id,),
-            schedule_to_close_timeout=timedelta(minutes=15),
-            heartbeat_timeout=timedelta(minutes=5),
-        )
+        await _dispatch.cleanup_raw(dive_id)
 
         return inputs.dive_id

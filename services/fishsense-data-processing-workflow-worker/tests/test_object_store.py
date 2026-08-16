@@ -29,30 +29,12 @@ def s3():
         yield client
 
 
-def test_key_helpers():
-    assert sut.raw_key("deadbeef") == "raw/deadbeef.ORF"
-    assert sut.slate_pdf_key(9) == "slate_pdf/9.pdf"
-    assert sut.jpeg_key("preprocess_groups_jpeg", "cafef00d") == (
-        "preprocess_groups_jpeg/cafef00d.JPG"
-    )
-    # labels_prefix partitions our JPEGs within the shared labels bucket.
-    assert sut.jpeg_key("preprocess_groups_jpeg", "cafef00d", "fishsense-lite") == (
-        "fishsense-lite/preprocess_groups_jpeg/cafef00d.JPG"
-    )
-    assert sut.jpeg_key("preprocess_jpeg", "x", "/fishsense-lite/") == (
-        "fishsense-lite/preprocess_jpeg/x.JPG"
-    )
-
-
-def test_build_s3_client_uses_path_style_addressing_for_garage():
-    client = sut.build_s3_client(
-        endpoint_url="http://garage.example.com",
-        region="garage",
-        access_key="k",
-        secret_key="s",
-    )
-    assert client.meta.config.s3["addressing_style"] == "path"
-    assert client.meta.endpoint_url == "http://garage.example.com"
+# The key contract (`raw_key` / `slate_pdf_key` / `jpeg_key`) and
+# `build_s3_client`'s path-style addressing now live in
+# `fishsense_shared.object_store` and are pinned by
+# `libs/fishsense-shared/tests/test_object_store.py`. Asserting them again
+# here would be the same duplication this module was just refactored out of.
+# What stays below is what is genuinely this worker's: its method subset.
 
 
 @pytest.mark.asyncio

@@ -1,40 +1,29 @@
 """Stage 2 parent workflow (api-worker side).
 
-Picks the next HIGH-priority dive needing species preprocessing,
-resolves its PREDICTION clusters + camera intrinsics + laser/species
-labels via SDK, and dispatches `PreprocessSpeciesImagesWorkflow` as a
-child on the data-worker (`fishsense_data_processing_queue`). After the
-child writes the group-preprocessed JPEGs to Garage, it cleans up the
-staged raw scratch and stops there.
+Picks the next HIGH-priority dive needing species preprocessing, resolves
+its PREDICTION clusters + camera intrinsics + laser/species labels via
+SDK, and dispatches `PreprocessSpeciesImagesWorkflow` to the data-worker.
+The child writes the group-preprocessed JPEGs to Garage; this parent then
+evicts the staged raw scratch and stops.
 
-Species LS-task population is **decoupled** from this workflow — it no
-longer chains into `PopulateSpeciesLabelStudioProjectWorkflow`. The
-hourly `PopulateSpeciesLabelStudioProjectParentWorkflow` (+20 min)
-selects the superseded-aware "needs species population" cohort and fans
-out the idempotent, JPEG-gated populate per dive. Decoupling lets dives
-whose old-project species rows were superseded (post hosted-LS
-migration) get (re)populated without re-preprocessing.
+Species LS-task population is **decoupled** from this workflow — it does
+not chain into `PopulateSpeciesLabelStudioProjectWorkflow`. The hourly
+`PopulateSpeciesLabelStudioProjectParentWorkflow` (+20 min) selects the
+superseded-aware "needs species population" cohort and fans out the
+idempotent, JPEG-gated populate per dive. Decoupling lets dives whose
+old-project species rows were superseded (post hosted-LS migration) get
+(re)populated without re-preprocessing.
 
-Same cluster-correctness invariants as
-`PreprocessLaserImagesParentWorkflow` — see CLAUDE.md's "Cross-worker
-orchestration pattern" section.
+Shared steps live in `_dispatch`; see `PreprocessLaserImagesParentWorkflow`
+and CLAUDE.md's "Cross-worker orchestration pattern" for the invariants.
 """
 
 from datetime import timedelta
 
 from fishsense_shared import PreprocessSpeciesImagesInput
 from temporalio import workflow
-from temporalio.common import WorkflowIDReusePolicy
-from temporalio.exceptions import WorkflowAlreadyStartedError
 
-with workflow.unsafe.imports_passed_through():
-    from fishsense_api_workflow_worker.workflows._retry_policies import (
-        SCALING_RETRY_POLICY,
-        SDK_FAIL_FAST_RETRY_POLICY,
-        STAGE_RAW_RETRY_POLICY,
-    )
-
-DATA_PROCESSING_TASK_QUEUE = "fishsense_data_processing_queue"
+from fishsense_api_workflow_worker.workflows import _dispatch
 
 
 @workflow.defn
@@ -44,27 +33,20 @@ class PreprocessSpeciesImagesParentWorkflow:
     preprocessing and dispatch its work to the data-worker.
 
     Returns the dive_id processed (or None when the backlog is empty).
-    Each invocation drains exactly one dive — an N-dive backlog clears
-    in N hourly schedule firings.
     """
 
     @workflow.run
     async def run(self) -> int | None:
-        dive_id = await workflow.execute_activity(
-            "select_next_high_priority_dive_for_species_preprocessing_activity",
-            args=(),
-            schedule_to_close_timeout=timedelta(minutes=5),
-            retry_policy=SDK_FAIL_FAST_RETRY_POLICY,
+        dive_id = await _dispatch.select_dive(
+            "select_next_high_priority_dive_for_species_preprocessing_activity"
         )
         if dive_id is None:
             return None
 
-        inputs = await workflow.execute_activity(
+        inputs = await _dispatch.resolve_inputs(
             "resolve_species_preprocess_inputs_activity",
-            args=(dive_id,),
-            schedule_to_close_timeout=timedelta(minutes=5),
-            retry_policy=SDK_FAIL_FAST_RETRY_POLICY,
-            result_type=PreprocessSpeciesImagesInput,
+            dive_id,
+            PreprocessSpeciesImagesInput,
         )
 
         total_images = sum(len(cluster) for cluster in inputs.clusters)
@@ -79,70 +61,14 @@ class PreprocessSpeciesImagesParentWorkflow:
         if not inputs.clusters or total_images == 0:
             return inputs.dive_id
 
-        # Wake the NRP data-worker before its child workflow lands on
-        # the queue (it scales to zero when idle). Idempotent — converges
-        # on the configured replica count, never accumulates; a no-op
-        # when k8s scaling isn't configured. Returns immediately, so the
-        # pod's cold start overlaps the NAS-staging step below.
-        await workflow.execute_activity(
-            "ensure_data_worker_running_activity",
-            args=(),
-            schedule_to_close_timeout=timedelta(minutes=5),
-            retry_policy=SCALING_RETRY_POLICY,
+        await _dispatch.wake_data_worker()
+        await _dispatch.stage_raw(dive_id)
+        await _dispatch.dispatch_child(
+            "PreprocessSpeciesImagesWorkflow",
+            inputs,
+            child_id=f"preprocess-species-{dive_id}",
+            execution_timeout=timedelta(hours=2),
         )
+        await _dispatch.cleanup_raw(dive_id)
 
-        await workflow.execute_activity(
-            "stage_raw_bytes_for_dive_activity",
-            args=(dive_id,),
-            schedule_to_close_timeout=timedelta(hours=1),
-            heartbeat_timeout=timedelta(minutes=5),
-            retry_policy=STAGE_RAW_RETRY_POLICY,
-        )
-
-        try:
-            await workflow.execute_child_workflow(
-                "PreprocessSpeciesImagesWorkflow",
-                inputs,
-                id=f"preprocess-species-{dive_id}",
-                task_queue=DATA_PROCESSING_TASK_QUEUE,
-                execution_timeout=timedelta(hours=2),
-                # ALLOW_DUPLICATE, not ALLOW_DUPLICATE_FAILED_ONLY: the child
-                # must be able to re-run on a dive it already processed, to
-                # pick up images that became processable AFTER that run — a
-                # laser validated after one-shot stage-1 clustering, or an
-                # orphan later assigned a cluster. FAILED_ONLY permanently
-                # blocked that (a completed id can never re-dispatch), so such
-                # images' JPEGs were never produced and populate deferred them
-                # forever. Safe: the resolver returns only images that still
-                # need work (finished images aren't redone) and the per-image
-                # activities are idempotent (S3 overwrite). (Species populate
-                # is decoupled — the scheduled populate parent owns dedup of
-                # LS imports — so there is no populate child here to worry
-                # about; laser/headtail/slate keep FAILED_ONLY on theirs.)
-                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
-            )
-        except WorkflowAlreadyStartedError:
-            # Only reachable now if a prior child with this id is still
-            # RUNNING (e.g. a manual run overlapping the schedule). The
-            # in-flight run is doing the work; continue to cleanup.
-            workflow.logger.info(
-                "preprocess-species-%d already running; skipping duplicate "
-                "dispatch and continuing to cleanup",
-                dive_id,
-            )
-
-        # Drop the staged raw `.ORF` scratch objects from Garage; the
-        # JPEGs stay (LS reads them via presign). NAS is never touched.
-        await workflow.execute_activity(
-            "cleanup_raw_bytes_for_dive_activity",
-            args=(dive_id,),
-            schedule_to_close_timeout=timedelta(minutes=15),
-            heartbeat_timeout=timedelta(minutes=5),
-        )
-
-        # NOTE: species LS-task population is decoupled from preprocess as
-        # of the scheduled-populate parent — this workflow only writes the
-        # JPEGs. `PopulateSpeciesLabelStudioProjectParentWorkflow`
-        # (hourly, +20 min) selects the superseded-aware cohort and fans
-        # out the idempotent, JPEG-gated populate per dive.
         return inputs.dive_id

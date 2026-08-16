@@ -7,7 +7,6 @@ from fishsense_api_sdk.models.model_base import ModelBase
 
 
 class DiveSlateLabel(ModelBase):
-    # pylint: disable=R0801
     """Model representing slate labels."""
 
     id: int | None

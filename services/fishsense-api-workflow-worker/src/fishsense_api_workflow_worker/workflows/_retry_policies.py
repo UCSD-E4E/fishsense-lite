@@ -9,8 +9,21 @@ for these) before surfacing.
 
 Caps attempts at 2 so a single transient blip can self-heal but a real
 bug shows up in seconds, and marks `HTTPStatusError` non-retryable
-because the SDK's `httpx`-level `@retry(tries=3)` already absorbed any
-transient status; if we still see one at this layer it's a real bug.
+because `ClientBase` already replayed any transient status underneath:
+GET/PUT/DELETE retry 5xx and transport errors up to 3 times with
+backoff, so an `HTTPStatusError` surfacing here is a 4xx or a persistent
+5xx — a real bug either way.
+
+That justification was false until 2026-08-11. `ClientBase` carried
+`@retry(exceptions=HTTPStatusError, tries=3)` decorators that never
+fired — `retry` is synchronous, so decorating an `async def` returned
+the coroutine before it could raise, and `HTTPStatusError` comes only
+from `raise_for_status()`, which the callers invoke rather than the
+decorated methods. Measured: one attempt, not three. Combined with the
+non-retryable marking below, a single transient 5xx from fishsense-api
+failed the whole activity with no retry at ANY layer. Note POST is
+deliberately still un-retried in the SDK (it creates rows), so
+write-back activities rely on `maximum_attempts` here.
 
 Used by the selector + resolver `execute_activity` calls in the parent
 workflows (preprocess 0.1/2/5.1/9, calibration 13, measure-fish 14).

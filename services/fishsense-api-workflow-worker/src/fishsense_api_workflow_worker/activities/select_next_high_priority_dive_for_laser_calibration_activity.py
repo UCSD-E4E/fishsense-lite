@@ -17,23 +17,14 @@ from __future__ import annotations
 
 from temporalio import activity
 
-from fishsense_api_workflow_worker.activities.utils import get_fs_client
+from fishsense_api_workflow_worker.activities.cohort_selection import (
+    select_next_dive,
+)
 
 
 @activity.defn
-async def select_next_high_priority_dive_for_laser_calibration_activity() -> (
-    int | None
-):
-    async with get_fs_client() as fs:
-        dive_id = await fs.dives.select_next_for_laser_calibration()
-
-    if dive_id is None:
-        activity.logger.info(
-            "no HIGH-priority dives needing laser calibration"
-        )
-    else:
-        activity.logger.info(
-            "next HIGH-priority dive needing laser calibration: dive_id=%d",
-            dive_id,
-        )
-    return dive_id
+async def select_next_high_priority_dive_for_laser_calibration_activity() -> int | None:
+    return await select_next_dive(
+        "laser calibration",
+        lambda fs: fs.dives.select_next_for_laser_calibration(),
+    )

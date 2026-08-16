@@ -9,7 +9,6 @@ from fishsense_api.models.model_base import ModelBase
 
 
 class SpeciesLabel(ModelBase, table=True):
-    # pylint: disable=R0801
     """Model representing a species label."""
 
     __table_args__ = (

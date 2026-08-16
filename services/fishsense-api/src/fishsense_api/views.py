@@ -17,13 +17,16 @@ test suite to spin up a real Postgres.
 
 from __future__ import annotations
 
+from fishsense_shared import taxonomy
+
 DIVE_PIPELINE_STATUS_VIEW_NAME = "dive_pipeline_status"
 
-# Slate-content marker mirrors `dive_controller.SLATE_CONTENT_MARKER`.
-# Kept inline rather than imported to avoid `views.py` pulling controller
-# imports during alembic migration runs (alembic env loads `views` to
-# get this string before the FastAPI app is initialized).
-_SLATE_CONTENT_MARKER = "Slate, Laser on slate"
+# Stage-9 slate marker. Sourced from `fishsense_shared.taxonomy` rather than
+# from `dive_cohort_controller`, which keeps the old constraint satisfied —
+# `views.py` must not pull controller imports, because alembic's env loads
+# this module during migrations, before the FastAPI app exists — while still
+# giving the view, the cohort selector and the data-worker one definition.
+_SLATE_CONTENT_MARKER = taxonomy.SLATE_CONTENT_MARKER
 
 # A *valid* laser label: the labeler placed a point, the validator signed
 # off, and `ValidateLaserLabelsForDiveWorkflow`'s RANSAC fit hasn't
@@ -48,44 +51,39 @@ _VALID_HEADTAIL_SQL = """htl.completed = TRUE
 
 # An image stage 14 can actually turn into a Measurement.
 #
-# `measure_fish_activity._parse_species_names` reads the species name out of
-# the LAST ", "-separated chunk of `content_of_image` and requires the
-# `Common Name (Scientific name)` shape — it returns None otherwise and the
-# activity skips the image rather than writing a malformed Species row. Only
-# the `Fish` branch of the taxonomy carries that shape:
+# Three measurable branches, matching `taxonomy.is_measurable`:
 #
-#     "Fish, Hogfish (Lachnolaimus maximus)"  -> measurable
-#     "Fish Model, Weasly Fish"               -> skipped (no parens)
-#     "Calibration Targets, Ruler"            -> skipped (no parens)
+#     "Fish, Hogfish (Lachnolaimus maximus)"  -> real fish (parens leaf)
+#     "Fish Model, Weasly Fish"               -> rigid model, name-keyed
+#     "Calibration Targets, Ruler"            -> the ruler, name-keyed
+#
+# Everything else — "Slate, Laser on slate", other Calibration Targets — is
+# not measurable. (An earlier version of this comment listed the bottom two
+# as *skipped* and asserted "Calibration Targets stays unmeasurable", while
+# the SQL below matched both. It predated fish models and the ruler and was
+# never updated.)
 #
 # Without this condition the cohort and the activity disagree, and that
 # disagreement cannot resolve: the selector keeps offering an image the
 # activity always skips, no Measurement is ever written, so `NOT EXISTS
 # (measurement)` stays true and the dive is re-selected every hour forever.
 # That is the same never-goes-false shape that blocked scheduling stage 14
-# before 2026-07-17, so it is spelled once and mirrored in
-# `dive_controller._measurable_species_conditions`.
+# before 2026-07-17.
+#
+# These LIKE patterns approximate `fishsense_shared.taxonomy.is_measurable`,
+# which is the definition of record (it is what `measure_fish_activity`
+# actually binds on). `test_dive_pipeline_status_view.py` runs this SQL over
+# `taxonomy.MEASURABILITY_CORPUS` and asserts the two agree, so the Python
+# and SQL representations cannot drift apart silently again.
 #
 # Assumes the enclosing subquery aliases specieslabel as `sl`.
-#
-# Two measurable branches: real fish carry a `Common (Scientific)` name
-# (parens); physical fish models carry a `Fish Model, <name>` prefix (no
-# parens) — measure_fish_activity resolves those to a name-keyed Fish. Any
-# other branch (Calibration Targets) stays unmeasurable. Mirrors
-# `dive_controller._measurable_species_conditions` and
-# `measure_fish_activity` (`_parse_species_names` / `_parse_model_name`).
-_MEASURABLE_SPECIES_SQL = (
-    "(sl.content_of_image LIKE '%(%)' "
-    "OR sl.content_of_image LIKE 'Fish Model,%' "
-    "OR sl.content_of_image = 'Calibration Targets, Ruler')"
-)
+_MEASURABLE_SPECIES_SQL = taxonomy.measurable_species_sql("sl.content_of_image")
 
-# A fish-model row (no cluster required — models carry no grouping labels).
+# A rigid known-length target — fish model or ruler. No cluster required:
+# these carry no grouping labels. Mirrors
+# `dive_cohort_controller._is_fish_model_condition`.
 # Assumes the enclosing subquery aliases specieslabel as `sl`.
-_IS_FISH_MODEL_SQL = (
-    "(sl.content_of_image LIKE 'Fish Model,%' "
-    "OR sl.content_of_image = 'Calibration Targets, Ruler')"
-)
+_IS_FISH_MODEL_SQL = taxonomy.rigid_target_sql("sl.content_of_image")
 
 # "Complete" everywhere = ≥1 completed-non-superseded row AND zero
 # incomplete-non-superseded rows. Mirrors
@@ -96,8 +94,8 @@ _IS_FISH_MODEL_SQL = (
 # The same physical frames live under several dive rows (half of prod's image
 # table is duplicate content; 207 of 479 dives are duplicates end to end), and
 # `is_canonical` marks which copy is real. The cohort selectors in
-# `dive_controller` gate on it so a duplicate dive can never become pipeline
-# work, and this view has to use the identical predicate or the two drift:
+# `dive_cohort_controller` gate on it so a duplicate dive can never become
+# pipeline work, and this view has to use the identical predicate or the two drift:
 # the dashboard would report a dive as perpetually incomplete while the worker
 # correctly does nothing with it. `test_dive_pipeline_status_view.py` pins that
 # agreement explicitly.

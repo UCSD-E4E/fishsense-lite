@@ -84,6 +84,23 @@ services:
       # flag must never reach main ahead of the image that supports it.
       LABEL_STUDIO_ENABLED: "true"
       AUTH_URL: https://fishsense.e4e.ucsd.edu
+      # Authorization for /portal. Signing in only proves an account in the
+      # Authentik realm; the portal writes `calibration_dive_id`, which changes
+      # measured fish lengths, so it is gated on group membership as well.
+      #
+      # Comma-separated Authentik group names. `lib/authz.ts` FAILS CLOSED —
+      # unset or empty denies everyone, matching Superset's posture (a user in
+      # none of the mapped groups gets Public / no access).
+      #
+      # OPERATOR PREREQUISITES, both required before this can admit anyone:
+      #   1. The group below must exist in Authentik and hold the FishSense
+      #      team. Naming follows `fishsense-superset-{admin,editor,viewer}`.
+      #   2. The FishSense OIDC application needs the `groups` scope + property
+      #      mapping, same as the analytics app. Without it every session
+      #      arrives with no groups and the portal denies everyone.
+      # Until both are done the portal shows a "not in a permitted group"
+      # page rather than silently allowing the whole realm.
+      PORTAL_ALLOWED_GROUPS: fishsense-portal-admin
     env_file:
       - /run/tenant/secrets/app.env
     expose: ["3000"]

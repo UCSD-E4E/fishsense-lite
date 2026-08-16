@@ -111,3 +111,57 @@ async def test_put_label_distinct_projects_same_image_both_persist(
 
     rows = (await session.exec(select(model))).all()
     assert len(rows) == 2
+
+
+@pytest.mark.parametrize("put_fn,model", _cases())
+async def test_put_label_with_null_project_upserts_rather_than_accumulating(
+    session, put_fn, model
+):
+    """A NULL-project sentinel row must upsert too, not append a row per call.
+
+    `uq_<kind>_image_project` cannot protect this case: the constraint spans
+    `(image_id, label_studio_project_id)`, and SQL treats NULLs as DISTINCT, so
+    `(11, NULL)` never conflicts with `(11, NULL)`. The handlers also skipped
+    natural-key resolution entirely when the project was NULL, so every write
+    inserted another row — unbounded, with nothing to stop it.
+
+    That is a live candidate for the ~2000 unexplained sentinel rows in prod
+    (one per HIGH-priority canonical image, "source unclear"): they are exactly
+    the rows a repeated NULL-project PUT would leave behind. It also matters to
+    the cohort selectors, which count "non-sentinel" rows by testing
+    `label_studio_project_id IS NOT NULL` — duplicates on the NULL side skew
+    nothing today but grow forever.
+    """
+    await put_fn(
+        11, _label(model, task_id=None, project_id=None, completed=False), session=session
+    )
+    await session.flush()
+    await put_fn(
+        11, _label(model, task_id=None, project_id=None, completed=True), session=session
+    )
+    await session.flush()
+
+    rows = (await session.exec(select(model))).all()
+    assert len(rows) == 1, "a repeated NULL-project PUT must upsert, not accumulate"
+    assert rows[0].completed is True, "latest write wins"
+
+
+@pytest.mark.parametrize("put_fn,model", _cases())
+async def test_null_project_row_is_distinct_from_a_real_project_row(
+    session, put_fn, model
+):
+    """Resolving the NULL-project row must not hijack a real-project row for
+    the same image, or populate would overwrite the sentinel it meant to
+    replace and lose the task binding."""
+    await put_fn(
+        11, _label(model, task_id=None, project_id=None, completed=False), session=session
+    )
+    await session.flush()
+    await put_fn(
+        11, _label(model, task_id=700, project_id=73, completed=False), session=session
+    )
+    await session.flush()
+
+    rows = (await session.exec(select(model))).all()
+    assert len(rows) == 2
+    assert sorted(r.label_studio_project_id or 0 for r in rows) == [0, 73]

@@ -18,9 +18,17 @@ import {
   setCalibrationSourceAction,
 } from "./actions";
 
-const SIGNED_IN = { user: { name: "Alice", email: "a@e.com" } };
+const ALLOWED_GROUP = "fishsense-portal-admin";
+const SIGNED_IN = {
+  user: { name: "Alice", email: "a@e.com", groups: [ALLOWED_GROUP] },
+};
+/** Signed in, but in no group the portal permits. */
+const SIGNED_IN_UNAUTHORIZED = {
+  user: { name: "Mallory", email: "m@e.com", groups: ["some-other-team"] },
+};
 
 beforeEach(() => {
+  process.env.PORTAL_ALLOWED_GROUPS = ALLOWED_GROUP;
   auth.mockResolvedValue(SIGNED_IN);
   setCalibrationSource.mockResolvedValue(undefined);
   clearCalibrationSource.mockResolvedValue(undefined);
@@ -34,10 +42,47 @@ afterEach(() => {
 //
 // Server actions are ordinary public HTTP endpoints. `/portal/page.tsx`
 // redirecting signed-out users does NOT protect them — anyone can POST an
-// action directly. If `requireSession` regressed, these would become
-// unauthenticated writes to fishsense-api and nothing would fail loudly.
+// action directly. If `requireAuthorized` regressed, these would become
+// unauthenticated (or merely realm-authenticated) writes to fishsense-api,
+// and nothing would fail loudly.
+//
+// Authentication alone is not enough: the Authentik realm is the whole SSO
+// population, so a signed-in stranger must still be refused.
 
 describe("auth gate", () => {
+  it("refuses to set a calibration source for a signed-in user in no allowed group", async () => {
+    auth.mockResolvedValue(SIGNED_IN_UNAUTHORIZED);
+
+    const result = await setCalibrationSourceAction(9, 5);
+
+    expect(result).toEqual({ ok: false, error: "Not authorized" });
+    expect(setCalibrationSource).not.toHaveBeenCalled();
+  });
+
+  it("refuses to clear a calibration source for a signed-in user in no allowed group", async () => {
+    auth.mockResolvedValue(SIGNED_IN_UNAUTHORIZED);
+
+    const result = await clearCalibrationSourceAction(9);
+
+    expect(result).toEqual({ ok: false, error: "Not authorized" });
+    expect(clearCalibrationSource).not.toHaveBeenCalled();
+  });
+
+  it("refuses every write when PORTAL_ALLOWED_GROUPS is unset (fails closed)", async () => {
+    delete process.env.PORTAL_ALLOWED_GROUPS;
+
+    expect(await setCalibrationSourceAction(9, 5)).toEqual({
+      ok: false,
+      error: "Not authorized",
+    });
+    expect(await clearCalibrationSourceAction(9)).toEqual({
+      ok: false,
+      error: "Not authorized",
+    });
+    expect(setCalibrationSource).not.toHaveBeenCalled();
+    expect(clearCalibrationSource).not.toHaveBeenCalled();
+  });
+
   it("refuses to set a calibration source when there is no session", async () => {
     auth.mockResolvedValue(null);
 

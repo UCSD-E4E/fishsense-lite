@@ -1,15 +1,13 @@
 """data-worker side of the Garage (S3-compatible) object store.
 
-Mirror of the api-worker's ``ObjectStoreClient``
-(``fishsense_api_workflow_worker/object_store.py``). The data-worker
-reads staged raw inputs + slate PDFs and writes processed JPEGs; it has
-**no NAS access** by design.
+The key contract and the S3 primitives live in
+`fishsense_shared.object_store` — it is an agreement *between* this
+worker and the api-worker, so neither owns it. This module is only the
+data-worker's method subset layered on top.
 
-Key contract (shared with the api-worker):
-
-    raw/{checksum}.ORF            # read
-    slate_pdf/{slate_id}.pdf      # read (stage 9)
-    {jpeg_prefix}/{checksum}.JPG  # write (durable; LS reads via presign)
+This worker reads staged raw inputs + slate PDFs from the scratch bucket
+and writes processed JPEGs to the labels bucket. It has **no NAS access**
+by design, and no way to delete anything.
 
 The ``{jpeg_prefix}`` values are the same folder names the workflows
 already pass as ``output_folder`` — ``preprocess_jpeg`` (0.1),
@@ -19,59 +17,26 @@ already pass as ``output_folder`` — ``preprocess_jpeg`` (0.1),
 
 from __future__ import annotations
 
-import asyncio
-
-import boto3
-from botocore.config import Config
-
-RAW_PREFIX = "raw"
-SLATE_PDF_PREFIX = "slate_pdf"
+from fishsense_shared.object_store import (
+    RAW_PREFIX,
+    SLATE_PDF_PREFIX,
+    BaseObjectStoreClient,
+    jpeg_key,
+    open_client,
+    raw_key,
+    slate_pdf_key,
+)
 
 __all__ = [
     "RAW_PREFIX",
     "SLATE_PDF_PREFIX",
     "ObjectStoreClient",
-    "build_s3_client",
     "jpeg_key",
+    "open_client",
     "open_object_store_client",
     "raw_key",
     "slate_pdf_key",
 ]
-
-
-def raw_key(checksum: str) -> str:
-    return f"{RAW_PREFIX}/{checksum}.ORF"
-
-
-def slate_pdf_key(slate_id: int) -> str:
-    return f"{SLATE_PDF_PREFIX}/{slate_id}.pdf"
-
-
-def jpeg_key(folder: str, checksum: str, prefix: str = "") -> str:
-    base = f"{folder}/{checksum}.JPG"
-    prefix = (prefix or "").strip("/")
-    return f"{prefix}/{base}" if prefix else base
-
-
-def build_s3_client(
-    *, endpoint_url: str, region: str, access_key: str, secret_key: str
-):
-    """Build a boto3 S3 client pointed at Garage.
-
-    Garage requires **path-style** addressing (no virtual-host bucket
-    DNS) and an explicit endpoint + region; SigV4 is its default.
-    """
-    return boto3.client(
-        "s3",
-        endpoint_url=endpoint_url,
-        region_name=region,
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
-        config=Config(
-            signature_version="s3v4",
-            s3={"addressing_style": "path"},
-        ),
-    )
 
 
 def open_object_store_client() -> "ObjectStoreClient":
@@ -84,49 +49,17 @@ def open_object_store_client() -> "ObjectStoreClient":
     # pylint: disable=import-outside-toplevel
     from fishsense_data_processing_workflow_worker.config import settings
 
-    s3 = build_s3_client(
-        endpoint_url=settings.object_store.endpoint_url,
-        region=settings.object_store.region,
-        access_key=settings.object_store.access_key,
-        secret_key=settings.object_store.secret_key,
-    )
-    return ObjectStoreClient(
-        s3,
-        settings.object_store.bucket,
-        labels_bucket=settings.object_store.get("labels_bucket", None),
-        labels_prefix=settings.object_store.get("labels_prefix", "") or "",
-    )
+    return open_client(settings, ObjectStoreClient)
 
 
-class ObjectStoreClient:
-    """Thin async wrapper over a boto3 S3 client for the data-worker's
-    read + JPEG-write needs. Constructed per-activity-call; the boto3
-    client is injected so tests can pass a moto-backed one.
+class ObjectStoreClient(BaseObjectStoreClient):
+    """The data-worker's read + JPEG-write vocabulary.
 
     Reads raw/slate **scratch** from ``bucket``; writes processed JPEGs to
     ``labels_bucket`` (the LS-facing bucket) under ``labels_prefix``.
     ``labels_bucket`` defaults to ``bucket`` so single-bucket layouts keep
-    working unchanged."""
-
-    def __init__(self, s3, bucket: str, labels_bucket=None, labels_prefix=""):
-        self._s3 = s3
-        self._bucket = bucket
-        self._labels_bucket = labels_bucket or bucket
-        self._labels_prefix = labels_prefix or ""
-
-    async def _get(self, key: str) -> bytes:
-        def _do() -> bytes:
-            response = self._s3.get_object(Bucket=self._bucket, Key=key)
-            # Close the StreamingBody so botocore returns the underlying
-            # HTTP connection to its pool; leaking it across repeated
-            # downloads can exhaust the pool and stall activities.
-            body = response["Body"]
-            try:
-                return body.read()
-            finally:
-                body.close()
-
-        return await asyncio.to_thread(_do)
+    working unchanged.
+    """
 
     async def download_raw(self, checksum: str) -> bytes:
         return await self._get(raw_key(checksum))
@@ -137,9 +70,8 @@ class ObjectStoreClient:
     async def upload_processed_jpeg(
         self, folder: str, checksum: str, data: bytes
     ) -> None:
-        await asyncio.to_thread(
-            self._s3.put_object,
-            Bucket=self._labels_bucket,
-            Key=jpeg_key(folder, checksum, self._labels_prefix),
-            Body=data,
+        await self._put(
+            jpeg_key(folder, checksum, self._labels_prefix),
+            data,
+            bucket=self._labels_bucket,
         )

@@ -37,9 +37,8 @@ async def test_one_httpx_client_constructed_per_context_entry():
 
     with patch("httpx.AsyncClient") as mock_client_class:
         mock_instance = AsyncMock()
-        mock_instance.get = AsyncMock(return_value=mock_response)
-        mock_instance.post = AsyncMock(return_value=mock_response)
-        mock_instance.put = AsyncMock(return_value=mock_response)
+        # All four verbs funnel through `AsyncClient.request` now.
+        mock_instance.request = AsyncMock(return_value=mock_response)
         mock_client_class.return_value = mock_instance
 
         async with client:
@@ -71,11 +70,11 @@ async def test_concurrent_calls_share_one_httpx_client():
 
     with patch("httpx.AsyncClient") as mock_client_class:
         mock_instance = AsyncMock()
-        mock_instance.get = AsyncMock(return_value=mock_response)
+        mock_instance.request = AsyncMock(return_value=mock_response)
         mock_client_class.return_value = mock_instance
 
         async with client:
             await asyncio.gather(*(client._get(f"/x/{i}") for i in range(40)))
 
         assert mock_client_class.call_count == 1
-        assert mock_instance.get.await_count == 40
+        assert mock_instance.request.await_count == 40

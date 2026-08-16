@@ -1,5 +1,18 @@
 """Slate-detector parent workflow (api-worker side).
 
+**RETIRED 2026-08-03 — registered, but nothing schedules it.** The
+ECC >= 0.80 acceptance gate does not transfer out of distribution: pool
+dives produced high-ECC (0.93-0.97) *false* fits that sailed through it
+(prod dives 65/71/77/80/83, all pool). The team declined an
+active-learning loop; `predict-slate-images-workflow-schedule` is now
+actively deleted at worker startup (`worker._RETIRED_SCHEDULE_IDS`) and
+the 130 seeded Label Studio predictions were removed.
+
+The code is kept registered so a future evaluation can start it by hand
+— it is dormant, not dead — but nothing invokes it on its own. Do not
+read it as part of the live pipeline.
+
+
 Model-assisted slate labeling. Picks the next HIGH-priority dive needing slate
 predictions, resolves its unpredicted slate-frame set + template + camera
 intrinsics via SDK, stages the raw `.ORF` bytes AND the slate template PDF, and
@@ -24,17 +37,8 @@ from typing import List
 
 from fishsense_shared import PredictSlateImagesInput, SlatePredictionResult
 from temporalio import workflow
-from temporalio.common import WorkflowIDReusePolicy
-from temporalio.exceptions import WorkflowAlreadyStartedError
 
-with workflow.unsafe.imports_passed_through():
-    from fishsense_api_workflow_worker.workflows._retry_policies import (
-        SCALING_RETRY_POLICY,
-        SDK_FAIL_FAST_RETRY_POLICY,
-        STAGE_RAW_RETRY_POLICY,
-    )
-
-DATA_PROCESSING_TASK_QUEUE = "fishsense_data_processing_queue"
+from fishsense_api_workflow_worker.workflows import _dispatch
 
 
 @workflow.defn
@@ -48,21 +52,16 @@ class PredictSlateImagesParentWorkflow:
 
     @workflow.run
     async def run(self) -> int | None:
-        dive_id = await workflow.execute_activity(
-            "select_next_high_priority_dive_for_slate_prediction_activity",
-            args=(),
-            schedule_to_close_timeout=timedelta(minutes=5),
-            retry_policy=SDK_FAIL_FAST_RETRY_POLICY,
+        dive_id = await _dispatch.select_dive(
+            "select_next_high_priority_dive_for_slate_prediction_activity"
         )
         if dive_id is None:
             return None
 
-        inputs = await workflow.execute_activity(
+        inputs = await _dispatch.resolve_inputs(
             "resolve_slate_predict_inputs_activity",
-            args=(dive_id,),
-            schedule_to_close_timeout=timedelta(minutes=5),
-            retry_policy=SDK_FAIL_FAST_RETRY_POLICY,
-            result_type=PredictSlateImagesInput,
+            dive_id,
+            PredictSlateImagesInput,
         )
 
         workflow.logger.info(
@@ -74,78 +73,37 @@ class PredictSlateImagesParentWorkflow:
         if not inputs.images:
             return inputs.dive_id
 
-        # Wake the NRP data-worker before its child lands on the queue (scales
-        # to zero when idle). Idempotent; no-op when k8s scaling isn't set.
-        await workflow.execute_activity(
-            "ensure_data_worker_running_activity",
-            args=(),
-            schedule_to_close_timeout=timedelta(minutes=5),
-            retry_policy=SCALING_RETRY_POLICY,
-        )
-
-        # Stage the raw `.ORF` frames AND the slate template PDF — the predict
-        # activity rectifies the raw frame and renders the PDF into the template.
-        await workflow.execute_activity(
-            "stage_raw_bytes_for_dive_activity",
-            args=(dive_id,),
-            schedule_to_close_timeout=timedelta(hours=1),
-            heartbeat_timeout=timedelta(minutes=5),
-            retry_policy=STAGE_RAW_RETRY_POLICY,
-        )
-        await workflow.execute_activity(
-            "stage_slate_pdf_activity",
-            args=(inputs.slate_id,),
+        await _dispatch.wake_data_worker()
+        await _dispatch.stage_raw(dive_id)
+        # The predict activity rectifies the raw frame AND renders the PDF
+        # into the template, so both must be staged first.
+        await _dispatch.stage_slate_pdf(
+            inputs.slate_id,
             schedule_to_close_timeout=timedelta(minutes=15),
             heartbeat_timeout=timedelta(minutes=5),
-            retry_policy=STAGE_RAW_RETRY_POLICY,
+            retry_policy=_dispatch.STAGE_RAW_RETRY_POLICY,
         )
-
-        results: List[SlatePredictionResult] = []
-        try:
-            results = await workflow.execute_child_workflow(
-                "PredictSlateImagesWorkflow",
-                inputs,
-                id=f"predict-slate-{dive_id}",
-                task_queue=DATA_PROCESSING_TASK_QUEUE,
-                execution_timeout=timedelta(hours=2),
-                # ALLOW_DUPLICATE so a dive can re-predict frames that became
-                # eligible after a prior run; the resolver returns only
-                # still-unpredicted frames and put_slate_prediction upserts.
-                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
-                result_type=List[SlatePredictionResult],
-            )
-        except WorkflowAlreadyStartedError:
-            workflow.logger.info(
-                "predict-slate-%d already running; skipping duplicate dispatch",
-                dive_id,
-            )
+        results: List[SlatePredictionResult] = await _dispatch.dispatch_child(
+            "PredictSlateImagesWorkflow",
+            inputs,
+            child_id=f"predict-slate-{dive_id}",
+            execution_timeout=timedelta(hours=2),
+            result_type=List[SlatePredictionResult],
+        )
 
         if results:
-            await workflow.execute_activity(
-                "persist_slate_predictions_activity",
-                args=(results,),
-                schedule_to_close_timeout=timedelta(minutes=15),
-                retry_policy=SDK_FAIL_FAST_RETRY_POLICY,
+            await _dispatch.run_sdk_activity(
+                "persist_slate_predictions_activity", results
             )
-            # Attach the freshly-persisted predictions to any *existing* dive-
-            # slate LS tasks. The populate seeds pre-annotations only at import
-            # time and runs once per dive, so a dive already populated before it
-            # was predicted would otherwise never surface them. Idempotent
-            # (skips tasks that already carry a slate-detector prediction).
-            await workflow.execute_activity(
-                "backfill_slate_predictions_for_dive_activity",
-                args=(dive_id,),
-                schedule_to_close_timeout=timedelta(minutes=15),
-                retry_policy=SDK_FAIL_FAST_RETRY_POLICY,
+            # Attach the freshly-persisted predictions to any *existing*
+            # dive-slate LS tasks. Populate seeds pre-annotations only at
+            # import time and runs once per dive, so a dive already populated
+            # before it was predicted would otherwise never surface them.
+            # Idempotent (skips tasks that already carry a prediction).
+            await _dispatch.run_sdk_activity(
+                "backfill_slate_predictions_for_dive_activity", dive_id
             )
 
-        # Drop the staged raw `.ORF` scratch from Garage; the NAS source is
-        # never touched.
-        await workflow.execute_activity(
-            "cleanup_raw_bytes_for_dive_activity",
-            args=(dive_id,),
-            schedule_to_close_timeout=timedelta(minutes=15),
-            heartbeat_timeout=timedelta(minutes=5),
-        )
+        await _dispatch.cleanup_raw(dive_id)
 
         return inputs.dive_id
