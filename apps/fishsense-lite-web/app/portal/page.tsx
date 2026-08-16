@@ -28,19 +28,19 @@ export default async function PortalPage() {
         <p className="mt-2 text-sm text-slate-500">
           {portalAllowedGroups().length === 0
             ? "No portal groups are configured (PORTAL_ALLOWED_GROUPS is unset), so access is denied for everyone. An operator needs to set it."
-            : `Ask an operator to add you to one of: ${portalAllowedGroups().join(", ")}.`}
+            : `If you were recently added to ${portalAllowedGroups().join(", ")}, sign out and back in — group membership is read from your sign-in token, so a session started before the change still carries the old, empty list. Otherwise, ask an operator to add you.`}
         </p>
         <form
           action={async () => {
             "use server";
-            await signOut({ redirectTo: "/" });
+            await signOut({ redirectTo: "/portal" });
           }}
         >
           <button
             type="submit"
             className="mt-6 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
           >
-            Sign out
+            Sign out and retry
           </button>
         </form>
       </main>
