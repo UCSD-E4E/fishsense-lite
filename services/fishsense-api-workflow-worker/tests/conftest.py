@@ -44,6 +44,14 @@ def configure_worker_settings(
     monkeypatch.setenv("E4EFS_E4E_NAS__URL", "http://nas.example.com")
     monkeypatch.setenv("E4EFS_E4E_NAS__USERNAME", "unused")
     monkeypatch.setenv("E4EFS_E4E_NAS__PASSWORD", "unused")
+    # Same reason as temporal.port/.tls above: `raw_root_path` has a validator
+    # default, but a `settings.reload()` elsewhere in the session doesn't
+    # re-apply defaults, so any test reading it becomes order-dependent —
+    # passing alone, AccessError in the full suite. Tests that care about the
+    # prefix still set their own value and override this.
+    monkeypatch.setenv(
+        "E4EFS_E4E_NAS__RAW_ROOT_PATH", "/fishsense_data/REEF/data"
+    )
     monkeypatch.setenv("E4EFS_FISHSENSE_API__URL", "http://fishsense-api.example.com")
 
     if _is_integration_test(request):

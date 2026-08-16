@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,6 +44,10 @@ from synology_filestation import DSMError
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
+from fishsense_api_workflow_worker.activities.nas_errors import (
+    NAS_FILE_NOT_FOUND_TYPE,
+    raise_if_permanent_dsm_error,
+)
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
 from fishsense_api_workflow_worker.config import settings
 from fishsense_api_workflow_worker.object_store import open_object_store_client
@@ -69,19 +72,9 @@ def _stage_concurrency() -> int:
         value = DEFAULT_STAGE_CONCURRENCY
     return max(1, value)
 
-# `type` on the non-retryable ApplicationError we raise for a missing
-# file; must match `non_retryable_error_types` in STAGE_RAW_RETRY_POLICY.
-NAS_FILE_NOT_FOUND_TYPE = "NasFileNotFound"
-
-# Synology FileStation error codes that are *permanent* — retrying can't
-# help, so we fail the dive fast (non-retryable) instead of burning the
-# Temporal retry budget. 408 = "No such file or directory". Transient
-# codes (502 TransportError, 407 backend-fail-closed, 402 busy) are left
-# to propagate so the bounded Temporal retry policy backs off and retries.
-# NOTE: this string-parses the DSM code because the client doesn't expose
-# it structurally yet — remove once `synology-filestation` classifies
-# errors upstream (feedback filed).
-_PERMANENT_DSM_CODES = frozenset({408})
+# `NAS_FILE_NOT_FOUND_TYPE` and the permanent/transient split now live in
+# `activities/nas_errors.py`, shared with the ingest activities. Re-exported
+# here because this module's `__all__` is part of its existing surface.
 
 __all__ = [
     "DEFAULT_STAGE_CONCURRENCY",
@@ -121,14 +114,6 @@ def _iter_leaf_exceptions(exc: BaseException):
         yield exc
 
 
-def _dsm_error_code(exc: BaseException) -> int | None:
-    """Best-effort extract the Synology FileStation error code from a
-    `DSMError` (whose message is `"Synology API error <code>"`). Interim
-    until the client exposes the code structurally."""
-    match = re.search(r"error\s+(\d+)", str(exc))
-    return int(match.group(1)) if match else None
-
-
 async def _download_one(nas, *, src_path: str, dest_dir: str) -> None:
     """Download a single file. Retry/backoff is intentionally NOT here —
     the bounded, jittered Temporal `retry_policy` on the activity owns
@@ -146,13 +131,7 @@ async def _download_one(nas, *, src_path: str, dest_dir: str) -> None:
             nas.download_to, src_path=src_path, dest_dir=dest_dir
         )
     except DSMError as exc:
-        code = _dsm_error_code(exc)
-        if code in _PERMANENT_DSM_CODES:
-            raise ApplicationError(
-                f"NAS file not found (Synology {code}): {src_path}",
-                type=NAS_FILE_NOT_FOUND_TYPE,
-                non_retryable=True,
-            ) from exc
+        raise_if_permanent_dsm_error(exc, context=src_path)
         raise
 
 
