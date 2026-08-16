@@ -21,6 +21,7 @@ from typing import List
 from pydantic import BaseModel
 
 __all__ = [
+    "ChecksumMismatch",
     "IngestDiveRequest",
     "IngestPreflight",
     "IngestProgress",
@@ -28,6 +29,7 @@ __all__ = [
     "PreflightImage",
     "RejectedImage",
     "SubfolderReport",
+    "VerifyChecksumsReport",
 ]
 
 
@@ -133,6 +135,51 @@ class RejectedImage(BaseModel):
 
     path: str
     reason: str
+
+
+class ChecksumMismatch(BaseModel):
+    """One row whose stored value disagrees with the file on the NAS.
+
+    Both values are carried because "some rows disagree" is not actionable —
+    the useful finding is *how* they disagree, which is what says whether the
+    migration used a different algorithm or the file itself changed.
+    """
+
+    image_id: int | None = None
+    path: str
+    stored: str | None = None
+    computed: str | None = None
+
+
+class VerifyChecksumsReport(BaseModel):
+    """Result of re-hashing a migrated dive against the NAS.
+
+    Read-only. Every ingest convention was recovered by reading the retired
+    spider crawler's source, which proves what *spider* wrote but not that all
+    ~131k rows came from spider — and no stored value had ever been compared
+    against the bytes still on the NAS.
+
+    The gap is worth closing because of how it fails: if existing checksums
+    were computed differently, duplicate detection does not error, it silently
+    reports zero overlap. A re-ingest of an already-present dive would look
+    entirely new and every frame would land canonical.
+    """
+
+    dive_id: int
+    #: Rows in the dive, before any sampling limit.
+    total_in_dive: int = 0
+    checked: int = 0
+    checksum_matched: int = 0
+    mismatches: List[ChecksumMismatch] = []
+    #: Stored `taken_datetime` disagreeing with EXIF 0x0132 stamped UTC.
+    #: Tracked apart from checksums: a wrong checksum breaks duplicate
+    #: detection, a wrong timestamp breaks stage-1 clustering.
+    timestamp_mismatches: List[ChecksumMismatch] = []
+    #: The row exists but its file does not — itself one of the answers.
+    missing_on_nas: List[ChecksumMismatch] = []
+    #: NULL `checksum` on a migrated row; the column duplicate detection joins
+    #: on, so a blank one is a finding rather than a skip.
+    no_stored_checksum: List[ChecksumMismatch] = []
 
 
 class IngestProgress(BaseModel):
