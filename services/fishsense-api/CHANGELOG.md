@@ -2,6 +2,18 @@
 
 <!-- version list -->
 
+## [1.46.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.45.1...fishsense-api-v1.46.0) (2026-08-17)
+
+
+### Features
+
+* **ingest:** EXIF reader, NAS listing/ranged reads, shared contracts (PR 2, part 1) ([#557](https://github.com/UCSD-E4E/fishsense-lite/issues/557)) ([5822342](https://github.com/UCSD-E4E/fishsense-lite/commit/582234265b267e5142122a8e9637827479e8183d))
+
+
+### Bug Fixes
+
+* code-review sweep — dead SDK retry, racy model caches, cohort wedge, portal authz ([#558](https://github.com/UCSD-E4E/fishsense-lite/issues/558)) ([612e2d6](https://github.com/UCSD-E4E/fishsense-lite/commit/612e2d64c4a28be63a98f3d5d5cbcb3ce52ef1b9))
+
 ## [1.45.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.45.0...fishsense-api-v1.45.1) (2026-08-08)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.9.1...fishsense-lite-web-v0.9.2) (2026-08-17)
+
+
+### Bug Fixes
+
+* code-review sweep — dead SDK retry, racy model caches, cohort wedge, portal authz ([#558](https://github.com/UCSD-E4E/fishsense-lite/issues/558)) ([612e2d6](https://github.com/UCSD-E4E/fishsense-lite/commit/612e2d64c4a28be63a98f3d5d5cbcb3ce52ef1b9))
+* **web:** configure the portal allowlist in the local stack ([#560](https://github.com/UCSD-E4E/fishsense-lite/issues/560)) ([a565e8b](https://github.com/UCSD-E4E/fishsense-lite/commit/a565e8b4078c974eba0d2aa1bec9281578db7185))
+
 ## [0.9.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.9.0...fishsense-lite-web-v0.9.1) (2026-08-08)
 
 

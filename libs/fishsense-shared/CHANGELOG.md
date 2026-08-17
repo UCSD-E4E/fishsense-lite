@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.8.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.7.1...fishsense-shared-v0.8.0) (2026-08-17)
+
+
+### Features
+
+* **ingest:** EXIF reader, NAS listing/ranged reads, shared contracts (PR 2, part 1) ([#557](https://github.com/UCSD-E4E/fishsense-lite/issues/557)) ([5822342](https://github.com/UCSD-E4E/fishsense-lite/commit/582234265b267e5142122a8e9637827479e8183d))
+* **ingest:** folder listing, preflight, and a checksum-verification workflow ([#559](https://github.com/UCSD-E4E/fishsense-lite/issues/559)) ([9e5fba2](https://github.com/UCSD-E4E/fishsense-lite/commit/9e5fba27600c7a102b1fc4e0aa223fd86c7361a0))
+
+
+### Bug Fixes
+
+* code-review sweep — dead SDK retry, racy model caches, cohort wedge, portal authz ([#558](https://github.com/UCSD-E4E/fishsense-lite/issues/558)) ([612e2d6](https://github.com/UCSD-E4E/fishsense-lite/commit/612e2d64c4a28be63a98f3d5d5cbcb3ce52ef1b9))
+
 ## [0.7.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.7.0...fishsense-shared-v0.7.1) (2026-08-08)
 
 
