@@ -292,6 +292,12 @@ services:
       # stack the container's published port on the host is the right
       # value.
       AUTH_URL: http://localhost:3000
+      # `isPortalAuthorized` fails CLOSED: an unset or empty allowlist denies
+      # everyone, because a check that defaults to open is not a check. So the
+      # local stack has to configure it like a real deployment or every /portal
+      # request renders the not-authorized dead end. Must match the `groups`
+      # claim the integration test mints into its session cookie.
+      PORTAL_ALLOWED_GROUPS: test-group
     ports:
       - "3000:3000"
     networks:
