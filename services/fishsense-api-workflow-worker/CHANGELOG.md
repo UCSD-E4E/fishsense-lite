@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.50.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.49.0...fishsense-api-workflow-worker-v1.50.0) (2026-08-17)
+
+
+### Features
+
+* **ingest:** sweep every canonical dive's checksums, in Temporal ([#567](https://github.com/UCSD-E4E/fishsense-lite/issues/567)) ([edd8c20](https://github.com/UCSD-E4E/fishsense-lite/commit/edd8c207753fc7668feac049782e0a48e0cca6d7))
+
 ## [1.49.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.48.5...fishsense-api-workflow-worker-v1.49.0) (2026-08-17)
 
 

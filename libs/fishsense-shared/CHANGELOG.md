@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.8.0...fishsense-shared-v0.9.0) (2026-08-17)
+
+
+### Features
+
+* **ingest:** sweep every canonical dive's checksums, in Temporal ([#567](https://github.com/UCSD-E4E/fishsense-lite/issues/567)) ([edd8c20](https://github.com/UCSD-E4E/fishsense-lite/commit/edd8c207753fc7668feac049782e0a48e0cca6d7))
+
 ## [0.8.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.7.1...fishsense-shared-v0.8.0) (2026-08-17)
 
 
