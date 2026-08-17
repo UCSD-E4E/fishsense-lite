@@ -359,9 +359,10 @@ async def test_an_empty_folder_fails(monkeypatch):
 
 
 async def test_reads_only_the_first_megabyte_of_each_frame(monkeypatch):
-    """What makes a dry run affordable: ~1 MB per file instead of ~15 MB
-    across FileStation's fragile shared download backend. A 500-frame dive is
-    0.5 GB rather than 7.5 GB."""
+    """What makes a dry run affordable: ~1 MB per file instead of ~15 MB — a
+    500-frame dive previews for 0.5 GB rather than 7.5 GB. The saving is in
+    bytes moved, so it holds whether the client resolves the read over SMB or
+    falls back to FileStation."""
     from fishsense_api_workflow_worker.activities import (  # pylint: disable=import-outside-toplevel
         preflight_ingest_activity as sut,
     )

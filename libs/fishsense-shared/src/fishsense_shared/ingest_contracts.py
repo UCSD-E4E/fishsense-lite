@@ -22,6 +22,7 @@ from pydantic import BaseModel
 
 __all__ = [
     "ChecksumMismatch",
+    "DiveVerificationSummary",
     "IngestDiveRequest",
     "IngestPreflight",
     "IngestProgress",
@@ -29,6 +30,8 @@ __all__ = [
     "PreflightImage",
     "RejectedImage",
     "SubfolderReport",
+    "VerifyAllDivesProgress",
+    "VerifyAllDivesReport",
     "VerifyChecksumsReport",
 ]
 
@@ -180,6 +183,69 @@ class VerifyChecksumsReport(BaseModel):
     #: NULL `checksum` on a migrated row; the column duplicate detection joins
     #: on, so a blank one is a finding rather than a skip.
     no_stored_checksum: List[ChecksumMismatch] = []
+
+
+class DiveVerificationSummary(BaseModel):
+    """One dive's verification result, compressed.
+
+    Counts rather than per-image rows, because a sweep over every canonical
+    dive would otherwise return tens of thousands of records. The individual
+    mismatches are carried — those are the findings — but agreement is just a
+    number.
+    """
+
+    dive_id: int
+    checked: int = 0
+    total_in_dive: int = 0
+    checksum_matched: int = 0
+    mismatches: List[ChecksumMismatch] = []
+    timestamp_mismatches: List[ChecksumMismatch] = []
+    missing_on_nas: List[ChecksumMismatch] = []
+    no_stored_checksum: List[ChecksumMismatch] = []
+    #: Set when the dive could not be verified at all (NAS down, activity
+    #: exhausted its retries). Distinct from "verified, found nothing wrong" —
+    #: conflating the two would let an unreachable dive read as clean.
+    error: str | None = None
+
+    @property
+    def is_clean(self) -> bool:
+        return self.error is None and not (
+            self.mismatches
+            or self.timestamp_mismatches
+            or self.missing_on_nas
+            or self.no_stored_checksum
+        )
+
+
+class VerifyAllDivesProgress(BaseModel):
+    """Shape of the sweep's `progress` query. A full sweep is ~930 GB off the
+    NAS, so it runs for a long time and has to be observable while running."""
+
+    state: str = "starting"
+    total_dives: int = 0
+    dives_done: int = 0
+    current_dive_id: int | None = None
+    images_checked: int = 0
+    checksum_matched: int = 0
+    dives_with_findings: int = 0
+    dives_errored: int = 0
+
+
+class VerifyAllDivesReport(BaseModel):
+    """Aggregate across every dive the sweep visited."""
+
+    dives_requested: int = 0
+    dives_verified: int = 0
+    images_checked: int = 0
+    checksum_matched: int = 0
+    #: Every dive visited, clean ones included — absence of a finding is itself
+    #: the result being sought, and dropping the clean rows would make it
+    #: impossible to tell "verified, fine" from "never reached".
+    dives: List[DiveVerificationSummary] = []
+
+    @property
+    def dives_with_findings(self) -> List[DiveVerificationSummary]:
+        return [d for d in self.dives if not d.is_clean]
 
 
 class IngestProgress(BaseModel):

@@ -5,9 +5,8 @@ can be answered by an operator on demand rather than by a one-off script:
 
   * it runs inside the slot, where the NAS credentials already live, so nobody
     has to copy them anywhere to ask the question;
-  * whole-file downloads over FileStation's fragile backend get Temporal's
-    bounded jittered retry and a heartbeat that resumes mid-dive instead of
-    re-pulling gigabytes;
+  * whole-file downloads get Temporal's bounded jittered retry and a heartbeat
+    that resumes mid-dive instead of re-pulling gigabytes;
   * the report is durable and visible in the Temporal UI, so a finding can be
     pointed at later rather than living in someone's terminal scrollback.
 
@@ -19,7 +18,7 @@ temporal workflow start \
     --input <dive_id> --input 25
 ```
 
-The second argument samples: verification pulls whole files (~15 MB each, the
+The second argument samples: verification pulls whole files (~14.5 MB each, the
 one thing preflight's ranged read avoids), and answering "does the convention
 hold" does not need all ~500 frames of a dive. Pass `null` to check every one.
 """
@@ -46,8 +45,8 @@ class VerifyDiveChecksumsWorkflow:
         return await workflow.execute_activity(
             "verify_dive_checksums_activity",
             args=(dive_id, limit),
-            # Generous: a full dive is ~500 whole-file downloads over a backend
-            # that is deliberately driven serially.
+            # Generous: a full dive is ~500 whole-file downloads, driven
+            # serially so a diagnostic run never outranks pipeline staging.
             schedule_to_close_timeout=timedelta(hours=6),
             # One frame at a time, so a gap this long means the transfer is
             # wedged rather than slow.
@@ -57,8 +56,9 @@ class VerifyDiveChecksumsWorkflow:
                 backoff_coefficient=2.0,
                 maximum_interval=timedelta(minutes=5),
                 # Bounded: this is diagnostic, not load-bearing. If the NAS is
-                # having a bad day the answer is to ask again later, not to
-                # keep hammering a fragile shared download backend.
+                # having a bad day the answer is to ask again later. Note the
+                # client retries internally too (max_attempts=5, backoff capped
+                # at 60s), so this sits on top of that.
                 maximum_attempts=5,
             ),
         )
