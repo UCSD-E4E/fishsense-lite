@@ -2,6 +2,20 @@
 
 <!-- version list -->
 
+## [1.49.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.48.5...fishsense-api-workflow-worker-v1.49.0) (2026-08-17)
+
+
+### Features
+
+* **ingest:** EXIF reader, NAS listing/ranged reads, shared contracts (PR 2, part 1) ([#557](https://github.com/UCSD-E4E/fishsense-lite/issues/557)) ([5822342](https://github.com/UCSD-E4E/fishsense-lite/commit/582234265b267e5142122a8e9637827479e8183d))
+* **ingest:** folder listing, preflight, and a checksum-verification workflow ([#559](https://github.com/UCSD-E4E/fishsense-lite/issues/559)) ([9e5fba2](https://github.com/UCSD-E4E/fishsense-lite/commit/9e5fba27600c7a102b1fc4e0aa223fd86c7361a0))
+
+
+### Bug Fixes
+
+* code-review sweep — dead SDK retry, racy model caches, cohort wedge, portal authz ([#558](https://github.com/UCSD-E4E/fishsense-lite/issues/558)) ([612e2d6](https://github.com/UCSD-E4E/fishsense-lite/commit/612e2d64c4a28be63a98f3d5d5cbcb3ce52ef1b9))
+* **deps:** pin fishsense-api-sdk&gt;=1.45.0 ([#530](https://github.com/UCSD-E4E/fishsense-lite/issues/530)) ([4762ea7](https://github.com/UCSD-E4E/fishsense-lite/commit/4762ea7fccd269beb0cd018998a0f3b314e775a5))
+
 ## [1.48.5](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.48.4...fishsense-api-workflow-worker-v1.48.5) (2026-08-04)
 
 

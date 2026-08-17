@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.45.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.45.0...fishsense-api-sdk-v1.45.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* code-review sweep — dead SDK retry, racy model caches, cohort wedge, portal authz ([#558](https://github.com/UCSD-E4E/fishsense-lite/issues/558)) ([612e2d6](https://github.com/UCSD-E4E/fishsense-lite/commit/612e2d64c4a28be63a98f3d5d5cbcb3ce52ef1b9))
+
 ## [1.45.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.44.0...fishsense-api-sdk-v1.45.0) (2026-08-04)
 
 
