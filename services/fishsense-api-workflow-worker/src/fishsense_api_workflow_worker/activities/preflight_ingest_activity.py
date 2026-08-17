@@ -31,10 +31,15 @@ What it refuses, and why each is unrecoverable later:
     say which file.
 
 Reads are ranged — the first megabyte holds the EXIF — which is what makes a
-dry run affordable: ~1 MB per frame instead of ~15 MB across FileStation's
-fragile shared download backend. They are also serial, matching the default
-`e4e_nas.stage_concurrency` of 1: that backend 502s under concurrent transfers,
-and a preflight is not worth risking it for.
+dry run affordable: ~1 MB per frame instead of ~15 MB. That saving is about
+bytes moved, so it holds regardless of transport: `synology-filestation` >=0.2.0
+prefers SMB and falls back to FileStation, and paces either way (`throttle=True`,
+`max_concurrency=4`, `min_interval_ms=150`).
+
+Reads are also serial here. Not because the transport can't cope — the client
+handles its own pacing — but because a preflight shares the NAS with the hourly
+staging activities doing real pipeline work, and a dry run should never be the
+reason one of those is slow.
 
 Duplicate detection here is **layer 1 only** — a leaf-name collision against
 existing dives, free because the dive list is already fetched. Content-based

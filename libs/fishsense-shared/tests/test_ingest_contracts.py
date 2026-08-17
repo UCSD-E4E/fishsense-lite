@@ -22,6 +22,12 @@ from fishsense_shared import (
     RejectedImage,
     SubfolderReport,
 )
+from fishsense_shared.ingest_contracts import (
+    ChecksumMismatch,
+    DiveVerificationSummary,
+    VerifyAllDivesProgress,
+    VerifyAllDivesReport,
+)
 
 
 def test_a_request_needs_only_a_dive_path():
@@ -152,3 +158,108 @@ def test_the_contract_round_trips_through_json():
     restored = IngestReport.model_validate_json(report.model_dump_json())
 
     assert restored == report
+
+
+# ── the migration audit ───────────────────────────────────────────────
+
+
+def test_a_dive_with_nothing_wrong_is_clean():
+
+    summary = DiveVerificationSummary(
+        dive_id=412, checked=5, total_in_dive=55, checksum_matched=5
+    )
+
+    assert summary.is_clean is True
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "mismatches",
+        "timestamp_mismatches",
+        "missing_on_nas",
+        "no_stored_checksum",
+    ],
+)
+def test_any_kind_of_finding_makes_a_dive_not_clean(field):
+    """All four are findings. They are separate fields because they mean
+    different things — a wrong checksum breaks duplicate detection, a wrong
+    timestamp breaks stage-1 clustering — but any of them means this dive did
+    not come through the migration the way we think it did."""
+
+    summary = DiveVerificationSummary(
+        dive_id=412,
+        checked=5,
+        checksum_matched=4,
+        **{field: [ChecksumMismatch(path="a/b.ORF")]},
+    )
+
+    assert summary.is_clean is False
+
+
+def test_a_dive_that_errored_is_not_clean_even_with_no_findings():
+    """The distinction the whole audit rests on. An unreachable dive has no
+    findings *because it was never read* — letting that read as clean would
+    quietly shrink the corpus the audit claims to cover."""
+
+    summary = DiveVerificationSummary(dive_id=412, error="NAS unreachable")
+
+    assert summary.is_clean is False
+
+
+def test_the_sweep_report_singles_out_the_dives_with_findings():
+    """Clean dives stay in `dives` — absence of a finding is the result being
+    sought, so dropping them would make "verified, fine" indistinguishable from
+    "never reached"."""
+
+    report = VerifyAllDivesReport(
+        dives_requested=3,
+        dives_verified=3,
+        dives=[
+            DiveVerificationSummary(dive_id=11, checked=5, checksum_matched=5),
+            DiveVerificationSummary(
+                dive_id=22,
+                checked=5,
+                checksum_matched=4,
+                mismatches=[ChecksumMismatch(path="a/b.ORF")],
+            ),
+            DiveVerificationSummary(dive_id=33, error="NAS unreachable"),
+        ],
+    )
+
+    assert [d.dive_id for d in report.dives_with_findings] == [22, 33]
+    assert len(report.dives) == 3
+
+
+def test_the_audit_contract_round_trips_through_json():
+    """Temporal serializes the sweep's return value, and a ~479-dive report is
+    the largest payload in this contract."""
+
+    report = VerifyAllDivesReport(
+        dives_requested=1,
+        dives_verified=1,
+        images_checked=5,
+        checksum_matched=4,
+        dives=[
+            DiveVerificationSummary(
+                dive_id=22,
+                checked=5,
+                checksum_matched=4,
+                mismatches=[
+                    ChecksumMismatch(
+                        image_id=9,
+                        path="a/b.ORF",
+                        stored="0" * 32,
+                        computed="1" * 32,
+                    )
+                ],
+            )
+        ],
+    )
+    progress = VerifyAllDivesProgress(state="verifying", total_dives=479)
+
+    assert VerifyAllDivesReport.model_validate_json(report.model_dump_json()) == report
+    assert (
+        VerifyAllDivesProgress.model_validate_json(progress.model_dump_json())
+        == progress
+    )

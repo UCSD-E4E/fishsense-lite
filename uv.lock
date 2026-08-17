@@ -659,7 +659,7 @@ wheels = [
 
 [[package]]
 name = "fishsense-api"
-version = "1.45.1"
+version = "1.46.0"
 source = { editable = "services/fishsense-api" }
 dependencies = [
     { name = "alembic" },
@@ -712,7 +712,7 @@ dev = [
 
 [[package]]
 name = "fishsense-api-sdk"
-version = "1.45.0"
+version = "1.45.1"
 source = { editable = "libs/fishsense-api-sdk" }
 dependencies = [
     { name = "httpx" },
@@ -739,7 +739,7 @@ dev = [
 
 [[package]]
 name = "fishsense-api-workflow-worker"
-version = "1.48.5"
+version = "1.49.0"
 source = { editable = "services/fishsense-api-workflow-worker" }
 dependencies = [
     { name = "boto3" },
@@ -879,7 +879,7 @@ provides-extras = ["laser-detector", "rectified", "slate"]
 
 [[package]]
 name = "fishsense-data-processing-workflow-worker"
-version = "2.15.0"
+version = "2.15.1"
 source = { editable = "services/fishsense-data-processing-workflow-worker" }
 dependencies = [
     { name = "boto3" },
@@ -998,7 +998,7 @@ dev = [
 
 [[package]]
 name = "fishsense-shared"
-version = "0.7.1"
+version = "0.8.0"
 source = { editable = "libs/fishsense-shared" }
 dependencies = [
     { name = "dynaconf" },
