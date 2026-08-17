@@ -166,6 +166,9 @@ from fishsense_api_workflow_worker.activities.sync_users_label_studio_activity i
 from fishsense_api_workflow_worker.activities.update_dive_image_groups_activity import (
     update_dive_image_groups_activity,
 )
+from fishsense_api_workflow_worker.activities.verify_dive_checksums_activity import (
+    verify_dive_checksums_activity,
+)
 from fishsense_api_workflow_worker.config import configure_logging, settings
 from fishsense_api_workflow_worker.workflows.create_dive_slate_label_studio_project_workflow import (  # pylint: disable=line-too-long
     CreateDiveSlateLabelStudioProjectWorkflow,
@@ -244,6 +247,9 @@ from fishsense_api_workflow_worker.workflows.sync_label_studio_species_labels_wo
 )
 from fishsense_api_workflow_worker.workflows.update_dive_image_groups_workflow import (
     UpdateDiveImageGroupsWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.verify_dive_checksums_workflow import (
+    VerifyDiveChecksumsWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.scale_down_idle_data_worker_workflow import (  # pylint: disable=line-too-long
     ScaleDownIdleDataWorkerWorkflow,
@@ -625,6 +631,7 @@ async def main():
                 ReconcileLabelingConfigsWorkflow,
                 PopulateDiveSlateLabelStudioProjectWorkflow,
                 UpdateDiveImageGroupsWorkflow,
+                VerifyDiveChecksumsWorkflow,
                 ClusterDiveFramesParentWorkflow,
                 PredictLaserImagesParentWorkflow,
                 PredictSlateImagesParentWorkflow,
@@ -659,6 +666,7 @@ async def main():
                 populate_headtail_label_studio_project_activity,
                 populate_dive_slate_label_studio_project_activity,
                 update_dive_image_groups_activity,
+                verify_dive_checksums_activity,
                 resolve_dive_frame_clustering_inputs_activity,
                 resolve_laser_preprocess_inputs_activity,
                 resolve_laser_predict_inputs_activity,
