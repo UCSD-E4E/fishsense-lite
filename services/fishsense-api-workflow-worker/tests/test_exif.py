@@ -31,6 +31,13 @@ from pathlib import Path
 
 import pytest
 
+# pylint: disable=import-error  # noqa: E501
+# `tests` is not a unique package name in this workspace — both
+# services/fishsense-api-workflow-worker/tests and libs/*/tests are called
+# `tests`, and pylint binds the name to whichever it parses FIRST. CI lints
+# `git diff --name-only` output, which is alphabetical, so a changed
+# libs/*/tests file wins and this relative import stops resolving. The
+# import itself is correct — pytest resolves it fine.
 from ._tiff_builder import build_orf
 
 _REAL_ORF = (

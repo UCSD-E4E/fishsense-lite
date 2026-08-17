@@ -22,6 +22,12 @@ from fishsense_shared import (
     RejectedImage,
     SubfolderReport,
 )
+from fishsense_shared.ingest_contracts import (
+    ChecksumMismatch,
+    DiveVerificationSummary,
+    VerifyAllDivesProgress,
+    VerifyAllDivesReport,
+)
 
 
 def test_a_request_needs_only_a_dive_path():
@@ -158,7 +164,6 @@ def test_the_contract_round_trips_through_json():
 
 
 def test_a_dive_with_nothing_wrong_is_clean():
-    from fishsense_shared.ingest_contracts import DiveVerificationSummary
 
     summary = DiveVerificationSummary(
         dive_id=412, checked=5, total_in_dive=55, checksum_matched=5
@@ -181,10 +186,6 @@ def test_any_kind_of_finding_makes_a_dive_not_clean(field):
     different things — a wrong checksum breaks duplicate detection, a wrong
     timestamp breaks stage-1 clustering — but any of them means this dive did
     not come through the migration the way we think it did."""
-    from fishsense_shared.ingest_contracts import (
-        ChecksumMismatch,
-        DiveVerificationSummary,
-    )
 
     summary = DiveVerificationSummary(
         dive_id=412,
@@ -200,7 +201,6 @@ def test_a_dive_that_errored_is_not_clean_even_with_no_findings():
     """The distinction the whole audit rests on. An unreachable dive has no
     findings *because it was never read* — letting that read as clean would
     quietly shrink the corpus the audit claims to cover."""
-    from fishsense_shared.ingest_contracts import DiveVerificationSummary
 
     summary = DiveVerificationSummary(dive_id=412, error="NAS unreachable")
 
@@ -211,11 +211,6 @@ def test_the_sweep_report_singles_out_the_dives_with_findings():
     """Clean dives stay in `dives` — absence of a finding is the result being
     sought, so dropping them would make "verified, fine" indistinguishable from
     "never reached"."""
-    from fishsense_shared.ingest_contracts import (
-        ChecksumMismatch,
-        DiveVerificationSummary,
-        VerifyAllDivesReport,
-    )
 
     report = VerifyAllDivesReport(
         dives_requested=3,
@@ -239,12 +234,6 @@ def test_the_sweep_report_singles_out_the_dives_with_findings():
 def test_the_audit_contract_round_trips_through_json():
     """Temporal serializes the sweep's return value, and a ~479-dive report is
     the largest payload in this contract."""
-    from fishsense_shared.ingest_contracts import (
-        ChecksumMismatch,
-        DiveVerificationSummary,
-        VerifyAllDivesProgress,
-        VerifyAllDivesReport,
-    )
 
     report = VerifyAllDivesReport(
         dives_requested=1,
