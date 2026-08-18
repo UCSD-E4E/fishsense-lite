@@ -20,9 +20,10 @@
     # the nightly `system.autoUpgrade` (#460) rolls it out. Skip it and the slot freezes
     # on old, unpatched packages. A new kernel needs a manual `incus restart` (allowReboot=false).
     #
-    # The lock currently carries krg-infra @ 309364df (incl. #435–#440/#443/#453,
+    # The lock currently carries krg-infra @ 62e83d64 (incl. #435–#440/#443/#453,
     # #459 compose force-recreate, #460 nightly auto-upgrade, #496 runner
-    # registration-token churn gate + `Restart = "on-failure"` on the runner).
+    # registration-token churn gate + `Restart = "on-failure"` on the runner,
+    # #534 vault-agent cert renewal + the `temporal.reload` rotation hook).
     # `git log -p flake.lock` is the real history of what shipped.
     #
     # #496 is why this axis being ours is not academic: krg fixed the runner
@@ -62,7 +63,32 @@
       # In-VM vault-agent renders a `fishsense-worker` Temporal client cert to
       # /run/tenant/temporal/{tls.crt,tls.key,ca.crt} (ADR 0023 / krg-infra #435).
       # Required — without it no cert renders and the workers can't reach krg-prod Temporal.
-      temporal = {namespace = "fishsense";};
+      #
+      # `reload` is the tenant half of ROTATION, and it is load-bearing: the leaf is a
+      # 7-day cert, and the platform now re-renders it before expiry
+      # (krg.vaultAgent.renewal, krg-infra #534) — but a process that builds its TLS
+      # config once at `Client.connect` keeps the OLD cert for its whole life, so a
+      # fresh file on /run recovers nothing on its own. That is exactly how the
+      # 2026-08-17 outage worked: the cert expired at 11:09 UTC and the api-worker
+      # spent ~7h retrying task-queue polls with `CertificateExpired` while every
+      # hourly schedule sat idle.
+      #
+      # These are the only two compose services that mount /run/tenant/temporal.
+      # Leaving the list empty would restart the ENTIRE interior stack on every
+      # rotation — postgres, superset and the public web path included — roughly every
+      # 5 days, for a cert two workers use.
+      #
+      # ADD `fishsense-api` HERE when its Temporal client lands (the ingest controller,
+      # docs/plans/dive-image-ingestion.md §2.7). The tell is the service gaining a
+      # /run/tenant/temporal mount in deploy/incus/compose.yml; miss it and ingest
+      # silently holds an expired cert until something else restarts the container.
+      temporal = {
+        namespace = "fishsense";
+        reload = [
+          "fishsense-api-workflow-worker"
+          "fishsense-backup-worker"
+        ];
+      };
     };
   in {
     # The Incus slot (booted at 10.100.0.10) converges to THIS config via our runner.
