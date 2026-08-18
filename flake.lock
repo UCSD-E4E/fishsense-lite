@@ -121,11 +121,11 @@
       },
       "locked": {
         "dir": "nix",
-        "lastModified": 1786951630,
-        "narHash": "sha256-2p6fY1uFapLN655cr7DcYnXAOl6Q5/xC5OCHBPc+92c=",
+        "lastModified": 1787032170,
+        "narHash": "sha256-/NOJPZac+gur0+gnB9wqPsDZF0xTwRiwZpdxrtRIBg0=",
         "owner": "KastnerRG",
         "repo": "krg-infra",
-        "rev": "9cd3de684983b1368a7942788d1cf4172e4056e1",
+        "rev": "62e83d644ba3c13c228ae09d4ab97e06f0130506",
         "type": "github"
       },
       "original": {
