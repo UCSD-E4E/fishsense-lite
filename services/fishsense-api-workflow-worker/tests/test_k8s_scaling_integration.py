@@ -129,16 +129,67 @@ async def test_scale_down_when_idle_zeroes_the_real_deployment(
     assert _replicas(kubeconfig, namespace) == 0
 
 
-async def test_scale_down_leaves_a_busy_deployment_alone(
+async def test_scale_down_leaves_a_busy_healthy_deployment_alone(
     configure_scaling, kubeconfig, namespace, monkeypatch
 ):
+    """Busy + able to make progress = leave it running.
+
+    `deployment_is_wedged` is stubbed False here because this cluster cannot
+    produce the honest version of "healthy": the Deployment requests
+    `nvidia.com/gpu: 1` with a compute-capability node affinity, and kind has
+    no GPU nodes, so its pods are permanently Unschedulable and never Ready.
+    That same fact is what makes the wedge test below real rather than
+    simulated.
+    """
     async def _busy(_cooldown: int) -> bool:
         return True
 
     monkeypatch.setattr(scale_down_mod, "_data_worker_task_queue_busy", _busy)
+    monkeypatch.setattr(scale_down_mod, "deployment_is_wedged", lambda *_a, **_k: False)
     _set_replicas(kubeconfig, namespace, 1)
     result = await ActivityEnvironment().run(
         scale_down_mod.scale_down_data_worker_if_idle_activity
     )
     assert result is False
     assert _replicas(kubeconfig, namespace) == 1
+
+
+async def test_deployment_is_wedged_against_a_real_apiserver(
+    configure_scaling, kubeconfig, namespace
+):
+    """Pins the field semantics the wedge check depends on.
+
+    The predicate hinges on `status.readyReplicas` being ABSENT (deserialized
+    as None) rather than 0 when nothing is Ready — a real apiserver is the only
+    thing that can confirm that, and reading None as "unknown, assume healthy"
+    is precisely what pinned prod's GPUs from 2026-08-14.
+    """
+    _set_replicas(kubeconfig, namespace, 1)
+    assert k8s_scaling.deployment_is_wedged(_api(kubeconfig), namespace, DEPLOYMENT)
+
+    # Scaled to zero, nothing is held, so there is nothing to reclaim.
+    _set_replicas(kubeconfig, namespace, 0)
+    assert not k8s_scaling.deployment_is_wedged(_api(kubeconfig), namespace, DEPLOYMENT)
+
+
+async def test_scale_down_reclaims_a_wedged_busy_deployment(
+    configure_scaling, kubeconfig, namespace, monkeypatch
+):
+    """End-to-end reproduction of the prod feedback loop, unmocked.
+
+    The queue reports busy AND the Deployment cannot produce a Ready pod — in
+    kind because the GPU request is unschedulable, in prod from 2026-08-14
+    because the Temporal client cert had expired and every pod crash-looped.
+    Before this behaviour existed the sweeper read "busy" and left the replicas
+    up, so the Deployment held NRP GPUs indefinitely while draining nothing.
+    """
+    async def _busy(_cooldown: int) -> bool:
+        return True
+
+    monkeypatch.setattr(scale_down_mod, "_data_worker_task_queue_busy", _busy)
+    _set_replicas(kubeconfig, namespace, 2)
+    result = await ActivityEnvironment().run(
+        scale_down_mod.scale_down_data_worker_if_idle_activity
+    )
+    assert result is True
+    assert _replicas(kubeconfig, namespace) == 0

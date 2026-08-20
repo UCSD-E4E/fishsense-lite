@@ -116,12 +116,17 @@ what CI uses to `kubectl apply` (repo secret `NRP_KUBECONFIG`).
      --from-literal=object_store_access_key='<garage-access-key>' \
      --from-literal=object_store_secret_key='<garage-secret-key>'
 
-   # 2. Temporal mTLS material — the data-worker's OWN krg-prod client
-   #    identity, distinct from the api-worker's. Mint on krg-deploy:
+   # 2. Temporal mTLS material — the krg-prod client identity. This is the
+   #    SAME identity the slot's workers use, CN=fishsense-worker, not a
+   #    second one: krg-infra's tenant module issues
+   #    `pki_int/issue/temporal-client common_name=<tenant>-worker`.
+   #    Bootstrap only — see "Cert rotation" below; after the first apply
+   #    the slot re-pushes this Secret on every rotation. Mint on krg-deploy:
    #      bao write pki_int/issue/temporal-client \
    #        common_name=fishsense-worker ttl=720h
    #    (CN authorized for the fishsense tenant now that krg-infra #435's
-   #    grant is live). Renew ~30d. root-ca.pem is krg-prod's Temporal CA.
+   #    grant is live). root-ca.pem is krg-prod's Temporal CA (the KRG Lab
+   #    Internal Intermediate, good to 2031) — only the leaf turns over.
    kubectl create secret generic fishsense-data-worker-temporal-certs -n e4e-fishsense \
      --from-file=client.pem=/path/to/fishsense-data-processing-workflow-worker.pem \
      --from-file=client.key=/path/to/fishsense-data-processing-workflow-worker.key \
@@ -140,6 +145,62 @@ what CI uses to `kubectl apply` (repo secret `NRP_KUBECONFIG`).
    bumps the image tag in `kustomization.yaml` and opens an
    `auto-deploy/fishsense-data-processing-workflow-worker-*` PR;
    merging it triggers `deploy.yml` to `kubectl apply -k` again.
+
+## Cert rotation — the slot pushes it, nothing here pulls it
+
+The krg-prod Temporal leaf is a **7-day** cert. On the Incus slot,
+vault-agent re-renders it before expiry (`krg.vaultAgent.renewal`,
+krg-infra #534) and the root `flake.nix`'s `temporal.reload` restarts the
+services holding it — re-rendering alone recovers nothing, because a
+worker builds its TLS config once at `Client.connect` and keeps the old
+leaf for the life of the process.
+
+vault-agent cannot reach into NRP, so this Secret was originally minted by
+hand at `ttl=720h` and renewed by nobody. **It expired 2026-08-14 05:46:26
+UTC**, every pod went `CrashLoopBackOff` on `received fatal alert:
+CertificateExpired`, and the v2.15.2 rollout on 2026-08-18 timed out with
+no stated cause — which read as NRP having killed the deploy. (NRP had in
+fact GC'd the Deployment separately; `apply` recreated it fine. The cert is
+what kept it down.)
+
+That gap is closed by
+[`deploy/incus/nrp_cert_sync/`](../../incus/nrp_cert_sync/): a one-shot
+compose service on the slot, listed in `flake.nix`'s `temporal.reload`,
+that pushes the rotated leaf into this Secret and `rollout restart`s the
+Deployment. It is a no-op when the leaf is unchanged (it compares a
+`fishsense.e4e.ucsd.edu/leaf-sha256` annotation), so it is safe on every
+converge. `deploy.yml` also refuses to deploy on an expired leaf, naming
+it in seconds rather than timing out after five minutes.
+
+Consequences worth knowing:
+
+* **The Secret is no longer hand-managed.** Editing it by hand is fine for
+  an emergency, but the next rotation overwrites it. Fix the forwarder,
+  not the Secret.
+* **Do not `kubectl delete` this Secret casually.** The forwarder recreates
+  it on the next rotation, which can be days away; until then every pod
+  crash-loops. Re-run the forwarder explicitly instead:
+  `docker compose ... restart nrp-temporal-cert-sync` on the slot.
+* The leaf the data-worker now carries is a 7-day cert refreshed roughly
+  every 5 days, not the old 30-day one. That is strictly better — but it
+  means a forwarder that silently stops shows up within a week.
+
+## NRP's 2-week Deployment GC
+
+The bootstrap above asks NRP for a permanent-service exception. **As of
+2026-08-20 the namespace does not appear to hold one** — the Deployment's
+`creationTimestamp` was 2026-08-17 while its ConfigMaps still dated to
+July, i.e. the object had been collected and recreated by a deploy.
+ConfigMaps and Secrets are not time-GC'd, and our pods are ReplicaSet-owned
+so the 6-hour bare-pod rule never applies; the Deployment is the only thing
+at risk.
+
+This is survivable — `kubectl apply -k` recreates it, and `deploy.yml`
+logs a `::warning::` when it has to, so repeated collection is visible in
+the job log rather than silent. Two caveats: a recreated Deployment starts
+at `replicas: 1` instead of whatever the api-worker had scaled it to, and
+any work queued while it was absent simply waits. Still worth chasing the
+exception with NRP support (Matrix, <https://nrp.ai/contact>).
 
 ## Prerequisite on the Incus slot side
 

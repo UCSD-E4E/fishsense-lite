@@ -258,6 +258,37 @@ services:
       - /run/tenant/temporal:/run/tenant/temporal:ro
     networks: [interior]
 
+  # ── push the rotated Temporal leaf out to the NRP data-worker ──────────────────────────
+  # One-shot, and the ONLY thing in this stack that talks to Kubernetes.
+  #
+  # The krg-prod Temporal leaf is a 7-day cert. vault-agent re-renders it before
+  # expiry and flake.nix's `temporal.reload` restarts the two workers above so they
+  # pick it up. The data-worker is on NRP, out of vault-agent's reach, and its copy
+  # of the SAME identity (CN=fishsense-worker) sat in a hand-minted `ttl=720h` k8s
+  # Secret that nothing renewed — it expired 2026-08-14 and crash-looped every pod
+  # on `CertificateExpired`, which is what timed out the v2.15.2 rollout. The slot is
+  # where the renewed leaf lands, so the slot is what forwards it.
+  #
+  # `restart: "no"` + listed in `temporal.reload`: the hook is
+  # `docker compose ... restart <svc>`, which starts an exited container again, so
+  # every rotation re-runs this. It also runs on each converge — a no-op when the
+  # leaf is unchanged (sync.sh compares a sha256 annotation before touching anything).
+  #
+  # Not on the `interior` network: it needs egress to the NRP API server, not to the
+  # other containers. Go's crypto/x509 is also why kubectl works here at all — the
+  # api-worker's Python client can't reach the same endpoint, because OpenSSL 3.5
+  # rejects NRP's CA for carrying no Authority Key Identifier.
+  nrp-temporal-cert-sync:
+    image: alpine/kubectl:1.34.1
+    restart: "no"
+    entrypoint: ["/bin/sh", "/sync/sync.sh"]
+    volumes:
+      - ./nrp_cert_sync:/sync:ro
+      # The leaf to forward — same vault-agent render the two workers mount.
+      - /run/tenant/temporal:/run/tenant/temporal:ro
+      # NRP kubeconfig (vault-agent SOFT render). sync.sh exits 0 when it's absent.
+      - /run/tenant/nrp:/run/tenant/nrp:ro
+
   # ── in-slot Postgres: `fishsense` + `superset` DBs only (temporal_db moved to krg-prod) ─
   postgres:
     image: postgres:17.10

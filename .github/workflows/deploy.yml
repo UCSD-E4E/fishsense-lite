@@ -302,12 +302,87 @@ jobs:
           printf '%s' "$NRP_KUBECONFIG" > "$RUNNER_TEMP/.kube/config"
           echo "KUBECONFIG=$RUNNER_TEMP/.kube/config" >> "$GITHUB_ENV"
 
+      - name: Preflight - Temporal client cert must be valid
+        # THE most common way this deploy fails, and the least obvious from the
+        # logs. The data-worker's krg-prod mTLS leaf lives in a Secret created
+        # out-of-band, so `kubectl apply -k` neither manages nor validates it.
+        # When it expires, pods crash 10s after start with
+        # `received fatal alert: CertificateExpired`, and the only symptom the job
+        # surfaces is `rollout status` timing out five minutes later — which is
+        # indistinguishable from a bad image, a quota denial, or NRP GC. That cost
+        # a real investigation on 2026-08-18. Fail in seconds, by name, instead.
+        #
+        # deploy/incus/nrp_cert_sync/ now forwards the rotated leaf automatically,
+        # so a failure here means that forwarder is not running or not reaching NRP.
+        run: |
+          set -euo pipefail
+          ns=e4e-fishsense
+          secret=fishsense-data-worker-temporal-certs
+          if ! kubectl -n "$ns" get secret "$secret" >/dev/null 2>&1; then
+            echo "::error::Secret $ns/$secret is missing - the data-worker cannot authenticate to krg-prod Temporal. See deploy/k8s/data-worker/README.md."
+            exit 1
+          fi
+          kubectl -n "$ns" get secret "$secret" -o jsonpath='{.data.client\.pem}' \
+            | base64 -d > "$RUNNER_TEMP/client.pem"
+          notafter=$(openssl x509 -in "$RUNNER_TEMP/client.pem" -noout -enddate | cut -d= -f2)
+          if ! openssl x509 -in "$RUNNER_TEMP/client.pem" -noout -checkend 0 >/dev/null; then
+            echo "::error::The data-worker's Temporal client cert EXPIRED on $notafter. Every pod will CrashLoopBackOff on 'CertificateExpired' and this rollout cannot converge. Re-run the slot's nrp-temporal-cert-sync service, or re-mint per deploy/k8s/data-worker/README.md."
+            exit 1
+          fi
+          # 48h: the leaf is a 7-day cert forwarded from the slot roughly every 5
+          # days, so this only fires when the forwarder has actually stopped.
+          if ! openssl x509 -in "$RUNNER_TEMP/client.pem" -noout -checkend 172800 >/dev/null; then
+            echo "::warning::The data-worker's Temporal client cert expires $notafter (< 48h). Check that nrp-temporal-cert-sync is running on the slot."
+          fi
+          echo "Temporal client cert valid until $notafter"
+          rm -f "$RUNNER_TEMP/client.pem"
+
       - name: Apply data-worker manifests (kubectl is preinstalled on ubuntu-latest)
         run: |
           kubectl version --client
+          # NRP garbage-collects Deployments older than two weeks unless the
+          # namespace holds a permanent-service exception, and ours has been
+          # collected at least once (the object was recreated 2026-08-17 while its
+          # ConfigMaps still dated to July — those are not time-GC'd). `apply`
+          # recreates it correctly, so GC is survivable; it is worth saying out
+          # loud, because a recreated Deployment starts at replicas=1 rather than
+          # whatever the api-worker had scaled it to, and because a namespace
+          # collecting repeatedly is the signal to chase the exception with NRP.
+          if kubectl get deployment/fishsense-data-processing-workflow-worker -n e4e-fishsense >/dev/null 2>&1; then
+            echo "Deployment exists - this is an in-place rollout."
+          else
+            echo "::warning::Deployment is absent and will be recreated - NRP's 2-week GC has collected it. Request a permanent-service exception for the e4e-fishsense namespace (Matrix, https://nrp.ai/contact); see deploy/k8s/data-worker/README.md."
+          fi
           kubectl apply -k deploy/k8s/data-worker
           kubectl rollout status deployment/fishsense-data-processing-workflow-worker --timeout=5m
 
+      - name: Diagnose a failed rollout
+        if: failure()
+        # `rollout status` reports only "timed out waiting for the condition",
+        # which names no cause. Everything needed to tell an expired cert from an
+        # OOMKill from an unschedulable GPU request is one API call away — collect
+        # it here so the job log is self-sufficient and nobody has to reproduce
+        # cluster access to read it.
+        run: |
+          ns=e4e-fishsense
+          echo "::group::Pods"
+          kubectl -n "$ns" get pods -o wide || true
+          echo "::endgroup::"
+          echo "::group::Container state (exit codes, restart counts)"
+          kubectl -n "$ns" get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}  waiting: {.status.containerStatuses[*].state.waiting.reason}{"\n"}  lastTerminated: {.status.containerStatuses[*].lastState.terminated.reason}{" exit="}{.status.containerStatuses[*].lastState.terminated.exitCode}{"\n"}  restarts: {.status.containerStatuses[*].restartCount}{"\n"}{end}' || true
+          echo "::endgroup::"
+          echo "::group::Recent events"
+          kubectl -n "$ns" get events --sort-by=.lastTimestamp | tail -30 || true
+          echo "::endgroup::"
+          echo "::group::Pod logs"
+          for p in $(kubectl -n "$ns" get pods -l app.kubernetes.io/name=fishsense-data-processing-workflow-worker -o name 2>/dev/null); do
+            echo "--- $p (previous container) ---"
+            kubectl -n "$ns" logs "$p" --tail=40 --previous 2>/dev/null \
+              || kubectl -n "$ns" logs "$p" --tail=40 2>/dev/null \
+              || echo "(no logs)"
+          done
+          echo "::endgroup::"
+
       - name: Clean up kubeconfig
         if: always()
-        run: rm -f "$RUNNER_TEMP/.kube/config"
+        run: rm -f "$RUNNER_TEMP/.kube/config" "$RUNNER_TEMP/client.pem"
