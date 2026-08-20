@@ -274,10 +274,16 @@ services:
   # every rotation re-runs this. It also runs on each converge — a no-op when the
   # leaf is unchanged (sync.sh compares a sha256 annotation before touching anything).
   #
-  # Not on the `interior` network: it needs egress to the NRP API server, not to the
-  # other containers. Go's crypto/x509 is also why kubectl works here at all — the
-  # api-worker's Python client can't reach the same endpoint, because OpenSSL 3.5
-  # rejects NRP's CA for carrying no Authority Key Identifier.
+  # On `interior` for its egress, same as the api-worker — which reaches this exact
+  # NRP endpoint from it today, so the path is proven. (It needs nothing FROM the
+  # other containers.) Go's crypto/x509 is why kubectl works here at all: it does
+  # not require an Authority Key Identifier and NRP's cluster CA has none, which is
+  # what a default-context Python client trips over.
+  #
+  # `./nrp_cert_sync` resolves against the compose PROJECT DIRECTORY
+  # (/var/lib/krg/fishsense), not this file's store path — workdir.nix symlinks it
+  # there. Miss that and docker silently creates an empty dir and the container
+  # exits on a missing script.
   nrp-temporal-cert-sync:
     image: alpine/kubectl:1.34.1
     restart: "no"
@@ -288,6 +294,7 @@ services:
       - /run/tenant/temporal:/run/tenant/temporal:ro
       # NRP kubeconfig (vault-agent SOFT render). sync.sh exits 0 when it's absent.
       - /run/tenant/nrp:/run/tenant/nrp:ro
+    networks: [interior]
 
   # ── in-slot Postgres: `fishsense` + `superset` DBs only (temporal_db moved to krg-prod) ─
   postgres:

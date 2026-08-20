@@ -22,6 +22,11 @@
     "L+ /var/lib/krg/fishsense/superset_volumes       - - - - ${./superset_volumes}"
     "L+ /var/lib/krg/fishsense/pg_volumes             - - - - ${./pg_volumes}"
     "L+ /var/lib/krg/fishsense/fishsense_api_volumes  - - - - ${./fishsense_api_volumes}"
+    # nrp-temporal-cert-sync's script, mounted :ro at /sync. Easy to forget and
+    # SILENT when you do: docker creates a missing bind source as an empty dir,
+    # so the container would come up with no /sync/sync.sh and exit non-zero
+    # rather than failing the converge.
+    "L+ /var/lib/krg/fishsense/nrp_cert_sync          - - - - ${./nrp_cert_sync}"
     # worker: config is read-only (symlink), logs are read-write (real dir)
     "d  /var/lib/krg/fishsense/worker_volumes                       0755 root root -"
     "d  /var/lib/krg/fishsense/worker_volumes/api_worker            0755 root root -"
