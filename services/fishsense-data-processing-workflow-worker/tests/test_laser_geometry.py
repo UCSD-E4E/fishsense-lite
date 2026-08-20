@@ -15,7 +15,7 @@ produced before the extraction.
 
 from __future__ import annotations
 
-import math
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -27,22 +27,26 @@ from fishsense_data_processing_workflow_worker.laser_geometry import (
 )
 
 
-class _Label:
-    """Minimal stand-in for the SDK label models — these functions only ever
-    read coordinates off them."""
+def _stub(**attrs) -> SimpleNamespace:
+    """Minimal stand-in for the SDK label / intrinsics / extrinsics models —
+    these functions only ever read a few attributes off whatever they are
+    handed.
 
-    def __init__(self, **kwargs):
-        self.__dict__.update(kwargs)
+    `SimpleNamespace` rather than a class assigning `self.__dict__`: the
+    latter reads identically at runtime but is opaque to static analysis, so
+    every attribute access became a pylint `no-member`.
+    """
+    return SimpleNamespace(**attrs)
 
 
 def _intrinsics(fx=2000.0, fy=2000.0, cx=1000.0, cy=750.0):
-    return _Label(
+    return _stub(
         camera_matrix=np.array([[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]])
     )
 
 
 def _extrinsics(position=(0.104, 0.0, 0.0), axis=(0.0, 0.0, 1.0)):
-    return _Label(laser_position=np.array(position), laser_axis=np.array(axis))
+    return _stub(laser_position=np.array(position), laser_axis=np.array(axis))
 
 
 def test_depth_is_the_z_component_of_the_projected_laser_point():
@@ -50,7 +54,7 @@ def test_depth_is_the_z_component_of_the_projected_laser_point():
     against the kernel directly so the extraction cannot quietly substitute
     the slant distance, which is a different — and larger — number."""
     intrinsics, extrinsics = _intrinsics(), _extrinsics()
-    laser_label = _Label(x=1200.0, y=800.0)
+    laser_label = _stub(x=1200.0, y=800.0)
 
     handler = WorldPointHandler(np.linalg.inv(intrinsics.camera_matrix))
     expected = handler.compute_world_point_from_laser(
@@ -66,7 +70,7 @@ def test_depth_is_the_z_component_of_the_projected_laser_point():
 
 def test_range_is_the_euclidean_distance_to_the_dot():
     intrinsics, extrinsics = _intrinsics(), _extrinsics()
-    laser_label = _Label(x=1200.0, y=800.0)
+    laser_label = _stub(x=1200.0, y=800.0)
 
     handler = WorldPointHandler(np.linalg.inv(intrinsics.camera_matrix))
     expected = handler.compute_world_point_from_laser(
@@ -84,7 +88,7 @@ def test_range_exceeds_depth_for_an_off_axis_dot():
     """The two are only equal on the optical axis. A caller that treats them
     as interchangeable is wrong by the off-axis angle, and silently so."""
     intrinsics, extrinsics = _intrinsics(), _extrinsics()
-    point = compute_laser_point(_Label(x=1600.0, y=1200.0), extrinsics, intrinsics)
+    point = compute_laser_point(_stub(x=1600.0, y=1200.0), extrinsics, intrinsics)
 
     assert point.range_m > point.depth_m
 
@@ -96,7 +100,7 @@ def test_range_and_depth_agree_with_the_pixels_off_axis_angle():
     ratio rather than either number checks the two are consistent without
     re-deriving the triangulation."""
     intrinsics, extrinsics = _intrinsics(), _extrinsics()
-    laser_label = _Label(x=1600.0, y=1200.0)
+    laser_label = _stub(x=1600.0, y=1200.0)
 
     direction = np.linalg.inv(intrinsics.camera_matrix) @ np.array(
         [laser_label.x, laser_label.y, 1.0]
@@ -120,12 +124,12 @@ def test_a_non_unit_laser_axis_does_not_change_the_answer():
     """
     intrinsics = _intrinsics()
     unit = compute_laser_point(
-        _Label(x=1200.0, y=800.0), _extrinsics(axis=(0.0, 0.0, 1.0)), intrinsics
+        _stub(x=1200.0, y=800.0), _extrinsics(axis=(0.0, 0.0, 1.0)), intrinsics
     )
 
     for scale in (2.0, 0.5, 17.3):
         scaled = compute_laser_point(
-            _Label(x=1200.0, y=800.0),
+            _stub(x=1200.0, y=800.0),
             _extrinsics(axis=(0.0, 0.0, scale)),
             intrinsics,
         )
@@ -144,7 +148,7 @@ def test_a_zero_length_axis_raises():
     """
     with pytest.raises(ValueError, match="laser_axis"):
         compute_laser_point(
-            _Label(x=1200.0, y=800.0),
+            _stub(x=1200.0, y=800.0),
             _extrinsics(axis=(0.0, 0.0, 0.0)),
             _intrinsics(),
         )
@@ -159,7 +163,7 @@ def test_residual_is_near_zero_for_a_consistent_dot():
     axis = np.asarray(extrinsics.laser_axis, dtype=float)
     truth = origin + 1.5 * axis / np.linalg.norm(axis)
     projected = intrinsics.camera_matrix @ truth
-    label = _Label(x=projected[0] / projected[2], y=projected[1] / projected[2])
+    label = _stub(x=projected[0] / projected[2], y=projected[1] / projected[2])
 
     point = compute_laser_point(label, extrinsics, intrinsics)
 
@@ -181,7 +185,7 @@ def test_residual_grows_when_the_dot_cannot_be_on_the_laser():
 
     # The laser is offset in x, so its epipolar line runs horizontally here;
     # displace in y to move across it.
-    off = compute_laser_point(_Label(x=x, y=y + 150.0), extrinsics, intrinsics)
+    off = compute_laser_point(_stub(x=x, y=y + 150.0), extrinsics, intrinsics)
 
     assert off.residual_m > 1e-3
 
@@ -205,8 +209,8 @@ def test_residual_is_blind_along_the_epipolar_line():
 
     # The laser is offset purely in +x with an axis parallel to the optical
     # axis, so its epipolar line here is the horizontal y = const.
-    along = compute_laser_point(_Label(x=x - 100.0, y=y), extrinsics, intrinsics)
-    across = compute_laser_point(_Label(x=x, y=y + 100.0), extrinsics, intrinsics)
+    along = compute_laser_point(_stub(x=x - 100.0, y=y), extrinsics, intrinsics)
+    across = compute_laser_point(_stub(x=x, y=y + 100.0), extrinsics, intrinsics)
 
     # Same 100 px of error, three orders of magnitude apart in what the
     # residual reports — and the direction it cannot see is the one that
@@ -219,8 +223,8 @@ def test_length_at_depth_matches_the_pre_extraction_composition():
     """Byte-for-byte the sequence stage 14 ran inline: project the laser for a
     depth, back-project head and tail at that depth, take the norm."""
     intrinsics, extrinsics = _intrinsics(), _extrinsics()
-    laser_label = _Label(x=1200.0, y=800.0)
-    headtail_label = _Label(head_x=900.0, head_y=700.0, tail_x=1400.0, tail_y=760.0)
+    laser_label = _stub(x=1200.0, y=800.0)
+    headtail_label = _stub(head_x=900.0, head_y=700.0, tail_x=1400.0, tail_y=760.0)
 
     k_inv = np.linalg.inv(intrinsics.camera_matrix)
     handler = WorldPointHandler(k_inv)
@@ -262,14 +266,14 @@ def test_geometry_with_no_intersection_yields_a_non_positive_depth():
     intrinsics = _intrinsics()
 
     parallel = compute_laser_point(
-        _Label(x=1200.0, y=800.0), _extrinsics(axis=(1.0, 0.0, 0.0)), intrinsics
+        _stub(x=1200.0, y=800.0), _extrinsics(axis=(1.0, 0.0, 0.0)), intrinsics
     )
     assert parallel.depth_m <= 0.0
     assert np.isfinite(parallel.depth_m), "not NaN — an isfinite guard misses it"
 
     # Laser offset along +x, so a real dot always lands right of the principal
     # point. A label to the left of it inverts the solve.
-    wrong_side = compute_laser_point(_Label(x=800.0, y=700.0), _extrinsics(), intrinsics)
+    wrong_side = compute_laser_point(_stub(x=800.0, y=700.0), _extrinsics(), intrinsics)
     assert wrong_side.depth_m < 0.0
     assert np.isfinite(wrong_side.depth_m)
 
@@ -280,7 +284,7 @@ def test_a_length_survives_a_negative_depth_unchanged():
     tail together and leaves their separation identical. An impossible
     geometry produces a perfectly ordinary-looking measurement."""
     intrinsics = _intrinsics()
-    headtail_label = _Label(head_x=900.0, head_y=700.0, tail_x=1400.0, tail_y=760.0)
+    headtail_label = _stub(head_x=900.0, head_y=700.0, tail_x=1400.0, tail_y=760.0)
 
     positive = measure_length_at_depth(headtail_label, 1.5, intrinsics)
     negative = measure_length_at_depth(headtail_label, -1.5, intrinsics)

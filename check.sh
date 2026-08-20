@@ -66,8 +66,16 @@ run_lint() {
     # Compare working tree (committed + staged + unstaged) to $base, not
     # HEAD, so a local pre-commit run lints uncommitted edits. CI is
     # unaffected because there the working tree equals HEAD.
+    #
+    # `git diff` lists only *tracked* changes, so a brand-new file that has
+    # never been `git add`ed was silently skipped — exactly the file most
+    # likely to carry a lint error, and it would then fail in CI on the first
+    # push. `ls-files --others --exclude-standard` adds the untracked,
+    # non-ignored ones. `sort -u` because a staged-but-new file appears in
+    # both lists.
     local changed_py
-    changed_py="$(git diff --name-only --diff-filter=ACMR "$base" -- '*.py')"
+    changed_py="$( { git diff --name-only --diff-filter=ACMR "$base" -- '*.py';
+                     git ls-files --others --exclude-standard -- '*.py'; } | sort -u)"
     if [ -z "$changed_py" ]; then
         echo "no Python changes since origin/main; skipping pylint"
     else

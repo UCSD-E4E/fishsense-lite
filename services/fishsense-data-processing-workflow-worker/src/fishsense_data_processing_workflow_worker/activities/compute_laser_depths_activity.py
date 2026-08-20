@@ -33,7 +33,10 @@ from dataclasses import dataclass
 from fishsense_api_sdk.models.laser_depth import LaserDepth
 from temporalio import activity
 
-from fishsense_data_processing_workflow_worker.activities.utils import get_fs_client
+from fishsense_data_processing_workflow_worker.activities.utils import (
+    get_fs_client,
+    load_dive_calibration_context,
+)
 from fishsense_data_processing_workflow_worker.laser_geometry import compute_laser_point
 
 __all__ = ["ComputeLaserDepthsResult", "compute_laser_depths_activity"]
@@ -83,24 +86,9 @@ async def compute_laser_depths_activity(dive_id: int) -> ComputeLaserDepthsResul
     failure mode that leaves a dive in the cohort forever.
     """
     async with get_fs_client() as fs:
-        dive = await fs.dives.get(dive_id=dive_id)
-        if dive is None:
-            raise ValueError(f"dive_id={dive_id} not found")
-        if dive.camera_id is None:
-            raise ValueError(f"dive_id={dive_id} has no camera_id")
-
-        camera_intrinsics = await fs.cameras.get_intrinsics(dive.camera_id)
-        if camera_intrinsics is None:
-            raise ValueError(f"camera_id={dive.camera_id} has no intrinsics")
-
-        # Resolves own-then-borrowed via `Dive.calibration_dive_id`, so a
-        # fish-only dive gets its sibling's rig calibration transparently.
-        laser_extrinsics = await fs.dives.get_laser_extrinsics(dive_id)
-        if laser_extrinsics is None:
-            raise ValueError(
-                f"dive_id={dive_id} has no laser_extrinsics; "
-                "run perform_laser_calibration_activity first"
-            )
+        context = await load_dive_calibration_context(fs, dive_id)
+        camera_intrinsics = context.camera_intrinsics
+        laser_extrinsics = context.laser_extrinsics
 
         laser_labels = await fs.labels.get_laser_labels(dive_id) or []
         # One dive-scoped read rather than a lookup per image — same shape

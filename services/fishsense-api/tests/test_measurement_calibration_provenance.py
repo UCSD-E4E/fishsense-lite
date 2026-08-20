@@ -24,7 +24,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from fishsense_shared import taxonomy
+from tests_support.stage14_fixtures import (
+    fish_model_measurable_image as _measurable_image,
+    measurement,
+)
 
 
 @pytest.fixture
@@ -65,59 +68,9 @@ def _extrinsics(extrinsics_id: int, dive_id: int):
     )
 
 
-def _measurable_image(session, image_id: int, dive_id: int):
-    """A frame stage 14 would attempt: a fish-model top-three species label
-    plus valid laser and head/tail labels. Models need no LABEL_STUDIO
-    cluster, which keeps the fixture to the parts this test is about."""
-    from fishsense_api.models.head_tail_label import HeadTailLabel  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
-
-    session.add(
-        Image(
-            id=image_id,
-            path=f"/dev/null/img-{image_id}",
-            taken_datetime=datetime(2025, 1, 1, tzinfo=timezone.utc),
-            checksum=f"{image_id:032d}",
-            is_canonical=True,
-            dive_id=dive_id,
-        )
-    )
-    session.add(
-        LaserLabel(image_id=image_id, completed=True, superseded=False, x=1.0, y=2.0)
-    )
-    session.add(
-        HeadTailLabel(
-            image_id=image_id,
-            completed=True,
-            superseded=False,
-            head_x=1.0,
-            head_y=2.0,
-            tail_x=3.0,
-            tail_y=4.0,
-        )
-    )
-    session.add(
-        SpeciesLabel(
-            image_id=image_id,
-            top_three_photos_of_group=True,
-            completed=True,
-            superseded=False,
-            label_studio_project_id=70,
-            content_of_image=f"{taxonomy.FISH_MODEL_PREFIX} Grouper",
-        )
-    )
-
-
 def _measurement(image_id: int, *, laser_extrinsics_id=None, fish_id: int = 100):
-    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
-
-    return Measurement(
-        image_id=image_id,
-        fish_id=fish_id,
-        length_m=0.36,
-        laser_extrinsics_id=laser_extrinsics_id,
+    return measurement(
+        image_id, fish_id=fish_id, laser_extrinsics_id=laser_extrinsics_id
     )
 
 
