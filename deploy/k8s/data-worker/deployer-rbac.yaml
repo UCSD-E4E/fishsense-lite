@@ -2,11 +2,15 @@
 #
 # This is OPERATOR bootstrap, applied out-of-band with an interactive
 # (kubelogin/OIDC) kubeconfig — NOT part of `kustomization.yaml`. It is
-# deliberately excluded because the ServiceAccount it defines can only
-# touch deployments/scale/configmaps (see the Role below); it cannot
-# create serviceaccounts, roles, or secrets, so CI (which authenticates
-# AS this SA) could never apply this file. Chicken-and-egg: a human with
-# cluster-admin applies this once, then everything else is non-interactive.
+# deliberately excluded because the ServiceAccount it defines cannot
+# create serviceaccounts or roles (see the Role below), so CI (which
+# authenticates AS this SA) could never apply this file. Chicken-and-egg:
+# a human with cluster-admin applies this once, then everything else is
+# non-interactive.
+#
+# RE-APPLY THIS when the Role below changes — it is the one file here that
+# `kubectl apply -k` does NOT pick up, so a rule added in git is inert until
+# an operator runs the command below by hand.
 #
 #   kubectl apply -f deploy/k8s/data-worker/deployer-rbac.yaml
 #
@@ -32,7 +36,10 @@ metadata:
 #    succeeds but `rollout status` fails "cannot watch resource deployments".
 #  - api-worker scaling: get/patch on deployments/scale (ensure_data_worker_
 #    running_activity scales up; ScaleDownIdleDataWorkerWorkflow to 0).
-# No secrets, no serviceaccounts, no cluster-scoped verbs — least privilege.
+#  - the slot's nrp-temporal-cert-sync (deploy/incus/nrp_cert_sync/): upserts
+#    the Temporal client cert Secret. See the secrets rules for why they are
+#    split in two.
+# No serviceaccounts, no roles, no cluster-scoped verbs — least privilege.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -48,6 +55,26 @@ rules:
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "list", "create", "update", "patch"]
+  # Secrets are split across two rules on purpose, and the split is the whole
+  # point: this identity must be able to WRITE the Temporal leaf without being
+  # able to READ `fishsense-data-worker-secrets`, which holds the fishsense-api
+  # password and the Garage S3 key/secret.
+  #
+  # RBAC cannot scope `create` by name (there is no object to name yet), so it
+  # stays unrestricted — that permits creating some new Secret, but still never
+  # reading an existing one.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
+  # Everything that can read or overwrite an EXISTING Secret is pinned to the
+  # one name the forwarder owns. `kubectl apply` needs get (to diff) + patch;
+  # `kubectl annotate` needs get + patch; update covers the replace path.
+  # No `list` — list cannot be name-scoped, so granting it would hand over
+  # every Secret in the namespace and undo the split above.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["fishsense-data-worker-temporal-certs"]
+    verbs: ["get", "patch", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
