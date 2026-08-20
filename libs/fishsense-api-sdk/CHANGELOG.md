@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.46.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.45.1...fishsense-api-sdk-v1.46.0) (2026-08-20)
+
+
+### Features
+
+* **laser-depth:** store per-image laser distance and calibration provenance ([#577](https://github.com/UCSD-E4E/fishsense-lite/issues/577)) ([84606f2](https://github.com/UCSD-E4E/fishsense-lite/commit/84606f2bcb641e2b9f1c85e7f0c47fb239327690))
+
 ## [1.45.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.45.0...fishsense-api-sdk-v1.45.1) (2026-08-17)
 
 
