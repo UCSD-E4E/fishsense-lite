@@ -154,6 +154,49 @@ def _relax_x509_strict_verification(api_client, configuration) -> None:
         pool_kw.pop(key, None)
 
 
+def deployment_is_wedged(api, namespace: str, name: str) -> bool:
+    """True iff the Deployment wants pods but has no Ready one.
+
+    This is the escape hatch on the sweeper's "is the queue busy?" check, and
+    it exists because those two signals can disagree in exactly one direction
+    that matters. A data-worker that cannot start — expired Temporal cert, bad
+    image tag, unschedulable GPU request, exhausted quota — never drains its
+    task queue, so every dispatched child sits ``Running`` until it times out
+    and the queue never *looks* idle. The sweeper then declines to scale down,
+    the Deployment stays pinned at ``active_replicas``, and it holds NRP GPUs
+    around the clock while getting no work done. Prod sat exactly there from
+    2026-08-14 (see the Temporal-cert notes in CLAUDE.md): the failure
+    suppressed the very cleanup that would have bounded its cost.
+
+    "Busy" is only a reason to keep pods alive when the pods can make progress.
+
+    Deliberately shallow — ``spec.replicas`` versus ``status.readyReplicas``,
+    both from the one Deployment read the deploy identity is already allowed
+    (``deployments: get``; it has no ``pods`` access). Richer signals were
+    measured against the live wedge and rejected:
+
+    * ``Progressing`` read ``True``/``NewReplicaSetAvailable`` throughout — the
+      ReplicaSet *had* progressed, back when a pod first came up.
+    * ``Available``'s ``lastTransitionTime`` is useless as a "wedged since"
+      clock. The pod has no readinessProbe, so each crash cycle flips it Ready
+      then not-Ready and the timestamp resets every few seconds.
+
+    Nothing here is time-based, which leaves one false positive: a sweep that
+    lands inside a genuine cold start (image pull) sees no Ready pod and scales
+    down. That costs an hour, not correctness — the next parent with real work
+    scales it straight back up, and per-image activities are idempotent by
+    design, so the children it interrupts simply re-run.
+    """
+    deployment = api.read_namespaced_deployment(name=name, namespace=namespace)
+    desired = (deployment.spec.replicas if deployment.spec else None) or 0
+    status = deployment.status
+    # k8s OMITS readyReplicas rather than sending 0, so this is None in exactly
+    # the wedged case. Reading None as "unknown, assume healthy" is what would
+    # keep the GPUs pinned.
+    ready = (status.ready_replicas if status else None) or 0
+    return desired > 0 and ready == 0
+
+
 def set_deployment_replicas(api, namespace: str, name: str, replicas: int) -> None:
     """Set a Deployment's replica count via the scale subresource.
 

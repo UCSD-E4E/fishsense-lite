@@ -29,6 +29,7 @@ from temporalio.client import Client
 
 from fishsense_api_workflow_worker.activities.k8s_scaling import (
     apps_v1_api,
+    deployment_is_wedged,
     resolve_scaling_config,
     set_deployment_replicas,
 )
@@ -83,21 +84,49 @@ async def scale_down_data_worker_if_idle_activity() -> bool:
         )
         return False
 
-    if await _data_worker_task_queue_busy(config.idle_cooldown_minutes):
+    busy = await _data_worker_task_queue_busy(config.idle_cooldown_minutes)
+
+    def _sweep() -> str:
+        """Return the outcome: ``idle``, ``wedged`` or ``busy``.
+
+        One thread hop and one k8s client for the whole decision — the wedge
+        check and the scale call share both.
+        """
+        api = apps_v1_api(config.kubeconfig_path)
+        if busy and not deployment_is_wedged(
+            api, config.namespace, config.deployment_name
+        ):
+            return "busy"
+        outcome = "wedged" if busy else "idle"
+        set_deployment_replicas(api, config.namespace, config.deployment_name, 0)
+        return outcome
+
+    outcome = await asyncio.to_thread(_sweep)
+
+    if outcome == "busy":
         activity.logger.info(
-            "data-worker task queue still busy or within %d-minute cooldown; "
-            "leaving %s/%s replicas as-is",
+            "data-worker task queue still busy or within %d-minute cooldown "
+            "and the worker is healthy; leaving %s/%s replicas as-is",
             config.idle_cooldown_minutes,
             config.namespace,
             config.deployment_name,
         )
         return False
 
-    def _scale_to_zero() -> None:
-        api = apps_v1_api(config.kubeconfig_path)
-        set_deployment_replicas(api, config.namespace, config.deployment_name, 0)
+    if outcome == "wedged":
+        # WARNING, not info: reclaiming the pods bounds the cost but fixes
+        # nothing. Something is stopping the data-worker from starting, and the
+        # queue backlog this leaves behind is real work that is not happening.
+        activity.logger.warning(
+            "data-worker %s/%s has no Ready pod but its task queue is busy - "
+            "it cannot drain and was holding replicas for nothing; scaled to 0. "
+            "Check pod status (CrashLoopBackOff? expired Temporal cert? "
+            "unschedulable?) - the next parent with work will scale it back up.",
+            config.namespace,
+            config.deployment_name,
+        )
+        return True
 
-    await asyncio.to_thread(_scale_to_zero)
     activity.logger.info(
         "data-worker task queue idle; scaled %s/%s to 0",
         config.namespace,

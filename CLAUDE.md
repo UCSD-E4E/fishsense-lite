@@ -767,6 +767,47 @@ from `deploy/temporal_volumes/certs` — the same `TLSConfig` is built
 from `settings.temporal.{client_cert,client_private_key,server_root_ca_cert,domain}`
 across every service that talks to Temporal.
 
+## Temporal mTLS rotation — two consumers, two mechanisms
+
+The krg-prod leaf is a **7-day** cert, and re-rendering it is only half a
+fix: a process builds its TLS config once at `Client.connect` and holds
+the old leaf for its whole life. Both halves have to be arranged, and the
+two consumers are arranged differently.
+
+* **In the slot** — vault-agent renders
+  `/run/tenant/temporal/{tls.crt,tls.key,ca.crt}` and re-renders before
+  expiry (`krg.vaultAgent.renewal`, krg-infra #534). `temporal.reload` in
+  the root `flake.nix` names the compose services to restart on rotation;
+  the hook is `docker compose ... restart <svc>...`. **Add a service there
+  when it gains a `/run/tenant/temporal` mount** — that mount is the tell.
+  `fishsense-api` is the pending one (the ingest controller,
+  `docs/plans/dive-image-ingestion.md` §2.7).
+* **On NRP** — the data-worker holds the *same* identity
+  (`CN=fishsense-worker`; krg issues `common_name=<tenant>-worker`) in the
+  k8s Secret `fishsense-data-worker-temporal-certs`. vault-agent cannot
+  reach the cluster, so the slot forwards it:
+  `deploy/incus/nrp_cert_sync/` is a one-shot compose service, also listed
+  in `temporal.reload`, that upserts the Secret and `rollout restart`s the
+  Deployment. It short-circuits on an unchanged leaf via a
+  `fishsense.e4e.ucsd.edu/leaf-sha256` annotation, so running it on every
+  converge costs nothing.
+
+**This is the shape of the 2026-08-14 outage.** The NRP copy was minted by
+hand at `ttl=720h` and renewed by nobody. It expired, every data-worker pod
+crash-looped on `received fatal alert: CertificateExpired`, and the
+consequence surfaced four days later as a v2.15.2 `kubectl rollout status`
+timeout with no stated cause — read at first as NRP having killed the
+deploy. NRP *had* separately GC'd the Deployment (2-week rule; `apply`
+recreates it), which made the misattribution easy. Two guards now exist so
+this can't be silent again: `deploy.yml` preflights the leaf's expiry and
+fails by name in seconds, and dumps pod state, events and previous-container
+logs on any rollout failure.
+
+Corollary: **`kubectl rollout status` timing out is not a diagnosis.** It
+reports "timed out waiting for the condition" for an expired cert, an
+OOMKill, an unschedulable GPU request and a quota denial alike. Read the
+`Diagnose a failed rollout` group in the job log before forming a theory.
+
 ## Worker config validation gotcha
 
 Dynaconf eagerly validates **every** `Validator` on first attribute
@@ -1111,6 +1152,45 @@ devcontainer, pre-NRP). `active_replicas` is clamped to `[1, 4]`; >1
 is a deliberate operator choice (giant single dive, or active-window
 resilience on a preemption-prone cluster), never automatic. See
 `deploy/k8s/data-worker/README.md`.
+
+**The sweeper also reclaims a *wedged* worker, not just an idle one.**
+"Queue is busy" and "worker is doing work" are the same thing only while
+the worker can actually start. A data-worker that can't — expired
+Temporal cert, bad image tag, unschedulable GPU request, exhausted
+quota — never drains its queue, so every dispatched child sits `Running`
+until it times out, the queue never *looks* idle, and the Deployment
+stays pinned at `active_replicas` holding NRP GPUs around the clock
+while accomplishing nothing. **The failure suppresses the cleanup that
+would have bounded its cost.** Prod sat exactly there from 2026-08-14
+(expired Temporal leaf → CrashLoopBackOff → replicas stuck at 2). So
+`scale_down_data_worker_if_idle_activity` scales to 0 when the queue is
+busy but `k8s_scaling.deployment_is_wedged` reports the Deployment wants
+pods and has none Ready, and logs a WARNING — reclaiming the pods bounds
+the waste but fixes nothing, and the backlog left behind is real work
+that isn't happening.
+
+The wedge check is deliberately shallow — `spec.replicas` vs
+`status.readyReplicas` from one Deployment read, which is all the deploy
+identity is allowed (`deployments: get`; it has no `pods` access).
+Richer signals were measured against the live wedge and rejected:
+`Progressing` read `True`/`NewReplicaSetAvailable` throughout (the
+ReplicaSet *had* progressed, months earlier), and `Available`'s
+`lastTransitionTime` is useless as a "wedged since" clock because the
+pod has no readinessProbe, so every crash cycle flips it Ready then
+not-Ready and resets the timestamp. Note `readyReplicas` is **absent**
+rather than 0 when nothing is Ready — reading `None` as "unknown, assume
+healthy" is exactly what kept the GPUs pinned.
+
+Being time-free leaves one false positive: a sweep landing inside a
+genuine cold start scales down a worker that was about to be ready. That
+costs an hour, not correctness — the next parent with work scales it
+back up, and per-image activities are idempotent, so interrupted
+children re-run.
+
+**`ensure_data_worker_running_activity` never refuses to scale up**, even
+into a known wedge. That is what makes recovery automatic once the
+underlying fault is fixed; the cost is a Deployment that oscillates 0↔N
+while broken, which is a far louder signal than silently holding GPUs.
 
 NRP GCs Deployments older than 2 weeks unless the namespace is on its
 exceptions list — the bootstrap requests a permanent-service
