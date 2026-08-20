@@ -37,6 +37,7 @@ _DIVE_SELECTING_PARENT_SCHEDULE_IDS = (
     "preprocess-slate-images-workflow-schedule",
     "perform-laser-calibration-workflow-schedule",
     "measure-fish-workflow-schedule",
+    "compute-laser-depths-workflow-schedule",
 )
 
 
@@ -72,6 +73,23 @@ async def test_measure_fish_is_scheduled_hourly_at_40(registered):
 
     assert _every(schedule) == timedelta(hours=1)
     assert _offset(schedule) == timedelta(minutes=40)
+
+
+async def test_laser_depth_is_scheduled_hourly_at_35(registered):
+    """Slot +35 — vacated when the slate detector was shut down, and the only
+    gap left between the headtail parent (+30) and stage 14 (+40)."""
+    schedule = registered["compute-laser-depths-workflow-schedule"]
+
+    assert _every(schedule) == timedelta(hours=1)
+    assert _offset(schedule) == timedelta(minutes=35)
+
+
+async def test_laser_depth_skips_when_still_in_flight(registered):
+    """SKIP overlap, like every dive-selecting parent: two runs racing past
+    the same selector would both claim the same dive."""
+    schedule = registered["compute-laser-depths-workflow-schedule"]
+
+    assert schedule.policy.overlap == ScheduleOverlapPolicy.SKIP
 
 
 async def test_laser_predict_is_scheduled_hourly_at_10(registered):

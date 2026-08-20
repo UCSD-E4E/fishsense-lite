@@ -185,6 +185,22 @@ class LabelStudioSyncCursor(BaseModel):
     last_synced_at: AwareDatetime | None = Field(None, title='Last Synced At')
 
 
+class LaserDepth(BaseModel):
+    """
+    The distance to an image's laser dot, in metres. One row per image —
+    a recompute upserts on the natural key.
+    """
+
+    id: int | None = Field(None, title='Id')
+    depth_m: float = Field(..., title='Depth M')
+    range_m: float | None = Field(None, title='Range M')
+    residual_m: float | None = Field(None, title='Residual M')
+    created_at: AwareDatetime | None = Field(None, title='Created At')
+    image_id: int | None = Field(None, title='Image Id')
+    laser_label_id: int | None = Field(None, title='Laser Label Id')
+    laser_extrinsics_id: int | None = Field(None, title='Laser Extrinsics Id')
+
+
 class LaserExtrinsics(BaseModel):
     """
     Laser extrinsics model representing laser calibration data in the database.
@@ -250,6 +266,7 @@ class Measurement(BaseModel):
     length_m: float | None = Field(None, title='Length M')
     image_id: int | None = Field(None, title='Image Id')
     fish_id: int | None = Field(None, title='Fish Id')
+    laser_extrinsics_id: int | None = Field(None, title='Laser Extrinsics Id')
 
 
 class Priority(Enum):

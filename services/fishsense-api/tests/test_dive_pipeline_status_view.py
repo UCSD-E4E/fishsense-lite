@@ -936,95 +936,13 @@ async def test_calibrated_false_when_linked_source_has_no_extrinsics(session):
 # a LABEL_STUDIO cluster.
 
 
-MEASURABLE_CONTENT = "Fish, Hogfish (Lachnolaimus maximus)"
-
-
-def _measurable_image(
-    session,
-    image_id: int,
-    dive_id: int,
-    *,
-    cluster_id: int,
-    content_of_image: str | None = MEASURABLE_CONTENT,
-):
-    """Seed an image that stage 14 would attempt: top-three species label
-    + valid laser + valid headtail + a LABEL_STUDIO cluster.
-
-    `content_of_image` defaults to a real `Fish` row because stage 14 also
-    needs a `Common (Scientific)` name to measure against — a row without
-    one is skipped by the activity, so leaving it NULL here would have
-    built an image the pipeline can never actually measure.
-    """
-    from fishsense_api.models.dive_frame_cluster import (  # pylint: disable=import-outside-toplevel
-        DiveFrameCluster,
-        DiveFrameClusterImageMapping,
-    )
-    from fishsense_api.models.head_tail_label import HeadTailLabel  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
-
-    session.add(_image(image_id, dive_id))
-    session.add(
-        DiveFrameCluster(id=cluster_id, dive_id=dive_id, data_source="LABEL_STUDIO")
-    )
-    session.add(
-        LaserLabel(image_id=image_id, completed=True, superseded=False, x=1.0, y=2.0)
-    )
-    session.add(
-        HeadTailLabel(
-            image_id=image_id, completed=True, superseded=False,
-            head_x=1.0, head_y=2.0, tail_x=3.0, tail_y=4.0,
-        )
-    )
-    session.add(
-        SpeciesLabel(
-            image_id=image_id, top_three_photos_of_group=True,
-            completed=True, superseded=False, label_studio_project_id=70,
-            content_of_image=content_of_image,
-        )
-    )
-    return DiveFrameClusterImageMapping(
-        dive_frame_cluster_id=cluster_id, image_id=image_id
-    )
-
-
-def _measurement(image_id: int, fish_id: int = 100):
-    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
-
-    return Measurement(image_id=image_id, fish_id=fish_id, length_m=0.3)
-
-
-def _fish_model_measurable_image(
-    session,
-    image_id: int,
-    dive_id: int,
-    content_of_image: str = "Fish Model, Grouper",
-):
-    """Seed a fish-model image the way prod has it: top-three species label
-    (`Fish Model, <name>`) + valid laser + valid headtail, but **no**
-    LABEL_STUDIO cluster (models carry no grouping labels). Stage 14 measures
-    these by waiving the cluster gate, so `measured` must too."""
-    from fishsense_api.models.head_tail_label import HeadTailLabel  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
-
-    session.add(_image(image_id, dive_id))
-    session.add(
-        LaserLabel(image_id=image_id, completed=True, superseded=False, x=1.0, y=2.0)
-    )
-    session.add(
-        HeadTailLabel(
-            image_id=image_id, completed=True, superseded=False,
-            head_x=1.0, head_y=2.0, tail_x=3.0, tail_y=4.0,
-        )
-    )
-    session.add(
-        SpeciesLabel(
-            image_id=image_id, top_three_photos_of_group=True,
-            completed=True, superseded=False, label_studio_project_id=70,
-            content_of_image=content_of_image,
-        )
-    )
+# Shared with the other stage-14 predicate test — see `stage14_fixtures`.
+from tests_support.stage14_fixtures import (  # noqa: E402  pylint: disable=wrong-import-position
+    calibration as _calibration,
+    fish_model_measurable_image as _fish_model_measurable_image,
+    measurable_image as _measurable_image,
+    measurement as _measurement,
+)
 
 
 async def test_measured_counts_a_ruler_image_like_a_fish_model(session):
@@ -1042,7 +960,7 @@ async def test_measured_counts_a_ruler_image_like_a_fish_model(session):
 
     assert (await _row(session, 1))["measured"] is False
 
-    session.add(_measurement(11))
+    session.add_all([_calibration(1), _measurement(11)])
     await session.flush()
     assert (await _row(session, 1))["measured"] is True
 
@@ -1070,7 +988,7 @@ async def test_measured_true_for_fish_model_image_without_a_cluster(session):
     await session.flush()
     _fish_model_measurable_image(session, 11, 1)
     await session.flush()
-    session.add(_measurement(11))
+    session.add_all([_calibration(1), _measurement(11)])
     await session.flush()
 
     assert (await _row(session, 1))["measured"] is True
@@ -1093,7 +1011,7 @@ async def test_measured_true_when_every_measurable_image_has_a_measurement(sessi
     mapping = _measurable_image(session, 11, 1, cluster_id=1)
     await session.flush()
     session.add(mapping)
-    session.add(_measurement(11))
+    session.add_all([_calibration(1), _measurement(11)])
     await session.flush()
 
     assert (await _row(session, 1))["measured"] is True
@@ -1106,7 +1024,7 @@ async def test_measured_false_when_a_measurable_image_is_unmeasured(session):
     m2 = _measurable_image(session, 12, 1, cluster_id=2)
     await session.flush()
     session.add_all([m1, m2])
-    session.add(_measurement(11))  # 12 left unmeasured
+    session.add_all([_calibration(1), _measurement(11)])  # 12 left unmeasured
     await session.flush()
 
     assert (await _row(session, 1))["measured"] is False
@@ -1139,10 +1057,57 @@ async def test_measured_ignores_unbound_clusters_with_no_measurable_image(sessio
     mapping = _measurable_image(session, 11, 1, cluster_id=1)
     await session.flush()
     session.add(mapping)
-    session.add(_measurement(11))
+    session.add_all([_calibration(1), _measurement(11)])
     # Unbound cluster carrying no measurable image — stage 14 can never
     # touch it, so it must not hold the dive back.
     session.add(DiveFrameCluster(id=99, dive_id=1, data_source="LABEL_STUDIO", fish_id=None))
+    await session.flush()
+
+    assert (await _row(session, 1))["measured"] is True
+
+
+async def test_measured_false_when_the_calibration_was_replaced(session):
+    """The 2026-08-11 panel-offset fix recalibrated dives that already had
+    measurements. Their lengths were computed from the old extrinsics and are
+    wrong, but `measured` read true and the stage-14 cohort skipped them —
+    the dive looked finished while carrying stale numbers. It now reads
+    false, which is both honest and what re-queues the dive."""
+    session.add(_dive(1))
+    await session.flush()
+    mapping = _measurable_image(session, 11, 1, cluster_id=1)
+    await session.flush()
+    session.add(mapping)
+    # Measured under extrinsics 50; the dive resolves to 51 today.
+    session.add_all([_calibration(1, 51), _measurement(11, laser_extrinsics_id=50)])
+    await session.flush()
+
+    assert (await _row(session, 1))["measured"] is False
+
+
+async def test_measured_false_for_measurements_predating_provenance(session):
+    """Every measurement in prod carries NULL here until stage 14 revisits
+    it. They read unmeasured exactly once, which is the backfill."""
+    session.add(_dive(1))
+    await session.flush()
+    mapping = _measurable_image(session, 11, 1, cluster_id=1)
+    await session.flush()
+    session.add(mapping)
+    session.add_all([_calibration(1), _measurement(11, laser_extrinsics_id=None)])
+    await session.flush()
+
+    assert (await _row(session, 1))["measured"] is False
+
+
+async def test_measured_true_through_a_borrowed_calibration(session):
+    """A fish-only dive is measured with its sibling's extrinsics row, so
+    that is the id its measurements carry — resolution here mirrors
+    `get_laser_extrinsics_for_dive`, own-then-link."""
+    session.add_all([_dive(1, calibration_dive_id=2), _dive(2)])
+    await session.flush()
+    mapping = _measurable_image(session, 11, 1, cluster_id=1)
+    await session.flush()
+    session.add(mapping)
+    session.add_all([_calibration(2, 51), _measurement(11, laser_extrinsics_id=51)])
     await session.flush()
 
     assert (await _row(session, 1))["measured"] is True
@@ -1157,7 +1122,7 @@ async def test_measured_ignores_non_top_three_images(session):
     mapping = _measurable_image(session, 11, 1, cluster_id=1)
     await session.flush()
     session.add(mapping)
-    session.add(_measurement(11))
+    session.add_all([_calibration(1), _measurement(11)])
     # A second image that is NOT top-three and has no measurement.
     session.add(_image(12, 1))
     await session.flush()
@@ -1192,7 +1157,7 @@ async def test_measured_ignores_species_rows_without_a_scientific_name(session):
     )
     await session.flush()
     session.add_all([real, rig])
-    session.add(_measurement(11))
+    session.add_all([_calibration(1), _measurement(11)])
     await session.flush()
 
     assert (await _row(session, 1))["measured"] is True, (

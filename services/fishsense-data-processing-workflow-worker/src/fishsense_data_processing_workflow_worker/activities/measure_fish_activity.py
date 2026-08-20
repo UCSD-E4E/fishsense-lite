@@ -37,15 +37,25 @@ from fishsense_api_sdk.models.laser_label import LaserLabel
 from fishsense_api_sdk.models.measurement import Measurement
 from fishsense_api_sdk.models.species import Species
 from fishsense_api_sdk.models.species_label import SpeciesLabel
-from fishsense_core.world_point import WorldPointHandler
 from fishsense_shared import taxonomy
 from temporalio import activity
 
-from fishsense_data_processing_workflow_worker.activities.utils import get_fs_client
+from fishsense_data_processing_workflow_worker.activities.utils import (
+    get_fs_client,
+    load_dive_calibration_context,
+)
+from fishsense_data_processing_workflow_worker.laser_geometry import (
+    compute_laser_point,
+    measure_length_at_depth,
+)
 
 
 @dataclass
 class MeasureFishResult:
+    # pylint: disable=too-many-instance-attributes
+    #   A counter bag, not a domain object: each field is one independent
+    #   reason an image did or didn't get measured, and collapsing any of them
+    #   together is what made debugging harder before they were split out.
     """Per-dive measurement summary.
 
     Surfaces what the notebook silently dropped: NaN-length results
@@ -69,6 +79,14 @@ class MeasureFishResult:
     # the row bound to the old model's Fish, and `post_measurement` upserts on
     # (image_id, fish_id) so re-measuring would ADD a row rather than replace.
     invalidated_stale_binding: int = 0
+    # Images that already had a measurement, but one computed against a
+    # calibration the dive no longer resolves to (or, for every row written
+    # before `Measurement.laser_extrinsics_id` existed, against an unrecorded
+    # one). Recomputed rather than skipped — the length is a function of the
+    # extrinsics behind its depth, so replacing the calibration invalidates
+    # it. Counted separately from `measured` because a run that is entirely
+    # re-measures is the backfill draining, not new work arriving.
+    remeasured_stale_calibration: int = 0
 
 
 __all__ = ["MeasureFishResult", "measure_fish_activity"]
@@ -149,26 +167,17 @@ def _measure_length(
     camera_intrinsics: CameraIntrinsics,
 ) -> float:
     """Triangulate fish length in meters from a single (laser, headtail)
-    observation. Returns NaN when the geometry is degenerate (handler
-    surfaces this rather than raising)."""
-    k_inv = np.linalg.inv(camera_intrinsics.camera_matrix)
-    handler = WorldPointHandler(k_inv)
+    observation. Returns NaN when the geometry is degenerate (the handler
+    surfaces this rather than raising).
 
-    laser2d = np.array([laser_label.x, laser_label.y])
-    laser3d = handler.compute_world_point_from_laser(
-        laser_extrinsics.laser_position,
-        laser_extrinsics.laser_axis,
-        laser2d,
-    )
-    depth = float(laser3d[2])
-
-    head3d = handler.compute_world_point_from_depth(
-        np.array([headtail_label.head_x, headtail_label.head_y]), depth
-    )
-    tail3d = handler.compute_world_point_from_depth(
-        np.array([headtail_label.tail_x, headtail_label.tail_y]), depth
-    )
-    return float(np.linalg.norm(head3d - tail3d))
+    The projection itself lives in `laser_geometry`, shared with
+    `compute_laser_depths_activity` — the depth this derives on the way to a
+    length is the same number that stage records per image, and two
+    transcriptions of a kernel whose sign convention already needed a
+    synthetic-geometry investigation is one too many.
+    """
+    point = compute_laser_point(laser_label, laser_extrinsics, camera_intrinsics)
+    return measure_length_at_depth(headtail_label, point.depth_m, camera_intrinsics)
 
 
 def _index_clusters_by_image(
@@ -239,27 +248,13 @@ async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
     (run stage 13 first).
     """
     async with get_fs_client() as fs:
-        dive = await fs.dives.get(dive_id=dive_id)
-        if dive is None:
-            raise ValueError(f"dive_id={dive_id} not found")
-        if dive.camera_id is None:
-            raise ValueError(f"dive_id={dive_id} has no camera_id")
-
-        camera_intrinsics = await fs.cameras.get_intrinsics(dive.camera_id)
-        if camera_intrinsics is None:
-            raise ValueError(f"camera_id={dive.camera_id} has no intrinsics")
-
-        laser_extrinsics = await fs.dives.get_laser_extrinsics(dive_id)
-        if laser_extrinsics is None:
-            raise ValueError(
-                f"dive_id={dive_id} has no laser_extrinsics; "
-                "run perform_laser_calibration_activity first"
-            )
+        context = await load_dive_calibration_context(fs, dive_id)
+        camera_intrinsics = context.camera_intrinsics
+        laser_extrinsics = context.laser_extrinsics
 
         species_labels = await fs.labels.get_species_labels(dive_id) or []
         clusters = (
-            await fs.images.get_clusters(dive_id, DataSource.LABEL_STUDIO.value)
-            or []
+            await fs.images.get_clusters(dive_id, DataSource.LABEL_STUDIO.value) or []
         )
         cluster_by_image = _index_clusters_by_image(clusters)
         top_three = _filter_top_three(species_labels)
@@ -294,7 +289,9 @@ async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
                     "dive_id=%d image_id=%d: content_of_image=%r is neither a "
                     "'Common (Scientific)' name nor a 'Fish Model,' row; not "
                     "measurable, skipping",
-                    dive_id, image_id, species_label.content_of_image,
+                    dive_id,
+                    image_id,
+                    species_label.content_of_image,
                 )
                 result.skipped_unmeasurable_species += 1
                 continue
@@ -308,16 +305,17 @@ async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
                 # upserts on (image_id, fish_id), so a corrected binding would
                 # be ADDED alongside and the image counted twice.
                 expected = await _ensure_model_fish(fs, model_name, model_fish_cache)
-                stale = [
-                    m for m in existing_measurements if m.fish_id != expected.id
-                ]
+                stale = [m for m in existing_measurements if m.fish_id != expected.id]
                 for measurement in stale:
                     activity.logger.info(
                         "dive_id=%d image_id=%d: measurement bound to fish_id=%s "
                         "but the label now says %r (fish_id=%s); invalidating "
                         "the stale binding",
-                        dive_id, image_id, measurement.fish_id,
-                        model_name, expected.id,
+                        dive_id,
+                        image_id,
+                        measurement.fish_id,
+                        model_name,
+                        expected.id,
                     )
                     await fs.fish.delete_measurement(measurement.fish_id, image_id)
                     result.invalidated_stale_binding += 1
@@ -325,13 +323,36 @@ async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
                     m for m in existing_measurements if m.fish_id == expected.id
                 ]
 
-            if existing_measurements:
+            # "Already measured" has to mean "already measured with the
+            # calibration this dive resolves to now". A recalibration (the
+            # 2026-08-11 panel-offset fix hit 6 of 8 measured dives) changes
+            # the depth behind every length, and the unqualified skip left
+            # those wrong lengths standing indefinitely. Re-measuring is safe
+            # and cheap: `post_measurement` upserts on (image_id, fish_id),
+            # so the stale row is replaced in place.
+            measured_with_current_calibration = [
+                m
+                for m in existing_measurements
+                if m.laser_extrinsics_id == laser_extrinsics.id
+            ]
+            if measured_with_current_calibration:
                 activity.logger.info(
                     "dive_id=%d image_id=%d: already measured; skipping",
-                    dive_id, image_id,
+                    dive_id,
+                    image_id,
                 )
                 result.skipped_already_measured += 1
                 continue
+            if existing_measurements:
+                activity.logger.info(
+                    "dive_id=%d image_id=%d: measured against laser_extrinsics_id=%s "
+                    "but the dive now resolves to %s; re-measuring",
+                    dive_id,
+                    image_id,
+                    [m.laser_extrinsics_id for m in existing_measurements],
+                    laser_extrinsics.id,
+                )
+                result.remeasured_stale_calibration += 1
 
             # Real fish anchor identity to their LABEL_STUDIO cluster, so a
             # missing cluster is a hard skip. Models are keyed by name and use
@@ -341,7 +362,8 @@ async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
             if names is not None and cluster is None:
                 activity.logger.warning(
                     "dive_id=%d image_id=%d: no LABEL_STUDIO cluster; skipping",
-                    dive_id, image_id,
+                    dive_id,
+                    image_id,
                 )
                 result.missing_cluster += 1
                 continue
@@ -351,7 +373,8 @@ async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
             if not _has_complete_keypoints(laser_label, headtail_label):
                 activity.logger.warning(
                     "dive_id=%d image_id=%d: missing laser/headtail; skipping",
-                    dive_id, image_id,
+                    dive_id,
+                    image_id,
                 )
                 result.missing_laser_or_headtail += 1
                 continue
@@ -370,7 +393,10 @@ async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
                 activity.logger.warning(
                     "dive_id=%d image_id=%d fish_id=%s: non-finite length=%s; "
                     "skipping",
-                    dive_id, image_id, fish.id, length_m,
+                    dive_id,
+                    image_id,
+                    fish.id,
+                    length_m,
                 )
                 result.dropped_nan += 1
                 continue
@@ -382,13 +408,16 @@ async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
                     fish_id=fish.id,
                     image_id=image_id,
                     length_m=length_m,
+                    # Which calibration this length came from. Without it the
+                    # skip above cannot tell a current measurement from one
+                    # computed against extrinsics that have since been
+                    # replaced.
+                    laser_extrinsics_id=laser_extrinsics.id,
                 ),
             )
             result.measured += 1
 
             activity.heartbeat()
 
-        activity.logger.info(
-            "dive_id=%d measure complete: %s", dive_id, result
-        )
+        activity.logger.info("dive_id=%d measure complete: %s", dive_id, result)
         return result

@@ -18,6 +18,9 @@ from temporalio.worker import Worker
 from fishsense_data_processing_workflow_worker.activities.cluster_dive_frames import (
     cluster_dive_frames,
 )
+from fishsense_data_processing_workflow_worker.activities.compute_laser_depths_activity import (  # noqa: E501  pylint: disable=line-too-long
+    compute_laser_depths_activity,
+)
 from fishsense_data_processing_workflow_worker.activities.measure_fish_activity import (
     measure_fish_activity,
 )
@@ -48,6 +51,9 @@ from fishsense_data_processing_workflow_worker.activities.validate_laser_labels_
 from fishsense_data_processing_workflow_worker.config import configure_logging, settings
 from fishsense_data_processing_workflow_worker.workflows.dive_frame_clustering_workflow import (
     DiveFrameClusteringWorkflow,
+)
+from fishsense_data_processing_workflow_worker.workflows.compute_laser_depths_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    ComputeLaserDepthsWorkflow,
 )
 from fishsense_data_processing_workflow_worker.workflows.measure_fish_workflow import (
     MeasureFishWorkflow,
@@ -129,6 +135,7 @@ def build_worker(
         task_queue=TASK_QUEUE_NAME,
         max_concurrent_activities=max_concurrent_activities,
         workflows=[
+            ComputeLaserDepthsWorkflow,
             DiveFrameClusteringWorkflow,
             MeasureFishWorkflow,
             PerformLaserCalibrationWorkflow,
@@ -143,6 +150,7 @@ def build_worker(
         activity_executor=activity_executor,
         activities=[
             cluster_dive_frames,
+            compute_laser_depths_activity,
             measure_fish_activity,
             perform_laser_calibration_activity,
             predict_laser_image,

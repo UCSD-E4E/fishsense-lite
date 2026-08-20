@@ -120,6 +120,7 @@ DB (negligible). To add or remove, override
 | 12  | sync_slate_label | api-worker | ported (hourly) |
 | 13  | perform_laser_calibration | api-worker (parent) + data-worker (child) | ported (hourly, +50min offset) |
 | 14  | measure_fish | api-worker (parent) + data-worker (child) | ported (hourly, +40min offset; idempotent as of 2026-07-17) |
+| —   | (new, no notebook) laser depth per image | api-worker (parent) + data-worker (child) | added 2026-08-18 (hourly, +35min offset) |
 
 Create and populate are split into separate workflows per stage. LS
 projects are now **per-dive**: each dive gets its own LS project
@@ -330,12 +331,14 @@ one replica):
 * Per-image activities are idempotent: S3 PutObject overwrites,
   SDK upserts.
 
-Applied to stages 0.1, 1, 2, 5.1, 9, 13, 14 — each parent runs hourly.
-Schedule slots: 0.1 at +0, 1 at +5, 2 at +15, species-populate at +20
-(the decoupled `PopulateSpeciesLabelStudioProjectParentWorkflow`, just
-after the +15 species-preprocess writes JPEGs), 5.1 at +30, 14 at +40,
-9 at +45, 13 at +50 min — staggered so their selectors don't all hit
-`dives.get()` at the top of the hour. The scale-to-zero sweeper takes
+Applied to stages 0.1, 1, 2, 5.1, 9, 13, 14 and laser-depth — each
+parent runs hourly. Schedule slots: 0.1 at +0, 1 at +5, 2 at +15,
+species-populate at +20 (the decoupled
+`PopulateSpeciesLabelStudioProjectParentWorkflow`, just after the +15
+species-preprocess writes JPEGs), 5.1 at +30, laser-depth at +35 (the
+slot the retired slate detector vacated), 14 at +40, 9 at +45, 13 at
++50 min — staggered so their selectors don't all hit `dives.get()` at
+the top of the hour. The scale-to-zero sweeper takes
 +55. `test_schedule_registration.py` pins the stagger (the four
 label-studio sync schedules deliberately share +0 — they select no
 dives). Per-stage cohort:
@@ -348,7 +351,8 @@ dives). Per-stage cohort:
 | 5.1 | HIGH-priority + at least one image with a *valid* `LaserLabel` whose image carries no non-sentinel `HeadTailLabel` row |
 | 9   | HIGH-priority + `dive_slate_id` set + at least one `SpeciesLabel.content_of_image='Slate, Laser on slate'` whose image carries no `DiveSlateLabel` row at all |
 | 13  | HIGH-priority + `dive_slate_id` set + no `LaserExtrinsics` + ≥2 completed `DiveSlateLabel` rows (matches the data-worker activity's `MIN_LASER_POINTS=2` precondition) |
-| 14  | HIGH-priority + has `LaserExtrinsics` (own **or borrowed** via `Dive.calibration_dive_id`) + at least one *measurable* image with no `Measurement` (same predicate as the view's `measured`; keep the two in step) |
+| 14  | HIGH-priority + has `LaserExtrinsics` (own **or borrowed** via `Dive.calibration_dive_id`) + at least one *measurable* image with no `Measurement` **naming the currently-resolved extrinsics** (same predicate as the view's `measured`; keep the two in step) |
+| depth | HIGH-priority + resolvable `LaserExtrinsics` + at least one canonical image whose valid `LaserLabel` has no `LaserDepth` row naming *that label and that calibration* |
 
 Stages 1, 2, and 5.1 all cascade from the same "valid laser" gate.
 Stage 1 lands PREDICTION clusters that stage 2 then consumes; stage
@@ -592,6 +596,96 @@ temporal workflow start \
 
 Each invocation drains exactly one dive — call it repeatedly to clear
 a backlog.
+
+## Laser depth (`LaserDepth`) + calibration provenance
+
+**Added 2026-08-18.** The distance to an image's laser dot is now stored per
+image, and every `Measurement` records which calibration produced it.
+
+Stage 14 had always derived the depth on its way to a length —
+`compute_world_point_from_laser(...)`, then `laser3d[2]` — and discarded it, so
+the number existed only for the measurable frames stage 14 visits and was never
+queryable. It is now its own stage:
+
+* `LaserDepth` (one row per image, `uq_laser_depth_image`) carries `depth_m`
+  (the Z component, what stage 14 back-projects head/tail against) **and**
+  `range_m` (the Euclidean norm, the true slant distance). They are equal only
+  on the optical axis; carrying both stops a consumer conflating them.
+* `GET|PUT /api/v1/images/{image_id}/laser-depth/` +
+  `GET /api/v1/dives/{dive_id}/laser-depths/` (SDK:
+  `images.get_laser_depth` / `put_laser_depth` / `get_laser_depths`).
+* `compute_laser_depths_activity` (data-worker) →
+  `ComputeLaserDepthsWorkflow` → `ComputeLaserDepthsParentWorkflow`
+  (api-worker, hourly +35). Structurally the lightest parent in the tree,
+  like stages 13/14: no NAS, no object store, no fan-out.
+
+**Provenance is the load-bearing idea, not decoration.** Both `LaserDepth`
+(`laser_label_id` + `laser_extrinsics_id`) and `Measurement`
+(`laser_extrinsics_id`) name the inputs they were derived from, and both
+cohorts select on *mismatch* rather than on absence. That is what makes a
+recompute an ordinary drainable cohort instead of a hand-run backfill: the
+2026-08-11 slate panel-offset recalibration silently invalidated the lengths of
+6 of the 8 dives that had measurements, and the old "has a Measurement" skip
+kept them out of the cohort forever. Rows predating the columns carry NULL,
+read as stale exactly once, and drain at the hourly cadence.
+
+`dive_pipeline_status.measured` mirrors the stage-14 change: it now means
+"measured **under the current calibration**". Expect it to read false for every
+pre-2026-08-18 dive until stage 14 revisits it — that is the honest reading,
+and it self-clears.
+
+**The projection kernel is shared, not copied.** `laser_geometry.py`
+(data-worker) holds `compute_laser_point` + `measure_length_at_depth`; both
+`measure_fish_activity` and `compute_laser_depths_activity` call it. It lives
+on the data-worker because `fishsense_core.world_point.WorldPointHandler` does,
+and no other service depends on fishsense-core — which is also why the API only
+stores and serves the number rather than computing it.
+
+**Requires fishsense-core >= 3.0.0.** The 2.4.1 kernel silently assumed
+‖laser_axis‖ = 1 (a non-unit axis returned garbage — doubling a unit axis
+flipped the depth negative) and answered a zero axis with an ordinary-looking
+~1 cm depth. Both were reported upstream and fixed in 3.0.0, which also added
+the residual below. 3.0.0 carries one breaking change — a homogeneous
+`[x, y, w]` image point is now rejected rather than truncated — which touches
+nothing here: every call site passes `[x, y]`. Accuracy is unchanged between
+the two versions (measured: p99 relative depth error 1.34e-4 at 2.4.1 vs
+1.38e-4 at 3.0.0, over 3098 random geometries at a realistic ≥8 cm baseline).
+
+**The triangulation has no failure mode — that is the thing to know about it.**
+`compute_world_point_from_laser` returns the least-squares closest point
+between the camera ray and the laser ray, and that always exists. So for a
+pixel no real dot could have produced it answers just as confidently, with a
+point at or behind the camera: a laser ray through the camera centre parallel
+to the image plane gives the origin, and a dot on the wrong side of the
+principal point for the laser's offset gives a negative Z. Those are the
+*correct* answers to the question the kernel was asked — not defects, and not
+sentinels. Nothing about them is flagged in the returned point: no NaN, no
+exception, and a residual of 0 for the camera-centre case. So
+`isfinite` guards nothing, and a length computed at a negative depth is
+numerically identical to its positive twin (the back-projection is linear in
+depth, so head and tail move together). `compute_laser_depths_activity` gates
+on `depth_m > 0` and counts the rest as `skipped_invalid_geometry`. **Stage 14
+still guards only on `isfinite`**, so it will happily measure a fish from an
+impossible depth; the depth stage's counter is currently the only place that
+population is visible.
+
+**`LaserDepth.residual_m` is how well the dot and the calibration agreed** —
+the closest-approach distance between the two rays, ~0 when the dot really is
+on the laser. It is **recorded, not gated on**, and the reasons are specific:
+it is blind to error *along* the laser's epipolar line (a dot slid along it
+moves the depth a long way with the residual pinned at the noise floor), two
+rays meeting at the camera centre report 0 at zero or negative depth, it is
+metric so one threshold is stricter close up than far away, and the float32
+solve puts its noise floor near 1e-5 m at metre scale. A threshold should come
+from the distribution this stage is the first thing to produce.
+
+The axis-magnitude and zero-axis guards live in fishsense-core now, not here:
+`compute_laser_point` passes the stored axis straight through, and a
+directionless one raises `ValueError` — deliberately not caught, because the
+axis belongs to the dive's calibration, so it makes every image in that dive
+unprocessable. `test_laser_geometry.py` pins all of this, the epipolar
+blindness included, so nobody later promotes the residual into a gate on its
+own.
 
 ## Data-worker activity pattern
 

@@ -152,3 +152,93 @@ class TestImageClientPost:
         assert mock_post.call_args.kwargs["json"] == ["a" * 32, "b" * 32]
         assert result["b" * 32] == []
         assert result["a" * 32][0]["dive_id"] == 64
+
+
+class TestImageClientLaserDepth:
+    """`images.get_laser_depth` / `put_laser_depth` / `get_laser_depths`.
+
+    The distance to an image's laser dot. Written by the data-worker (the
+    projection kernel lives in `fishsense-core`, which only that service
+    depends on) and read by anything that wants range without re-deriving it.
+    """
+
+    async def test_get_laser_depth_returns_none_on_404(self):
+        """No depth yet is a normal pipeline state for an image, so callers
+        get None rather than an exception to catch."""
+        client = _make_client()
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = _mock_404()
+            async with client:
+                assert await client.get_laser_depth(11) is None
+
+    async def test_get_laser_depth_parses_the_row(self):
+        from fishsense_api_sdk.models.laser_depth import (  # pylint: disable=import-outside-toplevel
+            LaserDepth,
+        )
+
+        client = _make_client()
+        response = Mock()
+        response.status_code = 200
+        response.raise_for_status = Mock()
+        response.json = Mock(
+            return_value={
+                "id": 3,
+                "depth_m": 2.14,
+                "range_m": 2.19,
+                "image_id": 11,
+                "laser_label_id": 5,
+                "laser_extrinsics_id": 7,
+            }
+        )
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = response
+            async with client:
+                depth = await client.get_laser_depth(11)
+
+        assert mock_get.call_args.args[0] == "/api/v1/images/11/laser-depth/"
+        assert isinstance(depth, LaserDepth)
+        assert (depth.depth_m, depth.range_m) == (2.14, 2.19)
+        assert (depth.laser_label_id, depth.laser_extrinsics_id) == (5, 7)
+
+    async def test_put_laser_depth_targets_the_image_route(self):
+        from fishsense_api_sdk.models.laser_depth import (  # pylint: disable=import-outside-toplevel
+            LaserDepth,
+        )
+
+        client = _make_client()
+        response = Mock()
+        response.status_code = 201
+        response.raise_for_status = Mock()
+        response.json = Mock(return_value=3)
+        with patch.object(client, "_put", new_callable=AsyncMock) as mock_put:
+            mock_put.return_value = response
+            async with client:
+                depth_id = await client.put_laser_depth(
+                    11,
+                    LaserDepth(
+                        depth_m=2.14,
+                        range_m=2.19,
+                        laser_label_id=5,
+                        laser_extrinsics_id=7,
+                    ),
+                )
+
+        assert depth_id == 3
+        assert mock_put.call_args.args[0] == "/api/v1/images/11/laser-depth/"
+        assert mock_put.call_args.kwargs["json"]["depth_m"] == 2.14
+
+    async def test_get_laser_depths_returns_empty_list_when_dive_has_none(self):
+        """Dive-scoped read, unlike the per-image one, treats "none" as an
+        empty collection — the compute activity iterates it to see what it has
+        already done, and an absent dive is not an error there."""
+        client = _make_client()
+        response = Mock()
+        response.status_code = 200
+        response.raise_for_status = Mock()
+        response.json = Mock(return_value=[])
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = response
+            async with client:
+                assert await client.get_laser_depths(7) == []
+
+        assert mock_get.call_args.args[0] == "/api/v1/dives/7/laser-depths/"

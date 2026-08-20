@@ -25,3 +25,16 @@ class Measurement(SQLModel, table=True):
 
     image_id: int | None = Field(default=None, foreign_key="image.id")
     fish_id: int | None = Field(default=None, foreign_key="fish.id")
+    # Which calibration produced this length. A length is only meaningful
+    # relative to the extrinsics behind its depth, and extrinsics do get
+    # replaced (the 2026-08-11 slate panel-offset fix recalibrated 6 of the 8
+    # dives that already had measurements). Recording it is what lets stage
+    # 14 ask "is this still current?" instead of choosing between rewriting
+    # every row on every run and never revisiting a stale one; the cohort
+    # selector re-picks a dive exactly when this disagrees with the
+    # extrinsics that would be resolved today. NULL on every row written
+    # before this column existed, which reads as stale — deliberately, since
+    # those lengths predate at least one recalibration.
+    laser_extrinsics_id: int | None = Field(
+        default=None, foreign_key="laserextrinsics.id"
+    )

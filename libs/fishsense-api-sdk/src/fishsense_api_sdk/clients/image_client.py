@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 from fishsense_api_sdk.clients.client_base import ClientBase
 from fishsense_api_sdk.models.dive_frame_cluster import DiveFrameCluster
 from fishsense_api_sdk.models.image import Image
+from fishsense_api_sdk.models.laser_depth import LaserDepth
 
 
 class ImageClient(ClientBase):
@@ -202,3 +203,55 @@ class ImageClient(ClientBase):
         )
         response.raise_for_status()
         return response.json()
+
+    async def get_laser_depth(self, image_id: int) -> LaserDepth | None:
+        """Get the distance to an image's laser dot.
+
+        Args:
+            image_id (int): The image to retrieve the depth for.
+
+        Returns:
+            LaserDepth | None: The depth, or None when none has been computed
+                for this image yet.
+        """
+        response = await self._get(f"/api/v1/images/{image_id}/laser-depth/")
+        if response.status_code == 404:
+            self.logger.debug("No laser depth found for image ID %s", image_id)
+            return None
+        response.raise_for_status()
+        return LaserDepth.model_validate(response.json())
+
+    async def put_laser_depth(self, image_id: int, depth: LaserDepth) -> int:
+        """Upsert the distance to an image's laser dot.
+
+        Args:
+            image_id (int): The image the depth belongs to.
+            depth (LaserDepth): The computed depth, carrying the laser label
+                and calibration it was derived from.
+
+        Returns:
+            int: The id of the upserted depth row.
+        """
+        response = await self._put(
+            f"/api/v1/images/{image_id}/laser-depth/",
+            json=depth.model_dump(exclude_unset=True, mode="json"),
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def get_laser_depths(self, dive_id: int) -> List[LaserDepth]:
+        """Get every laser depth recorded for a dive's images.
+
+        Empty list when the dive has none — the compute stage reads this once
+        per dive to see which images it has already done, and "none yet" is
+        the normal first-run state.
+
+        Args:
+            dive_id (int): The dive to retrieve depths for.
+
+        Returns:
+            List[LaserDepth]: The depths for the dive's images.
+        """
+        response = await self._get(f"/api/v1/dives/{dive_id}/laser-depths/")
+        response.raise_for_status()
+        return [LaserDepth.model_validate(row) for row in (response.json() or [])]

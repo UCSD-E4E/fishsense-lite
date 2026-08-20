@@ -1,3 +1,4 @@
+# pylint: disable=too-many-lines
 """Unit tests for measure_fish_activity (stage 14).
 
 Synthetic-geometry happy path posts a Measurement whose length matches
@@ -139,6 +140,13 @@ def _cluster(
     )
 
 
+# The calibration `_laser_extrinsics()` carries. Existing measurements in
+# these fixtures name it, because the "already measured" skip is now
+# conditional on the row having been computed with the calibration the dive
+# resolves to now — a row that names no calibration reads as stale.
+CURRENT_CALIBRATION_ID = 11
+
+
 def _laser_extrinsics() -> LaserExtrinsics:
     # Off-axis laser: origin offset in -x, axis tilted slightly in -y.
     return LaserExtrinsics(
@@ -146,7 +154,7 @@ def _laser_extrinsics() -> LaserExtrinsics:
         laser_axis=np.array([0.0, -0.02, 1.0]) / np.linalg.norm(np.array([0.0, -0.02, 1.0])),
         dive_id=42,
         camera_id=1,
-        id=11,
+        id=CURRENT_CALIBRATION_ID,
     )
 
 
@@ -444,7 +452,10 @@ async def test_skips_images_that_are_already_measured(monkeypatch):
         headtail_labels={image_id: _headtail_label(image_id, head_pix, tail_pix)},
         clusters=[_cluster([image_id], fish_id=None)],
         existing_measurements=[
-            Measurement(id=1, length_m=0.30, image_id=image_id, fish_id=700)
+            Measurement(
+                id=1, length_m=0.30, image_id=image_id, fish_id=700,
+                laser_extrinsics_id=CURRENT_CALIBRATION_ID,
+            )
         ],
     )
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
@@ -481,7 +492,10 @@ async def test_measures_only_the_unmeasured_images(monkeypatch):
         },
         clusters=[_cluster([img_done]), _cluster([img_todo], fish_id=None)],
         existing_measurements=[
-            Measurement(id=1, length_m=0.30, image_id=img_done, fish_id=700)
+            Measurement(
+                id=1, length_m=0.30, image_id=img_done, fish_id=700,
+                laser_extrinsics_id=CURRENT_CALIBRATION_ID,
+            )
         ],
     )
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
@@ -795,7 +809,10 @@ async def test_stale_model_binding_is_invalidated_and_remeasured(monkeypatch):
         clusters=[],
         model_fish_lookup={"Snook": snook, "Grouper": grouper},
         existing_measurements=[
-            Measurement(id=1, length_m=0.44, image_id=image_id, fish_id=snook.id)
+            Measurement(
+                id=1, length_m=0.44, image_id=image_id, fish_id=snook.id,
+                laser_extrinsics_id=CURRENT_CALIBRATION_ID,
+            )
         ],
     )
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
@@ -827,7 +844,10 @@ async def test_correct_model_binding_is_left_alone(monkeypatch):
         clusters=[],
         model_fish_lookup={"Grouper": grouper},
         existing_measurements=[
-            Measurement(id=1, length_m=0.36, image_id=image_id, fish_id=grouper.id)
+            Measurement(
+                id=1, length_m=0.36, image_id=image_id, fish_id=grouper.id,
+                laser_extrinsics_id=CURRENT_CALIBRATION_ID,
+            )
         ],
     )
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
@@ -857,7 +877,10 @@ async def test_real_fish_bindings_are_never_invalidated(monkeypatch):
         headtail_labels={image_id: _headtail_label(image_id, head_pix, tail_pix)},
         clusters=[_cluster([image_id], fish_id=wild.id)],
         existing_measurements=[
-            Measurement(id=1, length_m=0.30, image_id=image_id, fish_id=wild.id)
+            Measurement(
+                id=1, length_m=0.30, image_id=image_id, fish_id=wild.id,
+                laser_extrinsics_id=CURRENT_CALIBRATION_ID,
+            )
         ],
     )
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
@@ -866,3 +889,150 @@ async def test_real_fish_bindings_are_never_invalidated(monkeypatch):
 
     fs.fish.delete_measurement.assert_not_awaited()
     assert result.skipped_already_measured == 1
+
+
+# ── calibration provenance ────────────────────────────────────────────
+#
+# A length is only meaningful relative to the `LaserExtrinsics` behind its
+# depth, and calibrations get replaced — the 2026-08-11 slate panel-offset fix
+# recalibrated 6 of the 8 dives that already had measurements, leaving their
+# lengths wrong while the activity went on skipping them as "already
+# measured". Stamping the calibration on the row is what lets the skip mean
+# "already measured *with this calibration*".
+
+
+@pytest.mark.asyncio
+async def test_measurement_records_the_calibration_it_was_computed_with(monkeypatch):
+    image_id = 100
+    le = _laser_extrinsics()
+    head_pix, tail_pix, laser_pix = _build_observation(
+        le, np.array([-0.10, 0.00, 1.20]), np.array([0.20, 0.00, 1.20]), 1.20
+    )
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_camera_intrinsics(),
+        laser_extrinsics=le,
+        species_labels=[_species_label(image_id)],
+        laser_labels={image_id: _laser_label(image_id, *laser_pix)},
+        headtail_labels={image_id: _headtail_label(image_id, head_pix, tail_pix)},
+        clusters=[_cluster([image_id], fish_id=None)],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(sut.measure_fish_activity, 42)
+
+    assert result.measured == 1
+    posted = fs.fish.post_measurement.call_args.args[1]
+    assert posted.laser_extrinsics_id == le.id
+
+
+@pytest.mark.asyncio
+async def test_remeasures_when_the_existing_row_used_another_calibration(monkeypatch):
+    """The recalibration case. The row exists and is bound to the right fish,
+    so the old skip fired and the wrong length stood."""
+    image_id = 100
+    le = _laser_extrinsics()
+    head_pix, tail_pix, laser_pix = _build_observation(
+        le, np.array([-0.10, 0.00, 1.20]), np.array([0.20, 0.00, 1.20]), 1.20
+    )
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_camera_intrinsics(),
+        laser_extrinsics=le,
+        species_labels=[_species_label(image_id)],
+        laser_labels={image_id: _laser_label(image_id, *laser_pix)},
+        headtail_labels={image_id: _headtail_label(image_id, head_pix, tail_pix)},
+        clusters=[_cluster([image_id], fish_id=None)],
+        existing_measurements=[
+            Measurement(
+                id=1,
+                length_m=0.30,
+                image_id=image_id,
+                fish_id=700,
+                laser_extrinsics_id=le.id + 1,
+            )
+        ],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(sut.measure_fish_activity, 42)
+
+    assert result.measured == 1
+    assert result.skipped_already_measured == 0
+    assert result.remeasured_stale_calibration == 1
+    posted = fs.fish.post_measurement.call_args.args[1]
+    assert posted.laser_extrinsics_id == le.id
+    # Upsert on (image_id, fish_id), so the stale row is replaced rather than
+    # deleted and re-added — no `delete_measurement` in this path.
+    fs.fish.delete_measurement.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_remeasures_rows_that_predate_provenance(monkeypatch):
+    """Every measurement in prod carries NULL here. They are recomputed once
+    under the current calibration, which is the length half of the backfill."""
+    image_id = 100
+    le = _laser_extrinsics()
+    head_pix, tail_pix, laser_pix = _build_observation(
+        le, np.array([-0.10, 0.00, 1.20]), np.array([0.20, 0.00, 1.20]), 1.20
+    )
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_camera_intrinsics(),
+        laser_extrinsics=le,
+        species_labels=[_species_label(image_id)],
+        laser_labels={image_id: _laser_label(image_id, *laser_pix)},
+        headtail_labels={image_id: _headtail_label(image_id, head_pix, tail_pix)},
+        clusters=[_cluster([image_id], fish_id=None)],
+        existing_measurements=[
+            Measurement(
+                id=1,
+                length_m=0.30,
+                image_id=image_id,
+                fish_id=700,
+                laser_extrinsics_id=None,
+            )
+        ],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(sut.measure_fish_activity, 42)
+
+    assert result.measured == 1
+    assert result.remeasured_stale_calibration == 1
+
+
+@pytest.mark.asyncio
+async def test_still_skips_when_the_calibration_matches(monkeypatch):
+    """The skip has to survive: without it every hourly firing would
+    re-derive every length on every already-finished dive."""
+    image_id = 100
+    le = _laser_extrinsics()
+    head_pix, tail_pix, laser_pix = _build_observation(
+        le, np.array([-0.10, 0.00, 1.20]), np.array([0.20, 0.00, 1.20]), 1.20
+    )
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_camera_intrinsics(),
+        laser_extrinsics=le,
+        species_labels=[_species_label(image_id)],
+        laser_labels={image_id: _laser_label(image_id, *laser_pix)},
+        headtail_labels={image_id: _headtail_label(image_id, head_pix, tail_pix)},
+        clusters=[_cluster([image_id], fish_id=None)],
+        existing_measurements=[
+            Measurement(
+                id=1,
+                length_m=0.30,
+                image_id=image_id,
+                fish_id=700,
+                laser_extrinsics_id=le.id,
+            )
+        ],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(sut.measure_fish_activity, 42)
+
+    fs.fish.post_measurement.assert_not_awaited()
+    assert result.skipped_already_measured == 1
+    assert result.remeasured_stale_calibration == 0

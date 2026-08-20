@@ -95,7 +95,7 @@ upload_to_vcs_release = true
 [tool.uv.sources]
 fishsense-api-sdk = { workspace = true }
 fishsense-core = [
-    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v2.4.1/fishsense_core-2.4.1-cp313-cp313-manylinux_2_34_x86_64.whl", marker = "python_version == '3.13'" },
+    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v3.0.0/fishsense_core-3.0.0-cp313-cp313-manylinux_2_34_x86_64.whl", marker = "python_version == '3.13'" },
 ]
 fishsense-shared = { workspace = true }
 
