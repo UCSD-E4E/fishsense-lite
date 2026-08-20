@@ -2,6 +2,18 @@
 
 <!-- version list -->
 
+## [1.51.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.50.1...fishsense-api-workflow-worker-v1.51.0) (2026-08-20)
+
+
+### Features
+
+* **laser-depth:** store per-image laser distance and calibration provenance ([#577](https://github.com/UCSD-E4E/fishsense-lite/issues/577)) ([84606f2](https://github.com/UCSD-E4E/fishsense-lite/commit/84606f2bcb641e2b9f1c85e7f0c47fb239327690))
+
+
+### Bug Fixes
+
+* **scaling:** forward the rotated Temporal leaf to NRP and reclaim a wedged data-worker ([#575](https://github.com/UCSD-E4E/fishsense-lite/issues/575)) ([5f1a8cf](https://github.com/UCSD-E4E/fishsense-lite/commit/5f1a8cfe3398ed082248fe26932b1d528f77e84e))
+
 ## [1.50.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.50.0...fishsense-api-workflow-worker-v1.50.1) (2026-08-18)
 
 

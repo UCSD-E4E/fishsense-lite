@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.16.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.15.2...fishsense-data-processing-workflow-worker-v2.16.0) (2026-08-20)
+
+
+### Features
+
+* **laser-depth:** store per-image laser distance and calibration provenance ([#577](https://github.com/UCSD-E4E/fishsense-lite/issues/577)) ([84606f2](https://github.com/UCSD-E4E/fishsense-lite/commit/84606f2bcb641e2b9f1c85e7f0c47fb239327690))
+
 ## [2.15.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.15.1...fishsense-data-processing-workflow-worker-v2.15.2) (2026-08-18)
 
 
