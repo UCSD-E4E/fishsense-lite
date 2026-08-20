@@ -42,6 +42,18 @@ _VALID_LASER_SQL = """ll.completed = TRUE
 # needs this — every other stage only cares that a HeadTailLabel row
 # exists — but it mirrors `_VALID_LASER_SQL` so the pair reads together.
 # Assumes the enclosing subquery aliases headtaillabel as `htl`.
+# The `LaserExtrinsics.id` a dive is actually processed with: its own row,
+# else the one borrowed through `calibration_dive_id`. Own-then-link is the
+# order `get_laser_extrinsics_for_dive` applies, and `uq_laserextrinsics_dive_id`
+# guarantees at most one row per dive, so neither branch needs a tie-break.
+# Assumes the enclosing query aliases dive as `d`.
+_RESOLVED_EXTRINSICS_SQL = """COALESCE(
+                     (SELECT le.id FROM laserextrinsics le WHERE le.dive_id = d.id),
+                     (SELECT le.id FROM laserextrinsics le
+                      WHERE le.dive_id = d.calibration_dive_id)
+                 )"""
+
+
 _VALID_HEADTAIL_SQL = """htl.completed = TRUE
                  AND htl.superseded = FALSE
                  AND htl.head_x IS NOT NULL
@@ -338,10 +350,21 @@ SELECT
     END AS calibration_source,
 
     -- Stage 14: ≥1 measurement for the dive AND no measurable image left
-    -- unmeasured. "Measurable" mirrors what measure_fish_activity
-    -- actually attempts: a top-three species label whose image carries a
-    -- valid laser label, a valid headtail label, and a LABEL_STUDIO
-    -- cluster.
+    -- unmeasured *under the current calibration*. "Measurable" mirrors what
+    -- measure_fish_activity actually attempts: a top-three species label
+    -- whose image carries a valid laser label, a valid headtail label, and a
+    -- LABEL_STUDIO cluster.
+    --
+    -- The calibration qualifier is not decoration. A length is a function of
+    -- the extrinsics behind its depth, so replacing a dive's calibration
+    -- invalidates every length computed from the old one — and that happens:
+    -- the 2026-08-11 slate panel-offset fix recalibrated 6 of the 8 dives
+    -- that already had measurements, silently leaving their lengths wrong
+    -- while this column still read true. An image counts as measured only
+    -- when its Measurement names the extrinsics row that would be resolved
+    -- today. Rows written before `measurement.laser_extrinsics_id` existed
+    -- carry NULL and so read as unmeasured until stage 14 revisits them,
+    -- which is the intended (and self-draining) backfill.
     --
     -- Rescoped 2026-07-17. The predicate used to be "≥1 LABEL_STUDIO
     -- cluster AND zero with fish_id NULL", which was unreachable: a
@@ -386,6 +409,7 @@ SELECT
            AND NOT EXISTS (
                SELECT 1 FROM measurement m
                WHERE m.image_id = i.id
+                 AND m.laser_extrinsics_id = {_RESOLVED_EXTRINSICS_SQL}
            )
      )) AS measured
 

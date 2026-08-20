@@ -839,8 +839,8 @@ dev = [
 
 [[package]]
 name = "fishsense-core"
-version = "2.4.1"
-source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v2.4.1/fishsense_core-2.4.1-cp313-cp313-manylinux_2_34_x86_64.whl" }
+version = "3.0.0"
+source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v3.0.0/fishsense_core-3.0.0-cp313-cp313-manylinux_2_34_x86_64.whl" }
 dependencies = [
     { name = "numpy" },
     { name = "opencv-python-headless" },
@@ -848,7 +848,7 @@ dependencies = [
     { name = "scikit-image" },
 ]
 wheels = [
-    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v2.4.1/fishsense_core-2.4.1-cp313-cp313-manylinux_2_34_x86_64.whl", hash = "sha256:36cb178c36ae65a52d797e5c12b1295b10f1cd5a7f79eaa189945af1672c4ade" },
+    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v3.0.0/fishsense_core-3.0.0-cp313-cp313-manylinux_2_34_x86_64.whl", hash = "sha256:3ddf3503abb3e78e1a5d43998b9bd6156a814a242d2af5784bdecba09975e799" },
 ]
 
 [package.optional-dependencies]
@@ -932,7 +932,7 @@ requires-dist = [
     { name = "dynaconf", specifier = ">=3.2.11" },
     { name = "fishsense-api-sdk", editable = "libs/fishsense-api-sdk" },
     { name = "fishsense-core", extras = ["laser-detector", "slate"], marker = "python_full_version != '3.13.*'" },
-    { name = "fishsense-core", extras = ["laser-detector", "slate"], marker = "python_full_version == '3.13.*'", url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v2.4.1/fishsense_core-2.4.1-cp313-cp313-manylinux_2_34_x86_64.whl" },
+    { name = "fishsense-core", extras = ["laser-detector", "slate"], marker = "python_full_version == '3.13.*'", url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v3.0.0/fishsense_core-3.0.0-cp313-cp313-manylinux_2_34_x86_64.whl" },
     { name = "fishsense-shared", editable = "libs/fishsense-shared" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "label-studio-sdk", specifier = ">=2.0.7" },

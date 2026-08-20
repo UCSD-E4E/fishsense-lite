@@ -43,6 +43,7 @@ from fishsense_api.models.dive_frame_cluster import (
 from fishsense_api.models.dive_slate_label import DiveSlateLabel
 from fishsense_api.models.head_tail_label import HeadTailLabel
 from fishsense_api.models.image import Image
+from fishsense_api.models.laser_depth import LaserDepth
 from fishsense_api.models.laser_extrinsics import LaserExtrinsics
 from fishsense_api.models.laser_label import LaserLabel
 from fishsense_api.models.laser_prediction import LaserPrediction
@@ -165,6 +166,28 @@ def _valid_headtail_conditions():
         HeadTailLabel.tail_x != None,
         HeadTailLabel.tail_y != None,
     )
+
+def _resolved_laser_extrinsics_id():
+    """The `LaserExtrinsics.id` a dive would actually be processed with.
+
+    Own row wins, else the one borrowed through `Dive.calibration_dive_id` —
+    the same own-then-link order `get_laser_extrinsics_for_dive` applies, so a
+    stored provenance id can be compared against what the data-worker will
+    really use. `uq_laserextrinsics_dive_id` guarantees at most one row per
+    dive, so neither branch needs a tie-break.
+    """
+    own = (
+        select(LaserExtrinsics.id)
+        .where(LaserExtrinsics.dive_id == Dive.id)
+        .scalar_subquery()
+    )
+    borrowed = (
+        select(LaserExtrinsics.id)
+        .where(LaserExtrinsics.dive_id == Dive.calibration_dive_id)
+        .scalar_subquery()
+    )
+    return func.coalesce(own, borrowed)
+
 
 # Stage-13 cohort threshold; matches the data-worker calibration
 # activity's `MIN_LASER_POINTS = 2` precondition. Selecting a dive with
@@ -743,8 +766,18 @@ async def select_next_for_measure_fish(
         .where(DiveFrameCluster.data_source == DataSource.LABEL_STUDIO)
         .exists()
     )
+    # Not merely "has a Measurement": has one computed with the calibration
+    # this dive would be measured with *today*. A length is a function of the
+    # extrinsics behind its depth, so a recalibration invalidates it, and
+    # rows written before `Measurement.laser_extrinsics_id` existed carry
+    # NULL and never match — which is how the pre-provenance backlog
+    # re-enters the cohort, gets recomputed once, and drains. Mirrored by
+    # `dive_pipeline_status.measured`.
     is_measured = (
-        select(Measurement.id).where(Measurement.image_id == Image.id).exists()
+        select(Measurement.id)
+        .where(Measurement.image_id == Image.id)
+        .where(Measurement.laser_extrinsics_id == _resolved_laser_extrinsics_id())
+        .exists()
     )
     has_unmeasured_measurable_image = (
         select(SpeciesLabel.id)
@@ -766,6 +799,58 @@ async def select_next_for_measure_fish(
         .where(Dive.priority == Priority.HIGH)
         .where(has_laser_extrinsics)
         .where(has_unmeasured_measurable_image)
+        .order_by(Dive.id)
+        .limit(1)
+    )
+    return (await session.exec(query)).first()
+
+
+@app.get("/api/v1/dives/select-next/laser-depth/")
+async def select_next_for_laser_depth(
+    session: AsyncSession = Depends(get_async_session),
+) -> int | None:
+    """Laser depth: HIGH-priority + resolvable calibration + at least one
+    canonical image whose valid laser label has no *current* `LaserDepth`.
+
+    "Current" is the point. Depth is a function of the laser label and the
+    calibration, so the stored row names both, and an image counts as needing
+    work when either differs from what would be used today — no row at all, a
+    replaced label, or a recalibration. That is what lets a recompute be an
+    ordinary drainable cohort instead of a hand-run backfill: the 2026-08-11
+    panel-offset recalibration would re-enter its dives here automatically.
+
+    Unlike stage 14 this does not require head/tail labels, clusters, or a
+    measurable species — the dot's distance is knowable for any frame whose
+    laser was validated, which is the whole reason it is stored per image
+    rather than hung off `Measurement`.
+    """
+    has_laser_extrinsics = or_(
+        select(LaserExtrinsics.id).where(LaserExtrinsics.dive_id == Dive.id).exists(),
+        select(LaserExtrinsics.id)
+        .where(LaserExtrinsics.dive_id == Dive.calibration_dive_id)
+        .exists(),
+    )
+    depth_is_current = (
+        select(LaserDepth.id)
+        .where(LaserDepth.image_id == Image.id)
+        .where(LaserDepth.laser_label_id == LaserLabel.id)
+        .where(LaserDepth.laser_extrinsics_id == _resolved_laser_extrinsics_id())
+        .exists()
+    )
+    has_image_needing_depth = (
+        select(LaserLabel.id)
+        .join(Image, Image.id == LaserLabel.image_id)
+        .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
+        .where(*_valid_laser_conditions())
+        .where(~depth_is_current)
+        .exists()
+    )
+    query = (
+        select(Dive.id)
+        .where(Dive.priority == Priority.HIGH)
+        .where(has_laser_extrinsics)
+        .where(has_image_needing_depth)
         .order_by(Dive.id)
         .limit(1)
     )

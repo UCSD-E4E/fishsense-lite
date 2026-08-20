@@ -32,6 +32,7 @@ from fishsense_api.models.fish import Fish
 from fishsense_api.models.head_tail_label import HeadTailLabel
 from fishsense_api.models.image import Image
 from fishsense_api.models.label_studio_sync_cursor import LabelStudioSyncCursor
+from fishsense_api.models.laser_depth import LaserDepth
 from fishsense_api.models.laser_extrinsics import LaserExtrinsics
 from fishsense_api.models.laser_label import LaserLabel
 from fishsense_api.models.fish_model_reference import FishModelReference

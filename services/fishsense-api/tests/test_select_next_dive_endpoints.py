@@ -1459,9 +1459,6 @@ async def test_laser_calibration_requires_min_completed_slate_labels(session):
     # dive 1: 1 completed slate label -> below threshold, excluded.
     # dive 2: 2 completed slate labels -> picked.
     # dive 3: 3 completed slate labels but already has extrinsics -> excluded.
-    from fishsense_api.models.laser_extrinsics import (  # pylint: disable=import-outside-toplevel
-        LaserExtrinsics,
-    )
 
     session.add_all(
         [
@@ -1490,7 +1487,7 @@ async def test_laser_calibration_requires_min_completed_slate_labels(session):
             DiveSlateLabel(image_id=31, completed=True),
             DiveSlateLabel(image_id=32, completed=True),
             DiveSlateLabel(image_id=33, completed=True),
-            LaserExtrinsics(dive_id=3, camera_id=1),
+            _calibration(3),
         ]
     )
     await session.flush()
@@ -1528,65 +1525,14 @@ async def test_laser_calibration_requires_dive_slate_id(session):
 # Prod dive 466 carried 1632 such clusters against 24 measurable images.
 
 
-MEASURABLE_CONTENT = "Fish, Hogfish (Lachnolaimus maximus)"
-
-
-def _measurable_image(
-    session,
-    image_id: int,
-    dive_id: int,
-    *,
-    cluster_id: int,
-    content_of_image: str | None = MEASURABLE_CONTENT,
-):
-    """An image stage 14 would attempt: top-three species label + valid
-    laser + valid headtail + a LABEL_STUDIO cluster.
-
-    `content_of_image` defaults to a real `Fish` row because stage 14 also
-    needs a `Common (Scientific)` name to measure against — a row without
-    one is skipped by the activity, so leaving it NULL here would have
-    built an image the pipeline can never actually measure.
-    """
-    from fishsense_api.models.data_source import DataSource  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.dive_frame_cluster import (  # pylint: disable=import-outside-toplevel
-        DiveFrameCluster,
-        DiveFrameClusterImageMapping,
-    )
-    from fishsense_api.models.head_tail_label import HeadTailLabel  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
-
-    session.add(_image(image_id, dive_id))
-    session.add(
-        DiveFrameCluster(
-            id=cluster_id, dive_id=dive_id, data_source=DataSource.LABEL_STUDIO
-        )
-    )
-    session.add(
-        LaserLabel(image_id=image_id, completed=True, superseded=False, x=1.0, y=2.0)
-    )
-    session.add(
-        HeadTailLabel(
-            image_id=image_id, completed=True, superseded=False,
-            head_x=1.0, head_y=2.0, tail_x=3.0, tail_y=4.0,
-        )
-    )
-    session.add(
-        SpeciesLabel(
-            image_id=image_id, top_three_photos_of_group=True,
-            completed=True, superseded=False, label_studio_project_id=70,
-            content_of_image=content_of_image,
-        )
-    )
-    return DiveFrameClusterImageMapping(
-        dive_frame_cluster_id=cluster_id, image_id=image_id
-    )
-
-
-def _measurement(image_id: int, fish_id: int = 100):
-    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
-
-    return Measurement(image_id=image_id, fish_id=fish_id, length_m=0.3)
+# Shared with the other stage-14 predicate test — see `stage14_fixtures`.
+from tests_support.stage14_fixtures import (  # noqa: E402  pylint: disable=wrong-import-position
+    CALIBRATION_ID,
+    calibration as _calibration,
+    fish_model_measurable_image as _fish_model_measurable_image,
+    measurable_image as _measurable_image,
+    measurement as _measurement,
+)
 
 
 async def test_measure_fish_requires_extrinsics_and_an_unmeasured_measurable_image(
@@ -1595,9 +1541,6 @@ async def test_measure_fish_requires_extrinsics_and_an_unmeasured_measurable_ima
     from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_measure_fish,
     )
-    from fishsense_api.models.laser_extrinsics import (  # pylint: disable=import-outside-toplevel
-        LaserExtrinsics,
-    )
 
     # dive 1: measurable image but no extrinsics -> excluded.
     # dive 2: extrinsics + measurable image already measured -> excluded.
@@ -1605,7 +1548,7 @@ async def test_measure_fish_requires_extrinsics_and_an_unmeasured_measurable_ima
     session.add_all([_dive(1), _dive(2), _dive(3)])
     await session.flush()
     session.add_all(
-        [LaserExtrinsics(dive_id=2, camera_id=1), LaserExtrinsics(dive_id=3, camera_id=1)]
+        [_calibration(2), _calibration(3, CALIBRATION_ID + 1)]
     )
     m1 = _measurable_image(session, 11, 1, cluster_id=1)
     m2 = _measurable_image(session, 21, 2, cluster_id=2)
@@ -1657,13 +1600,10 @@ async def test_measure_fish_selects_fish_model_dive_without_cluster(session):
     from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_measure_fish,
     )
-    from fishsense_api.models.laser_extrinsics import (  # pylint: disable=import-outside-toplevel
-        LaserExtrinsics,
-    )
 
     session.add(_dive(1))
     await session.flush()
-    session.add(LaserExtrinsics(dive_id=1, camera_id=1))
+    session.add(_calibration(1))
     _fish_model_measurable_image(session, 11, 1)
     await session.flush()
 
@@ -1681,13 +1621,10 @@ async def test_measure_fish_returns_none_when_everything_measurable_is_measured(
     from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_measure_fish,
     )
-    from fishsense_api.models.laser_extrinsics import (  # pylint: disable=import-outside-toplevel
-        LaserExtrinsics,
-    )
 
     session.add(_dive(1))
     await session.flush()
-    session.add(LaserExtrinsics(dive_id=1, camera_id=1))
+    session.add(_calibration(1))
     mapping = _measurable_image(session, 11, 1, cluster_id=1)
     await session.flush()
     session.add(mapping)
@@ -1707,13 +1644,10 @@ async def test_measure_fish_ignores_unbound_clusters_with_no_measurable_image(se
     from fishsense_api.models.dive_frame_cluster import (  # pylint: disable=import-outside-toplevel
         DiveFrameCluster,
     )
-    from fishsense_api.models.laser_extrinsics import (  # pylint: disable=import-outside-toplevel
-        LaserExtrinsics,
-    )
 
     session.add(_dive(1))
     await session.flush()
-    session.add(LaserExtrinsics(dive_id=1, camera_id=1))
+    session.add(_calibration(1))
     mapping = _measurable_image(session, 11, 1, cluster_id=1)
     await session.flush()
     session.add(mapping)
@@ -1734,9 +1668,6 @@ async def test_measure_fish_selects_dive_with_borrowed_calibration(session):
     from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_measure_fish,
     )
-    from fishsense_api.models.laser_extrinsics import (  # pylint: disable=import-outside-toplevel
-        LaserExtrinsics,
-    )
 
     # dive 1: the slate/calibration dive — owns extrinsics, no fish images.
     # dive 2: the fish dive — borrows dive 1's calibration, has an
@@ -1744,7 +1675,7 @@ async def test_measure_fish_selects_dive_with_borrowed_calibration(session):
     # (no extrinsics); with it, it is selected.
     session.add_all([_dive(1), _dive(2, calibration_dive_id=1)])
     await session.flush()
-    session.add(LaserExtrinsics(dive_id=1, camera_id=1))
+    session.add(_calibration(1))
     mapping = _measurable_image(session, 21, 2, cluster_id=2)
     await session.flush()
     session.add(mapping)
@@ -1915,14 +1846,11 @@ async def test_measure_fish_skips_species_rows_without_a_scientific_name(session
     from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_measure_fish,
     )
-    from fishsense_api.models.laser_extrinsics import (  # pylint: disable=import-outside-toplevel
-        LaserExtrinsics,
-    )
 
     for content in ("Slate, Laser on slate", "Calibration Targets, Slate", None):
         session.add(_dive(1))
         await session.flush()
-        session.add(LaserExtrinsics(dive_id=1, camera_id=1))
+        session.add(_calibration(1))
         mapping = _measurable_image(
             session, 11, 1, cluster_id=1, content_of_image=content
         )
@@ -1940,13 +1868,10 @@ async def test_measure_fish_still_selects_a_real_fish_row(session):
     from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
         select_next_for_measure_fish,
     )
-    from fishsense_api.models.laser_extrinsics import (  # pylint: disable=import-outside-toplevel
-        LaserExtrinsics,
-    )
 
     session.add(_dive(1))
     await session.flush()
-    session.add(LaserExtrinsics(dive_id=1, camera_id=1))
+    session.add(_calibration(1))
     mapping = _measurable_image(session, 11, 1, cluster_id=1)  # default Fish row
     await session.flush()
     session.add(mapping)

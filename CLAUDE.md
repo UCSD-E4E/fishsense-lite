@@ -120,6 +120,7 @@ DB (negligible). To add or remove, override
 | 12  | sync_slate_label | api-worker | ported (hourly) |
 | 13  | perform_laser_calibration | api-worker (parent) + data-worker (child) | ported (hourly, +50min offset) |
 | 14  | measure_fish | api-worker (parent) + data-worker (child) | ported (hourly, +40min offset; idempotent as of 2026-07-17) |
+| —   | (new, no notebook) laser depth per image | api-worker (parent) + data-worker (child) | added 2026-08-18 (hourly, +35min offset) |
 
 Create and populate are split into separate workflows per stage. LS
 projects are now **per-dive**: each dive gets its own LS project
@@ -330,12 +331,14 @@ one replica):
 * Per-image activities are idempotent: S3 PutObject overwrites,
   SDK upserts.
 
-Applied to stages 0.1, 1, 2, 5.1, 9, 13, 14 — each parent runs hourly.
-Schedule slots: 0.1 at +0, 1 at +5, 2 at +15, species-populate at +20
-(the decoupled `PopulateSpeciesLabelStudioProjectParentWorkflow`, just
-after the +15 species-preprocess writes JPEGs), 5.1 at +30, 14 at +40,
-9 at +45, 13 at +50 min — staggered so their selectors don't all hit
-`dives.get()` at the top of the hour. The scale-to-zero sweeper takes
+Applied to stages 0.1, 1, 2, 5.1, 9, 13, 14 and laser-depth — each
+parent runs hourly. Schedule slots: 0.1 at +0, 1 at +5, 2 at +15,
+species-populate at +20 (the decoupled
+`PopulateSpeciesLabelStudioProjectParentWorkflow`, just after the +15
+species-preprocess writes JPEGs), 5.1 at +30, laser-depth at +35 (the
+slot the retired slate detector vacated), 14 at +40, 9 at +45, 13 at
++50 min — staggered so their selectors don't all hit `dives.get()` at
+the top of the hour. The scale-to-zero sweeper takes
 +55. `test_schedule_registration.py` pins the stagger (the four
 label-studio sync schedules deliberately share +0 — they select no
 dives). Per-stage cohort:
@@ -348,7 +351,8 @@ dives). Per-stage cohort:
 | 5.1 | HIGH-priority + at least one image with a *valid* `LaserLabel` whose image carries no non-sentinel `HeadTailLabel` row |
 | 9   | HIGH-priority + `dive_slate_id` set + at least one `SpeciesLabel.content_of_image='Slate, Laser on slate'` whose image carries no `DiveSlateLabel` row at all |
 | 13  | HIGH-priority + `dive_slate_id` set + no `LaserExtrinsics` + ≥2 completed `DiveSlateLabel` rows (matches the data-worker activity's `MIN_LASER_POINTS=2` precondition) |
-| 14  | HIGH-priority + has `LaserExtrinsics` (own **or borrowed** via `Dive.calibration_dive_id`) + at least one *measurable* image with no `Measurement` (same predicate as the view's `measured`; keep the two in step) |
+| 14  | HIGH-priority + has `LaserExtrinsics` (own **or borrowed** via `Dive.calibration_dive_id`) + at least one *measurable* image with no `Measurement` **naming the currently-resolved extrinsics** (same predicate as the view's `measured`; keep the two in step) |
+| depth | HIGH-priority + resolvable `LaserExtrinsics` + at least one canonical image whose valid `LaserLabel` has no `LaserDepth` row naming *that label and that calibration* |
 
 Stages 1, 2, and 5.1 all cascade from the same "valid laser" gate.
 Stage 1 lands PREDICTION clusters that stage 2 then consumes; stage
@@ -593,6 +597,96 @@ temporal workflow start \
 Each invocation drains exactly one dive — call it repeatedly to clear
 a backlog.
 
+## Laser depth (`LaserDepth`) + calibration provenance
+
+**Added 2026-08-18.** The distance to an image's laser dot is now stored per
+image, and every `Measurement` records which calibration produced it.
+
+Stage 14 had always derived the depth on its way to a length —
+`compute_world_point_from_laser(...)`, then `laser3d[2]` — and discarded it, so
+the number existed only for the measurable frames stage 14 visits and was never
+queryable. It is now its own stage:
+
+* `LaserDepth` (one row per image, `uq_laser_depth_image`) carries `depth_m`
+  (the Z component, what stage 14 back-projects head/tail against) **and**
+  `range_m` (the Euclidean norm, the true slant distance). They are equal only
+  on the optical axis; carrying both stops a consumer conflating them.
+* `GET|PUT /api/v1/images/{image_id}/laser-depth/` +
+  `GET /api/v1/dives/{dive_id}/laser-depths/` (SDK:
+  `images.get_laser_depth` / `put_laser_depth` / `get_laser_depths`).
+* `compute_laser_depths_activity` (data-worker) →
+  `ComputeLaserDepthsWorkflow` → `ComputeLaserDepthsParentWorkflow`
+  (api-worker, hourly +35). Structurally the lightest parent in the tree,
+  like stages 13/14: no NAS, no object store, no fan-out.
+
+**Provenance is the load-bearing idea, not decoration.** Both `LaserDepth`
+(`laser_label_id` + `laser_extrinsics_id`) and `Measurement`
+(`laser_extrinsics_id`) name the inputs they were derived from, and both
+cohorts select on *mismatch* rather than on absence. That is what makes a
+recompute an ordinary drainable cohort instead of a hand-run backfill: the
+2026-08-11 slate panel-offset recalibration silently invalidated the lengths of
+6 of the 8 dives that had measurements, and the old "has a Measurement" skip
+kept them out of the cohort forever. Rows predating the columns carry NULL,
+read as stale exactly once, and drain at the hourly cadence.
+
+`dive_pipeline_status.measured` mirrors the stage-14 change: it now means
+"measured **under the current calibration**". Expect it to read false for every
+pre-2026-08-18 dive until stage 14 revisits it — that is the honest reading,
+and it self-clears.
+
+**The projection kernel is shared, not copied.** `laser_geometry.py`
+(data-worker) holds `compute_laser_point` + `measure_length_at_depth`; both
+`measure_fish_activity` and `compute_laser_depths_activity` call it. It lives
+on the data-worker because `fishsense_core.world_point.WorldPointHandler` does,
+and no other service depends on fishsense-core — which is also why the API only
+stores and serves the number rather than computing it.
+
+**Requires fishsense-core >= 3.0.0.** The 2.4.1 kernel silently assumed
+‖laser_axis‖ = 1 (a non-unit axis returned garbage — doubling a unit axis
+flipped the depth negative) and answered a zero axis with an ordinary-looking
+~1 cm depth. Both were reported upstream and fixed in 3.0.0, which also added
+the residual below. 3.0.0 carries one breaking change — a homogeneous
+`[x, y, w]` image point is now rejected rather than truncated — which touches
+nothing here: every call site passes `[x, y]`. Accuracy is unchanged between
+the two versions (measured: p99 relative depth error 1.34e-4 at 2.4.1 vs
+1.38e-4 at 3.0.0, over 3098 random geometries at a realistic ≥8 cm baseline).
+
+**The triangulation has no failure mode — that is the thing to know about it.**
+`compute_world_point_from_laser` returns the least-squares closest point
+between the camera ray and the laser ray, and that always exists. So for a
+pixel no real dot could have produced it answers just as confidently, with a
+point at or behind the camera: a laser ray through the camera centre parallel
+to the image plane gives the origin, and a dot on the wrong side of the
+principal point for the laser's offset gives a negative Z. Those are the
+*correct* answers to the question the kernel was asked — not defects, and not
+sentinels. Nothing about them is flagged in the returned point: no NaN, no
+exception, and a residual of 0 for the camera-centre case. So
+`isfinite` guards nothing, and a length computed at a negative depth is
+numerically identical to its positive twin (the back-projection is linear in
+depth, so head and tail move together). `compute_laser_depths_activity` gates
+on `depth_m > 0` and counts the rest as `skipped_invalid_geometry`. **Stage 14
+still guards only on `isfinite`**, so it will happily measure a fish from an
+impossible depth; the depth stage's counter is currently the only place that
+population is visible.
+
+**`LaserDepth.residual_m` is how well the dot and the calibration agreed** —
+the closest-approach distance between the two rays, ~0 when the dot really is
+on the laser. It is **recorded, not gated on**, and the reasons are specific:
+it is blind to error *along* the laser's epipolar line (a dot slid along it
+moves the depth a long way with the residual pinned at the noise floor), two
+rays meeting at the camera centre report 0 at zero or negative depth, it is
+metric so one threshold is stricter close up than far away, and the float32
+solve puts its noise floor near 1e-5 m at metre scale. A threshold should come
+from the distribution this stage is the first thing to produce.
+
+The axis-magnitude and zero-axis guards live in fishsense-core now, not here:
+`compute_laser_point` passes the stored axis straight through, and a
+directionless one raises `ValueError` — deliberately not caught, because the
+axis belongs to the dive's calibration, so it makes every image in that dive
+unprocessable. `test_laser_geometry.py` pins all of this, the epipolar
+blindness included, so nobody later promotes the residual into a gate on its
+own.
+
 ## Data-worker activity pattern
 
 Every ported per-image stage follows the same shape:
@@ -766,6 +860,47 @@ For dev: `temporal server start-dev` + set `temporal.tls = false` in
 from `deploy/temporal_volumes/certs` — the same `TLSConfig` is built
 from `settings.temporal.{client_cert,client_private_key,server_root_ca_cert,domain}`
 across every service that talks to Temporal.
+
+## Temporal mTLS rotation — two consumers, two mechanisms
+
+The krg-prod leaf is a **7-day** cert, and re-rendering it is only half a
+fix: a process builds its TLS config once at `Client.connect` and holds
+the old leaf for its whole life. Both halves have to be arranged, and the
+two consumers are arranged differently.
+
+* **In the slot** — vault-agent renders
+  `/run/tenant/temporal/{tls.crt,tls.key,ca.crt}` and re-renders before
+  expiry (`krg.vaultAgent.renewal`, krg-infra #534). `temporal.reload` in
+  the root `flake.nix` names the compose services to restart on rotation;
+  the hook is `docker compose ... restart <svc>...`. **Add a service there
+  when it gains a `/run/tenant/temporal` mount** — that mount is the tell.
+  `fishsense-api` is the pending one (the ingest controller,
+  `docs/plans/dive-image-ingestion.md` §2.7).
+* **On NRP** — the data-worker holds the *same* identity
+  (`CN=fishsense-worker`; krg issues `common_name=<tenant>-worker`) in the
+  k8s Secret `fishsense-data-worker-temporal-certs`. vault-agent cannot
+  reach the cluster, so the slot forwards it:
+  `deploy/incus/nrp_cert_sync/` is a one-shot compose service, also listed
+  in `temporal.reload`, that upserts the Secret and `rollout restart`s the
+  Deployment. It short-circuits on an unchanged leaf via a
+  `fishsense.e4e.ucsd.edu/leaf-sha256` annotation, so running it on every
+  converge costs nothing.
+
+**This is the shape of the 2026-08-14 outage.** The NRP copy was minted by
+hand at `ttl=720h` and renewed by nobody. It expired, every data-worker pod
+crash-looped on `received fatal alert: CertificateExpired`, and the
+consequence surfaced four days later as a v2.15.2 `kubectl rollout status`
+timeout with no stated cause — read at first as NRP having killed the
+deploy. NRP *had* separately GC'd the Deployment (2-week rule; `apply`
+recreates it), which made the misattribution easy. Two guards now exist so
+this can't be silent again: `deploy.yml` preflights the leaf's expiry and
+fails by name in seconds, and dumps pod state, events and previous-container
+logs on any rollout failure.
+
+Corollary: **`kubectl rollout status` timing out is not a diagnosis.** It
+reports "timed out waiting for the condition" for an expired cert, an
+OOMKill, an unschedulable GPU request and a quota denial alike. Read the
+`Diagnose a failed rollout` group in the job log before forming a theory.
 
 ## Worker config validation gotcha
 
@@ -1111,6 +1246,45 @@ devcontainer, pre-NRP). `active_replicas` is clamped to `[1, 4]`; >1
 is a deliberate operator choice (giant single dive, or active-window
 resilience on a preemption-prone cluster), never automatic. See
 `deploy/k8s/data-worker/README.md`.
+
+**The sweeper also reclaims a *wedged* worker, not just an idle one.**
+"Queue is busy" and "worker is doing work" are the same thing only while
+the worker can actually start. A data-worker that can't — expired
+Temporal cert, bad image tag, unschedulable GPU request, exhausted
+quota — never drains its queue, so every dispatched child sits `Running`
+until it times out, the queue never *looks* idle, and the Deployment
+stays pinned at `active_replicas` holding NRP GPUs around the clock
+while accomplishing nothing. **The failure suppresses the cleanup that
+would have bounded its cost.** Prod sat exactly there from 2026-08-14
+(expired Temporal leaf → CrashLoopBackOff → replicas stuck at 2). So
+`scale_down_data_worker_if_idle_activity` scales to 0 when the queue is
+busy but `k8s_scaling.deployment_is_wedged` reports the Deployment wants
+pods and has none Ready, and logs a WARNING — reclaiming the pods bounds
+the waste but fixes nothing, and the backlog left behind is real work
+that isn't happening.
+
+The wedge check is deliberately shallow — `spec.replicas` vs
+`status.readyReplicas` from one Deployment read, which is all the deploy
+identity is allowed (`deployments: get`; it has no `pods` access).
+Richer signals were measured against the live wedge and rejected:
+`Progressing` read `True`/`NewReplicaSetAvailable` throughout (the
+ReplicaSet *had* progressed, months earlier), and `Available`'s
+`lastTransitionTime` is useless as a "wedged since" clock because the
+pod has no readinessProbe, so every crash cycle flips it Ready then
+not-Ready and resets the timestamp. Note `readyReplicas` is **absent**
+rather than 0 when nothing is Ready — reading `None` as "unknown, assume
+healthy" is exactly what kept the GPUs pinned.
+
+Being time-free leaves one false positive: a sweep landing inside a
+genuine cold start scales down a worker that was about to be ready. That
+costs an hour, not correctness — the next parent with work scales it
+back up, and per-image activities are idempotent, so interrupted
+children re-run.
+
+**`ensure_data_worker_running_activity` never refuses to scale up**, even
+into a known wedge. That is what makes recovery automatic once the
+underlying fault is fixed; the cost is a Deployment that oscillates 0↔N
+while broken, which is a far louder signal than silently holding GPUs.
 
 NRP GCs Deployments older than 2 weeks unless the namespace is on its
 exceptions list — the bootstrap requests a permanent-service

@@ -136,6 +136,9 @@ from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_measure_fish_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_measure_fish_activity,
 )
+from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_laser_depth_activity import (  # pylint: disable=line-too-long
+    select_next_high_priority_dive_for_laser_depth_activity,
+)
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_slate_prediction_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_slate_prediction_activity,
 )
@@ -211,6 +214,9 @@ from fishsense_api_workflow_worker.workflows.cluster_dive_frames_parent_workflow
 )
 from fishsense_api_workflow_worker.workflows.measure_fish_parent_workflow import (  # pylint: disable=line-too-long
     MeasureFishParentWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.compute_laser_depths_parent_workflow import (  # pylint: disable=line-too-long
+    ComputeLaserDepthsParentWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.perform_laser_calibration_parent_workflow import (  # pylint: disable=line-too-long
     PerformLaserCalibrationParentWorkflow,
@@ -577,6 +583,33 @@ async def schedule_workflows(client: Client):
                     overlap=ScheduleOverlapPolicy.SKIP,
                 )
             )
+            # Laser depth: hourly at +35 min. The slot the retired slate
+            # detector vacated, and the only gap left between the headtail
+            # parent (+30) and stage 14 (+40).
+            #
+            # Ordering against stage 13 (+50) doesn't matter — a dive
+            # calibrated at :50 gets its depths at :35 the next hour, which
+            # is irrelevant at this cadence, and slotting after calibration
+            # would crowd the +55 sweeper. Same reasoning as stage 14's +40.
+            #
+            # The cohort keys on the laser label and calibration each stored
+            # depth came from, not on whether a row exists, so it drains like
+            # any other stage AND re-enters a dive by itself when a relabel
+            # or a recalibration invalidates what was stored. That is why the
+            # initial backfill needs no script: it is the first few firings.
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "compute-laser-depths-workflow-schedule",
+                    ComputeLaserDepthsParentWorkflow,
+                    timedelta(hours=1),
+                    offset=timedelta(minutes=35),
+                    # Child `execution_timeout` is 1h; add margin for the
+                    # selector + data-worker scale-up activities.
+                    run_timeout=timedelta(hours=1, minutes=30),
+                    overlap=ScheduleOverlapPolicy.SKIP,
+                )
+            )
             # Scale-to-zero sweeper for the NRP data-worker: hourly at
             # +55 min, after the last preprocess/calibration parent
             # firing, so it never races a parent that's still scaling
@@ -649,6 +682,7 @@ async def main():
                 PreprocessSlateImagesParentWorkflow,
                 PerformLaserCalibrationParentWorkflow,
                 MeasureFishParentWorkflow,
+                ComputeLaserDepthsParentWorkflow,
                 ScaleDownIdleDataWorkerWorkflow,
             ],
             activity_executor=executor,
@@ -697,6 +731,7 @@ async def main():
                 select_next_high_priority_dive_for_slate_preprocessing_activity,
                 select_next_high_priority_dive_for_laser_calibration_activity,
                 select_next_high_priority_dive_for_measure_fish_activity,
+                select_next_high_priority_dive_for_laser_depth_activity,
                 stage_raw_bytes_for_dive_activity,
                 stage_slate_pdf_activity,
                 cleanup_raw_bytes_for_dive_activity,

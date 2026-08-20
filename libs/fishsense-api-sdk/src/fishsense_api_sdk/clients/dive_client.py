@@ -148,6 +148,15 @@ class DiveClient(ClientBase):
         """Stage 14 cohort selector. See `select_next_for_laser_preprocessing`."""
         return await self._select_next("measure-fish")
 
+    async def select_next_for_laser_depth(self) -> int | None:
+        """Laser-depth cohort selector. See `select_next_for_laser_preprocessing`.
+
+        Broader than stage 14's: any dive with a resolvable calibration and a
+        validated laser label whose recorded depth is missing or was computed
+        from a label or calibration that has since changed.
+        """
+        return await self._select_next("laser-depth")
+
     async def get_dives_needing_laser_population(self) -> list[int]:
         """Every dive needing model-assisted laser LS tasks (re)populated —
         prediction-gated. Returns all matches so the scheduled populate parent

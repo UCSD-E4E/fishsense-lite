@@ -57,6 +57,7 @@ MODEL_PAIRS: list[Pair] = [
         "label_studio_sync_cursor",
         "LabelStudioSyncCursor",
     ),
+    Pair("laser_depth", "LaserDepth", "laser_depth", "LaserDepth"),
     Pair("laser_extrinsics", "_LaserExtrinsics", "laser_extrinsics", "LaserExtrinsics"),
     Pair("laser_label", "LaserLabel", "laser_label", "LaserLabel"),
     Pair("laser_prediction", "LaserPrediction", "laser_prediction", "LaserPrediction"),

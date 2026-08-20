@@ -15,11 +15,30 @@ test asserts on the absolute 3D positions, not just the length.
 
 Pure-numpy synthetic geometry, no rawpy / Temporal / httpx — runs in
 milliseconds.
+
+**On the tolerance.** These assertions used `rtol=1e-4`, which sat inside the
+triangulation's own noise band rather than outside it: the solve runs in
+float32, and its error grows as the laser baseline shrinks (error ∝ Z²/(f·b),
+the same conditioning the accuracy work measured). Sampled over 3098 random
+geometries at a realistic baseline (≥8 cm; the rig's is ~10.4 cm) and 0.5–3 m
+range, the relative depth error is p50 1.0e-5, p99 1.4e-4, max 3.2e-4 — so a
+1e-4 bound fails a small fraction of geometries by luck. It was measured at
+both fishsense-core 2.4.1 and 3.0.0 and is the same in each (2.4.1: p99
+1.34e-4, max 2.36e-4), i.e. a property of the kernel's precision, not of a
+version. `POSITION_RTOL` is set an order of magnitude above it — still 0.1%,
+which is ~50× tighter than the pipeline's best-case ~1% accuracy, so it
+remains far too tight for a genuine sign flip (which mirrors the point) to
+slip through.
 """
 
 import numpy as np
 
 from fishsense_core.world_point import WorldPointHandler
+
+# See the module docstring: above the kernel's measured float32 noise floor,
+# far below anything a real convention error could hide in.
+POSITION_RTOL = 1e-3
+POSITION_ATOL = 1e-3
 
 
 def _make_K(
@@ -58,7 +77,7 @@ def test_laser_triangulation_recovers_known_intersection_point():
         laser_origin, laser_axis, laser_image_point
     )
 
-    np.testing.assert_allclose(laser3d, P_laser, rtol=1e-4, atol=1e-4)
+    np.testing.assert_allclose(laser3d, P_laser, rtol=POSITION_RTOL, atol=POSITION_ATOL)
 
 
 def test_full_pipeline_recovers_head_tail_positions_and_length():
@@ -96,13 +115,13 @@ def test_full_pipeline_recovers_head_tail_positions_and_length():
     # Length: passes even under sign flip (norm-invariant). Documents
     # the lower-bar guarantee.
     length = float(np.linalg.norm(head3d - tail3d))
-    np.testing.assert_allclose(length, expected_length, rtol=1e-4)
+    np.testing.assert_allclose(length, expected_length, rtol=POSITION_RTOL)
 
     # Absolute positions: this is the real check. A sign disagreement
     # between _from_laser and _from_depth would mirror these.
-    np.testing.assert_allclose(laser3d, P_laser, rtol=1e-4, atol=1e-4)
-    np.testing.assert_allclose(head3d, P_head, rtol=1e-4, atol=1e-4)
-    np.testing.assert_allclose(tail3d, P_tail, rtol=1e-4, atol=1e-4)
+    np.testing.assert_allclose(laser3d, P_laser, rtol=POSITION_RTOL, atol=POSITION_ATOL)
+    np.testing.assert_allclose(head3d, P_head, rtol=POSITION_RTOL, atol=POSITION_ATOL)
+    np.testing.assert_allclose(tail3d, P_tail, rtol=POSITION_RTOL, atol=POSITION_ATOL)
     assert head3d[2] > 0 and tail3d[2] > 0, (
         f"head/tail z must be positive (in front of camera); "
         f"got head={head3d}, tail={tail3d}"
@@ -134,11 +153,11 @@ def test_pipeline_works_with_off_axis_laser():
         _project(K, P_tail), laser3d[2]
     )
 
-    np.testing.assert_allclose(laser3d, P_laser, rtol=1e-4, atol=1e-4)
-    np.testing.assert_allclose(head3d, P_head, rtol=1e-4, atol=1e-4)
-    np.testing.assert_allclose(tail3d, P_tail, rtol=1e-4, atol=1e-4)
+    np.testing.assert_allclose(laser3d, P_laser, rtol=POSITION_RTOL, atol=POSITION_ATOL)
+    np.testing.assert_allclose(head3d, P_head, rtol=POSITION_RTOL, atol=POSITION_ATOL)
+    np.testing.assert_allclose(tail3d, P_tail, rtol=POSITION_RTOL, atol=POSITION_ATOL)
     np.testing.assert_allclose(
-        float(np.linalg.norm(head3d - tail3d)), expected_length, rtol=1e-4
+        float(np.linalg.norm(head3d - tail3d)), expected_length, rtol=POSITION_RTOL
     )
 
 
@@ -165,5 +184,5 @@ def test_pipeline_works_with_realistic_olympus_intrinsics():
         _project(K, P_tail), laser3d[2]
     )
 
-    np.testing.assert_allclose(head3d, P_head, rtol=1e-4, atol=1e-4)
-    np.testing.assert_allclose(tail3d, P_tail, rtol=1e-4, atol=1e-4)
+    np.testing.assert_allclose(head3d, P_head, rtol=POSITION_RTOL, atol=POSITION_ATOL)
+    np.testing.assert_allclose(tail3d, P_tail, rtol=POSITION_RTOL, atol=POSITION_ATOL)
