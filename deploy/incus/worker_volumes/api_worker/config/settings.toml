@@ -77,11 +77,24 @@ labels_prefix = "fishsense-lite"
 kubeconfig_path = "/run/tenant/nrp/kubeconfig"
 namespace = "e4e-fishsense"
 deployment_name = "fishsense-data-processing-workflow-worker"
-# 2 replicas (clamped range is [1, 4]). Deliberate operator choice, paired
-# with dropping the data-worker's `general.max_concurrent_activities` 4 -> 2
-# after the 2026-07-21 OOM CrashLoopBackOff: per-pod peak memory is halved,
-# and the lost throughput is recovered horizontally instead of by packing
-# more concurrent full-res rawpy decodes into one pod. Also buys active-window
-# resilience on a preemption-prone cluster.
-active_replicas = 2
+# 1 replica (clamped range is [1, 4]) — one pod, and since the Deployment
+# requests `nvidia.com/gpu: 1` per pod, exactly one GPU held while active.
+# Operator choice 2026-08-20: hold a single GPU on NRP for now.
+#
+# This was 2, paired with dropping the data-worker's
+# `general.max_concurrent_activities` 4 -> 2 after the 2026-07-21 OOM
+# CrashLoopBackOff — per-pod peak memory halved, throughput recovered
+# horizontally rather than by packing more concurrent full-res rawpy decodes
+# into one pod. Going back to 1 gives up that horizontal half, so a large dive
+# takes roughly twice as long; it does NOT reintroduce the OOM, which is
+# governed by max_concurrent_activities and is unchanged.
+#
+# It also removes a live scheduling problem: at 2 the second pod sat Pending on
+# `129 Insufficient nvidia.com/gpu` (2026-08-20), so the GPU was requested and
+# queued for without being used — NRP is GPU-contended and the only consumer of
+# that request, the slate detector, has been retired since 2026-08-03.
+#
+# Raise back to 2-4 for a giant single dive, or for active-window resilience on
+# a preemption-prone cluster. Never automatic.
+active_replicas = 1
 idle_cooldown_minutes = 15
