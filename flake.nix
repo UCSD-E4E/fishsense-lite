@@ -87,6 +87,17 @@
         reload = [
           "fishsense-api-workflow-worker"
           "fishsense-backup-worker"
+          # Not a consumer of the cert — a FORWARDER of it. The data-worker runs on
+          # NRP, outside vault-agent's reach, and holds the same CN=fishsense-worker
+          # identity in a k8s Secret. Nothing renewed that copy: it was hand-minted
+          # `ttl=720h` on 2026-07-15, expired 2026-08-14 05:46:26 UTC, and every pod
+          # has crash-looped on `CertificateExpired` since — which is what timed out
+          # the v2.15.2 rollout and read as "NRP killed the deploy".
+          #
+          # This one-shot service re-pushes the rotated leaf and rolls the Deployment.
+          # `restart` starts an exited container again, so it re-runs each rotation;
+          # it no-ops when the leaf is unchanged. See deploy/incus/nrp_cert_sync/.
+          "nrp-temporal-cert-sync"
         ];
       };
     };

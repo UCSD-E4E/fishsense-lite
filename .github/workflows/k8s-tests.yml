@@ -16,6 +16,8 @@ on:
     branches: [main]
     paths:
       - 'deploy/k8s/**'
+      # The slot-side cert forwarder is exercised against the same kind cluster.
+      - 'deploy/incus/nrp_cert_sync/**'
       - 'services/fishsense-api-workflow-worker/src/fishsense_api_workflow_worker/activities/k8s_scaling.py'
       - 'services/fishsense-api-workflow-worker/src/fishsense_api_workflow_worker/activities/ensure_data_worker_running_activity.py'
       - 'services/fishsense-api-workflow-worker/src/fishsense_api_workflow_worker/activities/scale_down_data_worker_if_idle_activity.py'
@@ -28,6 +30,8 @@ on:
   pull_request:
     paths:
       - 'deploy/k8s/**'
+      # The slot-side cert forwarder is exercised against the same kind cluster.
+      - 'deploy/incus/nrp_cert_sync/**'
       - 'services/fishsense-api-workflow-worker/src/fishsense_api_workflow_worker/activities/k8s_scaling.py'
       - 'services/fishsense-api-workflow-worker/src/fishsense_api_workflow_worker/activities/ensure_data_worker_running_activity.py'
       - 'services/fishsense-api-workflow-worker/src/fishsense_api_workflow_worker/activities/scale_down_data_worker_if_idle_activity.py'
@@ -78,6 +82,18 @@ jobs:
         run: |
           kubectl apply -k deploy/k8s/data-worker
           kubectl get deployment fishsense-data-processing-workflow-worker -n e4e-fishsense -o yaml
+
+      - name: Test the slot-side Temporal cert forwarder
+        # deploy/incus/nrp_cert_sync/sync.sh runs on the Incus slot and pushes the
+        # rotated krg-prod leaf into this namespace's Secret — the gap that expired
+        # on 2026-08-14 and crash-looped every data-worker pod. Nothing else in CI
+        # covers it, and the kind cluster + Secrets + Deployment this job already
+        # built are exactly what it needs. Asserts the upsert, the sha256
+        # short-circuit that keeps a converge from rolling the Deployment for
+        # nothing, and that a rotation does roll it.
+        env:
+          NRP_NAMESPACE: e4e-fishsense
+        run: deploy/incus/nrp_cert_sync/test_sync.sh
 
       - uses: actions/setup-python@v5
         with:

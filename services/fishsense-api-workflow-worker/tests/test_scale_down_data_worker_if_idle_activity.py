@@ -53,18 +53,51 @@ async def test_noop_when_scaling_disabled(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_does_not_scale_down_when_busy(monkeypatch):
+async def test_does_not_scale_down_when_busy_and_worker_is_healthy(monkeypatch):
+    """Busy + a Ready pod = real work in flight. Leave it alone."""
     monkeypatch.setattr(sut, "resolve_scaling_config", lambda: _config())
     _stub_busy(monkeypatch, True)
+    monkeypatch.setattr(sut, "apps_v1_api", lambda path: MagicMock())
+    monkeypatch.setattr(sut, "deployment_is_wedged", lambda *_a, **_k: False)
     monkeypatch.setattr(
         sut,
         "set_deployment_replicas",
-        lambda *_a, **_k: pytest.fail("must not scale a busy data-worker"),
+        lambda *_a, **_k: pytest.fail("must not scale a busy, healthy data-worker"),
     )
     result = await ActivityEnvironment().run(
         sut.scale_down_data_worker_if_idle_activity
     )
     assert result is False
+
+
+@pytest.mark.asyncio
+async def test_scales_down_a_wedged_worker_even_though_the_queue_looks_busy(
+    monkeypatch,
+):
+    """The feedback loop this exists to break.
+
+    A data-worker that cannot produce a Ready pod (expired Temporal cert, bad
+    image, unschedulable) never drains its queue — so every dispatched child
+    sits Running, the queue never looks idle, and the Deployment stays pinned at
+    `active_replicas` holding GPUs around the clock. Exactly the state prod was
+    in from 2026-08-14. "Busy" is only a reason to keep the pods when the pods
+    can actually make progress.
+    """
+    monkeypatch.setattr(sut, "resolve_scaling_config", lambda: _config())
+    _stub_busy(monkeypatch, True)
+    monkeypatch.setattr(sut, "apps_v1_api", lambda path: MagicMock())
+    monkeypatch.setattr(sut, "deployment_is_wedged", lambda *_a, **_k: True)
+    calls: list = []
+    monkeypatch.setattr(
+        sut,
+        "set_deployment_replicas",
+        lambda a, ns, name, n: calls.append((ns, name, n)),
+    )
+    result = await ActivityEnvironment().run(
+        sut.scale_down_data_worker_if_idle_activity
+    )
+    assert result is True
+    assert calls == [("fishsense", "fishsense-data-processing-workflow-worker", 0)]
 
 
 @pytest.mark.asyncio
