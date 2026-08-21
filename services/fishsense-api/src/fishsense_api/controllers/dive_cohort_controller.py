@@ -176,14 +176,31 @@ def _resolved_laser_extrinsics_id():
     really use. `uq_laserextrinsics_dive_id` guarantees at most one row per
     dive, so neither branch needs a tie-break.
     """
+    # `.correlate(Dive)` is load-bearing, not decoration. This subquery is
+    # used inside a NOT EXISTS several levels down, and SQLAlchemy only
+    # auto-correlates against the *immediately* enclosing SELECT — so without
+    # it the compiler emits `FROM laserextrinsics, dive`, an uncorrelated
+    # cross join returning one row per extrinsics row in the table.
+    #
+    # Postgres rejects that with CardinalityViolationError ("more than one row
+    # returned by a subquery used as an expression"), which took both cohort
+    # selectors down in prod on 2026-08-20: every hourly poll 500'd, stage 14
+    # stamped no provenance at all, and the laser-depth stage drained one dive
+    # and then stopped. SQLite returns the first row instead of raising, so
+    # the unit suite could not see it — `test_resolved_extrinsics_subquery_is_correlated`
+    # now asserts the emitted SQL directly, and a sibling test seeds a second
+    # extrinsics row so the uncorrelated form picks the wrong dive's
+    # calibration even on SQLite.
     own = (
         select(LaserExtrinsics.id)
         .where(LaserExtrinsics.dive_id == Dive.id)
+        .correlate(Dive)
         .scalar_subquery()
     )
     borrowed = (
         select(LaserExtrinsics.id)
         .where(LaserExtrinsics.dive_id == Dive.calibration_dive_id)
+        .correlate(Dive)
         .scalar_subquery()
     )
     return func.coalesce(own, borrowed)
@@ -824,6 +841,19 @@ async def select_next_for_laser_depth(
     laser was validated, which is the whole reason it is stored per image
     rather than hung off `Measurement`.
     """
+    return (await session.exec(_laser_depth_cohort_query())).first()
+
+
+def _laser_depth_cohort_query():
+    """The laser-depth cohort as a query, separate from executing it.
+
+    Split out so `test_resolved_extrinsics_subquery_is_correlated` can compile
+    the *real* query and assert its shape. That guard has to see the actual
+    nesting — the correlation bug it exists to catch only appears when the
+    scalar subquery sits several levels inside a NOT EXISTS, so a synthetic
+    one-level query rebuilt in the test would pass while the shipped one was
+    broken.
+    """
     has_laser_extrinsics = or_(
         select(LaserExtrinsics.id).where(LaserExtrinsics.dive_id == Dive.id).exists(),
         select(LaserExtrinsics.id)
@@ -846,7 +876,7 @@ async def select_next_for_laser_depth(
         .where(~depth_is_current)
         .exists()
     )
-    query = (
+    return (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
         .where(has_laser_extrinsics)
@@ -854,4 +884,3 @@ async def select_next_for_laser_depth(
         .order_by(Dive.id)
         .limit(1)
     )
-    return (await session.exec(query)).first()
