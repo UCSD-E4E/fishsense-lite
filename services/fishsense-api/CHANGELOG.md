@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.47.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.47.0...fishsense-api-v1.47.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* **cohort:** correlate the resolved-extrinsics subquery to the outer dive ([#589](https://github.com/UCSD-E4E/fishsense-lite/issues/589)) ([c808a0c](https://github.com/UCSD-E4E/fishsense-lite/commit/c808a0c2d8a7babfba79573254371431cf31dddc))
+
 ## [1.47.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.46.0...fishsense-api-v1.47.0) (2026-08-20)
 
 
