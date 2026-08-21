@@ -171,3 +171,68 @@ async def test_cohort_resolves_provenance_through_a_borrowed_calibration(session
     await session.flush()
 
     assert await select_next_for_measure_fish(session=session) is None
+
+
+# ── the correlation bug ───────────────────────────────────────────────
+#
+# `_resolved_laser_extrinsics_id()` is a scalar subquery used deep inside a
+# NOT EXISTS. SQLAlchemy only auto-correlates against the *immediately*
+# enclosing SELECT, so without an explicit `.correlate(Dive)` it emitted
+# `FROM laserextrinsics, dive` — an uncorrelated cross join returning one row
+# per extrinsics row in the table.
+#
+# Postgres rejects that outright (CardinalityViolationError: "more than one
+# row returned by a subquery used as an expression"), which took both cohort
+# selectors down in prod: every hourly poll 500'd, stage 14 stamped no
+# provenance, and the laser-depth stage drained exactly one dive before
+# stopping. SQLite silently returns the first row instead of raising, and
+# every fixture here seeded a single extrinsics row, so the wrong SQL and the
+# right SQL agreed and the suite stayed green.
+#
+# These two tests close that gap from both directions: one seeds a second
+# extrinsics row so the uncorrelated form picks the *wrong* dive's
+# calibration even on SQLite, and one asserts the emitted SQL is correlated
+# regardless of dialect.
+
+
+async def test_cohort_resolves_each_dives_own_calibration_not_the_first_row(session):
+    """Two calibrated dives, and the one under test is NOT the lowest id.
+
+    Uncorrelated, `coalesce(...)` returns extrinsics 51 (dive 1's, the first
+    row in the table) for every dive, so dive 2's correctly-stamped
+    measurement looks stale and the dive is re-selected forever.
+    """
+    session.add_all([_dive(1), _dive(2), _extrinsics(51, 1), _extrinsics(52, 2)])
+    _measurable_image(session, 21, 2)
+    session.add(_measurement(21, laser_extrinsics_id=52))
+    await session.flush()
+
+    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_measure_fish,
+    )
+
+    assert await select_next_for_measure_fish(session=session) is None
+
+
+def test_resolved_extrinsics_subquery_is_correlated():
+    """Dialect-independent guard on the shape of the shipped SQL.
+
+    Compiles the real cohort query — the nesting matters, since the bug only
+    appears when the scalar subquery sits inside a NOT EXISTS inside an
+    EXISTS. The subquery must *reference* the outer `dive`, never select from
+    it. This is the assertion that would have caught the prod outage without
+    a Postgres to run against.
+    """
+    from sqlalchemy.dialects import postgresql  # pylint: disable=import-outside-toplevel
+
+    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+        _laser_depth_cohort_query,
+    )
+
+    compiled = str(_laser_depth_cohort_query().compile(dialect=postgresql.dialect()))
+
+    assert "FROM laserextrinsics, dive" not in compiled, (
+        "scalar subquery is uncorrelated — it cross-joins dive and returns one "
+        f"row per extrinsics row, which Postgres rejects:\n{compiled}"
+    )
+    assert "laserextrinsics.dive_id = dive.id" in compiled
