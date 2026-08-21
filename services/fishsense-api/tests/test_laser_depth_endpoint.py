@@ -406,3 +406,75 @@ async def test_selector_skips_low_priority_dives(session):
     await session.flush()
 
     assert await select_next_for_laser_depth(session=session) is None
+
+
+# ── duplicate valid labels ────────────────────────────────────────────
+#
+# `LaserDepth` is one row per image, but an image can carry more than one
+# *valid* laser label: 461 images across 8 prod dives do, almost all of them
+# duplicate labels of the same dot (position spread 0.000 px). Keying the
+# cohort on "is there a depth for THIS label" therefore never went false for
+# those images — the row records one label id and the other never matches.
+#
+# Prod dive 279 was the proof: 44 eligible images, 44 depths written, and the
+# selector still offered it on 27 consecutive runs. That is the same
+# never-drains shape as the stage-14 `Fish Model,` empty leaf, and it blocks
+# every higher-id dive behind it.
+#
+# The predicate now asks the question the table actually answers: does this
+# *image* have a depth derived from a still-valid label and the current
+# calibration?
+
+
+async def test_selector_drains_an_image_with_two_valid_laser_labels(session):
+    """Both labels are valid and the depth names one of them — that is a
+    complete answer for the image, so the dive must drop out."""
+    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_laser_depth,
+    )
+    from fishsense_api.controllers.laser_depth_controller import (  # pylint: disable=import-outside-toplevel
+        put_laser_depth,
+    )
+
+    session.add_all(
+        [
+            _dive(1),
+            _image(11, 1),
+            _laser_label(101, 11),
+            _laser_label(102, 11),  # duplicate label of the same dot
+            _extrinsics(51, 1),
+        ]
+    )
+    await session.flush()
+    await put_laser_depth(
+        11, _depth(laser_label_id=101, laser_extrinsics_id=51), session=session
+    )
+
+    assert await select_next_for_laser_depth(session=session) is None
+
+
+async def test_selector_still_repicks_when_the_recorded_label_went_superseded(session):
+    """The self-healing property must survive the fix: a depth whose label is
+    no longer valid is stale, even though the image has another valid one."""
+    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_laser_depth,
+    )
+    from fishsense_api.controllers.laser_depth_controller import (  # pylint: disable=import-outside-toplevel
+        put_laser_depth,
+    )
+
+    session.add_all(
+        [
+            _dive(1),
+            _image(11, 1),
+            _laser_label(101, 11, superseded=True),
+            _laser_label(102, 11),
+            _extrinsics(51, 1),
+        ]
+    )
+    await session.flush()
+    await put_laser_depth(
+        11, _depth(laser_label_id=101, laser_extrinsics_id=51), session=session
+    )
+
+    assert await select_next_for_laser_depth(session=session) == 1
