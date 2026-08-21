@@ -61,6 +61,31 @@ class ComputeLaserDepthsResult:
     skipped_invalid_geometry: int = 0
 
 
+def _one_label_per_image(laser_labels, result) -> list:
+    """The validated laser labels to work from, at most one per image.
+
+    An image can carry several valid labels — 461 across 8 prod dives do,
+    nearly all duplicate labels of the same dot. `LaserDepth` holds one row
+    per image, so triangulating every label would compute the same point
+    repeatedly and leave whichever ran last recorded, making the stored
+    provenance depend on iteration order. Lowest label id wins: deterministic,
+    so a re-run records the same label and the cohort sees a stable answer.
+
+    Unusable labels are counted here rather than silently dropped, and counted
+    per label rather than per image, so the tally still reflects what came
+    back from the API.
+    """
+    by_image: dict = {}
+    for laser_label in laser_labels:
+        if laser_label.image_id is None or not _is_validated_fix(laser_label):
+            result.skipped_unusable_label += 1
+            continue
+        chosen = by_image.get(laser_label.image_id)
+        if chosen is None or (laser_label.id or 0) < (chosen.id or 0):
+            by_image[laser_label.image_id] = laser_label
+    return list(by_image.values())
+
+
 def _is_validated_fix(laser_label) -> bool:
     """The repo-wide *valid laser* gate, as the cohort selector spells it in
     SQL: the labeler placed a point, the validator signed off, and the
@@ -99,11 +124,8 @@ async def compute_laser_depths_activity(dive_id: int) -> ComputeLaserDepthsResul
 
         result = ComputeLaserDepthsResult()
 
-        for laser_label in laser_labels:
+        for laser_label in _one_label_per_image(laser_labels, result):
             image_id = laser_label.image_id
-            if image_id is None or not _is_validated_fix(laser_label):
-                result.skipped_unusable_label += 1
-                continue
 
             existing = existing_by_image.get(image_id)
             if (

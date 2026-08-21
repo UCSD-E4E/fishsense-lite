@@ -358,3 +358,28 @@ async def test_fetches_existing_depths_once_per_dive(monkeypatch):
 
     assert result.computed == 4
     fs.images.get_laser_depths.assert_awaited_once_with(42)
+
+
+@pytest.mark.asyncio
+async def test_duplicate_valid_labels_produce_one_depth_per_image(monkeypatch):
+    """An image can carry several valid laser labels — 461 prod images do,
+    nearly all duplicates of the same dot. `LaserDepth` is one row per image,
+    so processing every label triangulates the same dot twice and leaves
+    whichever ran last recorded. Take the lowest label id and move on: half
+    the work, and the recorded provenance is stable across re-runs instead of
+    flapping with iteration order."""
+    extrinsics = _laser_extrinsics()
+    x, y = _laser_pixel(extrinsics, 1.20)
+    fs = _make_fs(
+        laser_extrinsics=extrinsics,
+        laser_labels=[
+            _laser_label(102, 100, x, y),
+            _laser_label(101, 100, x, y),
+        ],
+    )
+
+    result = await _run(monkeypatch, fs)
+
+    assert result.computed == 1
+    assert fs.images.put_laser_depth.await_count == 1
+    assert fs.images.put_laser_depth.call_args.args[1].laser_label_id == 101
