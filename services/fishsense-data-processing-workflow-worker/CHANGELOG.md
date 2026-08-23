@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.16.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.16.1...fishsense-data-processing-workflow-worker-v2.16.2) (2026-08-23)
+
+
+### Bug Fixes
+
+* **cohort:** key the laser-depth cohort on the image, not one laser label ([#592](https://github.com/UCSD-E4E/fishsense-lite/issues/592)) ([4f119e5](https://github.com/UCSD-E4E/fishsense-lite/commit/4f119e5c8ec27274f3ba571dd8b1105f20eadc98))
+* **cohort:** try every valid label, and correlate the recorded-label check ([#594](https://github.com/UCSD-E4E/fishsense-lite/issues/594)) ([ae52d0d](https://github.com/UCSD-E4E/fishsense-lite/commit/ae52d0d1b932c7de968837e73863b6b22db6a82e))
+
 ## [2.16.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.16.0...fishsense-data-processing-workflow-worker-v2.16.1) (2026-08-21)
 
 
