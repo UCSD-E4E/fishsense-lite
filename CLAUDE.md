@@ -352,7 +352,7 @@ dives). Per-stage cohort:
 | 9   | HIGH-priority + `dive_slate_id` set + at least one `SpeciesLabel.content_of_image='Slate, Laser on slate'` whose image carries no `DiveSlateLabel` row at all |
 | 13  | HIGH-priority + `dive_slate_id` set + no `LaserExtrinsics` + ≥2 completed `DiveSlateLabel` rows (matches the data-worker activity's `MIN_LASER_POINTS=2` precondition) |
 | 14  | HIGH-priority + has `LaserExtrinsics` (own **or borrowed** via `Dive.calibration_dive_id`) + at least one *measurable* image with no `Measurement` **naming the currently-resolved extrinsics** (same predicate as the view's `measured`; keep the two in step) |
-| depth | HIGH-priority + resolvable `LaserExtrinsics` + at least one canonical image whose valid `LaserLabel` has no `LaserDepth` row naming *that label and that calibration* |
+| depth | HIGH-priority + resolvable `LaserExtrinsics` + at least one canonical laser-labelled image with no `LaserDepth` row naming *one of that image's still-valid labels* and the currently-resolved calibration |
 
 Stages 1, 2, and 5.1 all cascade from the same "valid laser" gate.
 Stage 1 lands PREDICTION clusters that stage 2 then consumes; stage
@@ -678,6 +678,19 @@ rays meeting at the camera centre report 0 at zero or negative depth, it is
 metric so one threshold is stricter close up than far away, and the float32
 solve puts its noise floor near 1e-5 m at metre scale. A threshold should come
 from the distribution this stage is the first thing to produce.
+
+**Both cohorts are keyed on the image, and both correlate their subqueries.**
+Two prod outages taught this within a day. An uncorrelated
+`_resolved_laser_extrinsics_id()` compiled to `FROM laserextrinsics, dive` and
+Postgres rejected the multi-row scalar subquery, 500ing both selectors on every
+hourly poll; then keying the depth cohort on a *specific* laser label wedged
+dive 279 forever, because `LaserDepth` holds one row per image while 461 prod
+images carry two valid labels. SQLite masked both — it answers a multi-row
+scalar subquery with the first row, and every fixture seeded one row where prod
+has many. `test_api_postgres_integration.py` now runs every cohort selector
+against real Postgres over a deliberately multi-valued seed; anything nested
+inside an `EXISTS` needs an explicit `.correlate(...)`, because auto-correlation
+only reaches the immediately enclosing SELECT.
 
 The axis-magnitude and zero-axis guards live in fishsense-core now, not here:
 `compute_laser_point` passes the stored axis straight through, and a

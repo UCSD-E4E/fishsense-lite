@@ -61,29 +61,32 @@ class ComputeLaserDepthsResult:
     skipped_invalid_geometry: int = 0
 
 
-def _one_label_per_image(laser_labels, result) -> list:
-    """The validated laser labels to work from, at most one per image.
+def _valid_labels_by_image(laser_labels, result) -> dict:
+    """Validated labels grouped by image, each list in ascending id order.
 
     An image can carry several valid labels — 461 across 8 prod dives do,
-    nearly all duplicate labels of the same dot. `LaserDepth` holds one row
-    per image, so triangulating every label would compute the same point
-    repeatedly and leave whichever ran last recorded, making the stored
-    provenance depend on iteration order. Lowest label id wins: deterministic,
-    so a re-run records the same label and the cohort sees a stable answer.
+    nearly all duplicates of the same dot. `LaserDepth` holds one row per
+    image, so the caller wants *an* answer per image rather than one per
+    label, and ascending id makes which label it settles on deterministic
+    across re-runs.
 
-    Unusable labels are counted here rather than silently dropped, and counted
-    per label rather than per image, so the tally still reflects what came
-    back from the API.
+    Grouped rather than reduced to a single label: the lowest id is only a
+    preference. If its geometry is degenerate a sibling may still triangulate,
+    and dropping the image entirely would leave the image-keyed cohort
+    offering that dive forever.
+
+    Unusable labels are counted per label, not per image, so the tally still
+    reflects what the API returned.
     """
     by_image: dict = {}
     for laser_label in laser_labels:
         if laser_label.image_id is None or not _is_validated_fix(laser_label):
             result.skipped_unusable_label += 1
             continue
-        chosen = by_image.get(laser_label.image_id)
-        if chosen is None or (laser_label.id or 0) < (chosen.id or 0):
-            by_image[laser_label.image_id] = laser_label
-    return list(by_image.values())
+        by_image.setdefault(laser_label.image_id, []).append(laser_label)
+    for labels in by_image.values():
+        labels.sort(key=lambda label: label.id or 0)
+    return by_image
 
 
 def _is_validated_fix(laser_label) -> bool:
@@ -124,39 +127,53 @@ async def compute_laser_depths_activity(dive_id: int) -> ComputeLaserDepthsResul
 
         result = ComputeLaserDepthsResult()
 
-        for laser_label in _one_label_per_image(laser_labels, result):
-            image_id = laser_label.image_id
-
+        for image_id, labels in _valid_labels_by_image(laser_labels, result).items():
             existing = existing_by_image.get(image_id)
+            # "Current" means here what it means in the cohort selector: a
+            # depth derived from *one of* this image's still-valid labels
+            # under the calibration in force. Keying on one specific label is
+            # what wedged prod dive 279, and an activity that disagrees with
+            # its selector is how a dive never drains.
             if (
                 existing is not None
-                and existing.laser_label_id == laser_label.id
                 and existing.laser_extrinsics_id == laser_extrinsics.id
+                and existing.laser_label_id in {label.id for label in labels}
             ):
                 result.skipped_current += 1
                 continue
 
-            point = compute_laser_point(
-                laser_label, laser_extrinsics, camera_intrinsics
-            )
-            # `depth_m > 0`, not `isfinite`. The kernel reports "these rays
-            # never meet" as the origin and a dot on the wrong side of the
-            # principal point as a negative Z — both finite, and a length
-            # computed at a negative depth comes out identical to its
-            # positive twin, so nothing downstream would notice. See
-            # `test_laser_geometry.py`.
-            if not math.isfinite(point.depth_m) or point.depth_m <= 0.0:
-                activity.logger.warning(
-                    "dive_id=%d image_id=%d laser_label_id=%s: laser at (%s, %s) "
-                    "gives depth=%s (residual=%s) against "
-                    "laser_extrinsics_id=%s; no valid intersection, skipping",
+            # Ascending id, first usable geometry wins. `depth_m > 0`, not
+            # `isfinite`: the kernel reports "these rays never meet" as the
+            # origin and a dot on the wrong side of the principal point as a
+            # negative Z — both finite, and a length computed at a negative
+            # depth is identical to its positive twin, so nothing downstream
+            # would notice. See `test_laser_geometry.py`.
+            chosen = point = None
+            for laser_label in labels:
+                candidate = compute_laser_point(
+                    laser_label, laser_extrinsics, camera_intrinsics
+                )
+                if math.isfinite(candidate.depth_m) and candidate.depth_m > 0.0:
+                    chosen, point = laser_label, candidate
+                    break
+                activity.logger.debug(
+                    "dive_id=%d image_id=%d laser_label_id=%s: depth=%s; "
+                    "trying the image's next valid label",
                     dive_id,
                     image_id,
                     laser_label.id,
-                    laser_label.x,
-                    laser_label.y,
-                    point.depth_m,
-                    point.residual_m,
+                    candidate.depth_m,
+                )
+
+            if point is None:
+                activity.logger.warning(
+                    "dive_id=%d image_id=%d: none of its %d valid laser label(s) "
+                    "%s intersect laser_extrinsics_id=%s in front of the camera; "
+                    "skipping",
+                    dive_id,
+                    image_id,
+                    len(labels),
+                    [label.id for label in labels],
                     laser_extrinsics.id,
                 )
                 result.skipped_invalid_geometry += 1
@@ -170,13 +187,13 @@ async def compute_laser_depths_activity(dive_id: int) -> ComputeLaserDepthsResul
                     range_m=point.range_m,
                     # How well the dot and the calibration agreed. Recorded,
                     # not gated on: it cannot see error along the laser's
-                    # epipolar line, and being metric it means different
-                    # things at 0.9 m and 2.5 m — so a threshold belongs to
-                    # the observed distribution, which this is the first
-                    # thing to produce.
+                    # epipolar line, and being metric it means different things
+                    # at 0.9 m and 2.5 m — so a threshold belongs to the
+                    # observed distribution, which this is the first thing to
+                    # produce.
                     residual_m=point.residual_m,
                     image_id=image_id,
-                    laser_label_id=laser_label.id,
+                    laser_label_id=chosen.id,
                     laser_extrinsics_id=laser_extrinsics.id,
                 ),
             )

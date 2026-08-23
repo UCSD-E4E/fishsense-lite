@@ -386,8 +386,15 @@ def _cohort_selectors() -> list:
     )
 
 
-async def _seed_multi_valued(session) -> None:
-    """A dive population with the multiplicity prod actually has."""
+async def _seed_multi_valued(session, *, derived_rows: bool = True) -> None:
+    """A dive population with the multiplicity prod actually has.
+
+    `derived_rows` controls whether a `LaserDepth` and a `Measurement` already
+    exist. They must, for the selector-executes test: without them the
+    selectors' `NOT EXISTS` short-circuits and the scalar subquery inside is
+    never evaluated. The drain test needs them absent so it can watch a dive
+    leave the cohort.
+    """
     from datetime import datetime, timezone  # pylint: disable=import-outside-toplevel
 
     from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
@@ -427,6 +434,27 @@ async def _seed_multi_valued(session) -> None:
         LaserLabel(id=102, x=100.0, y=200.0, completed=True, superseded=False, image_id=11),
     ])
     await session.flush()
+    # A depth and a measurement must EXIST, or the selectors' `NOT EXISTS`
+    # short-circuits and the scalar subquery inside it is never evaluated —
+    # which is exactly how an uncorrelated `coalesce(...)` slips through: the
+    # query runs, returns a row, and Postgres never gets the chance to raise
+    # CardinalityViolationError.
+    if not derived_rows:
+        return
+
+    from fishsense_api.models.fish import Fish  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_depth import LaserDepth  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
+
+    session.add(Fish(id=700, species_id=None))
+    await session.flush()
+    session.add_all([
+        LaserDepth(id=1, depth_m=1.5, range_m=1.51, residual_m=0.0004,
+                   image_id=11, laser_label_id=101, laser_extrinsics_id=51),
+        Measurement(id=1, length_m=0.3, image_id=11, fish_id=700,
+                    laser_extrinsics_id=51),
+    ])
+    await session.flush()
 
 
 def _with_session(coro_factory):
@@ -441,7 +469,14 @@ def _with_session(coro_factory):
                                      expire_on_commit=False)
         try:
             async with factory() as session:
-                return await coro_factory(session)
+                result = await coro_factory(session)
+                # Commit, or nothing survives the session. Seeding in one
+                # session and querying in another silently saw an empty
+                # database, so the selectors' `NOT EXISTS` short-circuited and
+                # never evaluated the scalar subquery this test exists to
+                # exercise — it passed with the bug reintroduced.
+                await session.commit()
+                return result
         finally:
             await database.engine.dispose()
 
@@ -459,17 +494,24 @@ def test_every_cohort_selector_runs_on_postgres():
     selectors = _cohort_selectors()
     assert selectors, "no cohort selectors discovered - has the module moved?"
 
-    async def _exercise(session):
-        await _seed_multi_valued(session)
-        failures = []
-        for name, fn in selectors:
+    _with_session(_seed_multi_valued)
+
+    def _exercise(name, fn):
+        # A session each: the first Postgres error aborts its transaction, and
+        # every later statement on that connection comes back
+        # InFailedSqlTransaction — which would report every selector as broken
+        # and hide which one actually is.
+        async def _run(session):
             try:
                 await fn(session=session)
+                return None
             except Exception as exc:  # noqa: BLE001  pylint: disable=broad-except
-                failures.append(f"{name}: {type(exc).__name__}: {exc}")
-        return failures
+                return f"{name}: {type(exc).__name__}: {exc}"
 
-    failures = _with_session(_exercise)
+        return _with_session(_run)
+
+    failures = [f for f in (_exercise(name, fn) for name, fn in selectors) if f]
+
     assert not failures, "cohort selectors raised on Postgres:\n  " + "\n  ".join(failures)
 
 
@@ -491,7 +533,7 @@ def test_laser_depth_cohort_drains_with_duplicate_labels_on_postgres():
         )
         from fishsense_api.models.laser_depth import LaserDepth  # pylint: disable=import-outside-toplevel
 
-        await _seed_multi_valued(session)
+        await _seed_multi_valued(session, derived_rows=False)
         before = await select_next_for_laser_depth(session=session)
         await put_laser_depth(
             11,

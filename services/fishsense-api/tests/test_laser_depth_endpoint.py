@@ -478,3 +478,61 @@ async def test_selector_still_repicks_when_the_recorded_label_went_superseded(se
     )
 
     assert await select_next_for_laser_depth(session=session) == 1
+
+
+def test_recorded_label_check_is_correlated():
+    """The inner EXISTS must reference the outer `image`, not cross-join it.
+
+    Written as `select(...).where(recorded_label.image_id == Image.id)`, the
+    compiler emitted `FROM laserlabel AS laserlabel_1, image` — a fresh
+    `image` that shadows the outer one, making the clause a tautology and
+    cross-joining the whole image table on every evaluation. Same class of bug
+    as the uncorrelated `_resolved_laser_extrinsics_id()`, one level deeper.
+    """
+    from sqlalchemy.dialects import postgresql  # pylint: disable=import-outside-toplevel
+
+    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+        _laser_depth_cohort_query,
+    )
+
+    compiled = str(_laser_depth_cohort_query().compile(dialect=postgresql.dialect()))
+
+    assert "FROM laserlabel AS laserlabel_1, image" not in compiled, (
+        f"recorded-label EXISTS cross-joins image instead of correlating:\n{compiled}"
+    )
+
+
+async def test_selector_repicks_when_the_depth_names_another_images_label(session):
+    """Provenance has to mean *this* image's label.
+
+    With the check uncorrelated, any valid label anywhere in the table
+    satisfied it, so a depth row pointing at a different image's label read as
+    current and the image was never recomputed.
+    """
+    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+        select_next_for_laser_depth,
+    )
+    from fishsense_api.controllers.laser_depth_controller import (  # pylint: disable=import-outside-toplevel
+        put_laser_depth,
+    )
+
+    session.add_all(
+        [
+            _dive(1),
+            _image(11, 1),
+            _laser_label(101, 11),
+            _image(12, 1),
+            _laser_label(102, 12),  # a valid label, but on the OTHER image
+            _extrinsics(51, 1),
+        ]
+    )
+    await session.flush()
+    # Image 12 gets a proper depth; image 11's names image 12's label.
+    await put_laser_depth(
+        12, _depth(laser_label_id=102, laser_extrinsics_id=51), session=session
+    )
+    await put_laser_depth(
+        11, _depth(laser_label_id=102, laser_extrinsics_id=51), session=session
+    )
+
+    assert await select_next_for_laser_depth(session=session) == 1

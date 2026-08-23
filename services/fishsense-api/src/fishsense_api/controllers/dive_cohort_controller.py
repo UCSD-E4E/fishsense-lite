@@ -828,14 +828,21 @@ async def select_next_for_laser_depth(
     session: AsyncSession = Depends(get_async_session),
 ) -> int | None:
     """Laser depth: HIGH-priority + resolvable calibration + at least one
-    canonical image whose valid laser label has no *current* `LaserDepth`.
+    canonical laser-labelled image with no *current* `LaserDepth`.
 
-    "Current" is the point. Depth is a function of the laser label and the
-    calibration, so the stored row names both, and an image counts as needing
-    work when either differs from what would be used today — no row at all, a
-    replaced label, or a recalibration. That is what lets a recompute be an
-    ordinary drainable cohort instead of a hand-run backfill: the 2026-08-11
-    panel-offset recalibration would re-enter its dives here automatically.
+    "Current" is the point, and it is a property of the **image**: a depth
+    row whose recorded label is still one of that image's valid labels, under
+    the calibration the dive resolves to today. An image needs work when there
+    is no row, when the label it names has been superseded or replaced, or
+    when the calibration has changed. That is what lets a recompute be an
+    ordinary drainable cohort instead of a hand-run backfill — the 2026-08-11
+    panel-offset recalibration re-enters its dives here automatically.
+
+    Keyed on the image rather than on a specific label because `LaserDepth`
+    holds one row per image while an image may carry several valid labels
+    (461 in prod do, nearly all duplicates of the same dot). Asking "is there
+    a depth for THIS label" never went false for those images and wedged the
+    cohort on dive 279 with all 44 of its depths written.
 
     Unlike stage 14 this does not require head/tail labels, clusters, or a
     measurable species — the dot's distance is knowable for any frame whose
@@ -889,6 +896,13 @@ def _laser_depth_cohort_query():
                 recorded_label.x != None,
                 recorded_label.y != None,
             )
+            # Correlate both, for the same reason `_resolved_laser_extrinsics_id`
+            # does: auto-correlation only reaches the immediately enclosing
+            # SELECT, so without this the compiler emits
+            # `FROM laserlabel AS laserlabel_1, image` — a fresh `image` that
+            # shadows the outer one, turning the image check into a tautology
+            # and cross-joining the whole image table on every evaluation.
+            .correlate(LaserDepth, Image)
             .exists()
         )
         .exists()
