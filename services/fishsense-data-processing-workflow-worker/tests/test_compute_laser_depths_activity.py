@@ -383,3 +383,53 @@ async def test_duplicate_valid_labels_produce_one_depth_per_image(monkeypatch):
     assert result.computed == 1
     assert fs.images.put_laser_depth.await_count == 1
     assert fs.images.put_laser_depth.call_args.args[1].laser_label_id == 101
+
+
+@pytest.mark.asyncio
+async def test_falls_back_to_another_valid_label_when_the_first_is_degenerate(monkeypatch):
+    """Picking one label per image must not mean giving up on the image.
+
+    Deduplicating to the lowest id made an image whose lowest-id label fails
+    the `depth_m > 0` gate produce no depth at all, even with a sibling valid
+    label that triangulates fine. Under the image-keyed cohort that image is
+    never satisfied, so the dive is offered every hour forever — reintroducing
+    the dive-279 wedge from the other direction.
+    """
+    extrinsics = _laser_extrinsics()
+    good_x, good_y = _laser_pixel(extrinsics, 1.20)
+    fs = _make_fs(
+        laser_extrinsics=extrinsics,
+        laser_labels=[
+            # Lowest id, but on the wrong side of the principal point for the
+            # laser's offset: the rays only meet behind the camera.
+            _laser_label(101, 100, 30.0, 3000.0),
+            _laser_label(102, 100, good_x, good_y),
+        ],
+    )
+
+    result = await _run(monkeypatch, fs)
+
+    assert result.computed == 1, "the image has a usable label; it must be used"
+    assert fs.images.put_laser_depth.await_count == 1
+    written = fs.images.put_laser_depth.call_args.args[1]
+    assert written.laser_label_id == 102
+    assert written.depth_m > 0.0
+
+
+@pytest.mark.asyncio
+async def test_counts_the_image_once_when_every_label_is_degenerate(monkeypatch):
+    """If no label for the image yields a usable geometry, that is one
+    unusable image, not one per duplicate label."""
+    extrinsics = _laser_extrinsics()
+    fs = _make_fs(
+        laser_extrinsics=extrinsics,
+        laser_labels=[
+            _laser_label(101, 100, 30.0, 3000.0),
+            _laser_label(102, 100, 31.0, 3001.0),
+        ],
+    )
+
+    result = await _run(monkeypatch, fs)
+
+    fs.images.put_laser_depth.assert_not_awaited()
+    assert result.skipped_invalid_geometry == 1

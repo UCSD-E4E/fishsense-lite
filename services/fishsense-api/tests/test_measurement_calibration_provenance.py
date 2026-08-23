@@ -223,6 +223,8 @@ def test_resolved_extrinsics_subquery_is_correlated():
     it. This is the assertion that would have caught the prod outage without
     a Postgres to run against.
     """
+    import re  # pylint: disable=import-outside-toplevel
+
     from sqlalchemy.dialects import postgresql  # pylint: disable=import-outside-toplevel
 
     from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
@@ -235,4 +237,24 @@ def test_resolved_extrinsics_subquery_is_correlated():
         "scalar subquery is uncorrelated — it cross-joins dive and returns one "
         f"row per extrinsics row, which Postgres rejects:\n{compiled}"
     )
-    assert "laserextrinsics.dive_id = dive.id" in compiled
+
+    # Pin the coalesce's own subqueries, not just the absence of one string.
+    # `laserextrinsics.dive_id = dive.id` also appears in the unrelated
+    # `has_laser_extrinsics` EXISTS, so asserting on it alone passed happily
+    # while the scalar subquery was still cross-joining.
+    start = compiled.index("coalesce(") + len("coalesce")
+    depth = 0
+    end = start
+    for end, char in enumerate(compiled[start:], start):
+        depth += (char == "(") - (char == ")")
+        if depth == 0:
+            break
+    else:  # pragma: no cover - unbalanced parens would mean a broken compiler
+        raise AssertionError(f"unbalanced parentheses in compiled SQL:\n{compiled}")
+    inside_coalesce = compiled[start : end + 1]
+
+    for from_clause in re.findall(r"FROM (\w+(?:, \w+)*)", inside_coalesce):
+        assert from_clause == "laserextrinsics", (
+            "a subquery inside coalesce() selects from more than "
+            f"laserextrinsics ({from_clause!r}) — it is not correlated:\n{compiled}"
+        )
