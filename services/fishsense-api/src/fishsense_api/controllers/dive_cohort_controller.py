@@ -28,6 +28,7 @@ from typing import List
 
 from fastapi import Depends
 from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import aliased
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -860,11 +861,36 @@ def _laser_depth_cohort_query():
         .where(LaserExtrinsics.dive_id == Dive.calibration_dive_id)
         .exists(),
     )
+    # "Does this IMAGE have a current depth", not "does this LABEL have one".
+    #
+    # `LaserDepth` is one row per image (`uq_laser_depth_image`) while an image
+    # can carry several *valid* laser labels — 461 images across 8 prod dives
+    # do, nearly all duplicate labels of the same dot. Keying on the specific
+    # label meant the row's `laser_label_id` matched one of them and never the
+    # others, so the image was permanently "needing depth": prod dive 279 had
+    # all 44 of its depths written and was still selected on 27 consecutive
+    # runs, blocking every higher-id dive behind it.
+    #
+    # Staleness is preserved by requiring the recorded label to still be
+    # valid: a superseded or replaced label makes the depth stale exactly as
+    # before, and a recalibration still mismatches on the extrinsics id.
+    recorded_label = aliased(LaserLabel)
     depth_is_current = (
         select(LaserDepth.id)
         .where(LaserDepth.image_id == Image.id)
-        .where(LaserDepth.laser_label_id == LaserLabel.id)
         .where(LaserDepth.laser_extrinsics_id == _resolved_laser_extrinsics_id())
+        .where(
+            select(recorded_label.id)
+            .where(recorded_label.id == LaserDepth.laser_label_id)
+            .where(recorded_label.image_id == Image.id)
+            .where(
+                recorded_label.completed == True,
+                recorded_label.superseded == False,
+                recorded_label.x != None,
+                recorded_label.y != None,
+            )
+            .exists()
+        )
         .exists()
     )
     has_image_needing_depth = (
