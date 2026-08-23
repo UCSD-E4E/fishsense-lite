@@ -666,8 +666,10 @@ numerically identical to its positive twin (the back-projection is linear in
 depth, so head and tail move together). `compute_laser_depths_activity` gates
 on `depth_m > 0` and counts the rest as `skipped_invalid_geometry`. **Stage 14
 still guards only on `isfinite`**, so it will happily measure a fish from an
-impossible depth; the depth stage's counter is currently the only place that
-population is visible.
+impossible depth; the depth stage's `skipped_invalid_geometry` counter is the
+only place that population is visible. As of the 2026-08-23 backfill it is
+**0 of 1109** — the gap is real but not currently reachable by any prod data,
+so it is deliberately left alone rather than changing stage-14 output.
 
 **`LaserDepth.residual_m` is how well the dot and the calibration agreed** —
 the closest-approach distance between the two rays, ~0 when the dot really is
@@ -676,8 +678,20 @@ it is blind to error *along* the laser's epipolar line (a dot slid along it
 moves the depth a long way with the residual pinned at the noise floor), two
 rays meeting at the camera centre report 0 at zero or negative depth, it is
 metric so one threshold is stricter close up than far away, and the float32
-solve puts its noise floor near 1e-5 m at metre scale. A threshold should come
-from the distribution this stage is the first thing to produce.
+solve puts its noise floor near 1e-5 m at metre scale.
+
+**Do not turn it into a measurement quality gate — that was measured and it
+does not work.** Over all 1109 depths, against the known-length models in
+`fish_model_measurement_accuracy`, Spearman rho(residual_m, |pct_error|) =
+**-0.026** (n=464), and the extremes are inverted: dive 84 carries 10x the
+residual of any other dive and the *best* median error (-0.87%), while dive 76
+is near-clean on residual and the worst on error (-7.75%). The reason is the
+epipolar blindness above — scale error lives along the laser line, which is the
+one direction the residual cannot see. Keep recording it (it does flag genuine
+geometric inconsistency), but it is not a proxy for accuracy.
+
+For reference, the distribution it actually has: p50 1.24e-3 m, p95 5.16e-3 m,
+max 2.00e-2 m, over depths spanning 0.44-5.45 m (mean 1.75 m).
 
 **Both cohorts are keyed on the image, and both correlate their subqueries.**
 Two prod outages taught this within a day. An uncorrelated
