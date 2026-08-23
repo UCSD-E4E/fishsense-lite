@@ -345,3 +345,166 @@ def test_a_healthy_database_is_not_rebuilt_on_every_restart():
         db_module._create_all_views = original  # pylint: disable=protected-access
 
     assert not calls
+
+
+# ── cohort selectors, on the database they actually run against ───────
+#
+# The unit suite exercises these on in-memory SQLite, which cannot see two
+# whole classes of bug that prod hit within a day of each other:
+#
+#   * SQLite answers a multi-row scalar subquery with its first row; Postgres
+#     raises CardinalityViolationError. An uncorrelated
+#     `_resolved_laser_extrinsics_id()` therefore passed every unit test and
+#     500'd both selectors in prod on every hourly poll.
+#   * Every unit fixture seeds one row where prod has many — one
+#     `laserextrinsics` per dive, one valid laser label per image. Prod has
+#     461 images carrying two valid labels, which wedged the laser-depth
+#     cohort on dive 279 forever.
+#
+# So the seed below is deliberately *multi-valued*: two calibrated dives and
+# an image with two valid laser labels. Both bugs are visible here and
+# invisible on a single-row SQLite fixture.
+
+
+def _cohort_selectors() -> list:
+    """Every cohort selector, discovered rather than listed.
+
+    A registry property in the spirit of
+    `test_canonical_only_pipeline_work.py`: a selector added later is covered
+    by this the day it lands, instead of the day someone remembers to add it.
+    """
+    import inspect  # pylint: disable=import-outside-toplevel
+
+    from fishsense_api.controllers import (  # pylint: disable=import-outside-toplevel
+        dive_cohort_controller,
+    )
+
+    return sorted(
+        (name, fn)
+        for name, fn in inspect.getmembers(dive_cohort_controller, inspect.iscoroutinefunction)
+        if name.startswith("select_next_for_") or name.startswith("select_dives_")
+    )
+
+
+async def _seed_multi_valued(session) -> None:
+    """A dive population with the multiplicity prod actually has."""
+    from datetime import datetime, timezone  # pylint: disable=import-outside-toplevel
+
+    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_extrinsics import LaserExtrinsics  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
+
+    from fishsense_api.models.camera import Camera  # pylint: disable=import-outside-toplevel
+
+    when = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    # Postgres enforces the foreign keys the SQLite fixtures quietly ignore, so
+    # the camera has to exist before anything references it.
+    session.add(Camera(id=1, serial_number="itest-0001", name="itest-camera"))
+    await session.flush()
+    for dive_id in (1, 2):
+        session.add(
+            Dive(id=dive_id, path=f"/dev/null/{dive_id}", dive_datetime=when,
+                 priority=Priority.HIGH)
+        )
+    await session.flush()
+    # TWO extrinsics rows: one per dive. This is what makes an uncorrelated
+    # scalar subquery return more than one row.
+    session.add_all([
+        LaserExtrinsics(id=51, laser_position=[0.1, 0.0, 0.0], laser_axis=[0.0, 0.0, 1.0],
+                        dive_id=1, camera_id=1),
+        LaserExtrinsics(id=52, laser_position=[0.1, 0.0, 0.0], laser_axis=[0.0, 0.0, 1.0],
+                        dive_id=2, camera_id=1),
+    ])
+    session.add(Image(id=11, path="/dev/null/img-11", taken_datetime=when,
+                      checksum=f"{11:032d}", is_canonical=True, dive_id=1))
+    await session.flush()
+    # TWO valid laser labels on one image — duplicates of the same dot, the
+    # shape 461 prod images have.
+    session.add_all([
+        LaserLabel(id=101, x=100.0, y=200.0, completed=True, superseded=False, image_id=11),
+        LaserLabel(id=102, x=100.0, y=200.0, completed=True, superseded=False, image_id=11),
+    ])
+    await session.flush()
+
+
+def _with_session(coro_factory):
+    """Run `coro_factory(session)` against the scratch database."""
+    from fishsense_api.database import setup_database  # pylint: disable=import-outside-toplevel
+    from sqlalchemy.ext.asyncio import async_sessionmaker  # pylint: disable=import-outside-toplevel
+    from sqlmodel.ext.asyncio.session import AsyncSession  # pylint: disable=import-outside-toplevel
+
+    async def _run():
+        database = setup_database()
+        factory = async_sessionmaker(database.engine, class_=AsyncSession,
+                                     expire_on_commit=False)
+        try:
+            async with factory() as session:
+                return await coro_factory(session)
+        finally:
+            await database.engine.dispose()
+
+    return asyncio.run(_run())
+
+
+@pytest.mark.usefixtures("empty_schema")
+def test_every_cohort_selector_runs_on_postgres():
+    """Each selector must execute against real Postgres without raising.
+
+    This is the test that would have caught the CardinalityViolation outage
+    before it shipped: on SQLite the same query returns a row and passes.
+    """
+    _run_lifespan_sequence()
+    selectors = _cohort_selectors()
+    assert selectors, "no cohort selectors discovered - has the module moved?"
+
+    async def _exercise(session):
+        await _seed_multi_valued(session)
+        failures = []
+        for name, fn in selectors:
+            try:
+                await fn(session=session)
+            except Exception as exc:  # noqa: BLE001  pylint: disable=broad-except
+                failures.append(f"{name}: {type(exc).__name__}: {exc}")
+        return failures
+
+    failures = _with_session(_exercise)
+    assert not failures, "cohort selectors raised on Postgres:\n  " + "\n  ".join(failures)
+
+
+@pytest.mark.usefixtures("empty_schema")
+def test_laser_depth_cohort_drains_with_duplicate_labels_on_postgres():
+    """The dive-279 wedge, end to end on Postgres.
+
+    One depth row covers the image even though a second valid label exists —
+    otherwise the dive is offered forever and blocks every higher-id dive.
+    """
+    _run_lifespan_sequence()
+
+    async def _exercise(session):
+        from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+            select_next_for_laser_depth,
+        )
+        from fishsense_api.controllers.laser_depth_controller import (  # pylint: disable=import-outside-toplevel
+            put_laser_depth,
+        )
+        from fishsense_api.models.laser_depth import LaserDepth  # pylint: disable=import-outside-toplevel
+
+        await _seed_multi_valued(session)
+        before = await select_next_for_laser_depth(session=session)
+        await put_laser_depth(
+            11,
+            LaserDepth(depth_m=1.5, range_m=1.51, residual_m=0.0004,
+                       laser_label_id=101, laser_extrinsics_id=51),
+            session=session,
+        )
+        after = await select_next_for_laser_depth(session=session)
+        return before, after
+
+    before, after = _with_session(_exercise)
+    assert before == 1, "dive with an undepthed laser image should be offered"
+    assert after is None, (
+        "dive still offered after its only eligible image got a depth — the "
+        "cohort is keyed on the label rather than the image and will never drain"
+    )
