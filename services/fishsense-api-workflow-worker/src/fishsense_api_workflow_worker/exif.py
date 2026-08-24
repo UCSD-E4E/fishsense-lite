@@ -91,13 +91,13 @@ def _entries(buf: bytes, ifd_offset: int, endian: str, base: int):
             continue
         total = width * n
         if total <= 4:
-            raw = buf[pos + 8: pos + 8 + total]
+            raw = buf[pos + 8 : pos + 8 + total]
         else:
             (value_offset,) = struct.unpack_from(endian + "I", buf, pos + 8)
             start = base + value_offset
             if start + total > len(buf):
-                continue          # points past a truncated read
-            raw = buf[start: start + total]
+                continue  # points past a truncated read
+            raw = buf[start : start + total]
         yield tag, typ, n, raw
 
 
@@ -124,9 +124,11 @@ def _olympus_serial(buf: bytes, maker_note_offset: int) -> str | None:
     The block declares its own byte order, so the file's is deliberately not
     passed in — a MakerNote may disagree with its container.
     """
-    if buf[maker_note_offset: maker_note_offset + 8] != _OLYMPUS_SIGNATURE:
-        return None               # not the Olympus2 layout we understand
-    mn_endian = "<" if buf[maker_note_offset + 8: maker_note_offset + 10] == b"II" else ">"
+    if buf[maker_note_offset : maker_note_offset + 8] != _OLYMPUS_SIGNATURE:
+        return None  # not the Olympus2 layout we understand
+    mn_endian = (
+        "<" if buf[maker_note_offset + 8 : maker_note_offset + 10] == b"II" else ">"
+    )
     base = maker_note_offset
     ifd = maker_note_offset + 12  # 8-byte signature + 2-byte order + 2-byte version
 

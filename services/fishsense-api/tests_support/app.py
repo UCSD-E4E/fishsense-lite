@@ -48,7 +48,11 @@ async def seed_camera_with_intrinsics(session) -> None:
     session.add(
         CameraIntrinsics(
             camera_id=1,
-            camera_matrix=[[3000.0, 0.0, 2000.0], [0.0, 3000.0, 1500.0], [0.0, 0.0, 1.0]],
+            camera_matrix=[
+                [3000.0, 0.0, 2000.0],
+                [0.0, 3000.0, 1500.0],
+                [0.0, 0.0, 1.0],
+            ],
             distortion_coefficients=[-0.05, 0.01, 0.0, 0.0, 0.0],
         )
     )

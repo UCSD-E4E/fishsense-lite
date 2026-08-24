@@ -22,9 +22,7 @@ class LaserPrediction(ModelBase, table=True):
     labelers place `LaserLabel.x/y`). One row per image — re-prediction
     upserts on the natural key."""
 
-    __table_args__ = (
-        UniqueConstraint("image_id", name="uq_laser_prediction_image"),
-    )
+    __table_args__ = (UniqueConstraint("image_id", name="uq_laser_prediction_image"),)
 
     id: int | None = Field(default=None, primary_key=True)
     # x/y are None when the detector found no laser; confidence is always set.

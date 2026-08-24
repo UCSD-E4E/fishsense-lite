@@ -34,8 +34,11 @@ from fishsense_api_workflow_worker.activities.utils import get_fs_client
 async def persist_slate_predictions_activity(results: List[Any]) -> int:
     """Upsert each prediction; returns the count written."""
     parsed: List[SlatePredictionResult] = [
-        r if isinstance(r, SlatePredictionResult)
-        else SlatePredictionResult.model_validate(r)
+        (
+            r
+            if isinstance(r, SlatePredictionResult)
+            else SlatePredictionResult.model_validate(r)
+        )
         for r in results
     ]
     activity.logger.info("persisting %d slate predictions", len(parsed))

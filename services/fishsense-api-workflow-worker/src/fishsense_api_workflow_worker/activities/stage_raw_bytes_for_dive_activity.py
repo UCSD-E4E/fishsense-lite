@@ -67,10 +67,13 @@ def _stage_concurrency() -> int:
     at least 1. Read here (not at import) so the value is picked up from
     settings without a code change."""
     try:
-        value = int(settings.e4e_nas.get("stage_concurrency", DEFAULT_STAGE_CONCURRENCY))
+        value = int(
+            settings.e4e_nas.get("stage_concurrency", DEFAULT_STAGE_CONCURRENCY)
+        )
     except (TypeError, ValueError):
         value = DEFAULT_STAGE_CONCURRENCY
     return max(1, value)
+
 
 # `NAS_FILE_NOT_FOUND_TYPE` and the permanent/transient split now live in
 # `activities/nas_errors.py`, shared with the ingest activities. Re-exported
@@ -102,8 +105,6 @@ def _build_nas_client() -> NasDownloadClient:
     )
 
 
-
-
 def _iter_leaf_exceptions(exc: BaseException):
     """Yield leaf (non-group) exceptions from a possibly-nested
     ExceptionGroup, so a wrapped classification can be recovered."""
@@ -127,9 +128,7 @@ async def _download_one(nas, *, src_path: str, dest_dir: str) -> None:
     incomplete and hide a real NAS/data problem, so failures surface.
     """
     try:
-        await asyncio.to_thread(
-            nas.download_to, src_path=src_path, dest_dir=dest_dir
-        )
+        await asyncio.to_thread(nas.download_to, src_path=src_path, dest_dir=dest_dir)
     except DSMError as exc:
         raise_if_permanent_dsm_error(exc, context=src_path)
         raise
@@ -163,15 +162,11 @@ async def stage_raw_bytes_for_dive_activity(
         # match what the cohort promised, and the dive could never drain.
         # This also covers on-demand/backfill runs, which bypass the cohort.
         images = [image for image in images if image.is_canonical]
-    activity.logger.info(
-        "staging raw bytes dive_id=%d images=%d", dive_id, len(images)
-    )
+    activity.logger.info("staging raw bytes dive_id=%d images=%d", dive_id, len(images))
 
     nas = _build_nas_client()
     concurrency = _stage_concurrency()
-    activity.logger.info(
-        "staging concurrency=%d dive_id=%d", concurrency, dive_id
-    )
+    activity.logger.info("staging concurrency=%d dive_id=%d", concurrency, dive_id)
     sem = asyncio.Semaphore(concurrency)
 
     staged = 0

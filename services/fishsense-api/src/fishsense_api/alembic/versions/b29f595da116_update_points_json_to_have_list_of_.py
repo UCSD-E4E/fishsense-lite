@@ -5,6 +5,7 @@ Revises: 711bd7660a82
 Create Date: 2025-11-23 15:25:24.974484
 
 """
+
 # pylint: skip-file
 
 from typing import Sequence, Union
@@ -12,10 +13,9 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-
 # revision identifiers, used by Alembic.
-revision: str = 'b29f595da116'
-down_revision: Union[str, Sequence[str], None] = '711bd7660a82'
+revision: str = "b29f595da116"
+down_revision: Union[str, Sequence[str], None] = "711bd7660a82"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

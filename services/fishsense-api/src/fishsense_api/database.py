@@ -192,9 +192,7 @@ def run_alembic_upgrade() -> None:
             )
             asyncio.run(_create_all_views())
     else:
-        _log.info(
-            "alembic_version missing; fresh DB after create_all"
-        )
+        _log.info("alembic_version missing; fresh DB after create_all")
         # Views BEFORE the stamp, deliberately. Stamping marks every migration
         # as applied without running any of them, so the views those migrations
         # create are never made — and they aren't in `SQLModel.metadata`
@@ -235,9 +233,7 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
         AsyncSession: An asynchronous database session.
     """
     if _session_factory is None:
-        raise RuntimeError(
-            "Database not initialized; call setup_database() first"
-        )
+        raise RuntimeError("Database not initialized; call setup_database() first")
     async with _session_factory() as session:
         try:
             yield session

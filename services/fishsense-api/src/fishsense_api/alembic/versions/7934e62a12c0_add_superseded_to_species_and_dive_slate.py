@@ -18,6 +18,7 @@ Then drops + recreates `dive_pipeline_status` so its
 new `superseded = FALSE` predicate (view SQL is canonicalized in
 fishsense_api.views).
 """
+
 # pylint: skip-file
 
 from typing import Sequence, Union
@@ -30,7 +31,6 @@ from fishsense_api.views import (
     DROP_DIVE_PIPELINE_STATUS_VIEW_SQL,
 )
 
-
 # revision identifiers, used by Alembic.
 revision: str = "7934e62a12c0"
 down_revision: Union[str, Sequence[str], None] = "8c8bbdb06f38"
@@ -41,7 +41,9 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.add_column("specieslabel", sa.Column("superseded", sa.Boolean(), nullable=True))
     op.execute("UPDATE specieslabel SET superseded = FALSE WHERE superseded IS NULL")
-    op.add_column("diveslatelabel", sa.Column("superseded", sa.Boolean(), nullable=True))
+    op.add_column(
+        "diveslatelabel", sa.Column("superseded", sa.Boolean(), nullable=True)
+    )
     op.execute("UPDATE diveslatelabel SET superseded = FALSE WHERE superseded IS NULL")
 
     op.execute(DROP_DIVE_PIPELINE_STATUS_VIEW_SQL)

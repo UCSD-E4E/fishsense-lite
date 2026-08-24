@@ -64,17 +64,13 @@ class UserClient(ClientBase):
         """
         response = await self._get(f"/api/v1/users/label-studio/{label_studio_id}")
         if response.status_code == 404:
-            self.logger.debug(
-                "No user found with Label Studio ID %s", label_studio_id
-            )
+            self.logger.debug("No user found with Label Studio ID %s", label_studio_id)
             return None
         response.raise_for_status()
 
         json = response.json()
         if json is None:
-            self.logger.debug(
-                "No user found with Label Studio ID %s", label_studio_id
-            )
+            self.logger.debug("No user found with Label Studio ID %s", label_studio_id)
             return None
 
         return User.model_validate(json)

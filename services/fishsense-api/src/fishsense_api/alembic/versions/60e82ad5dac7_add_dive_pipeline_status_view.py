@@ -5,6 +5,7 @@ Revises: 299428e39cb9
 Create Date: 2026-05-04
 
 """
+
 # pylint: skip-file
 
 from typing import Sequence, Union
@@ -16,10 +17,9 @@ from fishsense_api.views import (
     DROP_DIVE_PIPELINE_STATUS_VIEW_SQL,
 )
 
-
 # revision identifiers, used by Alembic.
-revision: str = '60e82ad5dac7'
-down_revision: Union[str, Sequence[str], None] = '299428e39cb9'
+revision: str = "60e82ad5dac7"
+down_revision: Union[str, Sequence[str], None] = "299428e39cb9"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

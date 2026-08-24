@@ -112,7 +112,6 @@ def measurable_species_sql(col: str) -> str:
     return f"({col} LIKE '{REAL_FISH_LIKE}' OR {rigid_target_sql(col)})"
 
 
-
 def parse_species_names(content_of_image: str | None) -> tuple[str, str] | None:
     """Pull `(common_name, scientific_name)` out of a real fish's taxonomy path.
 
@@ -160,7 +159,7 @@ def parse_model_name(content_of_image: str | None) -> str | None:
     # `.strip(" ")`, not `.strip()`: the SQL guard is `TRIM(col)`, which removes
     # spaces only. Stripping all whitespace here would make Python reject
     # "Fish Model,\t" while the SQL still matched it — the wedge again.
-    name = content_of_image[len(FISH_MODEL_PREFIX):].strip(" ")
+    name = content_of_image[len(FISH_MODEL_PREFIX) :].strip(" ")
     return name or None
 
 

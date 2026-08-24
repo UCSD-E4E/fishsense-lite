@@ -43,9 +43,7 @@ def _is_valid_laser(label: LaserLabel) -> bool:
 async def resolve_species_preprocess_inputs_activity(
     dive_id: int,
 ) -> PreprocessSpeciesImagesInput:
-    activity.logger.info(
-        "resolving species preprocess inputs dive_id=%d", dive_id
-    )
+    activity.logger.info("resolving species preprocess inputs dive_id=%d", dive_id)
     async with get_fs_client() as fs:
         dive = await fs.dives.get(dive_id=dive_id)
         if dive is None:
@@ -55,13 +53,10 @@ async def resolve_species_preprocess_inputs_activity(
 
         intrinsics = await fs.cameras.get_intrinsics(dive.camera_id)
         if intrinsics is None:
-            raise ValueError(
-                f"camera_id={dive.camera_id} has no intrinsics"
-            )
+            raise ValueError(f"camera_id={dive.camera_id} has no intrinsics")
 
         prediction_clusters = (
-            await fs.images.get_clusters(dive_id, DataSource.PREDICTION.value)
-            or []
+            await fs.images.get_clusters(dive_id, DataSource.PREDICTION.value) or []
         )
         images = await fs.images.get(dive_id=dive_id) or []
         # Canonical frames only. The same physical frames live under several

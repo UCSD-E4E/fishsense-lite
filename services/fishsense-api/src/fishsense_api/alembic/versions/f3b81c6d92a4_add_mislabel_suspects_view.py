@@ -8,6 +8,7 @@ Flags fish-model frames whose measured length fits a different known model
 better than their own species label. Foreshortening-aware: see views.py.
 
 """
+
 # pylint: skip-file
 
 from typing import Sequence, Union
@@ -18,7 +19,6 @@ from fishsense_api.views import (
     DROP_FISH_MODEL_MISLABEL_SUSPECTS_VIEW_SQL,
     FISH_MODEL_MISLABEL_SUSPECTS_VIEW_SQL,
 )
-
 
 # revision identifiers, used by Alembic.
 revision: str = "f3b81c6d92a4"

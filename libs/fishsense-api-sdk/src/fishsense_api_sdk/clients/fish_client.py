@@ -136,9 +136,7 @@ class FishClient(ClientBase):
             fish_id (int): The fish the stale measurement is bound to.
             image_id (int): The image whose binding should be removed.
         """
-        response = await self._delete(
-            f"/api/v1/fish/{fish_id}/measurements/{image_id}"
-        )
+        response = await self._delete(f"/api/v1/fish/{fish_id}/measurements/{image_id}")
         response.raise_for_status()
 
     async def get_species_by_scientific_name(

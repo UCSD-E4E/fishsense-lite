@@ -168,6 +168,7 @@ def _valid_headtail_conditions():
         HeadTailLabel.tail_y != None,
     )
 
+
 def _resolved_laser_extrinsics_id():
     """The `LaserExtrinsics.id` a dive would actually be processed with.
 
@@ -755,9 +756,7 @@ async def select_next_for_measure_fish(
     # LaserExtrinsics row has dive_id = NULL), so it reduces to the own
     # check. Mirrors `dive_pipeline_status.calibrated`.
     has_laser_extrinsics = or_(
-        select(LaserExtrinsics.id)
-        .where(LaserExtrinsics.dive_id == Dive.id)
-        .exists(),
+        select(LaserExtrinsics.id).where(LaserExtrinsics.dive_id == Dive.id).exists(),
         select(LaserExtrinsics.id)
         .where(LaserExtrinsics.dive_id == Dive.calibration_dive_id)
         .exists(),

@@ -21,8 +21,11 @@ from fishsense_api_workflow_worker.activities.utils import get_fs_client
 async def persist_laser_predictions_activity(results: List[Any]) -> int:
     """Upsert each prediction; returns the count written."""
     parsed: List[LaserPredictionResult] = [
-        r if isinstance(r, LaserPredictionResult)
-        else LaserPredictionResult.model_validate(r)
+        (
+            r
+            if isinstance(r, LaserPredictionResult)
+            else LaserPredictionResult.model_validate(r)
+        )
         for r in results
     ]
     activity.logger.info("persisting %d laser predictions", len(parsed))

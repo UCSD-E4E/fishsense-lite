@@ -43,9 +43,7 @@ class NasBackupClient:
     def __init__(self, *, nas_url: str, username: str, password: str):
         parsed = urlparse(nas_url)
         if not parsed.hostname or not parsed.port:
-            raise ValueError(
-                f"NAS url must include hostname + port; got {nas_url!r}"
-            )
+            raise ValueError(f"NAS url must include hostname + port; got {nas_url!r}")
         # `auto_relogin=True` (default) makes the client transparently
         # re-authenticate on SID-expired (DSM code 119) — the property
         # that fixes the 30-min idle-timeout pattern that bit the

@@ -18,7 +18,6 @@ from fishsense_shared import PreprocessSlateImagesInput
 from pydantic import BaseModel
 from temporalio import workflow
 
-
 ReferencePoint = Tuple[float, float]
 
 

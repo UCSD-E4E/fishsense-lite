@@ -13,6 +13,7 @@ Drop + recreate rather than CREATE OR REPLACE — Postgres is restrictive about
 column-shape changes and the view has no dependents.
 
 """
+
 # pylint: skip-file
 
 from typing import Sequence, Union
@@ -23,7 +24,6 @@ from fishsense_api.views import (
     DIVE_PIPELINE_STATUS_VIEW_SQL,
     DROP_DIVE_PIPELINE_STATUS_VIEW_SQL,
 )
-
 
 # revision identifiers, used by Alembic.
 revision: str = "a91d4e70c3b8"

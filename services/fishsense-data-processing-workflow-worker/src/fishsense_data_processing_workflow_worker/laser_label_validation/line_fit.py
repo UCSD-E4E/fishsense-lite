@@ -71,7 +71,9 @@ class LineFit:  # pylint: disable=too-many-instance-attributes
     inlier_count: int
     inlier_fraction: float
     residual_std: float  # perp-distance std among inliers, in px (RANSAC tightness)
-    label_noise_mad: float  # 1.4826 * MAD over ALL positive labels' perp distance, in px
+    label_noise_mad: (
+        float  # 1.4826 * MAD over ALL positive labels' perp distance, in px
+    )
     line_confidence: float  # along-line spread / perp spread (covariance eigenratio)
 
     @property

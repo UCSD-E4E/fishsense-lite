@@ -5,13 +5,13 @@ Revises: a3d0440cda27
 Create Date: 2026-08-04 00:00:00.000000
 
 """
+
 # pylint: skip-file
 
 from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-
 
 # revision identifiers, used by Alembic.
 revision: str = "c7f2a9d14b83"

@@ -53,9 +53,7 @@ def _drop_skipped(points: list, skipped) -> list:
         raise ValueError(f"duplicate skipped index in {indices}")
     for i in indices:
         if not 0 <= i < len(points):
-            raise ValueError(
-                f"skipped index {i} out of range for {len(points)} points"
-            )
+            raise ValueError(f"skipped index {i} out of range for {len(points)} points")
     drop = set(indices)
     return [p for i, p in enumerate(points) if i not in drop]
 
@@ -189,9 +187,7 @@ async def perform_laser_calibration_activity(dive_id: int) -> int | None:
 
         camera_intrinsics = await fs.cameras.get_intrinsics(dive.camera_id)
         if camera_intrinsics is None:
-            raise ValueError(
-                f"camera_id={dive.camera_id} has no intrinsics"
-            )
+            raise ValueError(f"camera_id={dive.camera_id} has no intrinsics")
 
         laser_points, laser_dots = await _gather_laser_points(
             fs, dive_slate_labels, slate, camera_intrinsics

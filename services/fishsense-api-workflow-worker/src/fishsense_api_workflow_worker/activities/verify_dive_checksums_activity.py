@@ -105,9 +105,7 @@ def _exif_taken_datetime(path: Path) -> datetime | None:
     if not raw:
         return None
     try:
-        return datetime.strptime(raw, "%Y:%m:%d %H:%M:%S").replace(
-            tzinfo=timezone.utc
-        )
+        return datetime.strptime(raw, "%Y:%m:%d %H:%M:%S").replace(tzinfo=timezone.utc)
     except ValueError:
         return None
 
@@ -146,9 +144,7 @@ def _verify_one(nas, image, report: VerifyChecksumsReport) -> None:
 
     if not image.checksum:
         report.no_stored_checksum.append(
-            ChecksumMismatch(
-                image_id=image.id, path=image.path, computed=computed
-            )
+            ChecksumMismatch(image_id=image.id, path=image.path, computed=computed)
         )
     elif image.checksum == computed:
         report.checksum_matched += 1

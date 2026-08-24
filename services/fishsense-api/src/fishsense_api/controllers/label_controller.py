@@ -78,8 +78,9 @@ async def get_dive_slate_label_studio_project_ids(
         incomplete,
     )
     query = (
-        select(DiveSlateLabel.label_studio_project_id)
-        .where(DiveSlateLabel.label_studio_project_id != None)
+        select(DiveSlateLabel.label_studio_project_id).where(
+            DiveSlateLabel.label_studio_project_id != None
+        )
         # Exclude dead-lettered rows — parity with every other read.
         .where(DiveSlateLabel.superseded == False)
     )
@@ -159,9 +160,7 @@ async def get_dive_slate_label_by_label_studio_id(
     label_studio_id: int, session: AsyncSession = Depends(get_async_session)
 ) -> DiveSlateLabel | None:
     """Retrieve a dive-slate label for a given Label Studio task ID."""
-    logger.debug(
-        "Retrieving dive-slate label for Label Studio id=%d", label_studio_id
-    )
+    logger.debug("Retrieving dive-slate label for Label Studio id=%d", label_studio_id)
     query = (
         select(DiveSlateLabel)
         .where(DiveSlateLabel.label_studio_task_id == label_studio_id)
@@ -203,8 +202,9 @@ async def get_headtail_label_studio_project_ids(
         incomplete,
     )
     query = (
-        select(HeadTailLabel.label_studio_project_id)
-        .where(HeadTailLabel.label_studio_project_id != None)
+        select(HeadTailLabel.label_studio_project_id).where(
+            HeadTailLabel.label_studio_project_id != None
+        )
         # Parity with laser + every other headtail read — exclude superseded.
         .where(HeadTailLabel.superseded == False)
     )
@@ -288,9 +288,7 @@ async def get_headtail_label_by_label_studio_id(
     label_studio_id: int, session: AsyncSession = Depends(get_async_session)
 ) -> HeadTailLabel | None:
     """Retrieve a head-tail label for a given Label Studio ID."""
-    logger.debug(
-        "Retrieving head-tail label for Label Studio id=%d", label_studio_id
-    )
+    logger.debug("Retrieving head-tail label for Label Studio id=%d", label_studio_id)
     query = (
         select(HeadTailLabel)
         .where(HeadTailLabel.label_studio_task_id == label_studio_id)
@@ -332,8 +330,9 @@ async def get_laser_label_studio_project_ids(
         incomplete,
     )
     query = (
-        select(LaserLabel.label_studio_project_id)
-        .where(LaserLabel.label_studio_project_id != None)
+        select(LaserLabel.label_studio_project_id).where(
+            LaserLabel.label_studio_project_id != None
+        )
         # Dead-lettered rows aren't live labeling work — mirror every other
         # laser read so a superseded-only project drops off the landing page
         # and the sync enumeration.
@@ -437,9 +436,7 @@ async def get_laser_label_by_label_studio_id(
 
     label = (await session.exec(query)).first()
     if label is None:
-        logger.warning(
-            "Laser label for Label Studio id=%d not found", label_studio_id
-        )
+        logger.warning("Laser label for Label Studio id=%d not found", label_studio_id)
         raise HTTPException(status_code=404, detail="Label not found")
     return label
 
@@ -534,8 +531,9 @@ async def get_species_label_studio_project_ids(
         incomplete,
     )
     query = (
-        select(SpeciesLabel.label_studio_project_id)
-        .where(SpeciesLabel.label_studio_project_id != None)
+        select(SpeciesLabel.label_studio_project_id).where(
+            SpeciesLabel.label_studio_project_id != None
+        )
         # Exclude dead-lettered rows — parity with every other read.
         .where(SpeciesLabel.superseded == False)
     )
@@ -597,9 +595,7 @@ async def get_species_label_by_label_studio_id(
     label_studio_id: int, session: AsyncSession = Depends(get_async_session)
 ) -> SpeciesLabel | None:
     """Retrieve a species label for a given Label Studio task ID."""
-    logger.debug(
-        "Retrieving species label for Label Studio id=%d", label_studio_id
-    )
+    logger.debug("Retrieving species label for Label Studio id=%d", label_studio_id)
     query = (
         select(SpeciesLabel)
         .where(SpeciesLabel.label_studio_task_id == label_studio_id)

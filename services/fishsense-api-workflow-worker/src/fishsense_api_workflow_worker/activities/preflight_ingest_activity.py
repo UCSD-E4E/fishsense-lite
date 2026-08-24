@@ -102,7 +102,7 @@ def _relative_path(absolute_path: str) -> str:
     """
     root = settings.e4e_nas.raw_root_path.rstrip("/") + "/"
     if absolute_path.startswith(root):
-        return absolute_path[len(root):]
+        return absolute_path[len(root) :]
     return absolute_path.lstrip("/")
 
 

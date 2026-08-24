@@ -14,6 +14,7 @@ CREATE OR REPLACE VIEW is restrictive about column-shape changes in
 Postgres; the drop+recreate pattern is simpler and the view has no
 dependents in this schema.
 """
+
 # pylint: skip-file
 
 from typing import Sequence, Union
@@ -25,10 +26,9 @@ from fishsense_api.views import (
     DROP_DIVE_PIPELINE_STATUS_VIEW_SQL,
 )
 
-
 # revision identifiers, used by Alembic.
-revision: str = '8c8bbdb06f38'
-down_revision: Union[str, Sequence[str], None] = '60e82ad5dac7'
+revision: str = "8c8bbdb06f38"
+down_revision: Union[str, Sequence[str], None] = "60e82ad5dac7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

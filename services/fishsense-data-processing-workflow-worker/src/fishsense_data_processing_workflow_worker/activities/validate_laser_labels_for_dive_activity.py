@@ -172,8 +172,7 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
         xy, positives = _positive_xy(labels)
         if xy.shape[0] < MIN_POINTS_FOR_LINE:
             activity.logger.info(
-                "dive_id=%d has %d positive laser labels (<%d); "
-                "skipping line fit",
+                "dive_id=%d has %d positive laser labels (<%d); skipping line fit",
                 dive_id,
                 xy.shape[0],
                 MIN_POINTS_FOR_LINE,

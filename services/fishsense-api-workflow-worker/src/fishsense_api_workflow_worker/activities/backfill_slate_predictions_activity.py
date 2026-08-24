@@ -62,9 +62,7 @@ def _select_attach_targets(
     image wins.
     """
     seeded: Set[int] = {
-        p.image_id
-        for p in predictions
-        if p.image_id is not None and p.reference_points
+        p.image_id for p in predictions if p.image_id is not None and p.reference_points
     }
     targets: Dict[int, Tuple[int, int]] = {}
     for label in slate_labels:
@@ -94,7 +92,10 @@ async def _tasks_with_existing_slate_prediction(ls, project_ids: Set[int]) -> Se
             lambda pid=project_id: ls.predictions.list(project=pid)
         )
         for prediction in existing or []:
-            if getattr(prediction, "model_version", None) == SLATE_DETECTOR_MODEL_VERSION:
+            if (
+                getattr(prediction, "model_version", None)
+                == SLATE_DETECTOR_MODEL_VERSION
+            ):
                 already.add(prediction.task)
     return already
 

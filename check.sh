@@ -82,6 +82,21 @@ run_lint() {
         echo "$changed_py" | xargs uv run python -m pylint || rc=$?
     fi
 
+    # Formatting gate. `--check` only reports; it never rewrites, so a failing
+    # run tells you to run `uv run black <paths>` rather than doing it behind
+    # your back mid-review.
+    #
+    # Deliberately NOT restricted to changed files: black's scope is decided by
+    # `force-exclude` in the root pyproject.toml, and passing it a file list
+    # would let the gate and the config disagree about what is formatted. It is
+    # fast enough on the whole tree (~1s) that incrementality buys nothing.
+    if [ -n "$changed_py" ]; then
+        uv run black --check services libs tools || {
+            rc=$?
+            echo "::error::black --check failed; run 'uv run black services libs tools'"
+        }
+    fi
+
     # ESLint runs full-project (next lint has no incremental mode), but
     # only when something under apps/fishsense-lite-web changed. Skip cleanly when npm
     # isn't installed so a Python-only host can still run check.sh.

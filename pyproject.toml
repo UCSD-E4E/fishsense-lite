@@ -155,6 +155,32 @@ max-args = 8
 max-positional-arguments = 8
 max-locals = 20
 
+[tool.black]
+target-version = ["py313"]
+# Scoped to the packages' `src/` trees, which is what ships in the images.
+# `check.sh lint` runs `black --check` over exactly this set, so the config and
+# the gate cannot disagree about what is formatted.
+#
+# NOT yet applied to `tests/`, and the reason is measured rather than
+# aesthetic. Formatting the whole tree reformats 261 files and produces 48
+# pylint findings, 14 of them `duplicate-code` pairs across five clusters of
+# near-identical test suites (the two big api predicate suites, the four
+# `resolve_*_preprocess_inputs` suites, the sync-label workflow tests, and two
+# parent-workflow tests). Those clones are pre-existing — invisible until a
+# change makes those files move together — and extracting them is a piece of
+# work in its own right, comparable to the extraction that came with
+# centralising the `import-outside-toplevel` pragmas. `src/` alone is 133 files
+# and 9 findings, all fixed here. Widening this is a deliberate follow-up: do
+# the fixture extraction first, or CI goes red.
+#
+# `scripts/` and `tools/` are dev utilities that are not shipped; including
+# them would pull their own pre-existing lint debt into the gate.
+#
+# `_generated.py` is datamodel-codegen's output, compared byte-for-byte against
+# a fresh regeneration by `test_generated_sdk_models_freshness` — formatting it
+# fails that test the moment anyone regenerates.
+force-exclude = "/(tests|scripts|tools)/|_generated\\.py"
+
 [tool.pylint.format]
 max-line-length = 100
 

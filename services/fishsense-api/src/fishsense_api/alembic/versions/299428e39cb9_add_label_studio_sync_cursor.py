@@ -5,6 +5,7 @@ Revises: e1fc97743091
 Create Date: 2026-05-01 00:00:00.000000
 
 """
+
 # pylint: skip-file
 
 from typing import Sequence, Union
@@ -12,10 +13,9 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-
 # revision identifiers, used by Alembic.
-revision: str = '299428e39cb9'
-down_revision: Union[str, Sequence[str], None] = 'e1fc97743091'
+revision: str = "299428e39cb9"
+down_revision: Union[str, Sequence[str], None] = "e1fc97743091"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -30,31 +30,31 @@ def upgrade() -> None:
     """
     bind = op.get_bind()
     inspector = sa.inspect(bind)
-    if inspector.has_table('labelstudiosynccursor'):
+    if inspector.has_table("labelstudiosynccursor"):
         return
     op.create_table(
-        'labelstudiosynccursor',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('kind', sa.String(), nullable=False),
-        sa.Column('label_studio_project_id', sa.Integer(), nullable=False),
-        sa.Column('last_synced_at', sa.DateTime(timezone=True), nullable=True),
-        sa.PrimaryKeyConstraint('id'),
+        "labelstudiosynccursor",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("kind", sa.String(), nullable=False),
+        sa.Column("label_studio_project_id", sa.Integer(), nullable=False),
+        sa.Column("last_synced_at", sa.DateTime(timezone=True), nullable=True),
+        sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
-            'kind',
-            'label_studio_project_id',
-            name='uq_labelstudiosynccursor_kind_project',
+            "kind",
+            "label_studio_project_id",
+            name="uq_labelstudiosynccursor_kind_project",
         ),
     )
     op.create_index(
-        op.f('ix_labelstudiosynccursor_kind'),
-        'labelstudiosynccursor',
-        ['kind'],
+        op.f("ix_labelstudiosynccursor_kind"),
+        "labelstudiosynccursor",
+        ["kind"],
         unique=False,
     )
     op.create_index(
-        op.f('ix_labelstudiosynccursor_label_studio_project_id'),
-        'labelstudiosynccursor',
-        ['label_studio_project_id'],
+        op.f("ix_labelstudiosynccursor_label_studio_project_id"),
+        "labelstudiosynccursor",
+        ["label_studio_project_id"],
         unique=False,
     )
 
@@ -62,11 +62,11 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Downgrade schema."""
     op.drop_index(
-        op.f('ix_labelstudiosynccursor_label_studio_project_id'),
-        table_name='labelstudiosynccursor',
+        op.f("ix_labelstudiosynccursor_label_studio_project_id"),
+        table_name="labelstudiosynccursor",
     )
     op.drop_index(
-        op.f('ix_labelstudiosynccursor_kind'),
-        table_name='labelstudiosynccursor',
+        op.f("ix_labelstudiosynccursor_kind"),
+        table_name="labelstudiosynccursor",
     )
-    op.drop_table('labelstudiosynccursor')
+    op.drop_table("labelstudiosynccursor")

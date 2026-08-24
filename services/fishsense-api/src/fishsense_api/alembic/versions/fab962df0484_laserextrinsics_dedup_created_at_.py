@@ -5,6 +5,7 @@ Revises: f4a9c2b17e60
 Create Date: 2026-08-01 14:33:11.611031
 
 """
+
 # pylint: skip-file
 
 from typing import Sequence, Union
@@ -12,10 +13,9 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-
 # revision identifiers, used by Alembic.
-revision: str = 'fab962df0484'
-down_revision: Union[str, Sequence[str], None] = 'f4a9c2b17e60'
+revision: str = "fab962df0484"
+down_revision: Union[str, Sequence[str], None] = "f4a9c2b17e60"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -30,15 +30,13 @@ def upgrade() -> None:
     """
     # 1. De-duplicate: keep the newest row per dive (highest id; created_at may
     #    be NULL on buggy rows so id is the reliable tiebreaker).
-    op.execute(
-        """
+    op.execute("""
         DELETE FROM laserextrinsics a
         USING laserextrinsics b
         WHERE a.dive_id = b.dive_id
           AND a.dive_id IS NOT NULL
           AND a.id < b.id
-        """
-    )
+        """)
     # 2. Backfill any NULL created_at (the hand-patched #462-recovery rows
     #    already have timestamps; this covers anything left).
     op.execute("UPDATE laserextrinsics SET created_at = now() WHERE created_at IS NULL")
@@ -58,9 +56,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_constraint(
-        "uq_laserextrinsics_dive_id", "laserextrinsics", type_="unique"
-    )
+    op.drop_constraint("uq_laserextrinsics_dive_id", "laserextrinsics", type_="unique")
     op.alter_column(
         "laserextrinsics",
         "created_at",

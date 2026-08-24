@@ -220,9 +220,7 @@ def _predict_from_bytes(  # pylint: disable=too-many-locals
         try:
             board_mask = masker.predict(bgr)
         except Exception as exc:  # pylint: disable=broad-except
-            _log.warning(
-                "board mask inference failed (%s); classical slate path", exc
-            )
+            _log.warning("board mask inference failed (%s); classical slate path", exc)
 
     estimate = estimate_plane(
         bgr,

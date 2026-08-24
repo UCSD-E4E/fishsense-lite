@@ -184,9 +184,7 @@ async def post_dive(
         )
     intrinsics = (
         await session.exec(
-            select(CameraIntrinsics).where(
-                CameraIntrinsics.camera_id == dive.camera_id
-            )
+            select(CameraIntrinsics).where(CameraIntrinsics.camera_id == dive.camera_id)
         )
     ).first()
     if intrinsics is None:
@@ -204,9 +202,7 @@ async def post_dive(
                 status_code=422, detail="A dive cannot borrow its own calibration"
             )
         source = (
-            await session.exec(
-                select(Dive).where(Dive.id == dive.calibration_dive_id)
-            )
+            await session.exec(select(Dive).where(Dive.id == dive.calibration_dive_id))
         ).first()
         if source is None:
             raise HTTPException(
@@ -220,7 +216,6 @@ async def post_dive(
     dive_id = dive.id
 
     return dive_id
-
 
 
 @app.get("/api/v1/dives/{dive_id}")
@@ -270,9 +265,7 @@ async def get_laser_extrinsics_for_dive(
     """
     logger.debug("Retrieving laser extrinsics for dive with id=%d", dive_id)
 
-    laser_extrinsics = (
-        await session.exec(_latest_extrinsics_query(dive_id))
-    ).first()
+    laser_extrinsics = (await session.exec(_latest_extrinsics_query(dive_id))).first()
 
     if laser_extrinsics is None:
         dive = await session.get(Dive, dive_id)
@@ -284,9 +277,7 @@ async def get_laser_extrinsics_for_dive(
                 dive.calibration_dive_id,
             )
             laser_extrinsics = (
-                await session.exec(
-                    _latest_extrinsics_query(dive.calibration_dive_id)
-                )
+                await session.exec(_latest_extrinsics_query(dive.calibration_dive_id))
             ).first()
 
     if laser_extrinsics is None:
@@ -407,9 +398,7 @@ async def set_dive_calibration_source(
 
     source = await session.get(Dive, source_dive_id)
     if source is None:
-        raise HTTPException(
-            status_code=404, detail="Calibration source dive not found"
-        )
+        raise HTTPException(status_code=404, detail="Calibration source dive not found")
 
     dive.calibration_dive_id = source_dive_id
     session.add(dive)
@@ -454,9 +443,7 @@ async def set_dive_slate(
     Returns the dive id. 404 if the dive or the DiveSlate template is
     missing.
     """
-    logger.debug(
-        "Setting dive id=%d dive_slate_id=%d", dive_id, dive_slate_id
-    )
+    logger.debug("Setting dive id=%d dive_slate_id=%d", dive_id, dive_slate_id)
     dive = await session.get(Dive, dive_id)
     if dive is None:
         raise HTTPException(status_code=404, detail="Dive not found")

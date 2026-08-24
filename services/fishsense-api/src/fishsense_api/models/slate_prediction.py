@@ -30,9 +30,7 @@ class SlatePrediction(ModelBase, table=True):
     `low_confidence` / `points_off_canvas`) for seed-rate monitoring.
     """
 
-    __table_args__ = (
-        UniqueConstraint("image_id", name="uq_slate_prediction_image"),
-    )
+    __table_args__ = (UniqueConstraint("image_id", name="uq_slate_prediction_image"),)
 
     id: int | None = Field(default=None, primary_key=True)
     reference_points: List[List[float]] | None = Field(

@@ -98,8 +98,7 @@ def _select_unlabeled_images(
     return [
         image
         for image in images
-        if image.id not in completed_image_ids
-        and image.id in predicted_image_ids
+        if image.id not in completed_image_ids and image.id in predicted_image_ids
     ]
 
 
@@ -195,8 +194,7 @@ async def populate_laser_label_studio_project_activity(
             # project (grandfathered dive whose rows point at an old
             # project) is left as a hidden draft.
             if any(
-                label.label_studio_project_id == project_id
-                for label in existing_labels
+                label.label_studio_project_id == project_id for label in existing_labels
             ):
                 await publish_label_studio_project(project_id)
             return 0

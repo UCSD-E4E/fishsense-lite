@@ -79,9 +79,7 @@ def _config_for_title(title: str | None) -> str | None:
     """
     if not title:
         return None
-    for suffix, config in sorted(
-        _CONFIG_BY_SUFFIX.items(), key=lambda kv: -len(kv[0])
-    ):
+    for suffix, config in sorted(_CONFIG_BY_SUFFIX.items(), key=lambda kv: -len(kv[0])):
         if title.endswith(suffix):
             return config
     return None

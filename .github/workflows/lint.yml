@@ -36,6 +36,12 @@ jobs:
         if: steps.changes.outputs.n != '0'
         run: |
           xargs -a changed.txt uv run pylint
+
+      # Formatting, separate from pylint so a failure says which gate it was.
+      # Scope comes from `force-exclude` in the root pyproject.toml, not from a
+      # file list, so the gate and the config cannot disagree.
+      - name: Black (formatting)
+        run: uv run black --check services libs tools
       - name: Skip (no Python changes)
         if: steps.changes.outputs.n == '0'
         run: echo "No Python files changed; skipping pylint."

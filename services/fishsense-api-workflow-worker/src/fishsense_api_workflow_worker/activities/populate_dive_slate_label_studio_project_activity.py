@@ -202,6 +202,7 @@ async def populate_dive_slate_label_studio_project_activity(
         images = await _gate_on_jpeg_presence(images)
 
         if images:
+
             def _task(image: Image) -> dict:
                 prediction = prediction_by_image.get(image.id)
                 panel_width = (
@@ -296,8 +297,7 @@ async def populate_dive_slate_label_studio_project_activity(
         # so the project's task set is complete. Publish iff it actually
         # holds tasks so an empty project isn't shown to labelers.
         if new_count > 0 or any(
-            label.label_studio_project_id == project_id
-            for label in existing_slate
+            label.label_studio_project_id == project_id for label in existing_slate
         ):
             await publish_label_studio_project(project_id)
 

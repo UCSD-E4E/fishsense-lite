@@ -202,8 +202,7 @@ async def main():
             await schedule_workflows(client)
             await interrupt_event.wait()
             log.info(
-                "shutdown signal received; draining "
-                "(graceful_shutdown_timeout=%s)",
+                "shutdown signal received; draining (graceful_shutdown_timeout=%s)",
                 GRACEFUL_SHUTDOWN_TIMEOUT,
             )
 

@@ -20,7 +20,9 @@ from fishsense_shared import ClusterDiveFrameImage
 
 
 @activity.defn
-async def cluster_dive_frames(images: Iterable[ClusterDiveFrameImage]) -> List[List[int]]:
+async def cluster_dive_frames(
+    images: Iterable[ClusterDiveFrameImage],
+) -> List[List[int]]:
     """Cluster a dive's images by their taken_datetime timestamps.
 
     Returns:

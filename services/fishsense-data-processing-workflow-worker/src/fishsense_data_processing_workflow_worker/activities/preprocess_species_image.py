@@ -68,10 +68,11 @@ def _rectify_overlay_encode(
 # Imported lazily to keep this module importable without the workflow
 # package side-effects during unit-test collection.
 def _input_model():
-    from fishsense_data_processing_workflow_worker.workflows.preprocess_species_images_workflow \
-        import PreprocessSpeciesImageInput
+    from fishsense_data_processing_workflow_worker.workflows import (
+        preprocess_species_images_workflow as workflow,
+    )
 
-    return PreprocessSpeciesImageInput
+    return workflow.PreprocessSpeciesImageInput
 
 
 @activity.defn

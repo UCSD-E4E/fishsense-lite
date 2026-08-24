@@ -815,6 +815,51 @@ the presigned URLs directly.
 scratch, never the NAS source (there's a test tripwire asserting the
 cleanup module imports no NAS client).
 
+## Formatting: black owns `src/`, and only `src/`
+
+`uv run black services libs tools` — scope comes from `force-exclude` in the
+root `pyproject.toml`, not from the paths you pass, so the config and the gate
+cannot disagree. `check.sh lint` and `.github/workflows/lint.yml` both run
+`black --check` over that set; a failure means run black, it never rewrites
+during a check.
+
+**88 columns, not pylint's 100.** Measured, not chosen by taste: at 88 the tree
+needed 260 files reformatted and left 250 alone, at 100 it was 335 and 175 —
+this codebase was largely written to ~88, and the wider setting *joins* lines
+that are currently split. The two limits do not need to agree; black enforces a
+bound it wraps at, `max-line-length` is a bound pylint permits, and the 12-column
+gap absorbs the lines black cannot split.
+
+**`tests/` is deliberately not formatted yet.** Formatting the whole tree
+reformats 261 files and yields 48 pylint findings, 14 of them `duplicate-code`
+pairs across five clusters of near-identical test suites. Those clones are
+pre-existing and only become visible when a change makes those files move
+together; extracting them is a piece of work in its own right. `src/` alone was
+133 files and 9 findings. Widening the scope means doing that extraction first,
+or CI goes red the moment `black --check` sees the tests.
+
+**Three interactions to know about**, all hit while adopting it:
+
+* A trailing `# pylint: disable=...` on a wrappable statement is fragile — black
+  moves it onto the closing paren, where pylint no longer applies it. Prefer a
+  module- or block-level disable. This is what made black unusable here before
+  the `import-outside-toplevel` pragmas were centralised: reflowing one file
+  turned 3 findings into ~30.
+* Black joins a line-wrapped string pair onto one line, which is exactly when
+  pylint's `implicit-str-concat` fires. Merge the literals rather than
+  re-splitting them.
+* Generated files must be excluded. `_generated.py` is compared byte-for-byte
+  against a fresh `datamodel-codegen` run by
+  `test_generated_sdk_models_freshness`, so formatting it fails that test the
+  moment anyone regenerates.
+
+`.git-blame-ignore-revs` holds the reformat commit. It is not applied
+automatically — run once per clone:
+
+```
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
 ## Service plumbing gotchas
 
 Four service-layer conventions that fail silently when broken. Note them

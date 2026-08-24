@@ -191,9 +191,7 @@ async def _aspect_ratio_for_slate(
         )
         return None
 
-    aspect = await asyncio.to_thread(
-        compute_pdf_panel_aspect_ratio, pdf_bytes
-    )
+    aspect = await asyncio.to_thread(compute_pdf_panel_aspect_ratio, pdf_bytes)
     aspect_cache[slate_id] = aspect
     return aspect
 
@@ -271,9 +269,7 @@ async def _update_slate_label(
                     f"panel offset. Refusing to persist composite-space geometry "
                     f"(fix: stage the slate PDF, then the hourly sync recovers)."
                 )
-            panel_width = compute_pdf_panel_width_in_composite(
-                aspect, original_height
-            )
+            panel_width = compute_pdf_panel_width_in_composite(aspect, original_height)
 
             if parsed["reference_points"]:
                 shifted = _shift_x(parsed["reference_points"], panel_width)

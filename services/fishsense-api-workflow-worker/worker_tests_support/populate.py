@@ -79,7 +79,9 @@ def fake_label_studio_client(returned_task_ids: List[int]):
     _stored: List = []
     _ids = iter(returned_task_ids)
 
-    def _import(project_id, request, return_task_ids=False):  # pylint: disable=unused-argument
+    def _import(
+        project_id, request, return_task_ids=False
+    ):  # pylint: disable=unused-argument
         for task in request:
             _tid = next(_ids)
             _s3 = task["data"].get("image") or task["data"].get("img")

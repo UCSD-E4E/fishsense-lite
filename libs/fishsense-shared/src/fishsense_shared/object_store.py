@@ -192,14 +192,10 @@ class BaseObjectStoreClient:
 
     async def _put(self, key: str, data: bytes, bucket: str | None = None) -> None:
         target = bucket or self._bucket
-        await asyncio.to_thread(
-            self._s3.put_object, Bucket=target, Key=key, Body=data
-        )
+        await asyncio.to_thread(self._s3.put_object, Bucket=target, Key=key, Body=data)
 
     async def _delete(self, key: str, bucket: str | None = None) -> None:
         # S3 delete_object is idempotent: deleting an absent key returns
         # success (no ClientError), so retries are naturally safe.
         target = bucket or self._bucket
-        await asyncio.to_thread(
-            self._s3.delete_object, Bucket=target, Key=key
-        )
+        await asyncio.to_thread(self._s3.delete_object, Bucket=target, Key=key)

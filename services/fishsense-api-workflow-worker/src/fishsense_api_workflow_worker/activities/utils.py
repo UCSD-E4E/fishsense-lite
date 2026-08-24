@@ -134,9 +134,7 @@ async def _ls_project_exists(ls: LabelStudio, project_id: int, kind: str) -> boo
     )
 
 
-async def _list_ls_tasks_with_heartbeat(
-    ls: LabelStudio, project_id: int
-) -> list[Any]:
+async def _list_ls_tasks_with_heartbeat(ls: LabelStudio, project_id: int) -> list[Any]:
     """Fully materialize an LS project's task list off the asyncio event
     loop while pumping heartbeats.
 
@@ -157,9 +155,7 @@ async def _list_ls_tasks_with_heartbeat(
 
     pump = asyncio.create_task(_pump())
     try:
-        return await asyncio.to_thread(
-            lambda: list(ls.tasks.list(project=project_id))
-        )
+        return await asyncio.to_thread(lambda: list(ls.tasks.list(project=project_id)))
     finally:
         pump.cancel()
         try:
