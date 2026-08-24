@@ -20,13 +20,13 @@ pct_error from this row at query time, so the existing ruler measurements
 re-grade themselves (roughly -5.4% -> -2.4% on the best frames).
 
 """
+
 # pylint: skip-file
 
 from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-
 
 # revision identifiers, used by Alembic.
 revision: str = "c5d93a17e8b4"

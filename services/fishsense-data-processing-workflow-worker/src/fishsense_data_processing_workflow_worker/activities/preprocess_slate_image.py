@@ -63,9 +63,7 @@ def composite_slate_with_image(
     new_pdf_width = int(pdf_width * scale_y)
     pdf_resized = cv2.resize(pdf_image, (new_pdf_width, new_pdf_height))
 
-    canvas = np.zeros(
-        (img_height, img_width + new_pdf_width, 3), dtype=np.uint8
-    )
+    canvas = np.zeros((img_height, img_width + new_pdf_width, 3), dtype=np.uint8)
     canvas[:, :new_pdf_width, :] = pdf_resized
     canvas[:, new_pdf_width:, :] = rectified_image
 
@@ -103,9 +101,7 @@ def _build_slate_jpeg(
     )
     rectified = RectifiedImage(RawImage(raw_bytes), intrinsics).data
     pdf_image = render_slate_pdf_to_binarized_bgr(pdf_bytes, dpi=slate_dpi)
-    composite = composite_slate_with_image(
-        pdf_image, rectified, reference_points
-    )
+    composite = composite_slate_with_image(pdf_image, rectified, reference_points)
     success, encoded = cv2.imencode(".jpg", composite)
     if not success:
         raise RuntimeError("cv2.imencode failed")
@@ -113,10 +109,11 @@ def _build_slate_jpeg(
 
 
 def _input_model():
-    from fishsense_data_processing_workflow_worker.workflows.preprocess_slate_images_workflow \
-        import PreprocessSlateImageInput
+    from fishsense_data_processing_workflow_worker.workflows import (
+        preprocess_slate_images_workflow as workflow,
+    )
 
-    return PreprocessSlateImageInput
+    return workflow.PreprocessSlateImageInput
 
 
 @activity.defn

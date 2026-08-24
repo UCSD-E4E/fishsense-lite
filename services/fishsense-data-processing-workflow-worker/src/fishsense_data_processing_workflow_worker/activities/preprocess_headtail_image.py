@@ -44,10 +44,11 @@ def _rectify_and_encode_jpeg(
 
 
 def _input_model():
-    from fishsense_data_processing_workflow_worker.workflows.preprocess_headtail_images_workflow \
-        import PreprocessHeadtailImageInput
+    from fishsense_data_processing_workflow_worker.workflows import (
+        preprocess_headtail_images_workflow as workflow,
+    )
 
-    return PreprocessHeadtailImageInput
+    return workflow.PreprocessHeadtailImageInput
 
 
 @activity.defn
@@ -58,9 +59,7 @@ async def preprocess_headtail_image(payload) -> None:  # type: ignore[no-untyped
     if not isinstance(payload, payload_cls):
         payload = payload_cls.model_validate(payload)
 
-    activity.logger.info(
-        "preprocessing headtail image checksum=%s", payload.checksum
-    )
+    activity.logger.info("preprocessing headtail image checksum=%s", payload.checksum)
 
     client = open_object_store_client()
     raw_bytes = await client.download_raw(payload.checksum)

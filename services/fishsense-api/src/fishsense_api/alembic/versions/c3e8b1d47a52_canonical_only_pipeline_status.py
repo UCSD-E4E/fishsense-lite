@@ -21,6 +21,7 @@ conjunct is true for those rows. Only fully-duplicate dives change — and all
 207 of them are priority=LOW, so nothing schedules them either way.
 
 """
+
 # pylint: skip-file
 
 from typing import Sequence, Union

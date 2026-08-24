@@ -34,17 +34,13 @@ class LabelClient(ClientBase):
         if image_id is not None:
             response = await self._get(f"/api/v1/labels/dive-slate/{image_id}")
             if response.status_code == 404:
-                self.logger.debug(
-                    "No dive slate label found for image ID %s", image_id
-                )
+                self.logger.debug("No dive slate label found for image ID %s", image_id)
                 return None
             response.raise_for_status()
 
             json = response.json()
             if json is None:
-                self.logger.debug(
-                    "No dive slate label found for image ID %s", image_id
-                )
+                self.logger.debug("No dive slate label found for image ID %s", image_id)
                 return None
 
             return DiveSlateLabel.model_validate(json)
@@ -348,9 +344,7 @@ class LabelClient(ClientBase):
         A dive qualifies iff every non-superseded `LaserLabel` on its
         images has `completed=True` and at least one such label exists.
         """
-        response = await self._get(
-            "/api/v1/labels/laser/dives-with-complete-labeling"
-        )
+        response = await self._get("/api/v1/labels/laser/dives-with-complete-labeling")
         response.raise_for_status()
         return list(response.json() or [])
 

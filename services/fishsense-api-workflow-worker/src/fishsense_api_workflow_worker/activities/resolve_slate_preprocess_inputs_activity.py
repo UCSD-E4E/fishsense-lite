@@ -26,9 +26,7 @@ SLATE_CONTENT_MARKER = "Slate, Laser on slate"
 async def resolve_slate_preprocess_inputs_activity(
     dive_id: int,
 ) -> PreprocessSlateImagesInput:
-    activity.logger.info(
-        "resolving slate preprocess inputs dive_id=%d", dive_id
-    )
+    activity.logger.info("resolving slate preprocess inputs dive_id=%d", dive_id)
     async with get_fs_client() as fs:
         dive = await fs.dives.get(dive_id=dive_id)
         if dive is None:
@@ -40,27 +38,19 @@ async def resolve_slate_preprocess_inputs_activity(
 
         intrinsics = await fs.cameras.get_intrinsics(dive.camera_id)
         if intrinsics is None:
-            raise ValueError(
-                f"camera_id={dive.camera_id} has no intrinsics"
-            )
+            raise ValueError(f"camera_id={dive.camera_id} has no intrinsics")
 
         all_slates = await fs.dive_slates.get() or []
-        slate = next(
-            (s for s in all_slates if s.id == dive.dive_slate_id), None
-        )
+        slate = next((s for s in all_slates if s.id == dive.dive_slate_id), None)
         if slate is None:
-            raise ValueError(
-                f"dive_slate_id={dive.dive_slate_id} not found"
-            )
+            raise ValueError(f"dive_slate_id={dive.dive_slate_id} not found")
         if slate.dpi is None or not slate.reference_points:
             raise ValueError(
                 f"dive_slate_id={slate.id} missing dpi or reference_points"
             )
 
         species_labels = await fs.labels.get_species_labels(dive_id) or []
-        existing_slate_labels = (
-            await fs.labels.get_dive_slate_labels(dive_id) or []
-        )
+        existing_slate_labels = await fs.labels.get_dive_slate_labels(dive_id) or []
         # Skip sentinel rows (project_id IS NULL) — see API selector
         # docstring for rationale.
         labeled_ids = {

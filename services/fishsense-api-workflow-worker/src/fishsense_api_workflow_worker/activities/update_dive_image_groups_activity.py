@@ -97,9 +97,7 @@ def regroup_by_species_labels(
     return groups
 
 
-async def _post_clusters(
-    fs: Client, dive_id: int, groups: List[List[int]]
-) -> None:
+async def _post_clusters(fs: Client, dive_id: int, groups: List[List[int]]) -> None:
     now = datetime.now(timezone.utc)
     for image_ids in groups:
         cluster = DiveFrameCluster(
@@ -121,8 +119,7 @@ async def update_dive_image_groups_activity(
     """Materialize LABEL_STUDIO clusters for `dive_id` from species labels."""
     async with get_fs_client() as fs:
         existing = (
-            await fs.images.get_clusters(dive_id, DataSource.LABEL_STUDIO.value)
-            or []
+            await fs.images.get_clusters(dive_id, DataSource.LABEL_STUDIO.value) or []
         )
         if existing:
             activity.logger.info(
@@ -138,8 +135,7 @@ async def update_dive_image_groups_activity(
             )
 
         prediction_clusters = (
-            await fs.images.get_clusters(dive_id, DataSource.PREDICTION.value)
-            or []
+            await fs.images.get_clusters(dive_id, DataSource.PREDICTION.value) or []
         )
         species_labels = await fs.labels.get_species_labels(dive_id) or []
 

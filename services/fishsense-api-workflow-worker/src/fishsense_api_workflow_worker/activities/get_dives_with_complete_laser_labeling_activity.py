@@ -18,7 +18,5 @@ async def get_dives_with_complete_laser_labeling_activity() -> List[int]:
     async with get_fs_client() as fs:
         dive_ids = await fs.labels.get_dives_with_complete_laser_labeling()
 
-    activity.logger.info(
-        "Found %d dives with complete laser labeling", len(dive_ids)
-    )
+    activity.logger.info("Found %d dives with complete laser labeling", len(dive_ids))
     return dive_ids

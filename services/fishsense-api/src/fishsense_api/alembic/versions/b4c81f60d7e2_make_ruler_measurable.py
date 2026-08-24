@@ -18,6 +18,7 @@ accuracy view is untouched (it joins `fishmodelreference` on `Fish.name`, so
 "Ruler" flows through unchanged once the reference row exists).
 
 """
+
 # pylint: skip-file
 
 from typing import Sequence, Union
@@ -31,7 +32,6 @@ from fishsense_api.views import (
     KNOWN_FISH_MODELS,
 )
 
-
 # revision identifiers, used by Alembic.
 revision: str = "b4c81f60d7e2"
 down_revision: Union[str, Sequence[str], None] = "a91d4e70c3b8"
@@ -43,8 +43,7 @@ def upgrade() -> None:
     """Seed the ruler reference row, then widen the measurable predicate."""
     bind = op.get_bind()
     existing = {
-        row[0]
-        for row in bind.execute(sa.text("SELECT name FROM fishmodelreference"))
+        row[0] for row in bind.execute(sa.text("SELECT name FROM fishmodelreference"))
     }
     to_insert = [m for m in KNOWN_FISH_MODELS if m["name"] not in existing]
     if to_insert:

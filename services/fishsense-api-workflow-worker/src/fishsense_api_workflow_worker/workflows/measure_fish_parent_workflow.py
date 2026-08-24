@@ -129,8 +129,7 @@ class MeasureFishParentWorkflow:
             # RUNNING (e.g. a manual run overlapping the schedule) — a
             # completed child no longer blocks under ALLOW_DUPLICATE.
             workflow.logger.info(
-                "measure-fish-%d is still running; skipping duplicate "
-                "dispatch",
+                "measure-fish-%d is still running; skipping duplicate dispatch",
                 dive_id,
             )
 

@@ -174,9 +174,7 @@ async def delete_measurement(
     missing row is already the desired state, so no 404 — that keeps activity
     retries safe.
     """
-    logger.debug(
-        "Deleting measurement for image_id=%d fish_id=%d", image_id, fish_id
-    )
+    logger.debug("Deleting measurement for image_id=%d fish_id=%d", image_id, fish_id)
     existing = (
         await session.exec(
             select(Measurement)

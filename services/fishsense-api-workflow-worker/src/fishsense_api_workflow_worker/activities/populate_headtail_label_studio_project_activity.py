@@ -144,9 +144,7 @@ async def populate_headtail_label_studio_project_activity(
                 images_by_id[image.id] = image
             activity.heartbeat()
 
-        targets = _select_target_images(
-            laser_labels, images_by_id, existing_headtail
-        )
+        targets = _select_target_images(laser_labels, images_by_id, existing_headtail)
         # Never seed a task for an image the data-worker hasn't rendered.
         targets = await _gate_on_jpeg_presence(targets)
 
@@ -235,8 +233,7 @@ async def populate_headtail_label_studio_project_activity(
         # deferral), so the project's task set is complete. Publish iff it
         # actually holds tasks so an empty project isn't shown to labelers.
         if new_count > 0 or any(
-            label.label_studio_project_id == project_id
-            for label in existing_headtail
+            label.label_studio_project_id == project_id for label in existing_headtail
         ):
             await publish_label_studio_project(project_id)
 

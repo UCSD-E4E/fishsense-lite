@@ -78,7 +78,5 @@ async def cleanup_raw_bytes_for_dive_activity(
         for image in images:
             tg.create_task(_delete_one(image))
 
-    activity.logger.info(
-        "raw cleanup done dive_id=%d deleted=%d", dive_id, deleted
-    )
+    activity.logger.info("raw cleanup done dive_id=%d deleted=%d", dive_id, deleted)
     return CleanupRawBytesResult(deleted=deleted)

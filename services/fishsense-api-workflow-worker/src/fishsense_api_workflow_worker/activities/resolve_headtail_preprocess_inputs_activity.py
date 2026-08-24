@@ -30,9 +30,7 @@ def _is_valid_laser(label) -> bool:
 async def resolve_headtail_preprocess_inputs_activity(
     dive_id: int,
 ) -> PreprocessHeadtailImagesInput:
-    activity.logger.info(
-        "resolving headtail preprocess inputs dive_id=%d", dive_id
-    )
+    activity.logger.info("resolving headtail preprocess inputs dive_id=%d", dive_id)
     async with get_fs_client() as fs:
         dive = await fs.dives.get(dive_id=dive_id)
         if dive is None:
@@ -42,9 +40,7 @@ async def resolve_headtail_preprocess_inputs_activity(
 
         intrinsics = await fs.cameras.get_intrinsics(dive.camera_id)
         if intrinsics is None:
-            raise ValueError(
-                f"camera_id={dive.camera_id} has no intrinsics"
-            )
+            raise ValueError(f"camera_id={dive.camera_id} has no intrinsics")
 
         laser_labels = await fs.labels.get_laser_labels(dive_id) or []
         existing_headtail = await fs.labels.get_headtail_labels(dive_id) or []

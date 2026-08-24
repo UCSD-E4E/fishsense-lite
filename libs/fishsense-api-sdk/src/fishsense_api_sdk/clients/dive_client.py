@@ -222,9 +222,7 @@ class DiveClient(ClientBase):
             return None
         return DiveLaserLine.model_validate(json)
 
-    async def put_dive_laser_line(
-        self, dive_id: int, laser_line: DiveLaserLine
-    ) -> int:
+    async def put_dive_laser_line(self, dive_id: int, laser_line: DiveLaserLine) -> int:
         """Upsert the laser-line fingerprint for a dive.
 
         Args:
@@ -280,9 +278,7 @@ class DiveClient(ClientBase):
         response.raise_for_status()
         return [CalibrationCandidate.model_validate(x) for x in response.json()]
 
-    async def set_calibration_source(
-        self, dive_id: int, source_dive_id: int
-    ) -> int:
+    async def set_calibration_source(self, dive_id: int, source_dive_id: int) -> int:
         """Link a dive to borrow another dive's laser calibration.
 
         Use for a fish-only dive with no slate frames of its own — point
@@ -310,9 +306,7 @@ class DiveClient(ClientBase):
         Args:
             dive_id (int): The dive to unlink.
         """
-        response = await self._delete(
-            f"/api/v1/dives/{dive_id}/calibration-source/"
-        )
+        response = await self._delete(f"/api/v1/dives/{dive_id}/calibration-source/")
         response.raise_for_status()
 
     async def set_dive_slate(self, dive_id: int, dive_slate_id: int) -> int:

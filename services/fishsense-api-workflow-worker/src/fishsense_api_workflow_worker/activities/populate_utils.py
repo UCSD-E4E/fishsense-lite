@@ -28,7 +28,6 @@ from fishsense_api_workflow_worker.activities.utils import (
 )
 from fishsense_api_workflow_worker.config import settings
 
-
 # Title given to the per-project Garage S3 source storage. Matching on
 # (bucket, title) makes registration idempotent across re-runs.
 LS_S3_STORAGE_TITLE = "garage"
@@ -263,9 +262,7 @@ async def create_or_get_label_studio_project(
         label_config=labeling_config_xml,
         workspace=workspace_id,
     )
-    activity.logger.info(
-        "Created LS project %r (id=%d)", project_title, project.id
-    )
+    activity.logger.info("Created LS project %r (id=%d)", project_title, project.id)
     await ensure_label_studio_s3_storage(project.id)
     return project.id
 

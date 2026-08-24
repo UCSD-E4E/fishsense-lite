@@ -5,6 +5,7 @@ Revises: fab962df0484
 Create Date: 2026-08-01 15:14:02.480958
 
 """
+
 # pylint: skip-file
 
 from typing import Sequence, Union
@@ -12,10 +13,9 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-
 # revision identifiers, used by Alembic.
-revision: str = '5a7782ca68dc'
-down_revision: Union[str, Sequence[str], None] = 'fab962df0484'
+revision: str = "5a7782ca68dc"
+down_revision: Union[str, Sequence[str], None] = "fab962df0484"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

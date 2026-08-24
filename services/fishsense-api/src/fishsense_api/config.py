@@ -23,6 +23,7 @@ settings = Dynaconf(
     validators=_VALIDATORS,
 )
 
+
 def pg_connection_string() -> str:
     """Build the PostgreSQL connection string from current settings."""
     return (

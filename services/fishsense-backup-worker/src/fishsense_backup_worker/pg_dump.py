@@ -30,11 +30,16 @@ def build_pg_dump_command(
     cmd = [
         "pg_dump",
         "-Fc",
-        "-h", host,
-        "-p", str(port),
-        "-U", username,
-        "-d", db_name,
-        "-f", output_path,
+        "-h",
+        host,
+        "-p",
+        str(port),
+        "-U",
+        username,
+        "-d",
+        db_name,
+        "-f",
+        output_path,
     ]
     env = {"PGPASSWORD": password}
     return cmd, env
@@ -64,7 +69,11 @@ def run_pg_dump(
     )
     _log.info(
         "pg_dump start db=%s host=%s:%d user=%s out=%s",
-        db_name, host, port, username, output_path,
+        db_name,
+        host,
+        port,
+        username,
+        output_path,
     )
     # Capture stderr so the failure reason (auth / missing DB / network)
     # ends up in the CalledProcessError that Temporal records, instead
@@ -80,7 +89,9 @@ def run_pg_dump(
     if result.returncode != 0:
         _log.error(
             "pg_dump failed db=%s rc=%d stderr=%s",
-            db_name, result.returncode, result.stderr,
+            db_name,
+            result.returncode,
+            result.stderr,
         )
         raise subprocess.CalledProcessError(
             returncode=result.returncode,

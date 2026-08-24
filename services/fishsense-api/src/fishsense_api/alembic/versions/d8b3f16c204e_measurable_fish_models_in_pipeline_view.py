@@ -12,6 +12,7 @@ CREATE OR REPLACE — Postgres is restrictive about it and the view has no
 dependents.
 
 """
+
 # pylint: skip-file
 
 from typing import Sequence, Union
@@ -22,7 +23,6 @@ from fishsense_api.views import (
     DIVE_PIPELINE_STATUS_VIEW_SQL,
     DROP_DIVE_PIPELINE_STATUS_VIEW_SQL,
 )
-
 
 # revision identifiers, used by Alembic.
 revision: str = "d8b3f16c204e"

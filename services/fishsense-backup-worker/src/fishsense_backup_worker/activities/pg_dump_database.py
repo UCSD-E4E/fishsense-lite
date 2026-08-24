@@ -33,8 +33,9 @@ _log = logging.getLogger(__name__)
 
 
 def _input_model():
-    from fishsense_backup_worker.workflows.backup_databases_workflow \
-        import PgDumpDatabaseInput
+    from fishsense_backup_worker.workflows.backup_databases_workflow import (
+        PgDumpDatabaseInput,
+    )
 
     return PgDumpDatabaseInput
 

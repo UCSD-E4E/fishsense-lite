@@ -63,9 +63,7 @@ async def resolve_laser_preprocess_inputs_activity(
 
         intrinsics = await fs.cameras.get_intrinsics(dive.camera_id)
         if intrinsics is None:
-            raise ValueError(
-                f"camera_id={dive.camera_id} has no intrinsics"
-            )
+            raise ValueError(f"camera_id={dive.camera_id} has no intrinsics")
 
         images = await fs.images.get(dive_id=dive_id) or []
 

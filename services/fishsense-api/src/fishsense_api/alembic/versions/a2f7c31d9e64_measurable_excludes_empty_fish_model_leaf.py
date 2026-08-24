@@ -38,6 +38,7 @@ those stop counting toward `measured`'s denominator, so a dive wedged on one
 can finally read `measured = true` and drain from the stage-14 cohort. Every
 other dive's flags are byte-identical.
 """
+
 # pylint: skip-file
 
 from typing import Sequence, Union

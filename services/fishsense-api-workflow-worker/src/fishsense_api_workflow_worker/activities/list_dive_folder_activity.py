@@ -119,9 +119,7 @@ async def list_dive_folder_activity(
     files = sorted((e for e in entries if _is_raw(e)), key=lambda e: e.name)
 
     subfolders: List[SubfolderReport] = []
-    for entry in sorted(
-        (e for e in entries if e.is_dir), key=lambda e: e.name
-    ):
+    for entry in sorted((e for e in entries if e.is_dir), key=lambda e: e.name):
         # Exactly one level down: enough to count a rollover folder's frames,
         # and no more. A full walk would turn a path mistyped near the share
         # root into an enumeration of the entire NAS, over a download backend
@@ -129,9 +127,7 @@ async def list_dive_folder_activity(
         children = await _list(client, entry.path)
         orf_count = sum(1 for child in children if _is_raw(child))
         if orf_count:
-            subfolders.append(
-                SubfolderReport(path=entry.path, orf_count=orf_count)
-            )
+            subfolders.append(SubfolderReport(path=entry.path, orf_count=orf_count))
 
     activity.logger.info(
         "listed dive folder path=%s frames=%d subfolders=%d",

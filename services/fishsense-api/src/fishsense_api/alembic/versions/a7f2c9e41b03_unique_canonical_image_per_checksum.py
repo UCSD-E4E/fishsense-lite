@@ -26,6 +26,7 @@ rule was "first one wins" -- then re-run this migration:
     );
 
 """
+
 # pylint: skip-file
 
 import logging
@@ -44,16 +45,14 @@ _log = logging.getLogger("alembic.runtime.migration")
 
 INDEX_NAME = "uq_image_canonical_checksum"
 
-_FIND_VIOLATIONS = sa.text(
-    """
+_FIND_VIOLATIONS = sa.text("""
     SELECT checksum, COUNT(*) AS n
     FROM image
     WHERE is_canonical
     GROUP BY checksum
     HAVING COUNT(*) > 1
     ORDER BY n DESC
-    """
-)
+    """)
 
 
 def upgrade() -> None:

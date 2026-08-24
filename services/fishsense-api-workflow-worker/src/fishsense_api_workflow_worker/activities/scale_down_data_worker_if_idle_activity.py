@@ -79,9 +79,7 @@ async def scale_down_data_worker_if_idle_activity() -> bool:
     """
     config = resolve_scaling_config()
     if config is None:
-        activity.logger.info(
-            "k8s scaling not configured; nothing to scale down"
-        )
+        activity.logger.info("k8s scaling not configured; nothing to scale down")
         return False
 
     busy = await _data_worker_task_queue_busy(config.idle_cooldown_minutes)

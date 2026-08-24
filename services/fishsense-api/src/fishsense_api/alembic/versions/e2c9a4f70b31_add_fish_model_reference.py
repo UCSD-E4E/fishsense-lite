@@ -10,6 +10,7 @@ held-out validation set, never used for calibration) and exposes
 from Superset. Seed data is canonical in `views.KNOWN_FISH_MODELS`.
 
 """
+
 # pylint: skip-file
 
 from typing import Sequence, Union
@@ -22,7 +23,6 @@ from fishsense_api.views import (
     FISH_MODEL_ACCURACY_VIEW_SQL,
     KNOWN_FISH_MODELS,
 )
-
 
 # revision identifiers, used by Alembic.
 revision: str = "e2c9a4f70b31"
@@ -51,14 +51,11 @@ def upgrade() -> None:
             sa.PrimaryKeyConstraint("id"),
             sa.UniqueConstraint("name", name="uq_fish_model_reference_name"),
         )
-        op.create_index(
-            "ix_fishmodelreference_name", "fishmodelreference", ["name"]
-        )
+        op.create_index("ix_fishmodelreference_name", "fishmodelreference", ["name"])
 
     # Seed only the models that aren't present yet.
     existing = {
-        row[0]
-        for row in bind.execute(sa.text("SELECT name FROM fishmodelreference"))
+        row[0] for row in bind.execute(sa.text("SELECT name FROM fishmodelreference"))
     }
     to_insert = [m for m in KNOWN_FISH_MODELS if m["name"] not in existing]
     if to_insert:

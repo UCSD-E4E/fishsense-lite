@@ -10,11 +10,8 @@ import re
 from datetime import datetime, timezone
 from typing import Iterable, List
 
-
 # Matches our backup filenames exactly: 2026-04-28T03-00-00Z.dump
-_FILENAME_RE = re.compile(
-    r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.dump$"
-)
+_FILENAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.dump$")
 
 
 def backup_filename(when: datetime) -> str:
@@ -26,8 +23,7 @@ def backup_filename(when: datetime) -> str:
     """
     if when.tzinfo is None or when.tzinfo.utcoffset(when) is None:
         raise ValueError(
-            "backup_filename requires a timezone-aware datetime; "
-            "got a naive one"
+            "backup_filename requires a timezone-aware datetime; got a naive one"
         )
     utc = when.astimezone(timezone.utc)
     return utc.strftime("%Y-%m-%dT%H-%M-%SZ.dump")

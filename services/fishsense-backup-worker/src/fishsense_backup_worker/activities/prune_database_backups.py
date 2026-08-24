@@ -17,15 +17,14 @@ _log = logging.getLogger(__name__)
 
 
 def _input_model():
-    from fishsense_backup_worker.workflows.backup_databases_workflow \
-        import PruneDatabaseBackupsInput
+    from fishsense_backup_worker.workflows.backup_databases_workflow import (
+        PruneDatabaseBackupsInput,
+    )
 
     return PruneDatabaseBackupsInput
 
 
-def _prune(
-    *, db_name: str, nas_root_path: str, keep: int
-) -> List[str]:
+def _prune(*, db_name: str, nas_root_path: str, keep: int) -> List[str]:
     """Sync helper run via asyncio.to_thread. Returns the list of
     filenames pruned (mostly for logging)."""
     nas = NasBackupClient(

@@ -22,7 +22,9 @@ from fishsense_api_workflow_worker.activities.cohort_selection import (
 
 
 @activity.defn
-async def select_next_high_priority_dive_for_species_preprocessing_activity() -> int | None:
+async def select_next_high_priority_dive_for_species_preprocessing_activity() -> (
+    int | None
+):
     return await select_next_dive(
         "species preprocessing",
         lambda fs: fs.dives.select_next_for_species_preprocessing(),

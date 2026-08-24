@@ -60,10 +60,11 @@ def _rectify_overlay_bbox_encode(
 
 
 def _input_model():
-    from fishsense_data_processing_workflow_worker.workflows.preprocess_laser_images_workflow \
-        import PreprocessLaserImageInput
+    from fishsense_data_processing_workflow_worker.workflows import (
+        preprocess_laser_images_workflow as workflow,
+    )
 
-    return PreprocessLaserImageInput
+    return workflow.PreprocessLaserImageInput
 
 
 @activity.defn

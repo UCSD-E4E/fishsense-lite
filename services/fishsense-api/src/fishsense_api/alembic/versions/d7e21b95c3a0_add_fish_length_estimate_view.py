@@ -17,6 +17,7 @@ a halving, for free, with no change to any measurement.
 Additive: nothing reads this yet, and no existing view or query changes.
 
 """
+
 # pylint: skip-file
 
 from typing import Sequence, Union
@@ -27,7 +28,6 @@ from fishsense_api.views import (
     DROP_FISH_LENGTH_ESTIMATE_VIEW_SQL,
     FISH_LENGTH_ESTIMATE_VIEW_SQL,
 )
-
 
 # revision identifiers, used by Alembic.
 revision: str = "d7e21b95c3a0"

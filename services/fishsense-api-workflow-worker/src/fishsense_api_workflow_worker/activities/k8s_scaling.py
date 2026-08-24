@@ -68,8 +68,7 @@ def resolve_scaling_config() -> ScalingConfig | None:
     namespace = section.get("namespace")
     if not namespace:
         raise ValueError(
-            "kubernetes.namespace is required when kubernetes.kubeconfig_path "
-            "is set"
+            "kubernetes.namespace is required when kubernetes.kubeconfig_path is set"
         )
 
     deployment_name = section.get("deployment_name") or DEFAULT_DEPLOYMENT_NAME

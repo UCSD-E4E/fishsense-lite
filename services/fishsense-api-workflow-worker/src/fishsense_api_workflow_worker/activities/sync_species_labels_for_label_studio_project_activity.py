@@ -120,9 +120,7 @@ def _apply_parsed(species_label: SpeciesLabel, parsed: Dict[str, Any]) -> None:
         species_label.fish_curved_category = parsed["fish_curved_category"]
 
 
-def _slate_type_choice(
-    results: list[dict], valid_slate_names: set[str]
-) -> str | None:
+def _slate_type_choice(results: list[dict], valid_slate_names: set[str]) -> str | None:
     """The DiveSlate-template name a labeler picked, or None.
 
     The species Taxonomy carries the slate type (H-Slate / V-Slate N /

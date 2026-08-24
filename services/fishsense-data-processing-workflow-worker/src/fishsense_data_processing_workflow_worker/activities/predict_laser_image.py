@@ -92,6 +92,7 @@ def _predict_from_raw(
     size, so the rectified dims equal the decoded raw dims.
     """
     import numpy as np
+
     # no-name-in-module: linear_raw_image ships in fishsense-core >= 2.2.0
     # (bumped to 2.3.0 in the deps/GPU phase).
     from fishsense_core.image.linear_raw_image import (  # pylint: disable=import-error,no-name-in-module
