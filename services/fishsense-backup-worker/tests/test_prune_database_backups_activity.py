@@ -38,7 +38,7 @@ def _settings_env(monkeypatch):
 @pytest.fixture
 def nas(monkeypatch):
     """A stand-in NAS whose `list_filenames`/`delete` calls are recorded."""
-    from fishsense_backup_worker.activities import (  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker.activities import (
         prune_database_backups as sut,
     )
 
@@ -49,7 +49,7 @@ def nas(monkeypatch):
 
 
 def _prune(**kwargs):
-    from fishsense_backup_worker.activities import (  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker.activities import (
         prune_database_backups as sut,
     )
 
@@ -79,7 +79,7 @@ def test_a_trailing_slash_on_the_root_does_not_produce_a_double_slash(nas):
 
 
 def test_deletes_each_pruned_file_by_full_path(nas, monkeypatch):
-    from fishsense_backup_worker.activities import (  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker.activities import (
         prune_database_backups as sut,
     )
 
@@ -95,7 +95,7 @@ def test_deletes_each_pruned_file_by_full_path(nas, monkeypatch):
 def test_deletes_nothing_when_retention_says_nothing_to_prune(nas, monkeypatch):
     """The steady state on a fresh install. A wrapper that deleted on an empty
     prune list would clear the whole directory."""
-    from fishsense_backup_worker.activities import (  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker.activities import (
         prune_database_backups as sut,
     )
 
@@ -109,7 +109,7 @@ def test_deletes_nothing_when_retention_says_nothing_to_prune(nas, monkeypatch):
 def test_deletes_only_what_the_retention_helper_returned(nas, monkeypatch):
     """The wrapper must not re-derive the set. Everything the helper didn't
     name has to survive."""
-    from fishsense_backup_worker.activities import (  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker.activities import (
         prune_database_backups as sut,
     )
 
@@ -128,7 +128,7 @@ def test_deletes_only_what_the_retention_helper_returned(nas, monkeypatch):
 def test_passes_keep_through_to_the_retention_helper(monkeypatch):
     """`keep` is the retention window. Dropping or defaulting it silently
     changes how much history survives."""
-    from fishsense_backup_worker.activities import (  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker.activities import (
         prune_database_backups as sut,
     )
 
@@ -147,7 +147,7 @@ def test_passes_keep_through_to_the_retention_helper(monkeypatch):
 
 def test_only_the_listed_files_are_considered(nas, monkeypatch):
     """The helper sees exactly what the NAS reported — no synthesised names."""
-    from fishsense_backup_worker.activities import (  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker.activities import (
         prune_database_backups as sut,
     )
 
@@ -170,10 +170,10 @@ def test_only_the_listed_files_are_considered(nas, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_activity_accepts_an_already_typed_payload(nas, monkeypatch):
-    from fishsense_backup_worker.activities import (  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker.activities import (
         prune_database_backups as sut,
     )
-    from fishsense_backup_worker.workflows.backup_databases_workflow import (  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker.workflows.backup_databases_workflow import (
         PruneDatabaseBackupsInput,
     )
 
@@ -192,7 +192,7 @@ async def test_activity_accepts_an_already_typed_payload(nas, monkeypatch):
 async def test_activity_validates_a_dict_payload(nas, monkeypatch):
     """Temporal hands the activity whatever the data converter produced; a
     plain dict must be coerced rather than attribute-errored."""
-    from fishsense_backup_worker.activities import (  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker.activities import (
         prune_database_backups as sut,
     )
 

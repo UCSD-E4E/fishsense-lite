@@ -81,6 +81,28 @@ disable = [
     # Pydantic BaseModel + workflow input DTOs are data-only by design;
     # this warning treats every one of them as a code smell.
     "too-few-public-methods",
+    # Function-local imports are a deliberate, repo-wide pattern here, not an
+    # oversight, and three separate mechanisms depend on them:
+    #
+    #   * Dynaconf validates EVERY validator on first attribute access of
+    #     `settings`, so a module-level import of anything that touches config
+    #     forces every unrelated setting to be present. Tests and activities
+    #     import inside the function to control when that happens.
+    #   * `fishsense_api.controllers` registers routes as an import side
+    #     effect; the API's tests import controllers inside the test body so
+    #     registration order stays under the test's control rather than
+    #     pytest's collection order.
+    #   * The api tests import SQLModel classes inside fixtures so the module
+    #     imports cleanly on a default `-m "not integration"` run, before any
+    #     database settings exist.
+    #
+    # This was previously spelled as 694 inline pragmas across 71 files, which
+    # is exactly what CLAUDE.md says not to do ("put any lint exemption in the
+    # root pyproject.toml where it is reviewable in one place. Never inline").
+    # They also made `black` unusable: reflowing a long import moved the
+    # trailing pragma onto the closing paren, where pylint no longer applied
+    # it, turning 3 findings into ~30 in a single file.
+    "import-outside-toplevel",
 ]
 
 # `duplicate-code` (R0801) is ENABLED on purpose — see CLAUDE.md's

@@ -34,7 +34,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 @pytest.fixture
 async def session():
-    import fishsense_api.database  # noqa: F401  # pylint: disable=import-outside-toplevel,unused-import
+    import fishsense_api.database  # noqa: F401  # pylint: disable=unused-import
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -46,8 +46,8 @@ async def session():
 
 
 async def _seed_camera(session, camera_id: int = 1, *, with_intrinsics: bool = True):
-    from fishsense_api.models.camera import Camera  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.camera_intrinsics import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.camera import Camera
+    from fishsense_api.models.camera_intrinsics import (
         CameraIntrinsics,
     )
 
@@ -67,8 +67,8 @@ async def _seed_camera(session, camera_id: int = 1, *, with_intrinsics: bool = T
 
 
 def _dive(path: str, **kwargs):
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
+    from fishsense_api.models.priority import Priority
 
     kwargs.setdefault("camera_id", 1)
     kwargs.setdefault("priority", Priority.LOW)
@@ -83,10 +83,10 @@ def _dive(path: str, **kwargs):
 
 
 async def test_post_dive_creates_a_row_and_returns_its_id(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         post_dive,
     )
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
 
     await _seed_camera(session)
 
@@ -105,11 +105,11 @@ async def test_post_dive_is_an_upsert_on_path_not_a_duplicate_insert(session):
     finalize step re-POSTing to flip `priority` LOW -> HIGH. A blind
     `session.merge(id=None)` INSERTs and trips the unique index on `path`.
     """
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         post_dive,
     )
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
+    from fishsense_api.models.priority import Priority
 
     await _seed_camera(session)
     path = "2024 REEF/082124_Alligator_FSL06"
@@ -133,7 +133,7 @@ async def test_post_dive_is_an_upsert_on_path_not_a_duplicate_insert(session):
 
 async def test_post_dive_rejects_a_missing_camera_id(session):
     """No camera means no intrinsics means stage 14 can never measure it."""
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         post_dive,
     )
 
@@ -143,7 +143,7 @@ async def test_post_dive_rejects_a_missing_camera_id(session):
 
 
 async def test_post_dive_rejects_an_unknown_camera_id(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         post_dive,
     )
 
@@ -155,7 +155,7 @@ async def test_post_dive_rejects_an_unknown_camera_id(session):
 async def test_post_dive_rejects_a_camera_without_intrinsics(session):
     """The silent-failure case this endpoint exists to make loud: the dive would
     be created happily and then never reach `measured`, with no error anywhere."""
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         post_dive,
     )
 
@@ -179,9 +179,9 @@ def test_an_over_long_dive_path_is_rejected_when_the_body_is_validated():
     That asymmetry is exactly why the endpoint keeps its own explicit check
     (next test) rather than trusting the model.
     """
-    from pydantic import ValidationError  # pylint: disable=import-outside-toplevel
+    from pydantic import ValidationError
 
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
 
     _dive("x" * 256)  # constructing is NOT validated — no raise
 
@@ -199,10 +199,10 @@ async def test_post_dive_rejects_an_over_long_path_that_bypassed_validation(sess
     """`model_construct` skips pydantic. Postgres would reject the value, but
     sqlite silently stores it, and a truncated `Dive.path` no longer resolves
     on the NAS — so the endpoint checks explicitly, before re-validating."""
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         post_dive,
     )
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
 
     await _seed_camera(session)
     smuggled = Dive.model_construct(
@@ -218,7 +218,7 @@ async def test_post_dive_rejects_an_over_long_path_that_bypassed_validation(sess
 
 
 async def test_post_dive_rejects_a_self_referential_calibration_source(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         post_dive,
     )
 
@@ -231,7 +231,7 @@ async def test_post_dive_rejects_a_self_referential_calibration_source(session):
 
 
 async def test_post_dive_rejects_an_unknown_calibration_source(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         post_dive,
     )
 
@@ -245,10 +245,10 @@ async def test_post_dive_rejects_an_unknown_calibration_source(session):
 async def test_post_dive_accepts_a_valid_calibration_source(session):
     """A fish-only dive borrowing a sibling slate dive's calibration is the
     whole point of `calibration_dive_id` — it must not be blocked."""
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         post_dive,
     )
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
 
     await _seed_camera(session)
     slate_dive = await post_dive(_dive("d/slate"), session=session)
@@ -280,11 +280,11 @@ async def test_reposting_a_dive_preserves_fields_the_body_did_not_mention(sessio
     Ingest itself re-POSTs the dive at finalize, so it would have tripped this
     on its own. Only fields the caller actually sent may be written.
     """
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         post_dive,
     )
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
+    from fishsense_api.models.priority import Priority
 
     await _seed_camera(session)
     slate_dive = await post_dive(_dive("d/slate"), session=session)
@@ -320,10 +320,10 @@ async def test_reposting_a_dive_can_still_clear_a_field_explicitly(session):
     """Partial update must not become "you can never null anything". An
     explicit `None` in the body is a real instruction — that is how an
     operator drops a wrong calibration link."""
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         post_dive,
     )
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
 
     await _seed_camera(session)
     slate_dive = await post_dive(_dive("d/slate"), session=session)
@@ -346,7 +346,7 @@ async def test_reposting_a_dive_can_still_clear_a_field_explicitly(session):
 
 
 async def test_post_dive_rejects_an_empty_path(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         post_dive,
     )
 
@@ -360,10 +360,10 @@ async def test_post_dive_rejects_an_empty_path(session):
 async def test_post_dive_honours_an_explicit_id_instead_of_resolving_by_path(session):
     """The `id is not None` branch — an update targeted by primary key, which
     skips natural-key resolution (and so also skips the partial overlay)."""
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         post_dive,
     )
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
 
     await _seed_camera(session)
     dive_id = await post_dive(_dive("d/original"), session=session)

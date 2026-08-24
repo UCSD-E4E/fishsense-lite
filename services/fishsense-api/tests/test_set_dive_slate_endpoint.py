@@ -18,7 +18,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 @pytest.fixture
 async def session():
-    import fishsense_api.database  # noqa: F401  # pylint: disable=import-outside-toplevel,unused-import
+    import fishsense_api.database  # noqa: F401  # pylint: disable=unused-import
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -30,8 +30,8 @@ async def session():
 
 
 def _dive(dive_id: int, *, dive_slate_id=None):
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
+    from fishsense_api.models.priority import Priority
 
     return Dive(
         id=dive_id,
@@ -43,7 +43,7 @@ def _dive(dive_id: int, *, dive_slate_id=None):
 
 
 def _dive_slate(slate_id: int):
-    from fishsense_api.models.dive_slate import DiveSlate  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive_slate import DiveSlate
 
     return DiveSlate(
         id=slate_id,
@@ -54,10 +54,10 @@ def _dive_slate(slate_id: int):
 
 
 async def test_set_dive_slate_sets_the_fk(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         set_dive_slate,
     )
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
 
     session.add(_dive(1))
     session.add(_dive_slate(9))
@@ -69,10 +69,10 @@ async def test_set_dive_slate_sets_the_fk(session):
 
 
 async def test_set_dive_slate_overwrites_existing(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         set_dive_slate,
     )
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
 
     session.add(_dive(1, dive_slate_id=8))
     session.add_all([_dive_slate(8), _dive_slate(9)])
@@ -83,7 +83,7 @@ async def test_set_dive_slate_overwrites_existing(session):
 
 
 async def test_set_dive_slate_404_when_dive_missing(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         set_dive_slate,
     )
 
@@ -96,7 +96,7 @@ async def test_set_dive_slate_404_when_dive_missing(session):
 
 
 async def test_set_dive_slate_404_when_template_missing(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         set_dive_slate,
     )
 

@@ -112,7 +112,7 @@ async def test_downloads_and_puts_when_pdf_missing(monkeypatch):
     monkeypatch.setenv(
         "E4EFS_E4E_NAS__RAW_ROOT_PATH", "/fishsense_data/REEF/data"
     )
-    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker import config as cfg
     cfg.settings.reload()
 
     fs = _make_fs([_slate(7)])
@@ -169,7 +169,7 @@ async def test_relative_slate_path_gets_prefixed_before_nas_download(monkeypatch
     monkeypatch.setenv(
         "E4EFS_E4E_NAS__RAW_ROOT_PATH", "/fishsense_data/REEF/data"
     )
-    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker import config as cfg
     cfg.settings.reload()
 
     fs = _make_fs([_slate(7, path="slates/v1/slate.pdf")])

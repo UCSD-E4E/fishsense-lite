@@ -32,7 +32,7 @@ def _settings_env(monkeypatch):
 @pytest.fixture
 def wired(monkeypatch):
     """Run `main()` with Temporal replaced; hand back the recorded calls."""
-    from fishsense_backup_worker import worker as sut  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker import worker as sut
 
     client = MagicMock()
     connect = AsyncMock(return_value=client)
@@ -56,13 +56,13 @@ async def test_registers_both_activities_and_the_workflow(wired):
     """The runtime failure this guards: a schedule that fires into a worker
     which cannot execute what the workflow calls."""
     sut, _connect, _ensure, worker_cls, _instance = wired
-    from fishsense_backup_worker.activities.pg_dump_database import (  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker.activities.pg_dump_database import (
         pg_dump_database,
     )
-    from fishsense_backup_worker.activities.prune_database_backups import (  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker.activities.prune_database_backups import (
         prune_database_backups,
     )
-    from fishsense_backup_worker.workflows.backup_databases_workflow import (  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker.workflows.backup_databases_workflow import (
         BackupDatabasesWorkflow,
     )
 
@@ -137,7 +137,7 @@ async def test_the_worker_is_actually_started(wired):
 
 
 def test_run_drives_main_under_asyncio(monkeypatch):
-    from fishsense_backup_worker import worker as sut  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker import worker as sut
 
     called = []
     monkeypatch.setattr(sut.asyncio, "run", called.append)

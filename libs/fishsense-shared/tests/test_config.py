@@ -21,7 +21,7 @@ import pytest
 
 def _reload_with(monkeypatch, value: str | None):
     """Re-import `fishsense_shared.config` with `E4EFS_DOCKER` set to `value`."""
-    from fishsense_shared import config  # pylint: disable=import-outside-toplevel
+    from fishsense_shared import config
 
     if value is None:
         monkeypatch.delenv("E4EFS_DOCKER", raising=False)
@@ -34,7 +34,7 @@ def _reload_with(monkeypatch, value: str | None):
 def _restore_module():
     """Leave the module as the rest of the suite found it."""
     yield
-    from fishsense_shared import config  # pylint: disable=import-outside-toplevel
+    from fishsense_shared import config
 
     importlib.reload(config)
 

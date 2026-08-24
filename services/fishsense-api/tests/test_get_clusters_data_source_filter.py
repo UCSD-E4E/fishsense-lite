@@ -26,9 +26,9 @@ async def session():
     # which the sqlite/StaticPool combo rejects.
     # Importing fishsense_api.database wires every model into SQLModel.metadata
     # so create_all sees them.
-    from sqlalchemy.ext.asyncio import create_async_engine  # pylint: disable=import-outside-toplevel
+    from sqlalchemy.ext.asyncio import create_async_engine
 
-    import fishsense_api.database  # noqa: F401  # pylint: disable=import-outside-toplevel,unused-import
+    import fishsense_api.database  # noqa: F401  # pylint: disable=unused-import
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -40,11 +40,11 @@ async def session():
 
 
 async def test_get_clusters_returns_only_requested_data_source(session):
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         get_clusters,
     )
-    from fishsense_api.models.data_source import DataSource  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.dive_frame_cluster import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.data_source import DataSource
+    from fishsense_api.models.dive_frame_cluster import (
         DiveFrameCluster,
         DiveFrameClusterImageMapping,
     )
@@ -97,11 +97,11 @@ async def test_get_clusters_returns_only_requested_data_source(session):
 async def test_get_clusters_handles_cluster_with_no_mappings(session):
     """Defensive: a cluster of the requested data_source with zero rows in
     the mapping table must surface as image_ids=[], not KeyError."""
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         get_clusters,
     )
-    from fishsense_api.models.data_source import DataSource  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.dive_frame_cluster import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.data_source import DataSource
+    from fishsense_api.models.dive_frame_cluster import (
         DiveFrameCluster,
     )
 

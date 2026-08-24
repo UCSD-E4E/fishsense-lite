@@ -46,7 +46,7 @@ def test_external_shape_preserved_for_activity_call_sites(monkeypatch):
     several activities import the narrow alias for documentation
     intent.
     """
-    from fishsense_api_workflow_worker import nas as sut  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker import nas as sut
 
     assert sut.NasDownloadClient is sut.NasClient
 
@@ -79,7 +79,7 @@ def test_download_to_raises_when_underlying_client_signals_failure(
     leaving DSM JSON-error bodies on disk for the activity to read
     back as `.ORF` content.
     """
-    from fishsense_api_workflow_worker import nas as sut  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker import nas as sut
 
     src_path = "/share/data/2024.06.20.REEF/img.ORF"
 
@@ -124,7 +124,7 @@ def test_download_to_raises_when_underlying_client_signals_failure(
 
 
 def _client_with(monkeypatch, fake_fs):
-    from fishsense_api_workflow_worker import nas as sut  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker import nas as sut
 
     monkeypatch.setattr(sut.Client, "login", lambda *a, **kw: fake_fs)
     return sut.NasClient(

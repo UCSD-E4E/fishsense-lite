@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import base64
 
-from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import List
 from unittest.mock import AsyncMock, MagicMock
@@ -13,24 +11,18 @@ import pytest
 from temporalio.testing import ActivityEnvironment
 
 from fishsense_api_sdk.models.dive_slate_label import DiveSlateLabel
-from fishsense_api_sdk.models.image import Image
 from fishsense_api_sdk.models.species_label import SpeciesLabel
 from fishsense_api_workflow_worker.activities import (
+
     populate_dive_slate_label_studio_project_activity as sut,
     populate_utils as sut_utils,
 )
 
-
-def _image(image_id: int, checksum: str) -> Image:
-    return Image(
-        id=image_id,
-        path=f"path/{image_id}.ORF",
-        taken_datetime=datetime(2024, 8, 21, tzinfo=timezone.utc),
-        checksum=checksum,
-        is_canonical=True,
-        dive_id=1,
-        camera_id=6,
-    )
+# Shared with the other populate suites — see `worker_tests_support.populate`.
+from worker_tests_support.populate import (  # noqa: F401
+    image as _image,
+    fake_label_studio_client as _make_ls_client,
+)
 
 
 def _species_label(image_id: int, *, content: str | None) -> SpeciesLabel:
@@ -103,7 +95,7 @@ def test_build_task_emits_dual_image_and_img_keys(monkeypatch):
     """Pinned: dual-key `image` + `img` shape for legacy LS project
     XML compatibility — see laser populate test of the same name."""
     monkeypatch.setenv("E4EFS_OBJECT_STORE__BUCKET", "fishsense-test")
-    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker import config as cfg
     cfg.settings.reload()
 
     expected_url = "s3://fishsense-test/preprocess_slate_images_jpeg/abc123.JPG"
@@ -135,36 +127,6 @@ def _make_fs_client(
     fs.labels.put_dive_slate_label = AsyncMock()
     fs.labels.get_slate_predictions = AsyncMock(return_value=[])
     return fs
-
-
-def _make_ls_client(returned_task_ids: List[int]):
-    # Fake hosted LS: import creates tasks (assigning ids from
-    # `returned_task_ids` in order) and `tasks.list` serves them back. The
-    # import response carries NO task_ids -- hosted LS imports asynchronously.
-    ls = MagicMock()
-    ls.projects = MagicMock()
-    _stored: List = []
-    _ids = iter(returned_task_ids)
-
-    def _import(project_id, request, return_task_ids=False):  # pylint: disable=unused-argument
-        for task in request:
-            _tid = next(_ids)
-            _s3 = task["data"].get("image") or task["data"].get("img")
-            _fileuri = base64.b64encode(_s3.encode()).decode()
-            # hosted LS lists tasks with a per-task presign resolve-wrapper,
-            # NOT the imported s3:// URL — mirror that so dedup is exercised.
-            _stored.append(
-                SimpleNamespace(
-                    id=_tid,
-                    data={"image": f"/tasks/{_tid}/resolve/?fileuri={_fileuri}"},
-                )
-            )
-        return SimpleNamespace(import_=1)
-
-    ls.projects.import_tasks = MagicMock(side_effect=_import)
-    ls.tasks = MagicMock()
-    ls.tasks.list = MagicMock(side_effect=lambda project=None: list(_stored))
-    return ls
 
 
 @pytest.mark.asyncio

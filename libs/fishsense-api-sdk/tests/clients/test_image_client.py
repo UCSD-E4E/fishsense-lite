@@ -172,7 +172,7 @@ class TestImageClientLaserDepth:
                 assert await client.get_laser_depth(11) is None
 
     async def test_get_laser_depth_parses_the_row(self):
-        from fishsense_api_sdk.models.laser_depth import (  # pylint: disable=import-outside-toplevel
+        from fishsense_api_sdk.models.laser_depth import (
             LaserDepth,
         )
 
@@ -201,7 +201,7 @@ class TestImageClientLaserDepth:
         assert (depth.laser_label_id, depth.laser_extrinsics_id) == (5, 7)
 
     async def test_put_laser_depth_targets_the_image_route(self):
-        from fishsense_api_sdk.models.laser_depth import (  # pylint: disable=import-outside-toplevel
+        from fishsense_api_sdk.models.laser_depth import (
             LaserDepth,
         )
 

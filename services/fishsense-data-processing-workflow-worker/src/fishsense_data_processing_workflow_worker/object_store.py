@@ -46,7 +46,6 @@ def open_object_store_client() -> "ObjectStoreClient":
     doesn't eagerly trigger Dynaconf validation — only calling this at
     activity runtime does. The 4 preprocess activities call this.
     """
-    # pylint: disable=import-outside-toplevel
     from fishsense_data_processing_workflow_worker.config import settings
 
     return open_client(settings, ObjectStoreClient)

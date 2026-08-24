@@ -21,7 +21,7 @@ _T0 = datetime(2024, 6, 1, tzinfo=timezone.utc)
 
 @pytest.fixture
 async def session():
-    import fishsense_api.database  # noqa: F401  # pylint: disable=import-outside-toplevel,unused-import
+    import fishsense_api.database  # noqa: F401  # pylint: disable=unused-import
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -33,8 +33,8 @@ async def session():
 
 
 def _dive(dive_id: int, camera_id: int | None, *, days: int = 0):
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.priority import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
+    from fishsense_api.models.priority import (
         Priority,
     )
 
@@ -50,7 +50,7 @@ def _dive(dive_id: int, camera_id: int | None, *, days: int = 0):
 
 def _line(dive_id: int, angle_deg: float, c: float, *, confidence: float = 5000.0):
     """A unit-normal Hesse line rotated `angle_deg` from the x-axis normal."""
-    from fishsense_api.models.dive_laser_line import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive_laser_line import (
         DiveLaserLine,
     )
 
@@ -70,7 +70,7 @@ def _line(dive_id: int, angle_deg: float, c: float, *, confidence: float = 5000.
 
 
 def _extrinsics(dive_id: int, camera_id: int):
-    from fishsense_api.models.laser_extrinsics import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_extrinsics import (
         LaserExtrinsics,
     )
 
@@ -84,7 +84,7 @@ def _extrinsics(dive_id: int, camera_id: int):
 
 
 async def _candidates(session, dive_id, **kw):
-    from fishsense_api.controllers.calibration_candidate_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.calibration_candidate_controller import (
         get_calibration_candidates,
     )
 
@@ -183,7 +183,7 @@ async def test_returns_empty_when_target_has_no_fingerprint(session):
 
 async def test_sign_flipped_line_still_matches(session):
     # (a,b,c) and (-a,-b,-c) are the same physical line; must compare equal.
-    from fishsense_api.models.dive_laser_line import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive_laser_line import (
         DiveLaserLine,
     )
 

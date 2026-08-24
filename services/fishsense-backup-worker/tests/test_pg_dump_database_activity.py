@@ -41,7 +41,7 @@ def test_each_invocation_uses_an_isolated_tempdir(monkeypatch):
     """A single call must produce a path that's unique to its own
     tempdir, not a shared `/tmp` location. This is the static
     property that makes parallel callers safe."""
-    from fishsense_backup_worker.activities import (  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker.activities import (
         pg_dump_database as sut,
     )
 
@@ -93,7 +93,7 @@ def test_concurrent_calls_for_three_dbs_all_succeed(monkeypatch):
     three threads sit between `run_pg_dump` and `nas.upload`
     simultaneously — exactly the window the prior bug raced on.
     """
-    from fishsense_backup_worker.activities import (  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker.activities import (
         pg_dump_database as sut,
     )
 

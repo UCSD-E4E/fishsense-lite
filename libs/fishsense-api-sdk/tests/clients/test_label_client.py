@@ -71,7 +71,7 @@ class TestLabelClient:  # pylint: disable=too-many-public-methods
                 assert await client.get_laser_label(label_studio_id=999) is None
 
     async def test_put_laser_prediction_puts_to_image_endpoint(self):
-        from fishsense_api_sdk.models.laser_prediction import (  # pylint: disable=import-outside-toplevel
+        from fishsense_api_sdk.models.laser_prediction import (
             LaserPrediction,
         )
 

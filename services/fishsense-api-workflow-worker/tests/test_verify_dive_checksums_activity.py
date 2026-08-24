@@ -86,7 +86,7 @@ def _nas(contents: dict[str, bytes]):
     def _download_to(*, src_path: str, dest_dir: str):
         name = src_path.rsplit("/", 1)[-1]
         if name not in contents:
-            from synology_filestation import (  # pylint: disable=import-outside-toplevel
+            from synology_filestation import (
                 DSMError,
             )
 
@@ -98,7 +98,7 @@ def _nas(contents: dict[str, bytes]):
 
 
 async def _run(images, contents, monkeypatch, **kwargs):
-    from fishsense_api_workflow_worker.activities import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker.activities import (
         verify_dive_checksums_activity as sut,
     )
 
@@ -285,9 +285,9 @@ def test_the_module_imports_no_write_capable_client():
     to answer a question; it must not be able to change the answer. Catches a
     future edit that reaches for `upload`, `delete` or an SDK write.
     """
-    import inspect  # pylint: disable=import-outside-toplevel
+    import inspect
 
-    from fishsense_api_workflow_worker.activities import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker.activities import (
         verify_dive_checksums_activity as sut,
     )
 

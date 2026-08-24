@@ -26,7 +26,7 @@ from fishsense_api.views import FISH_LENGTH_ESTIMATE_VIEW_SQL
 
 @pytest.fixture
 async def session():
-    import fishsense_api.database  # noqa: F401  pylint: disable=import-outside-toplevel,unused-import
+    import fishsense_api.database  # noqa: F401  pylint: disable=unused-import
 
     _SEEDED_DIVES.clear()
     _SEEDED_FISH.clear()
@@ -45,11 +45,11 @@ _SEEDED_FISH: set[int] = set()
 
 
 def _seed(session, fish_id: int, dive_id: int, lengths: list[float], base: int = 0):
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.fish import Fish  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
+    from fishsense_api.models.fish import Fish
+    from fishsense_api.models.image import Image
+    from fishsense_api.models.measurement import Measurement
+    from fishsense_api.models.priority import Priority
 
     if dive_id not in _SEEDED_DIVES:
         _SEEDED_DIVES.add(dive_id)
@@ -147,8 +147,8 @@ async def test_one_row_per_fish_and_dive(session):
 
 async def test_measurements_without_a_length_are_excluded(session):
     _seed(session, 1, 1, [1.00, 1.00])
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.image import Image
+    from fishsense_api.models.measurement import Measurement
 
     session.add(
         Image(

@@ -33,7 +33,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 @pytest.fixture
 async def session():
-    import fishsense_api.database  # noqa: F401  pylint: disable=import-outside-toplevel,unused-import
+    import fishsense_api.database  # noqa: F401  pylint: disable=unused-import
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -45,8 +45,8 @@ async def session():
 
 
 def _dive(dive_id: int, **kwargs):
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
+    from fishsense_api.models.priority import Priority
 
     kwargs.setdefault("priority", Priority.HIGH)
     return Dive(
@@ -58,7 +58,7 @@ def _dive(dive_id: int, **kwargs):
 
 
 def _image(image_id: int, dive_id: int, *, is_canonical: bool):
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.image import Image
 
     return Image(
         id=image_id,
@@ -82,7 +82,7 @@ async def test_a_dive_of_only_duplicate_frames_is_not_laser_preprocessing_work(s
     appears, so the dive never drains — re-staging raw `.ORF`s from the NAS
     every hour and blocking every higher-id dive.
     """
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_laser_preprocessing,
     )
 
@@ -95,7 +95,7 @@ async def test_a_dive_of_only_duplicate_frames_is_not_laser_preprocessing_work(s
 
 async def test_a_canonical_frame_is_still_laser_preprocessing_work(session):
     """The other half — the gate must not swallow real work."""
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_laser_preprocessing,
     )
 
@@ -109,7 +109,7 @@ async def test_a_canonical_frame_is_still_laser_preprocessing_work(session):
 async def test_a_mixed_dive_is_still_work_for_its_canonical_frames(session):
     """A dive holding one original and one duplicate is real work. Excluding
     the whole dive would strand the original."""
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_laser_preprocessing,
     )
 
@@ -133,10 +133,10 @@ def test_every_cohort_selector_filters_on_is_canonical():
     Every `Image.dive_id == Dive.id` correlation must be paired with an
     `Image.is_canonical` predicate.
     """
-    import inspect  # pylint: disable=import-outside-toplevel
-    import re  # pylint: disable=import-outside-toplevel
+    import inspect
+    import re
 
-    from fishsense_api.controllers import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers import (
         dive_cohort_controller,
         dive_controller,
     )
@@ -164,9 +164,9 @@ def test_every_cohort_selector_filters_on_is_canonical():
 
 
 async def _pipeline_row(session, dive_id: int):
-    from sqlalchemy import text  # pylint: disable=import-outside-toplevel
+    from sqlalchemy import text
 
-    from fishsense_api.views import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.views import (
         DIVE_PIPELINE_STATUS_VIEW_SQL,
     )
 
@@ -209,7 +209,7 @@ async def test_the_view_ignores_duplicate_frames_like_the_selectors_do(session):
 
 async def test_the_view_still_reports_canonical_frames(session):
     """The gate must not blind the dashboard to real work."""
-    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_label import LaserLabel
 
     session.add(_dive(1))
     session.add(_image(11, 1, is_canonical=True))
@@ -225,7 +225,7 @@ async def test_the_view_still_reports_canonical_frames(session):
 async def test_view_and_selector_agree_on_a_duplicate_dive(session):
     """The property, stated directly: for the same dive, the view must not
     claim outstanding work that the selector refuses to schedule."""
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_laser_preprocessing,
     )
 

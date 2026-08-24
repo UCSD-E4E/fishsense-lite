@@ -19,7 +19,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 @pytest.fixture
 async def session():
-    import fishsense_api.database  # noqa: F401  pylint: disable=import-outside-toplevel,unused-import
+    import fishsense_api.database  # noqa: F401  pylint: disable=unused-import
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -31,13 +31,13 @@ async def session():
 
 
 def _fish(name=None, species_id=None, fish_id=None):
-    from fishsense_api.models.fish import Fish  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.fish import Fish
 
     return Fish(id=fish_id, name=name, species_id=species_id)
 
 
 async def _get_by_name(session, name: str):
-    from fishsense_api.controllers.fish_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.fish_controller import (
         get_fish_by_name,
     )
 
@@ -45,7 +45,7 @@ async def _get_by_name(session, name: str):
 
 
 async def _post(session, fish):
-    from fishsense_api.controllers.fish_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.fish_controller import (
         post_fish,
     )
 
@@ -74,7 +74,7 @@ async def test_get_fish_by_name_404s_when_absent(session):
 
 
 async def test_post_fish_creates_named(session):
-    from fishsense_api.models.fish import Fish  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.fish import Fish
 
     new_id = await _post(session, _fish(name="Grouper"))
     await session.flush()
@@ -87,7 +87,7 @@ async def test_post_fish_creates_named(session):
 
 async def test_post_fish_upserts_on_name(session):
     """Second POST of the same model name must not insert a duplicate."""
-    from fishsense_api.models.fish import Fish  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.fish import Fish
 
     first = await _post(session, _fish(name="Grouper"))
     await session.flush()
@@ -101,7 +101,7 @@ async def test_post_fish_upserts_on_name(session):
 
 async def test_post_fish_null_names_do_not_collide(session):
     """Real fish (name=None) must both insert under the nullable-unique key."""
-    from fishsense_api.models.fish import Fish  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.fish import Fish
 
     await _post(session, _fish(name=None, species_id=None))
     await session.flush()

@@ -31,7 +31,7 @@ def test_external_shape_preserved_for_activity_call_sites(monkeypatch):
     (call sites use `getattr` via `asyncio.to_thread`), so pin the
     shape here.
     """
-    from fishsense_backup_worker import nas as sut  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker import nas as sut
 
     fake = MagicMock(name="synology_filestation.Client")
     fake.list_dir.return_value = []
@@ -61,7 +61,7 @@ def test_upload_propagates_underlying_failure(monkeypatch):
     swallowing typed exceptions from `Client.upload`. Pin the
     contract so it can't.
     """
-    from fishsense_backup_worker import nas as sut  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker import nas as sut
 
     fake = MagicMock(name="synology_filestation.Client")
     fake.upload.side_effect = SidNotFound("session expired")
@@ -82,7 +82,7 @@ def test_delete_propagates_underlying_failure(monkeypatch):
     deletion failures bubbling up so retention violations don't
     silently no-op.
     """
-    from fishsense_backup_worker import nas as sut  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker import nas as sut
 
     fake = MagicMock(name="synology_filestation.Client")
     fake.delete.side_effect = NoSuchFile("file not found")
@@ -105,7 +105,7 @@ def test_ensure_dir_treats_already_exists_as_success(monkeypatch):
     wrapper must treat that as success rather than propagate (the
     folder-already-exists case is the common steady-state path).
     """
-    from fishsense_backup_worker import nas as sut  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker import nas as sut
 
     fake = MagicMock(name="synology_filestation.Client")
     fake.create_folder.side_effect = AlreadyExists("folder exists")
@@ -129,7 +129,7 @@ def test_list_filenames_returns_basenames(monkeypatch):
     string-matching logic works (`backup_naming.filenames_to_prune`
     operates on filenames, not absolute paths).
     """
-    from fishsense_backup_worker import nas as sut  # pylint: disable=import-outside-toplevel
+    from fishsense_backup_worker import nas as sut
 
     fake = MagicMock(name="synology_filestation.Client")
     fake.list_dir.return_value = [

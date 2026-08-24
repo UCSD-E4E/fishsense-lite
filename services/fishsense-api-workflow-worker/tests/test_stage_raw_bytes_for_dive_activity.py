@@ -154,7 +154,7 @@ async def test_stages_new_checksums_via_nas_download_then_put(monkeypatch):
     monkeypatch.setenv(
         "E4EFS_E4E_NAS__RAW_ROOT_PATH", "/fishsense_data/REEF/data"
     )
-    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker import config as cfg
     cfg.settings.reload()
 
     images = [_image(1, checksum="aaa")]
@@ -231,7 +231,7 @@ async def test_failed_nas_download_does_not_upload_to_object_store(monkeypatch):
     monkeypatch.setenv(
         "E4EFS_E4E_NAS__RAW_ROOT_PATH", "/fishsense_data/REEF/data"
     )
-    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker import config as cfg
     cfg.settings.reload()
 
     images = [_image(1, checksum="aaa")]
@@ -282,7 +282,7 @@ def test_resolve_nas_path_prepends_root_to_relative_paths(monkeypatch):
     monkeypatch.setenv(
         "E4EFS_E4E_NAS__RAW_ROOT_PATH", "/fishsense_data/REEF/data"
     )
-    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker import config as cfg
     cfg.settings.reload()
 
     assert (
@@ -315,7 +315,7 @@ async def test_relative_image_paths_get_prefixed_before_nas_download(monkeypatch
     monkeypatch.setenv(
         "E4EFS_E4E_NAS__RAW_ROOT_PATH", "/fishsense_data/REEF/data"
     )
-    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker import config as cfg
     cfg.settings.reload()
 
     images = [
@@ -426,7 +426,7 @@ def test_stage_raw_retry_policy_is_bounded_and_marks_missing_file_non_retryable(
     non-retryable ApplicationError `type` the activity raises for a
     permanent (408) error must be exactly what the policy lists in
     `non_retryable_error_types`, and attempts must be bounded (no storm)."""
-    from fishsense_api_workflow_worker.workflows._retry_policies import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker.workflows._retry_policies import (
         STAGE_RAW_RETRY_POLICY,
     )
 
@@ -438,7 +438,7 @@ def test_stage_raw_retry_policy_is_bounded_and_marks_missing_file_non_retryable(
 
 def test_stage_concurrency_defaults_to_one(monkeypatch):
     # FileStation is fragile; default to a single serial download stream.
-    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker import config as cfg
 
     monkeypatch.delenv("E4EFS_E4E_NAS__STAGE_CONCURRENCY", raising=False)
     cfg.settings.reload()
@@ -446,7 +446,7 @@ def test_stage_concurrency_defaults_to_one(monkeypatch):
 
 
 def test_stage_concurrency_reads_config(monkeypatch):
-    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker import config as cfg
 
     monkeypatch.setenv("E4EFS_E4E_NAS__STAGE_CONCURRENCY", "3")
     cfg.settings.reload()
@@ -454,7 +454,7 @@ def test_stage_concurrency_reads_config(monkeypatch):
 
 
 def test_stage_concurrency_clamps_to_at_least_one(monkeypatch):
-    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker import config as cfg
 
     monkeypatch.setenv("E4EFS_E4E_NAS__STAGE_CONCURRENCY", "0")
     cfg.settings.reload()

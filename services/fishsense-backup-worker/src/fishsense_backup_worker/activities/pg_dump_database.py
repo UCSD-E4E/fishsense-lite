@@ -33,7 +33,6 @@ _log = logging.getLogger(__name__)
 
 
 def _input_model():
-    # pylint: disable=import-outside-toplevel
     from fishsense_backup_worker.workflows.backup_databases_workflow \
         import PgDumpDatabaseInput
 

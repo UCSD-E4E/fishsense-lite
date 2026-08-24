@@ -40,7 +40,7 @@ FOLDER = f"{ROOT}/2024.06.20.REEF/082929_FishModels_FSL07"
 
 
 def _camera(camera_id=7, serial=SERIAL, name="FSL-07"):
-    from fishsense_api_sdk.models.camera import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api_sdk.models.camera import (
         Camera,
     )
 
@@ -48,7 +48,7 @@ def _camera(camera_id=7, serial=SERIAL, name="FSL-07"):
 
 
 def _entry(name: str, size: int = 15_000_000):
-    from fishsense_api_workflow_worker.nas import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker.nas import (
         NasEntry,
     )
 
@@ -58,7 +58,7 @@ def _entry(name: str, size: int = 15_000_000):
 
 
 def _listing(names=("PA010001.ORF", "PA010002.ORF"), subfolders=()):
-    from fishsense_api_workflow_worker.activities.list_dive_folder_activity import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker.activities.list_dive_folder_activity import (
         DiveFolderListing,
     )
 
@@ -70,7 +70,7 @@ def _listing(names=("PA010001.ORF", "PA010002.ORF"), subfolders=()):
 
 
 def _request(**kwargs):
-    from fishsense_shared.ingest_contracts import (  # pylint: disable=import-outside-toplevel
+    from fishsense_shared.ingest_contracts import (
         IngestDiveRequest,
     )
 
@@ -100,7 +100,7 @@ async def _run(request, listing, monkeypatch, *, fs=None, headers=None):
     `headers` maps a file name to the bytes its ranged read returns; anything
     unlisted gets a well-formed default header.
     """
-    from fishsense_api_workflow_worker.activities import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker.activities import (
         preflight_ingest_activity as sut,
     )
 
@@ -370,7 +370,7 @@ async def test_reads_only_the_first_megabyte_of_each_frame(monkeypatch):
     500-frame dive previews for 0.5 GB rather than 7.5 GB. The saving is in
     bytes moved, so it holds whether the client resolves the read over SMB or
     falls back to FileStation."""
-    from fishsense_api_workflow_worker.activities import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker.activities import (
         preflight_ingest_activity as sut,
     )
 
@@ -391,7 +391,7 @@ async def test_reads_only_the_first_megabyte_of_each_frame(monkeypatch):
 
 
 async def test_totals_and_subfolders_are_carried_into_the_report(monkeypatch):
-    from fishsense_shared.ingest_contracts import (  # pylint: disable=import-outside-toplevel
+    from fishsense_shared.ingest_contracts import (
         SubfolderReport,
     )
 

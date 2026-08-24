@@ -35,7 +35,7 @@ GENERATED_OUTPUT = (
 
 
 def _dump_openapi_schema() -> dict:
-    # pylint: disable=import-outside-toplevel,unused-import
+    # pylint: disable=unused-import
     # Controllers register routes via @app.get/.put/etc. side effects on
     # import; they MUST be imported after the env-var seed below so dynaconf's
     # eager validation has placeholders to find.

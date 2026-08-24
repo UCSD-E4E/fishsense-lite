@@ -25,7 +25,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 @pytest.fixture
 async def session():
-    import fishsense_api.database  # noqa: F401  pylint: disable=import-outside-toplevel,unused-import
+    import fishsense_api.database  # noqa: F401  pylint: disable=unused-import
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -37,22 +37,22 @@ async def session():
 
 
 def _cases():
-    from fishsense_api.controllers.label_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.label_controller import (
         put_dive_slate_label,
         put_headtail_label,
         put_laser_label,
         put_species_label,
     )
-    from fishsense_api.models.dive_slate_label import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive_slate_label import (
         DiveSlateLabel,
     )
-    from fishsense_api.models.head_tail_label import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.head_tail_label import (
         HeadTailLabel,
     )
-    from fishsense_api.models.laser_label import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_label import (
         LaserLabel,
     )
-    from fishsense_api.models.species_label import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.species_label import (
         SpeciesLabel,
     )
 

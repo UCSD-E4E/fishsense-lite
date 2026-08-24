@@ -51,7 +51,7 @@ _REAL_ORF = (
 
 
 def _read(data: bytes):
-    from fishsense_api_workflow_worker.exif import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker.exif import (
         read_exif,
     )
 

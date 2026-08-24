@@ -49,7 +49,7 @@ def _load_detector(checkpoint_path: str) -> Any:
     torch/segmentation-models extra is only required at run time."""
     # no-name-in-module: LaserDetector ships in fishsense-core >= 2.2.0; the
     # pinned wheel is bumped to 2.3.0 in the deps/GPU phase of this feature.
-    from fishsense_core.laser import (  # pylint: disable=import-outside-toplevel,import-error,no-name-in-module
+    from fishsense_core.laser import (  # pylint: disable=import-error,no-name-in-module
         LaserDetector,
     )
 
@@ -91,10 +91,10 @@ def _predict_from_raw(
     keypoint percentages downstream). `cv2.undistort` preserves the image
     size, so the rectified dims equal the decoded raw dims.
     """
-    import numpy as np  # pylint: disable=import-outside-toplevel
+    import numpy as np
     # no-name-in-module: linear_raw_image ships in fishsense-core >= 2.2.0
     # (bumped to 2.3.0 in the deps/GPU phase).
-    from fishsense_core.image.linear_raw_image import (  # pylint: disable=import-outside-toplevel,import-error,no-name-in-module
+    from fishsense_core.image.linear_raw_image import (  # pylint: disable=import-error,no-name-in-module
         LinearRawImage,
     )
 
@@ -112,7 +112,6 @@ def _predict_from_raw(
 
 
 def _models():
-    # pylint: disable=import-outside-toplevel
     from fishsense_data_processing_workflow_worker.workflows.predict_laser_images_workflow import (
         LaserPredictionResult,
         PredictLaserImageInput,

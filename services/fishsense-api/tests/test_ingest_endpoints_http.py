@@ -23,12 +23,15 @@ real lifespan, which calls `create_all` against Postgres and then
 
 from __future__ import annotations
 
-import os
-
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
+
+from tests_support.app import (
+    seed_camera_with_intrinsics,
+    seed_placeholder_settings,
+)
 
 CK_A = "45dc5a454b35601b9dafabf24822195d"
 CK_B = "0b7cd4da72d54172f1f9daf40ce4047f"
@@ -38,23 +41,14 @@ _DIVE_DT = "2024-08-21T08:56:51Z"
 
 @pytest.fixture
 async def client():
-    from fastapi.testclient import TestClient  # pylint: disable=import-outside-toplevel
+    from fastapi.testclient import TestClient
+    seed_placeholder_settings()
 
-    os.environ.setdefault("E4EFS_POSTGRES__HOST", "ignored")
-    os.environ.setdefault("E4EFS_POSTGRES__PORT", "5432")
-    os.environ.setdefault("E4EFS_POSTGRES__USERNAME", "ignored")
-    os.environ.setdefault("E4EFS_POSTGRES__PASSWORD", "ignored")
-    os.environ.setdefault("E4EFS_POSTGRES__DATABASE", "ignored")
-
-    import fishsense_api.controllers  # noqa: F401  pylint: disable=import-outside-toplevel,unused-import
-    from fishsense_api.database import (  # pylint: disable=import-outside-toplevel
+    import fishsense_api.controllers  # noqa: F401  pylint: disable=unused-import
+    from fishsense_api.database import (
         get_async_session,
     )
-    from fishsense_api.models.camera import Camera  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.camera_intrinsics import (  # pylint: disable=import-outside-toplevel
-        CameraIntrinsics,
-    )
-    from fishsense_api.server import app  # pylint: disable=import-outside-toplevel
+    from fishsense_api.server import app
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -62,16 +56,7 @@ async def client():
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     session = factory()
-    session.add(Camera(id=1, serial_number="BJ6C67989", name="FSL-07"))
-    await session.flush()
-    session.add(
-        CameraIntrinsics(
-            camera_id=1,
-            camera_matrix=[[3000.0, 0.0, 2000.0], [0.0, 3000.0, 1500.0], [0.0, 0.0, 1.0]],
-            distortion_coefficients=[-0.05, 0.01, 0.0, 0.0, 0.0],
-        )
-    )
-    await session.flush()
+    await seed_camera_with_intrinsics(session)
 
     async def _override():
         yield session
@@ -194,7 +179,7 @@ def test_priority_is_stored_as_the_enum_not_the_raw_json_string(client):
     up front is what keeps `jsonable_encoder` from emitting a pydantic
     serializer warning on every request — run the suite with `-W error` and an
     uncoerced body fails here."""
-    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.priority import Priority
 
     created = client.post("/api/v1/dives/", json=_dive_body("d/p", priority="HIGH"))
     assert created.status_code == 201

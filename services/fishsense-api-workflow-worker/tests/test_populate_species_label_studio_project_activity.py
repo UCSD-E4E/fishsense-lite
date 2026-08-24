@@ -14,59 +14,30 @@ project's own in-progress rows.
 
 from __future__ import annotations
 
-import base64
 
-from datetime import datetime, timezone
-from types import SimpleNamespace
-from typing import List, Optional
+from typing import List
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from temporalio.testing import ActivityEnvironment
 
-from fishsense_api_sdk.models.image import Image
 from fishsense_api_sdk.models.laser_label import LaserLabel
 from fishsense_api_sdk.models.species_label import SpeciesLabel
 from fishsense_api_workflow_worker.activities import (
+
     populate_species_label_studio_project_activity as sut,
     populate_utils as sut_utils,
 )
 
-
-def _image(image_id: int, checksum: str) -> Image:
-    return Image(
-        id=image_id,
-        path=f"path/{image_id}.ORF",
-        taken_datetime=datetime(2024, 8, 21, tzinfo=timezone.utc),
-        checksum=checksum,
-        is_canonical=True,
-        dive_id=1,
-        camera_id=6,
-    )
-
-
-def _laser(
-    image_id: int,
-    *,
-    completed: bool = True,
-    superseded: bool = False,
-    x: Optional[float] = 100.0,
-    y: Optional[float] = 200.0,
-) -> LaserLabel:
-    return LaserLabel(
-        id=image_id * 7,
-        label_studio_task_id=image_id * 10,
-        label_studio_project_id=43,
-        x=x,
-        y=y,
-        label="laser",
-        updated_at=None,
-        superseded=superseded,
-        completed=completed,
-        label_studio_json={},
-        image_id=image_id,
-        user_id=None,
-    )
+# Shared with the other populate suites — see `worker_tests_support.populate`.
+from worker_tests_support.populate import (  # noqa: F401
+    images_for,
+    laser_label_matrix,
+    patch_jpeg_gate,
+    image as _image,
+    laser_label as _laser,
+    fake_label_studio_client as _make_ls_client,
+)
 
 
 def _species_label(
@@ -104,29 +75,12 @@ def _species_label(
 def _all_jpegs_present(monkeypatch):
     """Default the JPEG gate to "present" so activity tests exercise the
     import path; the gate test overrides this with a selective fake."""
-    store = MagicMock()
-    store.has_processed_jpeg = AsyncMock(return_value=True)
-    monkeypatch.setattr(sut, "open_object_store_client", lambda: store)
-    return store
+    return patch_jpeg_gate(monkeypatch, sut)
 
 
 def test_select_targets_filters_by_valid_laser_and_drops_completed():
-    laser = [
-        _laser(1),                             # valid + completed species -> drop
-        _laser(2, completed=False),            # incomplete laser -> drop
-        _laser(3),                             # valid + no species -> keep
-        _laser(4, superseded=True),            # superseded laser -> drop
-        _laser(5, x=None),                     # null x -> drop
-        _laser(6, y=None),                     # null y -> drop
-    ]
-    images_by_id = {
-        1: _image(1, "a"),
-        2: _image(2, "b"),
-        3: _image(3, "c"),
-        4: _image(4, "d"),
-        5: _image(5, "e"),
-        6: _image(6, "f"),
-    }
+    laser = laser_label_matrix()
+    images_by_id = images_for()
     existing = [_species_label(1, completed=True)]
 
     selected = sut._select_target_images(laser, images_by_id, existing, 70)  # pylint: disable=protected-access
@@ -155,7 +109,7 @@ def test_build_task_uses_groups_jpeg_folder_and_dual_keys(monkeypatch):
     test of the same name for the rationale (legacy LS project XML
     uses both conventions; emitting one fails import_tasks)."""
     monkeypatch.setenv("E4EFS_OBJECT_STORE__BUCKET", "fishsense-test")
-    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker import config as cfg
     cfg.settings.reload()
 
     # Physical Garage prefix (preprocess_groups_jpeg) + `.JPG`; LS
@@ -188,36 +142,6 @@ def _make_fs_client(
     fs.labels.get_species_labels = AsyncMock(return_value=existing_species)
     fs.labels.put_species_label = AsyncMock()
     return fs
-
-
-def _make_ls_client(returned_task_ids: List[int]):
-    # Fake hosted LS: import creates tasks (assigning ids from
-    # `returned_task_ids` in order) and `tasks.list` serves them back. The
-    # import response carries NO task_ids -- hosted LS imports asynchronously.
-    ls = MagicMock()
-    ls.projects = MagicMock()
-    _stored: List = []
-    _ids = iter(returned_task_ids)
-
-    def _import(project_id, request, return_task_ids=False):  # pylint: disable=unused-argument
-        for task in request:
-            _tid = next(_ids)
-            _s3 = task["data"].get("image") or task["data"].get("img")
-            _fileuri = base64.b64encode(_s3.encode()).decode()
-            # hosted LS lists tasks with a per-task presign resolve-wrapper,
-            # NOT the imported s3:// URL — mirror that so dedup is exercised.
-            _stored.append(
-                SimpleNamespace(
-                    id=_tid,
-                    data={"image": f"/tasks/{_tid}/resolve/?fileuri={_fileuri}"},
-                )
-            )
-        return SimpleNamespace(import_=1)
-
-    ls.projects.import_tasks = MagicMock(side_effect=_import)
-    ls.tasks = MagicMock()
-    ls.tasks.list = MagicMock(side_effect=lambda project=None: list(_stored))
-    return ls
 
 
 @pytest.mark.asyncio
@@ -363,7 +287,7 @@ async def test_writes_label_with_image_url_and_groups_jpeg_folder(monkeypatch):
     image_url uses the species JPEG prefix, matching the LS task
     URL — so downstream sync can recover the JPEG from the row."""
     monkeypatch.setenv("E4EFS_OBJECT_STORE__BUCKET", "fishsense-test")
-    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker import config as cfg
     cfg.settings.reload()
 
     laser = [_laser(1)]

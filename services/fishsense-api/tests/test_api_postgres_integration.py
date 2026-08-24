@@ -55,9 +55,9 @@ def _point_settings_at_the_scratch_database():
     enough on its own; `reload()` re-runs the loaders. Both are undone
     afterwards so the rest of the session sees what it did before.
     """
-    from _pytest.monkeypatch import MonkeyPatch  # pylint: disable=import-outside-toplevel
+    from _pytest.monkeypatch import MonkeyPatch
 
-    from fishsense_api.config import settings  # pylint: disable=import-outside-toplevel
+    from fishsense_api.config import settings
 
     monkeypatch = MonkeyPatch()
     monkeypatch.setenv("E4EFS_POSTGRES__HOST", _PG_HOST)
@@ -81,7 +81,7 @@ def _admin_dsn(dbname: str = "postgres") -> str:
 @pytest.fixture(scope="module", autouse=True)
 def scratch_database():
     """A database of our own, dropped afterwards. Never `fishsense`."""
-    import psycopg  # pylint: disable=import-outside-toplevel
+    import psycopg
 
     with psycopg.connect(_admin_dsn(), autocommit=True) as conn:
         conn.execute(f'DROP DATABASE IF EXISTS "{_SCRATCH_DB}" WITH (FORCE)')
@@ -98,7 +98,7 @@ def empty_schema():
     Dropping the schema rather than the database keeps the connection string
     (and therefore dynaconf's cached settings) stable.
     """
-    import psycopg  # pylint: disable=import-outside-toplevel
+    import psycopg
 
     with psycopg.connect(_admin_dsn(_SCRATCH_DB), autocommit=True) as conn:
         conn.execute("DROP SCHEMA public CASCADE")
@@ -108,7 +108,7 @@ def empty_schema():
 
 def _run_lifespan_sequence() -> None:
     """Exactly what `fishsense_api.server.lifespan` does, in order."""
-    from fishsense_api.database import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.database import (
         run_alembic_upgrade,
         setup_database,
     )
@@ -124,7 +124,7 @@ def _run_lifespan_sequence() -> None:
 
 
 def _query(sql: str):
-    import psycopg  # pylint: disable=import-outside-toplevel
+    import psycopg
 
     with psycopg.connect(_admin_dsn(_SCRATCH_DB)) as conn:
         return conn.execute(sql).fetchall()
@@ -178,7 +178,7 @@ def test_startup_on_a_fresh_database_creates_every_view():
     environment — the local stack, integration CI, a disaster-recovery restore
     into an empty database — silently loses every Superset dashboard.
     """
-    from fishsense_api.views import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.views import (
         DIVE_PIPELINE_STATUS_VIEW_NAME,
         FISH_LENGTH_ESTIMATE_VIEW_NAME,
         FISH_MODEL_ACCURACY_VIEW_NAME,
@@ -200,7 +200,7 @@ def test_every_view_is_actually_queryable_on_postgres():
     """Existing is not the same as valid. These views use Postgres-only
     constructs that SQLite either parses differently or not at all, so a
     malformed one can pass the entire unit suite."""
-    from fishsense_api.views import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.views import (
         DIVE_PIPELINE_STATUS_VIEW_NAME,
         FISH_LENGTH_ESTIMATE_VIEW_NAME,
         FISH_MODEL_ACCURACY_VIEW_NAME,
@@ -253,7 +253,7 @@ def test_dive_pipeline_status_reports_a_seeded_dive_on_postgres():
     SQL against the engine it runs on, with one row through it end to end."""
     _run_lifespan_sequence()
 
-    import psycopg  # pylint: disable=import-outside-toplevel
+    import psycopg
 
     with psycopg.connect(_admin_dsn(_SCRATCH_DB), autocommit=True) as conn:
         conn.execute(
@@ -287,7 +287,7 @@ def test_recreating_the_views_when_they_already_exist_does_not_fail():
     Dropping everything in reverse order first fixes it — and this is the test
     that would have caught it, because SQLite has no such dependency tracking.
     """
-    from fishsense_api.database import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.database import (
         _create_all_views,
     )
 
@@ -308,7 +308,7 @@ def test_an_already_stamped_database_with_no_views_is_repaired():
     alembic finds nothing to do. Without an explicit repair those databases
     stay viewless permanently.
     """
-    import psycopg  # pylint: disable=import-outside-toplevel
+    import psycopg
 
     _run_lifespan_sequence()
 
@@ -327,7 +327,7 @@ def test_an_already_stamped_database_with_no_views_is_repaired():
 def test_a_healthy_database_is_not_rebuilt_on_every_restart():
     """The repair must be conditional. Dropping and recreating every view on
     each startup would break whatever Superset had mid-query, for no reason."""
-    from fishsense_api import database as db_module  # pylint: disable=import-outside-toplevel
+    from fishsense_api import database as db_module
 
     _run_lifespan_sequence()
 
@@ -373,9 +373,9 @@ def _cohort_selectors() -> list:
     `test_canonical_only_pipeline_work.py`: a selector added later is covered
     by this the day it lands, instead of the day someone remembers to add it.
     """
-    import inspect  # pylint: disable=import-outside-toplevel
+    import inspect
 
-    from fishsense_api.controllers import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers import (
         dive_cohort_controller,
     )
 
@@ -395,15 +395,15 @@ async def _seed_multi_valued(session, *, derived_rows: bool = True) -> None:
     never evaluated. The drain test needs them absent so it can watch a dive
     leave the cohort.
     """
-    from datetime import datetime, timezone  # pylint: disable=import-outside-toplevel
+    from datetime import datetime, timezone
 
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.laser_extrinsics import LaserExtrinsics  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
+    from fishsense_api.models.image import Image
+    from fishsense_api.models.laser_extrinsics import LaserExtrinsics
+    from fishsense_api.models.laser_label import LaserLabel
+    from fishsense_api.models.priority import Priority
 
-    from fishsense_api.models.camera import Camera  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.camera import Camera
 
     when = datetime(2025, 1, 1, tzinfo=timezone.utc)
     # Postgres enforces the foreign keys the SQLite fixtures quietly ignore, so
@@ -442,9 +442,9 @@ async def _seed_multi_valued(session, *, derived_rows: bool = True) -> None:
     if not derived_rows:
         return
 
-    from fishsense_api.models.fish import Fish  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.laser_depth import LaserDepth  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.fish import Fish
+    from fishsense_api.models.laser_depth import LaserDepth
+    from fishsense_api.models.measurement import Measurement
 
     session.add(Fish(id=700, species_id=None))
     await session.flush()
@@ -459,9 +459,9 @@ async def _seed_multi_valued(session, *, derived_rows: bool = True) -> None:
 
 def _with_session(coro_factory):
     """Run `coro_factory(session)` against the scratch database."""
-    from fishsense_api.database import setup_database  # pylint: disable=import-outside-toplevel
-    from sqlalchemy.ext.asyncio import async_sessionmaker  # pylint: disable=import-outside-toplevel
-    from sqlmodel.ext.asyncio.session import AsyncSession  # pylint: disable=import-outside-toplevel
+    from fishsense_api.database import setup_database
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+    from sqlmodel.ext.asyncio.session import AsyncSession
 
     async def _run():
         database = setup_database()
@@ -525,13 +525,13 @@ def test_laser_depth_cohort_drains_with_duplicate_labels_on_postgres():
     _run_lifespan_sequence()
 
     async def _exercise(session):
-        from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+        from fishsense_api.controllers.dive_cohort_controller import (
             select_next_for_laser_depth,
         )
-        from fishsense_api.controllers.laser_depth_controller import (  # pylint: disable=import-outside-toplevel
+        from fishsense_api.controllers.laser_depth_controller import (
             put_laser_depth,
         )
-        from fishsense_api.models.laser_depth import LaserDepth  # pylint: disable=import-outside-toplevel
+        from fishsense_api.models.laser_depth import LaserDepth
 
         await _seed_multi_valued(session, derived_rows=False)
         before = await select_next_for_laser_depth(session=session)

@@ -17,7 +17,6 @@ The app is not entered as a context manager; that would run the real lifespan
 from __future__ import annotations
 
 import asyncio
-import os
 from datetime import datetime, timezone
 
 import httpx
@@ -26,6 +25,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from tests_support.app import (
+    seed_camera_with_intrinsics,
+    seed_placeholder_settings,
+)
+
 CK_A = "45dc5a454b35601b9dafabf24822195d"
 CK_B = "0b7cd4da72d54172f1f9daf40ce4047f"
 
@@ -33,25 +37,17 @@ CK_B = "0b7cd4da72d54172f1f9daf40ce4047f"
 @pytest.fixture
 async def sdk():
     """A real `DiveClient`/`ImageClient` pair wired to the in-process app."""
-    os.environ.setdefault("E4EFS_POSTGRES__HOST", "ignored")
-    os.environ.setdefault("E4EFS_POSTGRES__PORT", "5432")
-    os.environ.setdefault("E4EFS_POSTGRES__USERNAME", "ignored")
-    os.environ.setdefault("E4EFS_POSTGRES__PASSWORD", "ignored")
-    os.environ.setdefault("E4EFS_POSTGRES__DATABASE", "ignored")
+    seed_placeholder_settings()
 
-    import fishsense_api.controllers  # noqa: F401  pylint: disable=import-outside-toplevel,unused-import
-    from fishsense_api.database import (  # pylint: disable=import-outside-toplevel
+    import fishsense_api.controllers  # noqa: F401  pylint: disable=unused-import
+    from fishsense_api.database import (
         get_async_session,
     )
-    from fishsense_api.models.camera import Camera  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.camera_intrinsics import (  # pylint: disable=import-outside-toplevel
-        CameraIntrinsics,
-    )
-    from fishsense_api.server import app  # pylint: disable=import-outside-toplevel
-    from fishsense_api_sdk.clients.dive_client import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.server import app
+    from fishsense_api_sdk.clients.dive_client import (
         DiveClient,
     )
-    from fishsense_api_sdk.clients.image_client import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api_sdk.clients.image_client import (
         ImageClient,
     )
 
@@ -60,16 +56,7 @@ async def sdk():
         await conn.run_sync(SQLModel.metadata.create_all)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     session = factory()
-    session.add(Camera(id=1, serial_number="BJ6C67989", name="FSL-07"))
-    await session.flush()
-    session.add(
-        CameraIntrinsics(
-            camera_id=1,
-            camera_matrix=[[3000.0, 0.0, 2000.0], [0.0, 3000.0, 1500.0], [0.0, 0.0, 1.0]],
-            distortion_coefficients=[-0.05, 0.01, 0.0, 0.0, 0.0],
-        )
-    )
-    await session.flush()
+    await seed_camera_with_intrinsics(session)
 
     async def _override():
         yield session
@@ -94,8 +81,8 @@ async def sdk():
 
 
 def _sdk_dive(path: str, **kwargs):
-    from fishsense_api_sdk.models.dive import Dive  # pylint: disable=import-outside-toplevel
-    from fishsense_api_sdk.models.priority import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api_sdk.models.dive import Dive
+    from fishsense_api_sdk.models.priority import (
         Priority,
     )
 
@@ -115,7 +102,7 @@ def _sdk_dive(path: str, **kwargs):
 
 
 def _sdk_image(path: str, checksum: str, **kwargs):
-    from fishsense_api_sdk.models.image import Image  # pylint: disable=import-outside-toplevel
+    from fishsense_api_sdk.models.image import Image
 
     body = {
         "id": None,
@@ -189,8 +176,8 @@ async def test_reposting_a_dive_through_the_sdk_preserves_unmentioned_fields(sdk
     reaches the API as a genuinely partial body. This is the combination that
     triggers the destructive-upsert bug in production, and neither suite could
     see it alone."""
-    from fishsense_api_sdk.models.dive import Dive  # pylint: disable=import-outside-toplevel
-    from fishsense_api_sdk.models.priority import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api_sdk.models.dive import Dive
+    from fishsense_api_sdk.models.priority import (
         Priority,
     )
 
