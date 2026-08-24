@@ -18,39 +18,15 @@ from datetime import datetime, timezone
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlmodel import SQLModel
-from sqlmodel.ext.asyncio.session import AsyncSession
 
-
-@pytest.fixture
-async def session():
-    import fishsense_api.database  # noqa: F401  # pylint: disable=import-outside-toplevel,unused-import
-
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
-    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    async with factory() as s:
-        yield s
-    await engine.dispose()
-
-
-def _dive(dive_id: int, *, calibration_dive_id=None):
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
-
-    return Dive(
-        id=dive_id,
-        path=f"/dev/null/{dive_id}",
-        dive_datetime=datetime(2025, 1, 1, tzinfo=timezone.utc),
-        priority=Priority.HIGH,
-        calibration_dive_id=calibration_dive_id,
-    )
+# Shared with the other controller tests — see `tests_support.db`.
+from tests_support.db import (  # noqa: F401
+    dive as _dive,
+)
 
 
 def _extrinsics(dive_id: int, *, position, created_at):
-    from fishsense_api.models.laser_extrinsics import LaserExtrinsics  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_extrinsics import LaserExtrinsics
 
     return LaserExtrinsics(
         dive_id=dive_id,
@@ -65,7 +41,7 @@ def _extrinsics(dive_id: int, *, position, created_at):
 
 
 async def test_own_extrinsics_win_over_the_link(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         get_laser_extrinsics_for_dive,
     )
 
@@ -86,7 +62,7 @@ async def test_own_extrinsics_win_over_the_link(session):
 
 
 async def test_falls_back_to_linked_source_when_no_own_extrinsics(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         get_laser_extrinsics_for_dive,
     )
 
@@ -103,7 +79,7 @@ async def test_falls_back_to_linked_source_when_no_own_extrinsics(session):
 
 
 async def test_404_when_neither_own_nor_linked_extrinsics(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         get_laser_extrinsics_for_dive,
     )
 
@@ -116,7 +92,7 @@ async def test_404_when_neither_own_nor_linked_extrinsics(session):
 
 
 async def test_no_link_and_no_own_extrinsics_is_404(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         get_laser_extrinsics_for_dive,
     )
 
@@ -132,10 +108,10 @@ async def test_no_link_and_no_own_extrinsics_is_404(session):
 
 
 async def test_set_calibration_source_links_the_dives(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         set_dive_calibration_source,
     )
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
 
     session.add_all([_dive(1), _dive(2)])
     await session.flush()
@@ -146,7 +122,7 @@ async def test_set_calibration_source_links_the_dives(session):
 
 
 async def test_set_calibration_source_rejects_self_link(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         set_dive_calibration_source,
     )
 
@@ -159,7 +135,7 @@ async def test_set_calibration_source_rejects_self_link(session):
 
 
 async def test_set_calibration_source_404_when_source_missing(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         set_dive_calibration_source,
     )
 
@@ -172,7 +148,7 @@ async def test_set_calibration_source_404_when_source_missing(session):
 
 
 async def test_set_calibration_source_404_when_dive_missing(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         set_dive_calibration_source,
     )
 
@@ -185,10 +161,10 @@ async def test_set_calibration_source_404_when_dive_missing(session):
 
 
 async def test_clear_calibration_source_unlinks(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         clear_dive_calibration_source,
     )
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
 
     session.add_all([_dive(1), _dive(2, calibration_dive_id=1)])
     await session.flush()
@@ -198,10 +174,10 @@ async def test_clear_calibration_source_unlinks(session):
 
 
 async def test_clear_calibration_source_is_idempotent(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         clear_dive_calibration_source,
     )
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
 
     session.add(_dive(1))
     await session.flush()
@@ -211,7 +187,7 @@ async def test_clear_calibration_source_is_idempotent(session):
 
 
 async def test_clear_calibration_source_404_when_dive_missing(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         clear_dive_calibration_source,
     )
 

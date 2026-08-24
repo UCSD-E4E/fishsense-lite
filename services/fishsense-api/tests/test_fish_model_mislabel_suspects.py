@@ -40,7 +40,7 @@ _KNOWN = {
 
 @pytest.fixture
 async def session():
-    import fishsense_api.database  # noqa: F401  pylint: disable=import-outside-toplevel,unused-import
+    import fishsense_api.database  # noqa: F401  pylint: disable=unused-import
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -55,7 +55,7 @@ async def session():
 
 
 async def _seed_reference(session):
-    from fishsense_api.models.fish_model_reference import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.fish_model_reference import (
         FishModelReference,
     )
 
@@ -69,14 +69,14 @@ _NEXT = {"image": 1000}
 
 async def _measure(session, *, dive_id, model_name, length_m):
     """Seed one measurement of `model_name` at `length_m` in `dive_id`."""
-    from datetime import datetime, timezone  # pylint: disable=import-outside-toplevel
+    from datetime import datetime, timezone
 
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.fish import Fish  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
-    from sqlmodel import select  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
+    from fishsense_api.models.fish import Fish
+    from fishsense_api.models.image import Image
+    from fishsense_api.models.measurement import Measurement
+    from fishsense_api.models.priority import Priority
+    from sqlmodel import select
 
     if (await session.exec(select(Dive).where(Dive.id == dive_id))).first() is None:
         session.add(

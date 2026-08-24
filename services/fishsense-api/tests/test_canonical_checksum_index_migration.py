@@ -89,8 +89,8 @@ def _run_upgrade(migration, conn):
     migration is run through a real (if minimal) alembic context rather than by
     monkeypatching `op`.
     """
-    from alembic.migration import MigrationContext  # pylint: disable=import-outside-toplevel
-    from alembic.operations import Operations  # pylint: disable=import-outside-toplevel
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
 
     with Operations.context(MigrationContext.configure(conn)):
         migration.upgrade()
@@ -184,8 +184,8 @@ def test_downgrade_removes_the_index_and_is_safe_when_absent(migration, engine):
         _seed(conn, table, [(1, "a" * 32, True)])
         _run_upgrade(migration, conn)
 
-        from alembic.migration import MigrationContext  # pylint: disable=import-outside-toplevel
-        from alembic.operations import Operations  # pylint: disable=import-outside-toplevel
+        from alembic.migration import MigrationContext
+        from alembic.operations import Operations
 
         with Operations.context(MigrationContext.configure(conn)):
             migration.downgrade()

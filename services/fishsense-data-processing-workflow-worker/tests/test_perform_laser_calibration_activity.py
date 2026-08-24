@@ -288,7 +288,7 @@ async def test_reflection_contaminated_scene_is_rejected_not_persisted(monkeypat
     gate must raise and nothing may persist — the old behavior shipped the
     broken calibration, and a borrowing fish-model dive measured +31..+137%
     length errors."""
-    from fishsense_data_processing_workflow_worker.calibration_consistency import (  # pylint: disable=import-outside-toplevel
+    from fishsense_data_processing_workflow_worker.calibration_consistency import (
         CalibrationInconsistentError,
     )
 

@@ -28,7 +28,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 @pytest.fixture
 async def session():
-    import fishsense_api.database  # noqa: F401  # pylint: disable=import-outside-toplevel,unused-import
+    import fishsense_api.database  # noqa: F401  # pylint: disable=unused-import
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -40,8 +40,8 @@ async def session():
 
 
 def _dive(dive_id: int, *, priority=None, calibration_dive_id: int | None = None):
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
+    from fishsense_api.models.priority import Priority
 
     return Dive(
         id=dive_id,
@@ -53,7 +53,7 @@ def _dive(dive_id: int, *, priority=None, calibration_dive_id: int | None = None
 
 
 def _image(image_id: int, dive_id: int, *, is_canonical: bool = True):
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.image import Image
 
     return Image(
         id=image_id,
@@ -66,7 +66,7 @@ def _image(image_id: int, dive_id: int, *, is_canonical: bool = True):
 
 
 def _laser_label(label_id: int, image_id: int, *, completed=True, superseded=False):
-    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_label import LaserLabel
 
     return LaserLabel(
         id=label_id,
@@ -79,7 +79,7 @@ def _laser_label(label_id: int, image_id: int, *, completed=True, superseded=Fal
 
 
 def _extrinsics(extrinsics_id: int, dive_id: int):
-    from fishsense_api.models.laser_extrinsics import LaserExtrinsics  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_extrinsics import LaserExtrinsics
 
     return LaserExtrinsics(
         id=extrinsics_id,
@@ -98,7 +98,7 @@ def _depth(
     laser_label_id=None,
     laser_extrinsics_id=None,
 ):
-    from fishsense_api.models.laser_depth import LaserDepth  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_depth import LaserDepth
 
     return LaserDepth(
         depth_m=depth_m,
@@ -113,10 +113,10 @@ def _depth(
 
 
 async def test_put_creates_a_depth(session):
-    from fishsense_api.controllers.laser_depth_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.laser_depth_controller import (
         put_laser_depth,
     )
-    from fishsense_api.models.laser_depth import LaserDepth  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_depth import LaserDepth
 
     session.add_all([_dive(1), _image(11, 1)])
     await session.flush()
@@ -142,10 +142,10 @@ async def test_put_records_the_triangulation_residual(session):
     depth. Recording it first means a threshold can be chosen from the real
     distribution instead of guessed.
     """
-    from fishsense_api.controllers.laser_depth_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.laser_depth_controller import (
         put_laser_depth,
     )
-    from fishsense_api.models.laser_depth import LaserDepth  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_depth import LaserDepth
 
     session.add_all([_dive(1), _image(11, 1)])
     await session.flush()
@@ -160,11 +160,11 @@ async def test_put_upserts_on_image_id(session):
     """Recompute overwrites. `merge` on `id=None` would always INSERT and
     violate `uq_laser_depth_image` — the same natural-key trap that
     duplicated measurements and 500'd the label writeback."""
-    from fishsense_api.controllers.laser_depth_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.laser_depth_controller import (
         put_laser_depth,
     )
-    from fishsense_api.models.laser_depth import LaserDepth  # pylint: disable=import-outside-toplevel
-    from sqlmodel import select  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_depth import LaserDepth
+    from sqlmodel import select
 
     session.add_all([_dive(1), _image(11, 1)])
     await session.flush()
@@ -179,9 +179,9 @@ async def test_put_upserts_on_image_id(session):
 
 
 async def test_get_returns_404_when_the_image_has_no_depth(session):
-    from fastapi import HTTPException  # pylint: disable=import-outside-toplevel
+    from fastapi import HTTPException
 
-    from fishsense_api.controllers.laser_depth_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.laser_depth_controller import (
         get_laser_depth,
     )
 
@@ -194,7 +194,7 @@ async def test_get_returns_404_when_the_image_has_no_depth(session):
 
 
 async def test_get_returns_the_stored_depth(session):
-    from fishsense_api.controllers.laser_depth_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.laser_depth_controller import (
         get_laser_depth,
         put_laser_depth,
     )
@@ -210,7 +210,7 @@ async def test_get_returns_the_stored_depth(session):
 async def test_get_for_dive_returns_only_that_dives_rows(session):
     """Empty list, not 404, when a dive has none — "no depth yet" is a
     normal pipeline state, not an error, and the caller iterates."""
-    from fishsense_api.controllers.laser_depth_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.laser_depth_controller import (
         get_laser_depths_for_dive,
         put_laser_depth,
     )
@@ -230,7 +230,7 @@ async def test_get_for_dive_returns_only_that_dives_rows(session):
 
 
 async def test_selector_picks_a_dive_whose_laser_images_have_no_depth(session):
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_laser_depth,
     )
 
@@ -246,7 +246,7 @@ async def test_selector_requires_calibration(session):
     """No extrinsics, no depth: `compute_world_point_from_laser` needs the
     laser's position and axis. Such a dive is stage 13's problem, not this
     stage's, and must not sit in the cohort forever."""
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_laser_depth,
     )
 
@@ -259,7 +259,7 @@ async def test_selector_requires_calibration(session):
 async def test_selector_accepts_borrowed_calibration(session):
     """Mirrors `get_laser_extrinsics_for_dive`: a fish-only dive borrows a
     sibling slate dive's rig calibration via `Dive.calibration_dive_id`."""
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_laser_depth,
     )
 
@@ -280,10 +280,10 @@ async def test_selector_accepts_borrowed_calibration(session):
 async def test_selector_skips_a_dive_whose_depths_are_current(session):
     """Drains. The depth row names the label and the calibration it came
     from; when both still match, there is nothing to recompute."""
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_laser_depth,
     )
-    from fishsense_api.controllers.laser_depth_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.laser_depth_controller import (
         put_laser_depth,
     )
 
@@ -302,10 +302,10 @@ async def test_selector_repicks_a_dive_after_recalibration(session):
     """The 2026-08-11 slate panel-offset fix recalibrated dives whose depths
     had already been computed. A depth carrying the superseded extrinsics id
     is stale, and staleness is the whole reason the provenance columns exist."""
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_laser_depth,
     )
-    from fishsense_api.controllers.laser_depth_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.laser_depth_controller import (
         put_laser_depth,
     )
 
@@ -323,10 +323,10 @@ async def test_selector_repicks_a_dive_after_recalibration(session):
 async def test_selector_repicks_a_dive_after_the_laser_label_changes(session):
     """A superseded-then-replaced laser label moves the dot, which moves the
     depth. Keyed on the label id, so the replacement re-enters the cohort."""
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_laser_depth,
     )
-    from fishsense_api.controllers.laser_depth_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.laser_depth_controller import (
         put_laser_depth,
     )
 
@@ -350,7 +350,7 @@ async def test_selector_repicks_a_dive_after_the_laser_label_changes(session):
 async def test_selector_ignores_images_without_a_valid_laser(session):
     """Incomplete, superseded, or coordinate-less labels are not a laser
     fix — the same `_valid_laser_conditions` gate stages 1/2/5.1/14 use."""
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_laser_depth,
     )
 
@@ -372,7 +372,7 @@ async def test_selector_ignores_images_without_a_valid_laser(session):
 async def test_selector_ignores_non_canonical_images(session):
     """The prod dive 60 wedge: a duplicate dive's frames never drain because
     the pipeline declines to work on them. Every selector filters canonical."""
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_laser_depth,
     )
 
@@ -390,10 +390,10 @@ async def test_selector_ignores_non_canonical_images(session):
 
 
 async def test_selector_skips_low_priority_dives(session):
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_laser_depth,
     )
-    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.priority import Priority
 
     session.add_all(
         [
@@ -429,10 +429,10 @@ async def test_selector_skips_low_priority_dives(session):
 async def test_selector_drains_an_image_with_two_valid_laser_labels(session):
     """Both labels are valid and the depth names one of them — that is a
     complete answer for the image, so the dive must drop out."""
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_laser_depth,
     )
-    from fishsense_api.controllers.laser_depth_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.laser_depth_controller import (
         put_laser_depth,
     )
 
@@ -456,10 +456,10 @@ async def test_selector_drains_an_image_with_two_valid_laser_labels(session):
 async def test_selector_still_repicks_when_the_recorded_label_went_superseded(session):
     """The self-healing property must survive the fix: a depth whose label is
     no longer valid is stale, even though the image has another valid one."""
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_laser_depth,
     )
-    from fishsense_api.controllers.laser_depth_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.laser_depth_controller import (
         put_laser_depth,
     )
 
@@ -489,9 +489,9 @@ def test_recorded_label_check_is_correlated():
     cross-joining the whole image table on every evaluation. Same class of bug
     as the uncorrelated `_resolved_laser_extrinsics_id()`, one level deeper.
     """
-    from sqlalchemy.dialects import postgresql  # pylint: disable=import-outside-toplevel
+    from sqlalchemy.dialects import postgresql
 
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         _laser_depth_cohort_query,
     )
 
@@ -509,10 +509,10 @@ async def test_selector_repicks_when_the_depth_names_another_images_label(sessio
     satisfied it, so a depth row pointing at a different image's label read as
     current and the image was never recomputed.
     """
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_laser_depth,
     )
-    from fishsense_api.controllers.laser_depth_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.laser_depth_controller import (
         put_laser_depth,
     )
 

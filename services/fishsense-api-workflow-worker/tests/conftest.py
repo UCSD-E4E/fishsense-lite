@@ -64,7 +64,7 @@ def configure_worker_settings(
         # registration time — a placeholder endpoint would 500. Force a
         # settings reload so any earlier placeholder-based attribute
         # access is invalidated.
-        from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+        from fishsense_api_workflow_worker import config as cfg
 
         cfg.settings.reload()
         yield

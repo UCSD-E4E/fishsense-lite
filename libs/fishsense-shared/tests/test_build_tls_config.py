@@ -47,7 +47,7 @@ def certs(tmp_path):
 def test_tls_disabled_returns_none_so_local_dev_connects_plaintext():
     """`temporal server start-dev` has no TLS; returning None is what lets the
     same call site work in both environments."""
-    from fishsense_shared.temporal import (  # pylint: disable=import-outside-toplevel
+    from fishsense_shared.temporal import (
         build_tls_config,
     )
 
@@ -58,7 +58,7 @@ def test_reads_the_cert_files_from_disk_as_bytes(certs):
     """The certs are paths in settings but bytes on the wire — passing the path
     through would produce a TLSConfig that fails at connect time, far from
     here."""
-    from fishsense_shared.temporal import (  # pylint: disable=import-outside-toplevel
+    from fishsense_shared.temporal import (
         build_tls_config,
     )
 
@@ -77,7 +77,7 @@ def test_reads_the_cert_files_from_disk_as_bytes(certs):
 
 
 def test_server_root_ca_is_read_when_present(certs):
-    from fishsense_shared.temporal import (  # pylint: disable=import-outside-toplevel
+    from fishsense_shared.temporal import (
         build_tls_config,
     )
 
@@ -97,7 +97,7 @@ def test_server_root_ca_is_read_when_present(certs):
 def test_server_root_ca_is_none_when_absent(certs):
     """Optional: a public CA needs no explicit root. The key thing is that the
     absence is detected by membership, not by reading a missing file."""
-    from fishsense_shared.temporal import (  # pylint: disable=import-outside-toplevel
+    from fishsense_shared.temporal import (
         build_tls_config,
     )
 
@@ -117,7 +117,7 @@ def test_domain_is_passed_through_when_present(certs):
     """`domain` is the serverName the client verifies against. krg-prod's cert
     is issued for a name that isn't the connection host, so dropping this
     fails the handshake."""
-    from fishsense_shared.temporal import (  # pylint: disable=import-outside-toplevel
+    from fishsense_shared.temporal import (
         build_tls_config,
     )
 
@@ -135,7 +135,7 @@ def test_domain_is_passed_through_when_present(certs):
 
 
 def test_domain_is_none_when_absent(certs):
-    from fishsense_shared.temporal import (  # pylint: disable=import-outside-toplevel
+    from fishsense_shared.temporal import (
         build_tls_config,
     )
 
@@ -155,7 +155,7 @@ def test_a_missing_cert_file_raises_rather_than_connecting_without_tls(tmp_path)
     """Fail loud. Silently degrading to no client identity would connect to
     Temporal unauthenticated (or not at all) with nothing pointing at the
     missing file."""
-    from fishsense_shared.temporal import (  # pylint: disable=import-outside-toplevel
+    from fishsense_shared.temporal import (
         build_tls_config,
     )
 

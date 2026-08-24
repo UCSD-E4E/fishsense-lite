@@ -115,7 +115,7 @@ def test_activity_module_imports_no_nas_client():
     client module into cleanup, this test fails — a deliberate tripwire
     so nobody accidentally adds a NAS-delete path to the cleanup
     activity."""
-    import inspect  # pylint: disable=import-outside-toplevel
+    import inspect
 
     source = inspect.getsource(sut)
     assert "fishsense_api_workflow_worker.nas" not in source, (

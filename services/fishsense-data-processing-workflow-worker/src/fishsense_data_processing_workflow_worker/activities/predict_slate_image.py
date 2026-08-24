@@ -79,7 +79,7 @@ def _get_masker() -> Any:
             return _MASKER
         try:
             # no-name-in-module: BoardMasker ships in fishsense_core[slate] >= 2.4.0
-            from fishsense_core.slate import (  # pylint: disable=import-outside-toplevel,import-error,no-name-in-module
+            from fishsense_core.slate import (  # pylint: disable=import-error,no-name-in-module
                 BoardMasker,
             )
 
@@ -161,8 +161,8 @@ def _render_template_gray(pdf_bytes: bytes, dpi: int):
     """Render page 0 of the slate template PDF to a grayscale array at `dpi`
     (the DiveSlate.dpi the reference points are expressed in, so template pixels
     and template_points share a scale)."""
-    import numpy as np  # pylint: disable=import-outside-toplevel
-    import pymupdf  # pylint: disable=import-outside-toplevel
+    import numpy as np
+    import pymupdf
 
     with pymupdf.open(stream=pdf_bytes, filetype="pdf") as document:
         page = document.load_page(0)
@@ -187,17 +187,17 @@ def _predict_from_bytes(  # pylint: disable=too-many-locals
 
     Returns `(reference_points | None, confidence, reason, width, height)`.
     """
-    import numpy as np  # pylint: disable=import-outside-toplevel
-    from fishsense_api_sdk.models.camera_intrinsics import (  # pylint: disable=import-outside-toplevel
+    import numpy as np
+    from fishsense_api_sdk.models.camera_intrinsics import (
         CameraIntrinsics,
     )
-    from fishsense_core.image.raw_image import (  # pylint: disable=import-outside-toplevel,no-name-in-module
+    from fishsense_core.image.raw_image import (  # pylint: disable=no-name-in-module
         RawImage,
     )
-    from fishsense_core.image.rectified_image import (  # pylint: disable=import-outside-toplevel,no-name-in-module
+    from fishsense_core.image.rectified_image import (  # pylint: disable=no-name-in-module
         RectifiedImage,
     )
-    from fishsense_core.slate import (  # pylint: disable=import-outside-toplevel,no-name-in-module
+    from fishsense_core.slate import (  # pylint: disable=no-name-in-module
         estimate_plane,
     )
 
@@ -239,7 +239,6 @@ def _predict_from_bytes(  # pylint: disable=too-many-locals
 
 
 def _models():
-    # pylint: disable=import-outside-toplevel
     from fishsense_data_processing_workflow_worker.workflows.predict_slate_images_workflow import (
         PredictSlateImageInput,
         SlatePredictionResult,

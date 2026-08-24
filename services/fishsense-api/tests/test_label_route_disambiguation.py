@@ -9,42 +9,18 @@ validation. The literal route is registered first in
 
 from __future__ import annotations
 
-import os
-
 import pytest
-from starlette.routing import Match
+from tests_support.app import resolve_route, seed_placeholder_settings
 
 
 @pytest.fixture(scope="module")
 def app():
-    os.environ.setdefault("E4EFS_POSTGRES__HOST", "ignored")
-    os.environ.setdefault("E4EFS_POSTGRES__PORT", "5432")
-    os.environ.setdefault("E4EFS_POSTGRES__USERNAME", "ignored")
-    os.environ.setdefault("E4EFS_POSTGRES__PASSWORD", "ignored")
-    os.environ.setdefault("E4EFS_POSTGRES__DATABASE", "ignored")
+    seed_placeholder_settings()
 
-    import fishsense_api.controllers.label_controller  # noqa: F401, pylint: disable=import-outside-toplevel,unused-import
-    from fishsense_api.server import app  # pylint: disable=import-outside-toplevel
+    import fishsense_api.controllers.label_controller  # noqa: F401, pylint: disable=unused-import
+    from fishsense_api.server import app
 
     return app
-
-
-def _resolve(app, path: str) -> str | None:
-    scope = {
-        "type": "http",
-        "method": "GET",
-        "path": path,
-        "path_params": {},
-        "route_path": path,
-        "headers": [],
-    }
-    for route in app.routes:
-        if not hasattr(route, "matches"):
-            continue
-        match, _ = route.matches(scope)
-        if match == Match.FULL:
-            return route.endpoint.__name__
-    return None
 
 
 @pytest.mark.parametrize(
@@ -84,5 +60,6 @@ def _resolve(app, path: str) -> str | None:
         ),
     ],
 )
+
 def test_label_route_resolves_to_expected_endpoint(app, path, expected_endpoint):
-    assert _resolve(app, path) == expected_endpoint
+    assert resolve_route(app, path) == expected_endpoint

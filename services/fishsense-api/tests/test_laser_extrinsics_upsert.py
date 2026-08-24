@@ -23,7 +23,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 @pytest.fixture
 async def session():
-    import fishsense_api.database  # noqa: F401  # pylint: disable=import-outside-toplevel,unused-import
+    import fishsense_api.database  # noqa: F401  # pylint: disable=unused-import
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -35,7 +35,7 @@ async def session():
 
 
 def _extrinsics(dive_id: int, *, position, created_at=None):
-    from fishsense_api.models.laser_extrinsics import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_extrinsics import (
         LaserExtrinsics,
     )
 
@@ -49,7 +49,7 @@ def _extrinsics(dive_id: int, *, position, created_at=None):
 
 
 async def _count_for_dive(session: AsyncSession, dive_id: int) -> int:
-    from fishsense_api.models.laser_extrinsics import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_extrinsics import (
         LaserExtrinsics,
     )
 
@@ -62,7 +62,7 @@ async def _count_for_dive(session: AsyncSession, dive_id: int) -> int:
 
 
 async def test_put_upserts_on_dive_id_no_duplicate(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         get_laser_extrinsics_for_dive,
         put_laser_extrinsics_for_dive,
     )
@@ -82,7 +82,7 @@ async def test_put_upserts_on_dive_id_no_duplicate(session):
 
 
 async def test_put_stamps_non_null_created_at(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         get_laser_extrinsics_for_dive,
         put_laser_extrinsics_for_dive,
     )
@@ -99,7 +99,7 @@ async def test_put_stamps_non_null_created_at(session):
 
 
 async def test_put_independent_across_dives(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         put_laser_extrinsics_for_dive,
     )
 

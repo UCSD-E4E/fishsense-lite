@@ -182,8 +182,8 @@ async def test_ensure_s3_storage_registers_labels_bucket_and_prefix(monkeypatch)
 
 
 async def _title_for(monkeypatch, dive_id, name, suffix):
-    from contextlib import asynccontextmanager  # pylint: disable=import-outside-toplevel
-    from types import SimpleNamespace  # pylint: disable=import-outside-toplevel
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
 
     fake = MagicMock()
 
@@ -222,7 +222,7 @@ async def test_title_nameless_dive_is_id_and_suffix(monkeypatch):
 
 
 def test_normalize_image_url_decodes_hosted_ls_resolve_wrapper():
-    import base64  # pylint: disable=import-outside-toplevel
+    import base64
 
     s3 = "s3://labels-fishsense-lite/fishsense-lite/preprocess_groups_jpeg/abc.JPG"
     wrapper = "/tasks/999/resolve/?fileuri=" + base64.b64encode(s3.encode()).decode()
@@ -297,7 +297,7 @@ async def test_heal_fetches_detail_when_list_omits_config():
 async def test_heal_survives_ls_rejecting_the_config():
     """LS refuses a config that would invalidate existing annotations. That
     must not fail the whole populate stage."""
-    from label_studio_sdk.core import ApiError  # pylint: disable=import-outside-toplevel
+    from label_studio_sdk.core import ApiError
 
     ls = _fake_ls()
     ls.projects.update.side_effect = ApiError(status_code=400, body="in use")
@@ -333,9 +333,9 @@ def _species_taxonomy_branch(label: str) -> list[str]:
     structure — a value nested under the wrong parent would still satisfy
     an `in xml` check.
     """
-    import xml.etree.ElementTree as ET  # pylint: disable=import-outside-toplevel
+    import xml.etree.ElementTree as ET
 
-    from fishsense_api_workflow_worker.activities import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker.activities import (
         create_species_label_studio_project_activity as species_sut,
     )
 
@@ -358,7 +358,7 @@ def test_species_xml_carries_the_current_fish_model_set():
         "Yellow Anthias",
     ]
     # Retired model names must be gone, or annotators keep seeing them.
-    from fishsense_api_workflow_worker.activities import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker.activities import (
         create_species_label_studio_project_activity as species_sut,
     )
 

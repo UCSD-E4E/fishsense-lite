@@ -155,7 +155,7 @@ def test_a_failure_creating_views_leaves_the_database_unstamped():
 async def test_lifespan_runs_alembic_upgrade_after_setup(monkeypatch):
     """Wired-up regression: the FastAPI lifespan must invoke the
     upgrade so the deployed image catches up the schema on its own."""
-    from fishsense_api import server  # pylint: disable=import-outside-toplevel
+    from fishsense_api import server
 
     fake_db = MagicMock()
     fake_engine_begin = MagicMock()

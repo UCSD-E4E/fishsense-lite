@@ -18,7 +18,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 @pytest.fixture
 async def session():
-    import fishsense_api.database  # noqa: F401  pylint: disable=import-outside-toplevel,unused-import
+    import fishsense_api.database  # noqa: F401  pylint: disable=unused-import
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -30,8 +30,8 @@ async def session():
 
 
 def _dive(dive_id=1):
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
+    from fishsense_api.models.priority import Priority
 
     return Dive(
         id=dive_id,
@@ -42,7 +42,7 @@ def _dive(dive_id=1):
 
 
 def _image(image_id, dive_id=1):
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.image import Image
 
     return Image(
         id=image_id,
@@ -54,7 +54,7 @@ def _image(image_id, dive_id=1):
 
 
 def _species(label_id, image_id, *, completed=False, superseded=False, project_id, task_id):
-    from fishsense_api.models.species_label import SpeciesLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.species_label import SpeciesLabel
 
     return SpeciesLabel(
         id=label_id,
@@ -67,7 +67,7 @@ def _species(label_id, image_id, *, completed=False, superseded=False, project_i
 
 
 def _slate(label_id, image_id, *, completed=False, superseded=False, project_id, task_id):
-    from fishsense_api.models.dive_slate_label import DiveSlateLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel
 
     return DiveSlateLabel(
         id=label_id,
@@ -83,7 +83,7 @@ def _slate(label_id, image_id, *, completed=False, superseded=False, project_id,
 
 
 async def test_species_project_ids_exclude_superseded_only(session):
-    from fishsense_api.controllers.label_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.label_controller import (
         get_species_label_studio_project_ids,
     )
 
@@ -102,7 +102,7 @@ async def test_species_project_ids_exclude_superseded_only(session):
 
 
 async def test_species_get_by_image_excludes_superseded(session):
-    from fishsense_api.controllers.label_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.label_controller import (
         get_species_label,
     )
 
@@ -119,7 +119,7 @@ async def test_species_get_by_image_excludes_superseded(session):
 
 
 async def test_slate_project_ids_exclude_superseded_only(session):
-    from fishsense_api.controllers.label_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.label_controller import (
         get_dive_slate_label_studio_project_ids,
     )
 
@@ -138,7 +138,7 @@ async def test_slate_project_ids_exclude_superseded_only(session):
 
 
 async def test_slate_get_by_image_excludes_superseded(session):
-    from fishsense_api.controllers.label_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.label_controller import (
         get_dive_slate_label,
     )
 

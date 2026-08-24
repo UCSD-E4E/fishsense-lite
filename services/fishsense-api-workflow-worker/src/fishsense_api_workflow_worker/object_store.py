@@ -47,7 +47,6 @@ def open_object_store_client() -> "ObjectStoreClient":
     gotcha in CLAUDE.md) — only calling this at activity runtime does.
     Activities call this; tests patch it to inject a moto-backed client.
     """
-    # pylint: disable=import-outside-toplevel
     from fishsense_api_workflow_worker.config import settings
 
     return open_client(settings, ObjectStoreClient)

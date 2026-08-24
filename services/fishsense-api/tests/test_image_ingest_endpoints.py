@@ -31,7 +31,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 @pytest.fixture
 async def session():
-    import fishsense_api.database  # noqa: F401  # pylint: disable=import-outside-toplevel,unused-import
+    import fishsense_api.database  # noqa: F401  # pylint: disable=unused-import
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -43,8 +43,8 @@ async def session():
 
 
 async def _seed_dive(session, dive_id: int, path: str):
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
+    from fishsense_api.models.priority import Priority
 
     session.add(
         Dive(
@@ -59,7 +59,7 @@ async def _seed_dive(session, dive_id: int, path: str):
 
 
 def _image(path: str, checksum: str, **kwargs):
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.image import Image
 
     kwargs.setdefault("camera_id", 1)
     return Image(
@@ -78,10 +78,10 @@ CK_B = "0b7cd4da72d54172f1f9daf40ce4047f"
 
 
 async def test_post_image_creates_a_row_and_binds_it_to_the_path_dive(session):
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         post_image,
     )
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.image import Image
 
     await _seed_dive(session, 7, "d/7")
 
@@ -99,10 +99,10 @@ async def test_post_image_creates_a_row_and_binds_it_to_the_path_dive(session):
 async def test_post_image_is_an_upsert_on_path_not_a_duplicate_insert(session):
     """`Image.path` is unique. Resuming a partial scan re-posts paths that are
     already there; a blind merge would 500 on the unique index."""
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         post_image,
     )
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.image import Image
 
     await _seed_dive(session, 7, "d/7")
     path = "d/7/P8210001.ORF"
@@ -120,10 +120,10 @@ async def test_post_image_is_an_upsert_on_path_not_a_duplicate_insert(session):
 
 async def test_first_image_with_a_checksum_is_canonical_later_duplicates_are_not(session):
     """The dives-64/66 rule, from `9e5bc64`."""
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         post_image,
     )
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.image import Image
 
     await _seed_dive(session, 64, "d/64")
     await _seed_dive(session, 66, "d/66")
@@ -144,10 +144,10 @@ async def test_reposting_the_same_path_does_not_demote_it_to_non_canonical(sessi
     is *itself*, so 'a row with this checksum already exists' must not flip it
     to False — that would quietly strip canonical status from a whole dive on
     every re-run."""
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         post_image,
     )
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.image import Image
 
     await _seed_dive(session, 7, "d/7")
     path = "d/7/P8210001.ORF"
@@ -166,10 +166,10 @@ async def test_promoting_a_copy_demotes_the_incumbent(session):
     Promotion must be a *swap*, not an addition: exactly one row per checksum
     is canonical. Before `uq_image_canonical_checksum` existed this endpoint
     happily produced two, and nothing complained."""
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         post_image,
     )
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.image import Image
 
     await _seed_dive(session, 64, "d/64")
     await _seed_dive(session, 66, "d/66")
@@ -188,7 +188,7 @@ async def test_promoting_a_copy_demotes_the_incumbent(session):
 
 
 async def test_post_image_rejects_a_path_longer_than_the_column(session):
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         post_image,
     )
 
@@ -202,7 +202,7 @@ async def test_post_image_rejects_a_path_longer_than_the_column(session):
 async def test_post_image_rejects_a_checksum_that_is_not_a_32_char_md5(session):
     """A wrong-width checksum means the hashing changed underneath us; every
     duplicate check downstream would silently stop matching."""
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         post_image,
     )
 
@@ -215,7 +215,7 @@ async def test_post_image_rejects_a_checksum_that_is_not_a_32_char_md5(session):
 
 
 async def test_post_image_rejects_an_unknown_dive(session):
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         post_image,
     )
 
@@ -228,7 +228,7 @@ async def test_post_image_rejects_an_unknown_dive(session):
 
 
 async def test_checksum_lookup_reports_every_dive_holding_each_checksum(session):
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         post_checksum_lookup,
         post_image,
     )
@@ -251,7 +251,7 @@ async def test_checksum_lookup_reports_every_dive_holding_each_checksum(session)
 async def test_checksum_lookup_returns_an_empty_list_for_unknown_checksums(session):
     """Empty list, not a missing key — the caller computes
     `|new n existing| / |new|` and should not have to guard every lookup."""
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         post_checksum_lookup,
     )
 
@@ -268,7 +268,7 @@ async def test_checksum_lookup_is_a_set_operation_not_an_ordered_digest(session)
     is why it never worked well: near-duplicates are the common case, and
     filename order changed the digest even when the bytes matched.
     """
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         post_checksum_lookup,
         post_image,
     )
@@ -290,10 +290,10 @@ async def test_checksum_lookup_is_a_set_operation_not_an_ordered_digest(session)
 async def test_reposting_an_image_preserves_fields_the_body_did_not_mention(session):
     """Same destructive-upsert class as the dive endpoint. A resumed scan
     re-posts paths it has already written; anything it omits must survive."""
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         post_image,
     )
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.image import Image
 
     await _seed_dive(session, 7, "d/7")
     path = "d/7/P8210001.ORF"
@@ -314,7 +314,7 @@ async def test_reposting_an_image_preserves_fields_the_body_did_not_mention(sess
 
 
 async def test_post_image_rejects_an_empty_path(session):
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         post_image,
     )
 
@@ -328,10 +328,10 @@ async def test_post_image_rejects_an_empty_path(session):
 async def test_post_image_rejects_a_missing_taken_datetime(session):
     """Stage-1 clustering is pure timestamp math, so a defaulted or absent
     `taken_datetime` would corrupt it with nothing to show for it."""
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         post_image,
     )
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.image import Image
 
     await _seed_dive(session, 7, "d/7")
     no_date = Image(path="d/7/P1.ORF", checksum=CK_A, taken_datetime=None)
@@ -343,7 +343,7 @@ async def test_post_image_rejects_a_missing_taken_datetime(session):
 
 async def test_checksum_lookup_rejects_an_oversized_batch(session):
     """Unbounded `IN (...)` from a bad caller."""
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         MAX_CHECKSUM_LOOKUP,
         post_checksum_lookup,
     )
@@ -357,7 +357,7 @@ async def test_checksum_lookup_rejects_an_oversized_batch(session):
 
 async def test_checksum_lookup_handles_an_empty_batch(session):
     """A dive folder that turned out to hold nothing new still calls this."""
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         post_checksum_lookup,
     )
 
@@ -368,7 +368,7 @@ async def test_checksum_lookup_deduplicates_repeated_checksums(session):
     """Duplicate frames inside one folder are exactly the case this is for, so
     the same checksum arriving twice must not double-count toward the cap or
     produce duplicate hits."""
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         post_checksum_lookup,
         post_image,
     )
@@ -394,7 +394,7 @@ async def test_the_database_refuses_a_second_canonical_row_for_one_checksum(sess
     This drives the constraint directly, bypassing the endpoint, because that
     is precisely the state the endpoint's own logic cannot rule out.
     """
-    from sqlalchemy.exc import IntegrityError  # pylint: disable=import-outside-toplevel
+    from sqlalchemy.exc import IntegrityError
 
     await _seed_dive(session, 64, "d/64")
     session.add(_image("d/64/P1.ORF", CK_A, dive_id=64, is_canonical=True))
@@ -408,10 +408,10 @@ async def test_the_database_refuses_a_second_canonical_row_for_one_checksum(sess
 async def test_the_constraint_allows_many_non_canonical_rows_per_checksum(session):
     """The duplicate case is the normal case — only *canonical* is exclusive.
     A unique index on `checksum` alone would break dives 64/66 outright."""
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         post_image,
     )
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.image import Image
 
     for dive_id in (64, 66, 70):
         await _seed_dive(session, dive_id, f"d/{dive_id}")
@@ -425,10 +425,10 @@ async def test_the_constraint_allows_many_non_canonical_rows_per_checksum(sessio
 async def test_post_image_honours_an_explicit_id_instead_of_resolving_by_path(session):
     """The `id is not None` branch — an update targeted by primary key, which
     skips natural-key resolution entirely."""
-    from fishsense_api.controllers.image_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.image_controller import (
         post_image,
     )
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.image import Image
 
     await _seed_dive(session, 7, "d/7")
     image_id = await post_image(7, _image("d/7/P1.ORF", CK_A), session=session)

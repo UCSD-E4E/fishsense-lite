@@ -89,7 +89,7 @@ def test_get_masker_returns_the_masker_to_a_concurrent_caller(monkeypatch):
     So the whole first concurrent batch of frames lost the learned mask, with
     nothing in the logs to say so.
     """
-    import fishsense_core.slate as slate_mod  # pylint: disable=import-outside-toplevel
+    import fishsense_core.slate as slate_mod
 
     sentinel = object()
     loading_started = threading.Event()
@@ -121,7 +121,7 @@ def test_get_masker_falls_back_to_none_and_caches(monkeypatch):
     # pylint: disable=protected-access
     """A BoardMasker that can't load (no net / no checkpoint) must degrade to
     the classical path (None), and the failure is cached (no per-frame retry)."""
-    import fishsense_core.slate as slate_mod  # pylint: disable=import-outside-toplevel
+    import fishsense_core.slate as slate_mod
 
     calls = {"n": 0}
 

@@ -54,7 +54,6 @@ def _temporal_target_from_ci_env(monkeypatch):
         monkeypatch.setenv("E4EFS_TEMPORAL__HOST", host)
     if port:
         monkeypatch.setenv("E4EFS_TEMPORAL__PORT", port)
-    # pylint: disable=import-outside-toplevel
     from fishsense_api_workflow_worker import config as cfg
 
     cfg.settings.reload()

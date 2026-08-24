@@ -27,7 +27,7 @@ from fishsense_api.views import (
 
 @pytest.fixture
 async def session():
-    import fishsense_api.database  # noqa: F401  pylint: disable=import-outside-toplevel,unused-import
+    import fishsense_api.database  # noqa: F401  pylint: disable=unused-import
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -79,7 +79,7 @@ def test_known_model_names_are_unique():
 
 
 async def test_reference_row_round_trips(session):
-    from fishsense_api.models.fish_model_reference import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.fish_model_reference import (
         FishModelReference,
     )
 
@@ -99,13 +99,13 @@ async def test_reference_row_round_trips(session):
 
 
 async def _seed_measurement(session, *, dive_id, image_id, model_name, length_m):
-    from datetime import datetime, timezone  # pylint: disable=import-outside-toplevel
+    from datetime import datetime, timezone
 
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.fish import Fish  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
+    from fishsense_api.models.fish import Fish
+    from fishsense_api.models.image import Image
+    from fishsense_api.models.measurement import Measurement
+    from fishsense_api.models.priority import Priority
 
     existing = (await session.exec(select(Dive).where(Dive.id == dive_id))).first()
     if existing is None:
@@ -151,7 +151,7 @@ async def _rows(session):
 
 
 async def test_accuracy_view_computes_error_against_known_length(session):
-    from fishsense_api.models.fish_model_reference import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.fish_model_reference import (
         FishModelReference,
     )
 
@@ -174,14 +174,14 @@ async def test_accuracy_view_computes_error_against_known_length(session):
 async def test_accuracy_view_excludes_real_fish(session):
     """Real (wild) fish carry name=NULL and have no reference row — they must
     not appear, or the view stops being a model-accuracy view."""
-    from datetime import datetime, timezone  # pylint: disable=import-outside-toplevel
+    from datetime import datetime, timezone
 
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.fish import Fish  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.fish_model_reference import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive import Dive
+    from fishsense_api.models.fish import Fish
+    from fishsense_api.models.image import Image
+    from fishsense_api.models.measurement import Measurement
+    from fishsense_api.models.priority import Priority
+    from fishsense_api.models.fish_model_reference import (
         FishModelReference,
     )
 

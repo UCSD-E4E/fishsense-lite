@@ -44,7 +44,6 @@ def _rectify_and_encode_jpeg(
 
 
 def _input_model():
-    # pylint: disable=import-outside-toplevel
     from fishsense_data_processing_workflow_worker.workflows.preprocess_headtail_images_workflow \
         import PreprocessHeadtailImageInput
 

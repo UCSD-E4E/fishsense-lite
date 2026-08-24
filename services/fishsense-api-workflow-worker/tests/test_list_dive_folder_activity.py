@@ -25,7 +25,7 @@ from temporalio.exceptions import ApplicationError
 
 
 def _entry(path: str, *, is_dir: bool = False, size: int = 1024):
-    from fishsense_api_workflow_worker.nas import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker.nas import (
         NasEntry,
     )
 
@@ -57,7 +57,7 @@ def _listing_client(tree: dict[str, list]):
 
 
 async def _run(request, client, monkeypatch):
-    from fishsense_api_workflow_worker.activities import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker.activities import (
         list_dive_folder_activity as sut,
     )
 
@@ -66,7 +66,7 @@ async def _run(request, client, monkeypatch):
 
 
 def _request(**kwargs):
-    from fishsense_shared.ingest_contracts import (  # pylint: disable=import-outside-toplevel
+    from fishsense_shared.ingest_contracts import (
         IngestDiveRequest,
     )
 
@@ -246,7 +246,7 @@ async def test_a_missing_folder_fails_non_retryably(monkeypatch):
     """Synology 408 is "no such file". A mistyped path cannot be fixed by
     waiting, so Temporal must not burn its retry budget on it — the same
     classification the staging activity makes."""
-    from synology_filestation import DSMError  # pylint: disable=import-outside-toplevel
+    from synology_filestation import DSMError
 
     client = MagicMock()
     client.list_dir.side_effect = DSMError("Synology API error 408")
@@ -262,7 +262,7 @@ async def test_a_transient_nas_error_propagates_for_temporal_to_retry(monkeypatc
     """502 is FileStation's shared download backend falling over — routine and
     self-healing. It must reach Temporal's bounded jittered policy rather than
     being converted into a permanent failure."""
-    from synology_filestation import DSMError  # pylint: disable=import-outside-toplevel
+    from synology_filestation import DSMError
 
     client = MagicMock()
     client.list_dir.side_effect = DSMError("Synology API error 502")

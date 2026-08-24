@@ -9,49 +9,13 @@ referential integrity.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
-import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlmodel import SQLModel
-from sqlmodel.ext.asyncio.session import AsyncSession
 
 
-@pytest.fixture
-async def session():
-    import fishsense_api.database  # noqa: F401  pylint: disable=import-outside-toplevel,unused-import
-
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
-    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    async with factory() as s:
-        yield s
-    await engine.dispose()
-
-
-def _dive(dive_id: int):
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
-
-    return Dive(
-        id=dive_id,
-        path=f"/dev/null/{dive_id}",
-        dive_datetime=datetime(2025, 1, 1, tzinfo=timezone.utc),
-        priority=Priority.HIGH,
-    )
-
-
-def _image(image_id: int, dive_id: int):
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
-
-    return Image(
-        id=image_id,
-        path=f"/dev/null/img-{image_id}",
-        taken_datetime=datetime(2025, 1, 1, tzinfo=timezone.utc),
-        checksum=f"{image_id:032d}",
-        dive_id=dive_id,
-    )
+# Shared with the other controller tests — see `tests_support.db`.
+from tests_support.db import (  # noqa: F401
+    dive as _dive,
+    image as _image,
+)
 
 
 def _laser_label(
@@ -62,7 +26,7 @@ def _laser_label(
     superseded: bool = False,
     project_id: int | None = 42,
 ):
-    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_label import LaserLabel
 
     return LaserLabel(
         id=label_id,
@@ -74,7 +38,7 @@ def _laser_label(
 
 
 async def _call(session):
-    from fishsense_api.controllers.label_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.label_controller import (
         get_dives_with_complete_laser_labeling,
     )
 

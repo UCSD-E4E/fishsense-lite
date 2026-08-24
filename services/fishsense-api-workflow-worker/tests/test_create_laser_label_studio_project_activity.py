@@ -204,7 +204,7 @@ async def test_ensure_s3_storage_registers_presigned_source_when_absent(
     )
     monkeypatch.setenv("E4EFS_OBJECT_STORE__ACCESS_KEY", "ak")
     monkeypatch.setenv("E4EFS_OBJECT_STORE__SECRET_KEY", "sk")
-    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker import config as cfg
     cfg.settings.reload()
 
     ls = _make_ls_with_storage(existing_storages=[])
@@ -233,7 +233,7 @@ async def test_ensure_s3_storage_is_idempotent_when_already_registered(
     """Re-running create on an existing project must not register a
     duplicate storage — match is on (bucket, title)."""
     monkeypatch.setenv("E4EFS_OBJECT_STORE__BUCKET", "fishsense-test")
-    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker import config as cfg
     cfg.settings.reload()
 
     existing = [
@@ -261,7 +261,7 @@ async def test_ensure_s3_storage_uses_presign_credentials_when_set(monkeypatch):
     monkeypatch.setenv("E4EFS_OBJECT_STORE__SECRET_KEY", "rw-secret")
     monkeypatch.setenv("E4EFS_OBJECT_STORE__PRESIGN_ACCESS_KEY", "ro-key")
     monkeypatch.setenv("E4EFS_OBJECT_STORE__PRESIGN_SECRET_KEY", "ro-secret")
-    from fishsense_api_workflow_worker import config as cfg  # pylint: disable=import-outside-toplevel
+    from fishsense_api_workflow_worker import config as cfg
     cfg.settings.reload()
 
     ls = _make_ls_with_storage(existing_storages=[])

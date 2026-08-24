@@ -60,7 +60,6 @@ def _rectify_overlay_bbox_encode(
 
 
 def _input_model():
-    # pylint: disable=import-outside-toplevel
     from fishsense_data_processing_workflow_worker.workflows.preprocess_laser_images_workflow \
         import PreprocessLaserImageInput
 

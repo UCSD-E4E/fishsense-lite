@@ -17,7 +17,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 @pytest.fixture
 async def session():
-    import fishsense_api.database  # noqa: F401  # pylint: disable=import-outside-toplevel,unused-import
+    import fishsense_api.database  # noqa: F401  # pylint: disable=unused-import
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -29,7 +29,7 @@ async def session():
 
 
 def _line(dive_id: int, *, a, b, c, confidence=10.0):
-    from fishsense_api.models.dive_laser_line import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive_laser_line import (
         DiveLaserLine,
     )
 
@@ -48,7 +48,7 @@ def _line(dive_id: int, *, a, b, c, confidence=10.0):
 
 
 async def _count(session: AsyncSession, dive_id: int) -> int:
-    from fishsense_api.models.dive_laser_line import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.dive_laser_line import (
         DiveLaserLine,
     )
 
@@ -59,7 +59,7 @@ async def _count(session: AsyncSession, dive_id: int) -> int:
 
 
 async def test_put_upserts_on_dive_id(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         get_dive_laser_line,
         put_dive_laser_line,
     )
@@ -75,7 +75,7 @@ async def test_put_upserts_on_dive_id(session):
 
 
 async def test_put_stamps_non_null_fitted_at(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         get_dive_laser_line,
         put_dive_laser_line,
     )
@@ -87,7 +87,7 @@ async def test_put_stamps_non_null_fitted_at(session):
 
 
 async def test_get_returns_none_when_absent(session):
-    from fishsense_api.controllers.dive_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_controller import (
         get_dive_laser_line,
     )
 

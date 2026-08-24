@@ -19,59 +19,25 @@ composition and write semantics, not referential integrity.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlmodel import SQLModel, select
-from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlmodel import select
 
-
-@pytest.fixture
-async def session():
-    import fishsense_api.database  # noqa: F401  pylint: disable=import-outside-toplevel,unused-import
-
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
-    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    async with factory() as s:
-        yield s
-    await engine.dispose()
-
-
-def _dive(dive_id: int):
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
-
-    return Dive(
-        id=dive_id,
-        path=f"/dev/null/{dive_id}",
-        dive_datetime=datetime(2025, 1, 1, tzinfo=timezone.utc),
-        priority=Priority.HIGH,
-    )
-
-
-def _image(image_id: int, dive_id: int):
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
-
-    return Image(
-        id=image_id,
-        path=f"/dev/null/img-{image_id}",
-        taken_datetime=datetime(2025, 1, 1, tzinfo=timezone.utc),
-        checksum=f"{image_id:032d}",
-        dive_id=dive_id,
-    )
+# Shared with the other controller tests — see `tests_support.db`.
+from tests_support.db import (  # noqa: F401
+    dive as _dive,
+    image as _image,
+)
 
 
 def _fish(fish_id: int):
-    from fishsense_api.models.fish import Fish  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.fish import Fish
 
     return Fish(id=fish_id, species_id=None)
 
 
 def _measurement(measurement_id: int | None, image_id: int, fish_id: int, length_m: float):
-    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.measurement import Measurement
 
     return Measurement(
         id=measurement_id,
@@ -89,7 +55,7 @@ async def _seed_dive(session, dive_id: int, image_ids: list[int]):
 
 
 async def _get_measurements(session, dive_id: int):
-    from fishsense_api.controllers.fish_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.fish_controller import (
         get_measurements_for_dive,
     )
 
@@ -97,7 +63,7 @@ async def _get_measurements(session, dive_id: int):
 
 
 async def _post(session, fish_id: int, measurement):
-    from fishsense_api.controllers.fish_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.fish_controller import (
         post_measurement,
     )
 
@@ -145,7 +111,7 @@ async def test_post_measurement_creates_row(session):
     new_id = await _post(session, 101, _measurement(None, 11, 101, 0.30))
     await session.flush()
 
-    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.measurement import Measurement
 
     rows = (await session.exec(select(Measurement))).all()
     assert len(rows) == 1
@@ -164,7 +130,7 @@ async def test_post_measurement_twice_does_not_duplicate(session):
     second_id = await _post(session, 101, _measurement(None, 11, 101, 0.31))
     await session.flush()
 
-    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.measurement import Measurement
 
     rows = (await session.exec(select(Measurement))).all()
     assert len(rows) == 1, "re-posting the same (image, fish) must upsert, not insert"
@@ -183,7 +149,7 @@ async def test_post_measurement_distinct_fish_on_same_image_both_persist(session
     await _post(session, 102, _measurement(None, 11, 102, 0.40))
     await session.flush()
 
-    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.measurement import Measurement
 
     rows = (await session.exec(select(Measurement))).all()
     assert len(rows) == 2
@@ -198,7 +164,7 @@ async def test_post_measurement_binds_fish_id_from_path(session):
     await _post(session, 101, _measurement(None, 11, 999, 0.30))
     await session.flush()
 
-    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.measurement import Measurement
 
     rows = (await session.exec(select(Measurement))).all()
     assert rows[0].fish_id == 101
@@ -215,7 +181,7 @@ async def test_post_measurement_binds_fish_id_from_path(session):
 
 
 async def _delete(session, fish_id: int, image_id: int):
-    from fishsense_api.controllers.fish_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.fish_controller import (
         delete_measurement,
     )
 
@@ -235,7 +201,7 @@ async def test_delete_measurement_removes_only_that_binding(session):
     await _delete(session, 101, 11)
     await session.flush()
 
-    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.measurement import Measurement
 
     rows = (await session.exec(select(Measurement))).all()
     assert [(r.image_id, r.fish_id) for r in rows] == [(11, 102)]
@@ -250,6 +216,6 @@ async def test_delete_measurement_is_idempotent(session):
     await _delete(session, 101, 11)  # nothing there — must not raise
     await session.flush()
 
-    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.measurement import Measurement
 
     assert (await session.exec(select(Measurement))).all() == []

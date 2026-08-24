@@ -124,7 +124,7 @@ async def test_leaves_projects_it_does_not_own_alone(monkeypatch):
 async def test_one_rejected_project_does_not_stop_the_pass(monkeypatch):
     """LS refuses a config that would invalidate existing annotations. That
     must not abort the walk — the remaining projects still reconcile."""
-    from label_studio_sdk.core import ApiError  # pylint: disable=import-outside-toplevel
+    from label_studio_sdk.core import ApiError
 
     ls = _fake_ls(
         [

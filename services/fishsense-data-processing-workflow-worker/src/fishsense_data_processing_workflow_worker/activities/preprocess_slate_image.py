@@ -113,7 +113,6 @@ def _build_slate_jpeg(
 
 
 def _input_model():
-    # pylint: disable=import-outside-toplevel
     from fishsense_data_processing_workflow_worker.workflows.preprocess_slate_images_workflow \
         import PreprocessSlateImageInput
 

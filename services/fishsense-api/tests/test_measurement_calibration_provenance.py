@@ -17,12 +17,12 @@ length half of the depth backfill, and it converges without a separate script.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 
-import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlmodel import SQLModel
-from sqlmodel.ext.asyncio.session import AsyncSession
+
+# Shared with the other controller tests — see `tests_support.db`.
+from tests_support.db import (  # noqa: F401
+    dive as _dive,
+)
 
 from tests_support.stage14_fixtures import (
     fish_model_measurable_image as _measurable_image,
@@ -30,34 +30,8 @@ from tests_support.stage14_fixtures import (
 )
 
 
-@pytest.fixture
-async def session():
-    import fishsense_api.database  # noqa: F401  # pylint: disable=import-outside-toplevel,unused-import
-
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
-    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    async with factory() as s:
-        yield s
-    await engine.dispose()
-
-
-def _dive(dive_id: int, *, calibration_dive_id: int | None = None):
-    from fishsense_api.models.dive import Dive  # pylint: disable=import-outside-toplevel
-    from fishsense_api.models.priority import Priority  # pylint: disable=import-outside-toplevel
-
-    return Dive(
-        id=dive_id,
-        path=f"/dev/null/{dive_id}",
-        dive_datetime=datetime(2025, 1, 1, tzinfo=timezone.utc),
-        priority=Priority.HIGH,
-        calibration_dive_id=calibration_dive_id,
-    )
-
-
 def _extrinsics(extrinsics_id: int, dive_id: int):
-    from fishsense_api.models.laser_extrinsics import LaserExtrinsics  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_extrinsics import LaserExtrinsics
 
     return LaserExtrinsics(
         id=extrinsics_id,
@@ -75,10 +49,10 @@ def _measurement(image_id: int, *, laser_extrinsics_id=None, fish_id: int = 100)
 
 
 async def test_post_measurement_persists_the_calibration_it_used(session):
-    from fishsense_api.controllers.fish_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.fish_controller import (
         post_measurement,
     )
-    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.measurement import Measurement
 
     session.add_all([_dive(1), _extrinsics(51, 1)])
     _measurable_image(session, 11, 1)
@@ -96,10 +70,10 @@ async def test_post_measurement_updates_provenance_on_re_measure(session):
     """The upsert keys on `(image_id, fish_id)`, so a re-measure after a
     recalibration must move the provenance forward with the length — a row
     still claiming the old calibration would be re-selected forever."""
-    from fishsense_api.controllers.fish_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.fish_controller import (
         post_measurement,
     )
-    from fishsense_api.models.measurement import Measurement  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.measurement import Measurement
 
     session.add_all([_dive(1), _extrinsics(51, 1)])
     _measurable_image(session, 11, 1)
@@ -118,7 +92,7 @@ async def test_post_measurement_updates_provenance_on_re_measure(session):
 
 
 async def test_cohort_skips_a_dive_measured_with_the_current_calibration(session):
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_measure_fish,
     )
 
@@ -131,7 +105,7 @@ async def test_cohort_skips_a_dive_measured_with_the_current_calibration(session
 
 
 async def test_cohort_repicks_a_dive_after_recalibration(session):
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_measure_fish,
     )
 
@@ -146,7 +120,7 @@ async def test_cohort_repicks_a_dive_after_recalibration(session):
 async def test_cohort_repicks_a_dive_whose_measurements_predate_provenance(session):
     """Every measurement in prod today carries NULL here. They re-enter the
     cohort once, get recomputed under the current calibration, and drain."""
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_measure_fish,
     )
 
@@ -161,7 +135,7 @@ async def test_cohort_repicks_a_dive_whose_measurements_predate_provenance(sessi
 async def test_cohort_resolves_provenance_through_a_borrowed_calibration(session):
     """A fish-only dive is measured with the sibling's extrinsics row, so
     that is the id its measurements must carry — not its own (it has none)."""
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_measure_fish,
     )
 
@@ -207,7 +181,7 @@ async def test_cohort_resolves_each_dives_own_calibration_not_the_first_row(sess
     session.add(_measurement(21, laser_extrinsics_id=52))
     await session.flush()
 
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_measure_fish,
     )
 
@@ -223,11 +197,11 @@ def test_resolved_extrinsics_subquery_is_correlated():
     it. This is the assertion that would have caught the prod outage without
     a Postgres to run against.
     """
-    import re  # pylint: disable=import-outside-toplevel
+    import re
 
-    from sqlalchemy.dialects import postgresql  # pylint: disable=import-outside-toplevel
+    from sqlalchemy.dialects import postgresql
 
-    from fishsense_api.controllers.dive_cohort_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.dive_cohort_controller import (
         _laser_depth_cohort_query,
     )
 

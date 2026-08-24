@@ -23,7 +23,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 @pytest.fixture
 async def session():
-    import fishsense_api.database  # noqa: F401  pylint: disable=import-outside-toplevel,unused-import
+    import fishsense_api.database  # noqa: F401  pylint: disable=unused-import
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -35,7 +35,7 @@ async def session():
 
 
 def _image(image_id: int):
-    from fishsense_api.models.image import Image  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.image import Image
 
     return Image(
         id=image_id,
@@ -47,7 +47,7 @@ def _image(image_id: int):
 
 
 def _laser_label(label_id, image_id, *, completed, superseded=False, project_id):
-    from fishsense_api.models.laser_label import LaserLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.laser_label import LaserLabel
 
     return LaserLabel(
         id=label_id,
@@ -59,7 +59,7 @@ def _laser_label(label_id, image_id, *, completed, superseded=False, project_id)
 
 
 def _headtail_label(label_id, image_id, *, completed, superseded=False, project_id):
-    from fishsense_api.models.head_tail_label import HeadTailLabel  # pylint: disable=import-outside-toplevel
+    from fishsense_api.models.head_tail_label import HeadTailLabel
 
     return HeadTailLabel(
         id=label_id,
@@ -71,7 +71,7 @@ def _headtail_label(label_id, image_id, *, completed, superseded=False, project_
 
 
 async def _laser_ids(session, *, incomplete=False):
-    from fishsense_api.controllers.label_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.label_controller import (
         get_laser_label_studio_project_ids,
     )
 
@@ -80,7 +80,7 @@ async def _laser_ids(session, *, incomplete=False):
 
 
 async def _headtail_ids(session, *, incomplete=False):
-    from fishsense_api.controllers.label_controller import (  # pylint: disable=import-outside-toplevel
+    from fishsense_api.controllers.label_controller import (
         get_headtail_label_studio_project_ids,
     )
 

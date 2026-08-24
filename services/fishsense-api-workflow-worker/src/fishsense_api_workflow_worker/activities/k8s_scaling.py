@@ -97,7 +97,6 @@ def apps_v1_api(kubeconfig_path: str):
     activities — doesn't pull the dependency in until scaling is
     actually used.
     """
-    # pylint: disable=import-outside-toplevel
     from kubernetes import client as k8s_client, config as k8s_config
 
     configuration = k8s_client.Configuration()
