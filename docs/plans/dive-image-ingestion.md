@@ -12,7 +12,7 @@ Status: **approved; in progress.** Two independent deliverables:
 |---|---|---|
 | 1 | fishsense-api write endpoints + SDK client methods (§2.1, §2.2, §4.2.1 lookup) | **merged** — #554 |
 | 1b | canonical-only pipeline work: 11 cohort selectors, 8 resolvers, `dive_pipeline_status` | **merged** — #555, folded into #554's branch |
-| 2 | api-worker ingest workflow | **in progress** — see below |
+| 2 | api-worker ingest workflow | **merged** — #557, #559, #611, #613. Ingest works end to end from the CLI; runbook at [docs/ingest.md](../ingest.md) |
 | 3 | `/portal/ingest` page (§5) | not started |
 | 4 | Part 2 — `Weasly Fish` reference row (§7) | blocked on the calipered widths |
 
@@ -25,9 +25,10 @@ Status: **approved; in progress.** Two independent deliverables:
 | `fishsense_shared.ingest_contracts` | **merged** — #557 |
 | `list_dive_folder_activity` (§4.1) | **merged** — #559, 11 tests |
 | `preflight_ingest_activity` (§4.2) | **merged** — #559, 19 tests |
-| `create_dive` / `scan_and_register_images` / `finalize_dive` (§4.3–4.5) | not started |
-| `IngestDiveWorkflow` + `progress` query | not started |
-| Temporal client + `ingest_controller` in fishsense-api (§2.7) | not started |
+| `scan_and_register_images_activity` (§4.4) | **merged** — #611, 14 tests |
+| `create_dive_activity` / `finalize_dive_activity` (§4.3, §4.5) | **merged** — #613, 13 tests |
+| `IngestDiveWorkflow` + `progress` query | **merged** — #613, 6 contract tests |
+| Temporal client + `ingest_controller` in fishsense-api (§2.7) | not started — ingest is CLI-only until this lands |
 
 Unplanned, added while building the above because §0.1's caveat turned out to be
 answerable rather than merely noted:
