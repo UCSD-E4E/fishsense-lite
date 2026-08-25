@@ -20,12 +20,22 @@ Status: **approved; in progress.** Two independent deliverables:
 
 | Piece | State |
 |---|---|
-| `exif.py` — stdlib ORF reader, tag 0x0132 + Olympus MakerNote serial | done, 13 tests |
-| `NasClient.list_dir` + `download_range` | done, 7 tests |
-| `fishsense_shared.ingest_contracts` | done, 14 tests |
-| 5 activities (§4.1–4.5) | not started |
+| `exif.py` — stdlib ORF reader, tag 0x0132 + Olympus MakerNote serial | **merged** — #557 |
+| `NasClient.list_dir` + `download_range` | **merged** — #557 |
+| `fishsense_shared.ingest_contracts` | **merged** — #557 |
+| `list_dive_folder_activity` (§4.1) | **merged** — #559, 11 tests |
+| `preflight_ingest_activity` (§4.2) | **merged** — #559, 19 tests |
+| `create_dive` / `scan_and_register_images` / `finalize_dive` (§4.3–4.5) | not started |
 | `IngestDiveWorkflow` + `progress` query | not started |
 | Temporal client + `ingest_controller` in fishsense-api (§2.7) | not started |
+
+Unplanned, added while building the above because §0.1's caveat turned out to be
+answerable rather than merely noted:
+
+| Piece | State |
+|---|---|
+| `verify_dive_checksums_activity` + `VerifyDiveChecksumsWorkflow` (§4.6) | **merged** — #559 |
+| `VerifyAllDivesChecksumsWorkflow` — the corpus-wide sweep | **merged** — #567 |
 
 Read §0 first: one required verification is **blocked in this session**, and one
 finding **contradicts an assumption in the brief**.
@@ -61,10 +71,40 @@ plan's blocking gate is **dropped**.
 
 Two caveats worth keeping:
 
-* This proves what *spider* wrote. It does not prove every row came from spider —
-  older rows could predate it. So `tools/verify_checksum_algorithm.py` (§4.6) stays
-  in the plan, downgraded from "blocking gate" to "cheap standing net": run it over
-  a sample of existing rows whenever convenient. Not a merge blocker.
+* This proves what *spider* wrote. It did not prove every row came from spider —
+  older rows could predate it — so §4.6 stayed in the plan as a "cheap standing
+  net". **It has now been run, and the answer is clean.**
+
+  `VerifyAllDivesChecksumsWorkflow` re-hashed real files off the NAS on
+  2026-08-17, across **all 272 canonical dives**, twice:
+
+  | Sample | Frames | Checksums matched | Dives errored |
+  |---|---|---|---|
+  | 1 frame/dive | 272 | **272 / 272** | 0 |
+  | 5 frames/dive | 1,347 | **1,347 / 1,347** | 0 |
+
+  So `Image.checksum` really is `md5` of the whole file, corpus-wide. This is
+  what the §4.2.1 containment design rests on: had the migration hashed
+  differently, duplicate detection would not have errored — it would have
+  silently reported *zero overlap*, every re-ingested frame would have landed
+  `is_canonical=True`, and #555's gating would have had nothing to gate on.
+
+  **Timestamps are a different story — two dives disagree**, and the two
+  disagree differently:
+
+  * **Dive 430** — one frame of five, `PA150459.ORF`: stored `11:08:00Z`,
+    actual `11:08:58Z`. Seconds truncated. Sporadic, harmless to stage-1
+    clustering (clusters are minutes apart).
+  * **Dive 294** — *all five* sampled frames: stored `2023-11-20T00:00:00Z`
+    (midnight, date-only) and EXIF **unreadable**. The filenames are
+    `P1010001.ORF`… — not the Olympus `PA…`/`PB…` pattern, so probably another
+    body whose MakerNote neither our reader nor the migration could parse.
+    Dive-wide, and **not** harmless: every frame collapses to one instant, and
+    stage-1 clustering is pure timestamp arithmetic.
+
+  Note what preflight does with dive 294's case: it **rejects** a frame with no
+  readable timestamp rather than defaulting one (§4.2). That is the intended
+  behaviour, now confirmed against a real file the migration guessed at.
 * Ingest streams from the NAS anyway, so implement it as the same 8192-byte
   streaming update rather than `md5(f.read())` — a 15 MB buffer per file times a
   batch is real memory for no benefit.
