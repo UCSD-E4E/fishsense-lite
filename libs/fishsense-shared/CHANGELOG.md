@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.9.0...fishsense-shared-v0.10.0) (2026-08-25)
+
+
+### Features
+
+* **reference:** make Weasly Fish gradeable, and stop the gap recurring ([#603](https://github.com/UCSD-E4E/fishsense-lite/issues/603)) ([e91317c](https://github.com/UCSD-E4E/fishsense-lite/commit/e91317c58e1de28ade7139a41d786f542445c246))
+
+
+### Bug Fixes
+
+* **reference:** keep a provisional length out of the mislabel view, and seed it on fresh DBs ([#605](https://github.com/UCSD-E4E/fishsense-lite/issues/605)) ([878d46f](https://github.com/UCSD-E4E/fishsense-lite/commit/878d46f8ef3c2a1bed5fd16e8a34a51526e1de74))
+
 ## [0.9.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.8.0...fishsense-shared-v0.9.0) (2026-08-17)
 
 

@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## [1.48.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.47.2...fishsense-api-v1.48.0) (2026-08-25)
+
+
+### Features
+
+* **reference:** make Weasly Fish gradeable, and stop the gap recurring ([#603](https://github.com/UCSD-E4E/fishsense-lite/issues/603)) ([e91317c](https://github.com/UCSD-E4E/fishsense-lite/commit/e91317c58e1de28ade7139a41d786f542445c246))
+
+
+### Bug Fixes
+
+* **reference:** adopt the published 31 cm fork length for Weasly Fish ([#606](https://github.com/UCSD-E4E/fishsense-lite/issues/606)) ([f43bbbf](https://github.com/UCSD-E4E/fishsense-lite/commit/f43bbbf7389c9b05380ac9f9995fd194089a1e85))
+* **reference:** keep a provisional length out of the mislabel view, and seed it on fresh DBs ([#605](https://github.com/UCSD-E4E/fishsense-lite/issues/605)) ([878d46f](https://github.com/UCSD-E4E/fishsense-lite/commit/878d46f8ef3c2a1bed5fd16e8a34a51526e1de74))
+
 ## [1.47.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.47.1...fishsense-api-v1.47.2) (2026-08-23)
 
 
