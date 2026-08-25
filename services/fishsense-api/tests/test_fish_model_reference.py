@@ -63,6 +63,55 @@ def test_known_models_cover_the_labeled_taxonomy():
     assert labeled <= known, f"labelable but ungradeable: {sorted(labeled - known)}"
 
 
+def test_weasly_fish_records_which_landmark_its_length_uses():
+    """A reference that does not say which end it means is ambiguous by ~5pp —
+    larger than most of the errors being chased — so the landmark has to be on
+    the record even though every reference here shares one."""
+    assert "fork length" in FISH_MODEL_NOTES["Weasly Fish"].lower()
+
+
+def test_the_fork_convention_is_recorded_for_the_whole_table():
+    """All reference lengths are fork lengths, and that is a property of the
+    SET, not of one row.
+
+    Recorded centrally because it retires a term from the error budget: the
+    residual ladder (Purple Angel -2.2%, Shark -2.6%, Grouper -5.1%,
+    Snook -9.6%) was read as a total-length-vs-fork mismatch ordered by fork
+    depth — "one definition fix, not four". It cannot be, if the references
+    were fork lengths all along; and a labeler clicking the tail tip instead
+    would read LONG, not short.
+
+    What is left is calibration and foreshortening, both already budgeted. The
+    comment has to carry that too, because the bare refutation would read as an
+    open mystery and invite someone to go hunting for a third term that isn't
+    there.
+    """
+    import inspect
+
+    from fishsense_api import views
+
+    src = inspect.getsource(views)
+    head = src[: src.index("KNOWN_FISH_MODELS = [")]
+
+    assert "FORK length" in head
+    assert "Foreshortening" in head
+    assert "calibration scale" in head
+    # The mean is the trap: it measures the pose distribution, not the model.
+    assert "p90" in head
+
+
+def test_weasly_fish_widths_are_machine_reparsable():
+    """The widths are the input to a separate experiment, so they need to come
+    back out as numbers rather than being readable prose only."""
+    import re
+
+    notes = FISH_MODEL_NOTES["Weasly Fish"]
+    found = dict(re.findall(r"(width_\w+_mm)=([0-9.]+)", notes))
+
+    assert float(found["width_midbody_mm"]) == pytest.approx(58.69)
+    assert float(found["width_caudal_peduncle_mm"]) == pytest.approx(29.56)
+
+
 def test_weasly_fish_records_the_calipered_widths():
     """The round-model thickness work needs thickness as an INDEPENDENT input.
 
@@ -81,15 +130,45 @@ def test_weasly_fish_records_the_calipered_widths():
     assert "29.56" in notes, "caudal peduncle width"
 
 
-def test_weasly_fish_length_is_marked_provisional():
-    """0.30 m is an eyeball estimate, not a caliper reading. It is recorded so
-    the model becomes gradeable at all, but the note has to say so — otherwise
-    a later reader treats it as ground truth and a systematic underestimate
-    gets blamed on calibration."""
+def test_weasly_fish_uses_the_previously_published_length():
+    """31 cm, matching a prior publication.
+
+    Deliberately NOT the midpoint of the known [300, 310] mm interval, which
+    would halve the worst-case reference error and make it symmetric. A
+    reference that disagrees with an already-published number is worse than a
+    slightly biased one: it turns every future comparison into something a
+    reader has to reconcile by hand.
+    """
     weasly = next(m for m in KNOWN_FISH_MODELS if m["name"] == "Weasly Fish")
 
-    assert weasly["known_length_m"] == pytest.approx(0.30)
-    assert "provisional" in FISH_MODEL_NOTES["Weasly Fish"].lower()
+    assert weasly["known_length_m"] == pytest.approx(0.310)
+
+
+def test_weasly_fish_records_the_uncertainty_its_length_carries():
+    """310 is the TOP of the known interval, so the reference is one-sided.
+
+    A perfect measurement of this model reads 0.00%..-3.23% from the reference
+    alone. Without that written down, the first small negative reading gets
+    blamed on calibration — which is exactly the mistake the ruler's own
+    history is a monument to.
+    """
+    notes = FISH_MODEL_NOTES["Weasly Fish"]
+
+    assert "length_range_mm=300-310" in notes
+    assert "3.23" in notes
+    assert "provisional" in notes.lower()
+
+
+def test_a_perfect_measurement_of_weasly_fish_reads_within_the_stated_band():
+    """Pins the arithmetic the note asserts, so the two cannot drift."""
+    ref = next(
+        m for m in KNOWN_FISH_MODELS if m["name"] == "Weasly Fish"
+    )["known_length_m"]
+
+    errors = [100.0 * (truth - ref) / ref for truth in (0.300, 0.310)]
+
+    assert min(errors) == pytest.approx(-3.23, abs=0.01)
+    assert max(errors) == pytest.approx(0.0, abs=0.01)
 
 
 def test_ruler_is_seeded_at_the_labeled_span_not_the_nominal_length():

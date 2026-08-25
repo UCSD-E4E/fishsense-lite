@@ -77,7 +77,7 @@ def test_seeds_the_row_with_its_length_and_notes(migration, monkeypatch, conn):
 
     rows = _rows(conn)
     assert len(rows) == 1
-    assert rows[0]["known_length_m"] == pytest.approx(0.30)
+    assert rows[0]["known_length_m"] == pytest.approx(0.310)
     assert "58.69" in rows[0]["notes"]
     assert "29.56" in rows[0]["notes"]
 

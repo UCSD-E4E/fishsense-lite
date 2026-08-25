@@ -116,7 +116,7 @@ def test_backfills_notes_an_earlier_migration_inserted_without(
     conn.execute(
         sa.text(
             "INSERT INTO fishmodelreference (name, known_length_m) "
-            "VALUES (:n, 0.30)"
+            "VALUES (:n, 0.310)"
         ),
         {"n": NAME},
     )
@@ -134,7 +134,7 @@ def test_marks_the_provisional_row_and_leaves_measured_ones_alone(
     conn.execute(
         sa.text(
             "INSERT INTO fishmodelreference (name, known_length_m) "
-            "VALUES (:n, 0.30), ('Grouper', 0.360)"
+            "VALUES (:n, 0.310), ('Grouper', 0.360)"
         ),
         {"n": NAME},
     )
@@ -170,7 +170,7 @@ def test_running_twice_is_safe(provisional_migration, conn):
     conn.execute(
         sa.text(
             "INSERT INTO fishmodelreference (name, known_length_m) "
-            "VALUES (:n, 0.30)"
+            "VALUES (:n, 0.310)"
         ),
         {"n": NAME},
     )
@@ -189,6 +189,6 @@ def test_the_seed_then_provisional_chain_ends_with_both(
     _run(provisional_migration, conn)
 
     row = _row(conn)
-    assert row["known_length_m"] == pytest.approx(0.30)
+    assert row["known_length_m"] == pytest.approx(0.310)
     assert row["is_provisional"] == 1
     assert "58.69" in row["notes"]
