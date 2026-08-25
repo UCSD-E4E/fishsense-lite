@@ -111,19 +111,46 @@ def test_does_not_overwrite_a_hand_corrected_length(migration, monkeypatch, conn
     assert rows[0]["notes"] == "calipered 2026-09-01"
 
 
-def test_downgrade_removes_only_this_row(migration, monkeypatch, conn):
+def test_downgrade_leaves_the_row_alone(migration, monkeypatch, conn):
+    """A downgrade must not discard reference data.
+
+    The row is inert without a measurement to grade, and `upgrade()` explicitly
+    refuses to stamp over a hand-corrected length — deleting it here would throw
+    away exactly the work that guard protects. Sibling `b4c81f60d7e2` seeds the
+    same table and takes the same position, in as many words.
+
+    This test previously asserted the opposite and pinned the unsafe behaviour.
+    """
+    _run(migration, monkeypatch, conn)
     conn.execute(
         sa.text(
-            "INSERT INTO fishmodelreference (name, known_length_m) "
-            "VALUES ('Grouper', 0.360)"
-        )
+            "UPDATE fishmodelreference SET known_length_m = 0.287, "
+            "notes = 'calipered later' WHERE name = :n"
+        ),
+        {"n": NAME},
     )
-    _run(migration, monkeypatch, conn)
 
     _run(migration, monkeypatch, conn, fn="downgrade")
 
+    rows = _rows(conn)
+    assert len(rows) == 1
+    assert rows[0]["known_length_m"] == pytest.approx(0.287)
+    assert rows[0]["notes"] == "calipered later"
+
+
+def test_upgrade_is_a_no_op_if_the_model_is_ever_renamed(
+    migration, monkeypatch, conn
+):
+    """This migration replays on every fresh database forever. A bare
+    `next(...)` over `KNOWN_FISH_MODELS` would raise StopIteration inside the
+    FastAPI lifespan after a rename, failing API boot — so it must degrade to
+    doing nothing instead."""
+    monkeypatch.setattr(
+        migration,
+        "KNOWN_FISH_MODELS",
+        [{"name": "Something Else", "known_length_m": 0.1}],
+    )
+
+    _run(migration, monkeypatch, conn)
+
     assert _rows(conn) == []
-    remaining = conn.execute(
-        sa.text("SELECT name FROM fishmodelreference")
-    ).scalars().all()
-    assert remaining == ["Grouper"]

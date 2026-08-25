@@ -207,3 +207,81 @@ async def test_one_bad_frame_does_not_condemn_its_neighbours(session):
     assert [r["image_id"] for r in rows] == [bad], "only the bad frame"
     assert rows[0]["best_fit_model"] == "Shark"
     assert rows[0]["confidence"] == "high"
+
+
+# ── provisional references must not attract other models' frames ──────
+
+
+async def test_a_provisional_reference_is_not_offered_as_a_best_fit(session):
+    """A reference length that is an ESTIMATE must never re-label a real frame.
+
+    Stage 14 measures a projection, so an out-of-plane fish reads short and
+    never long — the whole asymmetry this view is built around. That means
+    correct-but-angled frames of the big models land in a broad short band, and
+    dropping a provisional length into that band turns every one of them into a
+    `medium` suspect pointing at a model whose length nobody has calipered.
+
+    Concretely: a Shark (605 mm) measured at 290 mm. Its own error is -52%, so
+    it clears the own-error gate either way. Before `Weasly Fish` existed the
+    closest other reference was the Ruler at 15.4% — outside the 10% gate, so
+    no flag. A provisional 300 mm sits 3.3% away and would flag it.
+
+    The frame is still graded (it stays in the accuracy view); it just cannot
+    be *cited* as evidence that something else was mislabeled.
+    """
+    from fishsense_api.models.fish_model_reference import FishModelReference
+
+    session.add(
+        FishModelReference(
+            name="Weasly Fish", known_length_m=0.30, is_provisional=True
+        )
+    )
+    await session.flush()
+
+    await _measure(session, dive_id=1, model_name="Shark", length_m=0.29)
+
+    assert await _suspects(session) == []
+
+
+async def test_a_non_provisional_reference_still_attracts(session):
+    """The control. Same frame, same length, reference marked measured — the
+    flag must appear, or the test above would pass for the wrong reason."""
+    from fishsense_api.models.fish_model_reference import FishModelReference
+
+    session.add(
+        FishModelReference(
+            name="Weasly Fish", known_length_m=0.30, is_provisional=False
+        )
+    )
+    await session.flush()
+
+    await _measure(session, dive_id=1, model_name="Shark", length_m=0.29)
+
+    rows = await _suspects(session)
+    assert [r["best_fit_model"] for r in rows] == ["Weasly Fish"]
+
+
+async def test_a_provisional_model_is_still_graded_in_the_accuracy_view(session):
+    """Excluding it from *re-labeling* must not un-grade it. Making Weasly Fish
+    gradeable is the entire point of seeding it."""
+    from fishsense_api.models.fish_model_reference import FishModelReference
+
+    session.add(
+        FishModelReference(
+            name="Weasly Fish", known_length_m=0.30, is_provisional=True
+        )
+    )
+    await session.flush()
+
+    await _measure(session, dive_id=1, model_name="Weasly Fish", length_m=0.29)
+
+    rows = [
+        dict(r._mapping)  # pylint: disable=protected-access
+        for r in await session.exec(
+            text(
+                "SELECT model_name, pct_error FROM "
+                "fish_model_measurement_accuracy"
+            )
+        )
+    ]
+    assert [r["model_name"] for r in rows] == ["Weasly Fish"]

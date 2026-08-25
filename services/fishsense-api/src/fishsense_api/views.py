@@ -471,6 +471,17 @@ KNOWN_FISH_MODELS = [
 # bound on (name, known_length_m), so changing the row shape changes what those
 # already-applied migrations do. Seed data being canonical in this module is
 # worth keeping; retroactively editing migration behaviour is not.
+# Models whose `known_length_m` is an ESTIMATE, not a caliper reading.
+#
+# A separate set for the same reason `FISH_MODEL_NOTES` is a separate mapping:
+# historical migrations import `KNOWN_FISH_MODELS` and bind it to an
+# executemany over (name, known_length_m), so adding a key to those rows
+# changes what already-applied migrations do.
+#
+# Consumed by the seed migration, which sets `fishmodelreference.is_provisional`
+# — see that column for why it is load-bearing rather than documentation.
+PROVISIONAL_FISH_MODELS = frozenset({"Weasly Fish"})
+
 FISH_MODEL_NOTES = {
     "Weasly Fish": (
         "Length 0.30 m is PROVISIONAL — an estimate, not a caliper reading. "
@@ -641,6 +652,13 @@ WITH frame_fit AS (
            ) AS rk
     FROM {FISH_MODEL_ACCURACY_VIEW_NAME} a
     CROSS JOIN fishmodelreference r
+    -- Provisional lengths are estimates and must not re-label real frames.
+    -- Angled frames read short (never long), so they cluster in a broad band
+    -- below each model's true length; an un-calipered length sitting in that
+    -- band would flag every correct-but-angled frame near it. Such rows stay
+    -- fully graded in the accuracy view — they just aren't offered as an
+    -- alternative label here.
+    WHERE NOT r.is_provisional
 )
 SELECT
     a.image_id,
