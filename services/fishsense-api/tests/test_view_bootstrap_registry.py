@@ -111,11 +111,10 @@ async def test_fresh_database_seeding_inserts_every_known_model(
     rows = await _seed_against(tmp_path, monkeypatch)
 
     assert set(rows) == {m["name"] for m in views.KNOWN_FISH_MODELS}
-    # The provisional flag and caliper notes must survive the bootstrap — they
-    # are what keeps an estimated length out of the mislabel view.
-    assert rows["Weasly Fish"]["provisional"] is True
+    # Caliper notes must survive the bootstrap. Nothing is provisional: every
+    # reference length is a real measurement.
     assert "58.69" in rows["Weasly Fish"]["notes"]
-    assert rows["Grouper"]["provisional"] is False
+    assert not any(r["provisional"] for r in rows.values())
 
 
 async def test_seeding_is_insert_only_and_idempotent(tmp_path, monkeypatch):

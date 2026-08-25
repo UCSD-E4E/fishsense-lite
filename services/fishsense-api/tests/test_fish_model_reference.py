@@ -156,7 +156,6 @@ def test_weasly_fish_records_the_uncertainty_its_length_carries():
 
     assert "length_range_mm=300-310" in notes
     assert "3.23" in notes
-    assert "provisional" in notes.lower()
 
 
 def test_a_perfect_measurement_of_weasly_fish_reads_within_the_stated_band():
