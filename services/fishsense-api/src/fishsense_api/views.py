@@ -455,7 +455,36 @@ KNOWN_FISH_MODELS = [
     # without re-instructing labelers to click a physical 0 that the scale does
     # not print.
     {"name": "Ruler", "known_length_m": 0.3429},
+    # PROVISIONAL length — an eyeball estimate, not a caliper reading. Recorded
+    # so the model becomes gradeable at all: it has been pickable in the species
+    # XML all along, and `fish_model_measurement_accuracy` inner-joins on
+    # `Fish.name`, so every Weasly Fish measurement has been silently absent
+    # from the accuracy view rather than wrong in it.
+    #
+    # Revisit if it reads systematically short — see FISH_MODEL_NOTES.
+    {"name": "Weasly Fish", "known_length_m": 0.30},
 ]
+
+# Provenance for a reference row, keyed by name. Deliberately a SEPARATE
+# mapping rather than a `notes` key on the rows above: historical alembic
+# migrations import `KNOWN_FISH_MODELS` and pass it straight to an executemany
+# bound on (name, known_length_m), so changing the row shape changes what those
+# already-applied migrations do. Seed data being canonical in this module is
+# worth keeping; retroactively editing migration behaviour is not.
+FISH_MODEL_NOTES = {
+    "Weasly Fish": (
+        "Length 0.30 m is PROVISIONAL — an estimate, not a caliper reading. "
+        "Confirm it if measurements read systematically short; until then a "
+        "negative bias on this model is as likely to be the reference as the "
+        "calibration. "
+        "Body widths ARE calipered, 2026-08-20: 58.69 mm at mid-body, "
+        "29.56 mm at the caudal peduncle. They are recorded as an independent "
+        "input for the round-model thickness work and must never be "
+        "back-solved from measurement error — thickness inferred that way "
+        "absorbs whatever calibration bias is present, and the validation set "
+        "starts grading itself."
+    ),
+}
 
 # One row per fish-model measurement, with its error against the known length.
 #

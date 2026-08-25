@@ -19,8 +19,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from fishsense_shared import taxonomy
+
 from fishsense_api.views import (
     FISH_MODEL_ACCURACY_VIEW_SQL,
+    FISH_MODEL_NOTES,
     KNOWN_FISH_MODELS,
 )
 
@@ -43,10 +46,50 @@ async def session():
 
 
 def test_known_models_cover_the_labeled_taxonomy():
-    """Every `Fish Model, <name>` leaf a labeler can pick must have a known
-    length, or its measurements can never be graded."""
-    names = {m["name"] for m in KNOWN_FISH_MODELS}
-    assert {"Snook", "Grouper", "Shark", "Purple Angel"} <= names
+    """EVERY `Fish Model, <name>` leaf a labeler can pick must have a known
+    length, or its measurements can never be graded.
+
+    Asserted against the whole labeled set rather than a hand-picked subset,
+    because the failure this guards is *silent*: the accuracy view inner-joins
+    on `Fish.name`, so a model with no reference row simply never appears. No
+    error, no NULL row, no count that looks wrong — the measurements just are
+    not there. `Weasly Fish` sat in the species XML in exactly that state, and
+    the previous version of this test passed the whole time because it only
+    checked four names it already knew about.
+    """
+    labeled = set(taxonomy.LABELED_FISH_MODELS)
+    known = {m["name"] for m in KNOWN_FISH_MODELS}
+
+    assert labeled <= known, f"labelable but ungradeable: {sorted(labeled - known)}"
+
+
+def test_weasly_fish_records_the_calipered_widths():
+    """The round-model thickness work needs thickness as an INDEPENDENT input.
+
+    Stage 14 measures a length from two clicked landmarks; a model's girth is
+    invisible to it. If thickness were ever back-solved from measurement error
+    it would absorb whatever calibration bias happened to be present, and the
+    validation set would quietly start grading itself — the same circularity
+    that keeps these lengths out of calibration in the first place.
+
+    So the widths are calipered off the physical model and recorded as
+    provenance, in millimetres as measured.
+    """
+    notes = FISH_MODEL_NOTES["Weasly Fish"]
+
+    assert "58.69" in notes, "mid-body width"
+    assert "29.56" in notes, "caudal peduncle width"
+
+
+def test_weasly_fish_length_is_marked_provisional():
+    """0.30 m is an eyeball estimate, not a caliper reading. It is recorded so
+    the model becomes gradeable at all, but the note has to say so — otherwise
+    a later reader treats it as ground truth and a systematic underestimate
+    gets blamed on calibration."""
+    weasly = next(m for m in KNOWN_FISH_MODELS if m["name"] == "Weasly Fish")
+
+    assert weasly["known_length_m"] == pytest.approx(0.30)
+    assert "provisional" in FISH_MODEL_NOTES["Weasly Fish"].lower()
 
 
 def test_ruler_is_seeded_at_the_labeled_span_not_the_nominal_length():

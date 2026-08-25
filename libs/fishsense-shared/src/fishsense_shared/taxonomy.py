@@ -48,6 +48,32 @@ FISH_MODEL_PREFIX = "Fish Model,"
 # through the same name-keyed path. Unlike a fish model its endpoints are
 # unambiguous — no tip-vs-fork landmark uncertainty — so it isolates
 # calibration error from labeling convention.
+# Every `Fish Model, <name>` leaf a labeler can pick, in species-XML order.
+#
+# Lives here rather than in either service because the two halves are split
+# across packages: the labeling XML that offers these choices is in the
+# api-worker, and the `fishmodelreference` rows that make a measurement
+# *gradeable* are in the API. Nothing connected them, and the gap is silent —
+# `fish_model_measurement_accuracy` inner-joins on `Fish.name`, so a model with
+# no reference row produces no rows at all. No error, no NULL, just absence.
+#
+# `Weasly Fish` sat in exactly that state in prod: pickable, measurable, and
+# graded by nobody.
+#
+# Kept in step from both sides: the api-worker asserts the XML matches this
+# list, and the API asserts every name here has a reference row. Adding a model
+# means editing the XML, this list, and `views.KNOWN_FISH_MODELS` — the tests
+# name whichever you forget.
+LABELED_FISH_MODELS = (
+    "Weasly Fish",
+    "Snook",
+    "Grouper",
+    "Shark",
+    "Gray Anthias",
+    "Purple Angel",
+    "Yellow Anthias",
+)
+
 RULER_CONTENT = "Calibration Targets, Ruler"
 RULER_NAME = "Ruler"
 
@@ -65,6 +91,7 @@ FISH_MODEL_LIKE = f"{FISH_MODEL_PREFIX}%"
 
 __all__ = [
     "FISH_MODEL_LIKE",
+    "LABELED_FISH_MODELS",
     "FISH_MODEL_PREFIX",
     "MEASURABILITY_CORPUS",
     "REAL_FISH_LIKE",
