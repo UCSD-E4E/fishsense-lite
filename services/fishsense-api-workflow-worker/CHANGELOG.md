@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.52.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.51.1...fishsense-api-workflow-worker-v1.52.0) (2026-08-25)
+
+
+### Features
+
+* **reference:** make Weasly Fish gradeable, and stop the gap recurring ([#603](https://github.com/UCSD-E4E/fishsense-lite/issues/603)) ([e91317c](https://github.com/UCSD-E4E/fishsense-lite/commit/e91317c58e1de28ade7139a41d786f542445c246))
+
 ## [1.51.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.51.0...fishsense-api-workflow-worker-v1.51.1) (2026-08-21)
 
 
