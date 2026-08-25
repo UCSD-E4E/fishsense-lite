@@ -25,3 +25,16 @@ class FishModelReference(SQLModel, table=True):
     # Provenance: how/when the length was established (e.g. field dates,
     # caliper session). Free text — the measurement itself is the datum.
     notes: str | None = Field(default=None)
+
+    # True when `known_length_m` is an ESTIMATE rather than a caliper reading.
+    #
+    # Load-bearing, not documentation. `fish_model_species_mislabel_suspects`
+    # CROSS JOINs this table to ask "does this frame's length fit some OTHER
+    # model better?", and a provisional length dropped into that comparison
+    # re-labels real frames on the strength of a guess. Stage 14 measures a
+    # projection, so angled frames of the big models read short and land in a
+    # broad band; an estimate sitting in that band flags every one of them.
+    #
+    # A provisional row is still graded in `fish_model_measurement_accuracy` —
+    # it just cannot be cited as evidence against another model's label.
+    is_provisional: bool = Field(default=False)

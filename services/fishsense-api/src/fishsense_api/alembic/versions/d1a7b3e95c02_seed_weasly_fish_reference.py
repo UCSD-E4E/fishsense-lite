@@ -52,7 +52,16 @@ def upgrade() -> None:
     if _NAME in existing:
         return
 
-    model = next(m for m in KNOWN_FISH_MODELS if m["name"] == _NAME)
+    # A filtering comprehension, not `next(...)`: this migration is shipped and
+    # replays on every fresh database forever. If the model is ever renamed in
+    # `KNOWN_FISH_MODELS`, a bare `next` raises StopIteration inside the FastAPI
+    # lifespan and the API fails to boot. Degrading to a no-op is the only safe
+    # behaviour for a historical seed. Same reason `FISH_MODEL_NOTES` is read
+    # with `.get`.
+    candidates = [m for m in KNOWN_FISH_MODELS if m["name"] == _NAME]
+    if not candidates:
+        return
+    model = candidates[0]
     bind.execute(
         sa.text(
             "INSERT INTO fishmodelreference (name, known_length_m, notes) "
@@ -61,19 +70,17 @@ def upgrade() -> None:
         {
             "name": model["name"],
             "known_length_m": model["known_length_m"],
-            "notes": FISH_MODEL_NOTES[_NAME],
+            "notes": FISH_MODEL_NOTES.get(_NAME),
         },
     )
 
 
 def downgrade() -> None:
-    """Remove the seeded row.
+    """Leave the row in place.
 
-    Safe because the row is pure reference data — no measurement points at it;
-    the accuracy view joins BY NAME, so dropping it returns Weasly Fish
-    measurements to being ungradeable rather than orphaning anything.
+    Deliberately a no-op, matching sibling `b4c81f60d7e2`, which seeds the same
+    table and says the same thing. The row is inert without a measurement to
+    grade, and `upgrade()` goes out of its way NOT to stamp over a length an
+    operator has since calipered — deleting it on the way back down would throw
+    away exactly the work that guard exists to protect.
     """
-    op.get_bind().execute(
-        sa.text("DELETE FROM fishmodelreference WHERE name = :name"),
-        {"name": _NAME},
-    )

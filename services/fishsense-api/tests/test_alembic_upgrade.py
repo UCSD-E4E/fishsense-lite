@@ -43,6 +43,17 @@ def _patch_run_alembic(has_alembic_version: bool, missing_views=()):
     async def _fake_missing_views():
         return list(missing_views)
 
+    # Seeding reference rows runs on BOTH branches for the same reason views
+    # do — the stamp path skips every migration, so a fresh database would come
+    # up with an empty `fishmodelreference`. Stubbed here so it doesn't open a
+    # real connection, and recorded so ordering can be asserted: on the fresh
+    # branch it must land before the stamp, or a failure would leave the
+    # database marked fully-migrated with nothing seeded and no way back.
+    seeded = MagicMock(side_effect=lambda: calls.append("seed"))
+
+    async def _fake_seed():
+        seeded()
+
     return (
         fake_command,
         fake_cfg,
@@ -55,6 +66,7 @@ def _patch_run_alembic(has_alembic_version: bool, missing_views=()):
             _has_alembic_version_table=_fake_check,
             _create_all_views=_fake_create_views,
             _missing_views=_fake_missing_views,
+            _seed_fish_model_references=_fake_seed,
         ),
     )
 
@@ -128,10 +140,12 @@ def test_run_alembic_upgrade_fresh_db_stamps_head_without_running_ddl():
     fake_command.stamp.assert_called_once_with(fake_cfg, "head")
     fake_command.upgrade.assert_not_called()
     views_created.assert_called_once()
-    # Views BEFORE the stamp. If creation fails, `alembic_version` stays
-    # absent and the next restart retries the whole path; stamping first would
-    # mark the DB fully-migrated with no views and no way back.
-    assert calls == ["create_views", "stamp"]
+    # Views AND seed data BEFORE the stamp. If either fails, `alembic_version`
+    # stays absent and the next restart retries the whole path; stamping first
+    # would mark the DB fully-migrated with no views, no reference rows, and no
+    # way back — the accuracy view would then be empty for every model, which
+    # is the same silent absence the reference seeding exists to prevent.
+    assert calls == ["create_views", "seed", "stamp"]
     _assert_script_location_set(fake_cfg)
 
 

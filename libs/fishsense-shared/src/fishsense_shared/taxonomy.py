@@ -48,6 +48,9 @@ FISH_MODEL_PREFIX = "Fish Model,"
 # through the same name-keyed path. Unlike a fish model its endpoints are
 # unambiguous — no tip-vs-fork landmark uncertainty — so it isolates
 # calibration error from labeling convention.
+RULER_CONTENT = "Calibration Targets, Ruler"
+RULER_NAME = "Ruler"
+
 # Every `Fish Model, <name>` leaf a labeler can pick, in species-XML order.
 #
 # Lives here rather than in either service because the two halves are split
@@ -74,9 +77,6 @@ LABELED_FISH_MODELS = (
     "Yellow Anthias",
 )
 
-RULER_CONTENT = "Calibration Targets, Ruler"
-RULER_NAME = "Ruler"
-
 # Stage-9 marker: the frame shows the slate with the laser on it. This is read
 # off `taxonomy[0]`, a separate path from the slate-*type* leaf that species
 # sync maps to `Dive.dive_slate_id`.
@@ -91,8 +91,8 @@ FISH_MODEL_LIKE = f"{FISH_MODEL_PREFIX}%"
 
 __all__ = [
     "FISH_MODEL_LIKE",
-    "LABELED_FISH_MODELS",
     "FISH_MODEL_PREFIX",
+    "LABELED_FISH_MODELS",
     "MEASURABILITY_CORPUS",
     "REAL_FISH_LIKE",
     "RULER_CONTENT",

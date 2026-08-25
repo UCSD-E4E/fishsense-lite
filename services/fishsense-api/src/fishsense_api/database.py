@@ -134,6 +134,53 @@ async def _create_all_views() -> None:
         await engine.dispose()
 
 
+async def _seed_fish_model_references() -> None:
+    """Insert any missing `fishmodelreference` rows, idempotently.
+
+    The counterpart to `_create_all_views`, and it exists for the same reason.
+    On a fresh database `run_alembic_upgrade` **stamps** head rather than
+    running the migrations, so every seed those migrations perform is skipped —
+    the reference table comes up empty and `fish_model_measurement_accuracy`,
+    which INNER JOINs it, is empty for every model. That is the exact silent
+    absence the Weasly Fish work set out to end, reintroduced through the
+    bootstrap path.
+
+    Insert-only, never update: an operator who has calipered a model and
+    corrected its row must not have that stamped back to the seeded value on
+    the next restart. Provisional flags and notes are set for rows this call
+    creates; rows that already exist are left entirely alone.
+    """
+    engine = create_async_engine(pg_connection_string())
+    try:
+        async with engine.begin() as conn:
+            result = await conn.execute(sa.text("SELECT name FROM fishmodelreference"))
+            present = {row[0] for row in result}
+            missing = [m for m in views.KNOWN_FISH_MODELS if m["name"] not in present]
+            for model in missing:
+                await conn.execute(
+                    sa.text(
+                        "INSERT INTO fishmodelreference "
+                        "(name, known_length_m, notes, is_provisional) "
+                        "VALUES (:name, :known_length_m, :notes, :is_provisional)"
+                    ),
+                    {
+                        "name": model["name"],
+                        "known_length_m": model["known_length_m"],
+                        "notes": views.FISH_MODEL_NOTES.get(model["name"]),
+                        "is_provisional": model["name"]
+                        in views.PROVISIONAL_FISH_MODELS,
+                    },
+                )
+            if missing:
+                _log.info(
+                    "seeded %d fish-model reference row(s): %s",
+                    len(missing),
+                    ", ".join(m["name"] for m in missing),
+                )
+    finally:
+        await engine.dispose()
+
+
 def run_alembic_upgrade() -> None:
     """Apply pending migrations OR stamp head on a fresh DB.
 
@@ -191,6 +238,12 @@ def run_alembic_upgrade() -> None:
                 "views missing after upgrade (%s); recreating", ", ".join(missing)
             )
             asyncio.run(_create_all_views())
+
+        # Same repair rationale as the views above: a database bootstrapped by
+        # the stamp path was marked fully-migrated without ever running a seed,
+        # and nothing else will backfill it. Insert-only, so a healthy database
+        # is untouched.
+        asyncio.run(_seed_fish_model_references())
     else:
         _log.info("alembic_version missing; fresh DB after create_all")
         # Views BEFORE the stamp, deliberately. Stamping marks every migration
@@ -205,7 +258,13 @@ def run_alembic_upgrade() -> None:
         # non-self-healing failure this exists to fix.
         _log.info("creating views for fresh DB")
         asyncio.run(_create_all_views())
-        _log.info("views created; stamping head")
+        _log.info("views created; seeding reference data")
+        # Before the stamp, for the same reason the views are: stamping marks
+        # every migration applied without running any of them, so the seeds
+        # those migrations perform would never happen. If this raises,
+        # `alembic_version` is still absent and the next restart retries.
+        asyncio.run(_seed_fish_model_references())
+        _log.info("reference data seeded; stamping head")
         alembic_command.stamp(cfg, "head")
 
 
