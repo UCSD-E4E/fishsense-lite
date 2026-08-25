@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.53.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.53.0...fishsense-api-workflow-worker-v1.53.1) (2026-08-25)
+
+
+### Documentation
+
+* bring the package READMEs back in line with the code ([#619](https://github.com/UCSD-E4E/fishsense-lite/issues/619)) ([588d39a](https://github.com/UCSD-E4E/fishsense-lite/commit/588d39a2fd6afc036ec7534955adad0dda757d7d))
+
 ## [1.53.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.52.0...fishsense-api-workflow-worker-v1.53.0) (2026-08-25)
 
 

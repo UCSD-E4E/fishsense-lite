@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.16.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.16.2...fishsense-data-processing-workflow-worker-v2.16.3) (2026-08-25)
+
+
+### Documentation
+
+* bring the package READMEs back in line with the code ([#619](https://github.com/UCSD-E4E/fishsense-lite/issues/619)) ([588d39a](https://github.com/UCSD-E4E/fishsense-lite/commit/588d39a2fd6afc036ec7534955adad0dda757d7d))
+
 ## [2.16.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.16.1...fishsense-data-processing-workflow-worker-v2.16.2) (2026-08-23)
 
 

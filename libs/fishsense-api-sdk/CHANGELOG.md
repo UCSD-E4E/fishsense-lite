@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.46.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.46.0...fishsense-api-sdk-v1.46.1) (2026-08-25)
+
+
+### Documentation
+
+* bring the package READMEs back in line with the code ([#619](https://github.com/UCSD-E4E/fishsense-lite/issues/619)) ([588d39a](https://github.com/UCSD-E4E/fishsense-lite/commit/588d39a2fd6afc036ec7534955adad0dda757d7d))
+
 ## [1.46.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.45.1...fishsense-api-sdk-v1.46.0) (2026-08-20)
 
 
