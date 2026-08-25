@@ -61,7 +61,7 @@ async def _run(request, client, monkeypatch):
         list_dive_folder_activity as sut,
     )
 
-    monkeypatch.setattr(sut, "_build_nas_client", lambda: client)
+    monkeypatch.setattr(sut, "build_nas_client", lambda: client)
     return await sut.list_dive_folder_activity(request)
 
 

@@ -45,7 +45,6 @@ no write call.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import os
 import tempfile
 from dataclasses import dataclass, field
@@ -53,25 +52,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
+from fishsense_api_sdk.models.image import Image
 from synology_filestation import DSMError
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.nas_errors import (
     raise_if_permanent_dsm_error,
 )
+from fishsense_api_workflow_worker.activities.nas_frames import (
+    build_nas_client,
+    file_checksum,
+    read_taken_datetime,
+    resolve_nas_path,
+)
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
-from fishsense_api_workflow_worker.config import settings
-from fishsense_api_workflow_worker.exif import read_exif
-from fishsense_api_workflow_worker.nas import NasDownloadClient
 from fishsense_shared.ingest_contracts import RejectedImage
-
-# Matches `spider/backend.py:67`. The chunking is not scoping — it is identical
-# to hashing the whole buffer — but it keeps a ~15 MB buffer per frame off the
-# heap, which is why spider did it and why we do.
-_HASH_CHUNK_BYTES = 8192
-
-# EXIF lives at the front; no need to re-read the whole file to reach it.
-_EXIF_HEADER_BYTES = 1024 * 1024
 
 __all__ = ["BatchResult", "scan_and_register_images_activity"]
 
@@ -86,46 +81,6 @@ class BatchResult:
     #: MAX of the frames' timestamps — how every existing `Dive.dive_datetime`
     #: was derived, and this is the only step that reads them.
     max_taken_datetime: datetime | None = None
-
-
-def _build_nas_client() -> NasDownloadClient:
-    return NasDownloadClient(
-        nas_url=settings.e4e_nas.url,
-        username=settings.e4e_nas.username,
-        password=settings.e4e_nas.password,
-    )
-
-
-def _resolve_nas_path(relative_path: str) -> str:
-    """Prepend the share root. The DB stores share-relative paths; FileStation
-    needs absolute ones, and surfaces an unresolved path as a 502."""
-    if relative_path.startswith("/"):
-        return relative_path
-    root = settings.e4e_nas.raw_root_path.rstrip("/")
-    return f"{root}/{relative_path.lstrip('/')}"
-
-
-def _file_checksum(path: Path) -> str:
-    digest = hashlib.md5()
-    with open(path, "rb") as handle:
-        for blob in iter(lambda: handle.read(_HASH_CHUNK_BYTES), b""):
-            digest.update(blob)
-    return digest.hexdigest()
-
-
-def _taken_datetime(path: Path) -> datetime | None:
-    """Naive EXIF 0x0132 stamped UTC — the convention ~131k rows follow. The
-    camera's recorded offset is deliberately NOT applied: one consistent offset
-    is recoverable later, two conventions mixed in one column are not."""
-    with open(path, "rb") as handle:
-        header = handle.read(_EXIF_HEADER_BYTES)
-    raw = read_exif(header).date_time
-    if not raw:
-        return None
-    try:
-        return datetime.strptime(raw, "%Y:%m:%d %H:%M:%S").replace(tzinfo=timezone.utc)
-    except ValueError:
-        return None
 
 
 def _download(nas, src_path: str, dest_dir: str) -> None:
@@ -143,54 +98,63 @@ def _read_frame(nas, stored_path: str) -> tuple[str, datetime | None]:
 
     Runs in a worker thread: the hash and the EXIF read are blocking file I/O.
     """
-    src_path = _resolve_nas_path(stored_path)
+    src_path = resolve_nas_path(stored_path)
     with tempfile.TemporaryDirectory() as tmpdir:
         _download(nas, src_path, tmpdir)
         local = Path(tmpdir) / os.path.basename(src_path)
-        return _file_checksum(local), _taken_datetime(local)
+        return file_checksum(local), read_taken_datetime(local)
 
 
-def _resume_index() -> int:
-    """Where a retry should pick up.
+def _note_timestamp(result: "BatchResult", taken: datetime | None) -> None:
+    """Fold one frame's timestamp into the batch maximum.
 
-    Temporal replays the last heartbeat's details on retry; frames before that
-    index were already registered, so re-downloading them is pure waste.
+    Applied to SKIPPED frames as well as newly registered ones.
+    `Dive.dive_datetime` is the MAX over the dive — how every existing row was
+    derived — so a re-run of an already-ingested dive must still report it.
+    Counting only the register path returns None for a fully-ingested batch,
+    which leaves `dive_datetime` unset, and something too early on a partial
+    skip.
+
+    Tolerates a naive value: a row read back without tzinfo is still UTC by the
+    migration's construction, and comparing naive to aware raises rather than
+    ordering wrongly.
     """
-    details = activity.info().heartbeat_details
-    if not details:
-        return 0
-    try:
-        return int(details[0])
-    except (TypeError, ValueError):
-        return 0
+    if taken is None:
+        return
+    if taken.tzinfo is None:
+        taken = taken.replace(tzinfo=timezone.utc)
+    if result.max_taken_datetime is None or taken > result.max_taken_datetime:
+        result.max_taken_datetime = taken
 
 
 @activity.defn
 async def scan_and_register_images_activity(
     dive_id: int, paths: List[str], camera_id: int
 ) -> BatchResult:
-    from fishsense_api_sdk.models.image import (  # pylint: disable=import-outside-toplevel
-        Image,
-    )
-
     result = BatchResult()
-    nas = _build_nas_client()
-    start = _resume_index()
+    nas = build_nas_client()
 
     async with get_fs_client() as fs:
         # One call, not one per frame: the whole point is to skip BEFORE paying
         # for a download.
         existing = {
-            image.path for image in (await fs.images.get(dive_id=dive_id) or [])
+            image.path: image.taken_datetime
+            for image in (await fs.images.get(dive_id=dive_id) or [])
         }
 
         for index, stored_path in enumerate(paths):
-            if index < start:
-                continue
+            # Heartbeat for liveness and progress only — NOT as a resume cursor.
+            # Skipping frames below a heartbeat index drops their outcomes from
+            # this result, so a transient 502 mid-batch could erase an earlier
+            # no-EXIF rejection and let `finalize` promote a dive with a missing
+            # frame. Resume is DB-backed instead: `existing` is what a prior
+            # attempt actually persisted — accurate, and already the mechanism
+            # that avoids re-downloading.
             activity.heartbeat(index)
 
             if stored_path in existing:
                 result.skipped_existing += 1
+                _note_timestamp(result, existing[stored_path])
                 continue
 
             checksum, taken = await asyncio.to_thread(_read_frame, nas, stored_path)
@@ -222,8 +186,7 @@ async def scan_and_register_images_activity(
                 ),
             )
             result.registered += 1
-            if result.max_taken_datetime is None or taken > result.max_taken_datetime:
-                result.max_taken_datetime = taken
+            _note_timestamp(result, taken)
 
     activity.logger.info(
         "scanned dive_id=%d frames=%d registered=%d skipped=%d rejected=%d",

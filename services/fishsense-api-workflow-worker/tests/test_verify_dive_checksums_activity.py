@@ -102,7 +102,7 @@ async def _run(images, contents, monkeypatch, **kwargs):
         verify_dive_checksums_activity as sut,
     )
 
-    monkeypatch.setattr(sut, "_build_nas_client", lambda: _nas(contents))
+    monkeypatch.setattr(sut, "build_nas_client", lambda: _nas(contents))
     monkeypatch.setattr(sut, "get_fs_client", lambda: _fs(images))
     return await ActivityEnvironment().run(
         sut.verify_dive_checksums_activity, 412, kwargs.get("limit")

@@ -124,7 +124,7 @@ async def test_skips_already_staged_checksums_no_nas_download(monkeypatch):
     fs = _make_fs(images)
     nas = _make_nas()
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
-    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+    monkeypatch.setattr(sut, "build_nas_client", lambda: nas)
 
     with _moto_store(monkeypatch, preexisting=("aaa", "bbb")) as s3:
         result = await ActivityEnvironment().run(
@@ -161,7 +161,7 @@ async def test_stages_new_checksums_via_nas_download_then_put(monkeypatch):
     fs = _make_fs(images)
     nas = _make_nas()
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
-    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+    monkeypatch.setattr(sut, "build_nas_client", lambda: nas)
     _patch_tempfile_read(monkeypatch, b"raw-bytes")
 
     with _moto_store(monkeypatch) as s3:
@@ -197,7 +197,7 @@ async def test_counts_no_path_images_without_crashing(monkeypatch):
     fs = _make_fs(images)
     nas = _make_nas()
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
-    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+    monkeypatch.setattr(sut, "build_nas_client", lambda: nas)
     _patch_tempfile_read(monkeypatch, b"raw")
 
     with _moto_store(monkeypatch):
@@ -241,7 +241,7 @@ async def test_failed_nas_download_does_not_upload_to_object_store(monkeypatch):
         "simulated DSM session expired (code 119)"
     )
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
-    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+    monkeypatch.setattr(sut, "build_nas_client", lambda: nas)
 
     with _moto_store(monkeypatch) as s3:
         with pytest.raises(Exception):
@@ -263,7 +263,7 @@ async def test_returns_zeros_when_dive_has_no_images(monkeypatch):
     fs = _make_fs([])
     nas = _make_nas()
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
-    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+    monkeypatch.setattr(sut, "build_nas_client", lambda: nas)
 
     with _moto_store(monkeypatch):
         result = await ActivityEnvironment().run(
@@ -328,7 +328,7 @@ async def test_relative_image_paths_get_prefixed_before_nas_download(monkeypatch
     fs = _make_fs(images)
     nas = _make_nas()
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
-    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+    monkeypatch.setattr(sut, "build_nas_client", lambda: nas)
     _patch_tempfile_read(monkeypatch, b"raw-bytes")
 
     with _moto_store(monkeypatch) as s3:
@@ -356,7 +356,7 @@ async def test_transient_502_propagates_without_inner_retry(monkeypatch):
     nas = _make_nas()
     nas.download_to.side_effect = TransportError("download HTTP 502 Bad Gateway")
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
-    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+    monkeypatch.setattr(sut, "build_nas_client", lambda: nas)
 
     with _moto_store(monkeypatch) as s3:
         with pytest.raises(BaseException) as excinfo:
@@ -384,7 +384,7 @@ async def test_permanent_408_raises_non_retryable_application_error(monkeypatch)
     nas = _make_nas()
     nas.download_to.side_effect = DSMError("Synology API error 408")
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
-    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+    monkeypatch.setattr(sut, "build_nas_client", lambda: nas)
 
     with _moto_store(monkeypatch) as s3:
         with pytest.raises(ApplicationError) as excinfo:
@@ -407,7 +407,7 @@ async def test_transient_dsm_407_propagates_retryable(monkeypatch):
     nas = _make_nas()
     nas.download_to.side_effect = DSMError("Synology API error 407")
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
-    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+    monkeypatch.setattr(sut, "build_nas_client", lambda: nas)
 
     with _moto_store(monkeypatch):
         with pytest.raises(BaseException) as excinfo:

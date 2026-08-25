@@ -50,6 +50,9 @@ def _fs(existing_paths=()):
     for p in existing_paths:
         row = MagicMock()
         row.path = p
+        # Real rows carry a timestamp, and skipped frames must still feed the
+        # batch max — see test_a_fully_ingested_rerun_still_reports_the_max.
+        row.taken_datetime = datetime(2024, 8, 21, 7, 0, 0, tzinfo=timezone.utc)
         rows.append(row)
     fs.images.get = AsyncMock(return_value=rows)
     fs.images.post = AsyncMock(side_effect=lambda *a, **kw: 999)
@@ -82,7 +85,7 @@ async def _run(paths, contents, monkeypatch, *, fs=None, errors=None, env=None):
     )
 
     nas = _nas(contents, errors)
-    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+    monkeypatch.setattr(sut, "build_nas_client", lambda: nas)
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs or _fs())
     result = await (env or ActivityEnvironment()).run(
         sut.scan_and_register_images_activity,
@@ -257,28 +260,39 @@ async def test_heartbeats_the_index_of_each_frame(monkeypatch):
     assert beats == [0, 1]
 
 
-async def test_a_retry_resumes_from_the_recorded_heartbeat(monkeypatch):
-    """Temporal replays the last heartbeat details on retry. Frames before that
-    index were already registered, so re-downloading them is pure waste."""
+async def test_resume_is_db_backed_not_heartbeat_backed(monkeypatch):
+    """A retry must skip what was actually PERSISTED, not what a heartbeat
+    index claims.
+
+    Skipping frames below the heartbeat index would drop their outcomes from
+    `BatchResult` — so a transient 502 mid-batch could erase an earlier no-EXIF
+    rejection, and `finalize` would then see `rejected == 0` and promote a dive
+    with a missing frame. That is precisely the guard `finalize` exists to be.
+
+    Here a prior attempt registered A but rejected B (no EXIF). On retry, even
+    with a heartbeat index past both: A is skipped because the DB says so, and
+    B is re-read and re-rejected rather than silently forgotten.
+    """
     import dataclasses
 
-    data = _orf()
+    good = _orf()
+    blind = build_orf(date_time=None, date_time_original=None) + b"\0" * 40_000
     env = ActivityEnvironment()
-    # `ActivityEnvironment.info` is what `activity.info()` returns inside the
-    # run; seeding its heartbeat_details is how a retry is simulated.
-    env.info = dataclasses.replace(env.info, heartbeat_details=[1])
-    fs = _fs()
+    env.info = dataclasses.replace(env.info, heartbeat_details=[2])
+    fs = _fs(existing_paths=[f"{FOLDER}/A.ORF"])
 
     result, nas = await _run(
         ["A.ORF", "B.ORF", "C.ORF"],
-        {"A.ORF": data, "B.ORF": data, "C.ORF": data},
+        {"A.ORF": good, "B.ORF": blind, "C.ORF": good},
         monkeypatch,
         fs=fs,
         env=env,
     )
 
     assert nas.downloaded == ["B.ORF", "C.ORF"]
-    assert result.registered == 2
+    assert result.skipped_existing == 1
+    assert result.registered == 1
+    assert [r.path for r in result.rejected] == [f"{FOLDER}/B.ORF"]
 
 
 # ── read-only where it must be ────────────────────────────────────────
@@ -296,3 +310,38 @@ def test_the_module_never_writes_to_the_nas():
     source = inspect.getsource(sut)
     for forbidden in (".upload(", ".delete(", "upload_bytes", "create_folder"):
         assert forbidden not in source, f"NAS must stay read-only: {forbidden}"
+
+
+async def test_a_fully_ingested_rerun_still_reports_the_max_timestamp(monkeypatch):
+    """`Dive.dive_datetime` is the MAX over the dive, and `finalize` gets it
+    from here. Counting only newly-registered frames returned None for a
+    fully-ingested batch, which would leave `dive_datetime` unset on any
+    re-run — and something too early whenever a batch was partly skipped."""
+    data = _orf()
+    fs = _fs(existing_paths=[f"{FOLDER}/A.ORF", f"{FOLDER}/B.ORF"])
+
+    result, nas = await _run(
+        ["A.ORF", "B.ORF"], {"A.ORF": data, "B.ORF": data}, monkeypatch, fs=fs
+    )
+
+    assert nas.downloaded == []
+    assert result.registered == 0
+    assert result.max_taken_datetime == datetime(
+        2024, 8, 21, 7, 0, 0, tzinfo=timezone.utc
+    )
+
+
+async def test_a_skipped_frame_can_hold_the_batch_max(monkeypatch):
+    """Mixed batch: the existing row is later than the new one, so the max has
+    to come from the frame that was never downloaded."""
+    early = _orf("2024:08:21 06:00:00")
+    fs = _fs(existing_paths=[f"{FOLDER}/A.ORF"])
+
+    result, _ = await _run(
+        ["A.ORF", "B.ORF"], {"A.ORF": early, "B.ORF": early}, monkeypatch, fs=fs
+    )
+
+    assert result.registered == 1
+    assert result.max_taken_datetime == datetime(
+        2024, 8, 21, 7, 0, 0, tzinfo=timezone.utc
+    )

@@ -33,8 +33,11 @@ from temporalio import activity
 from fishsense_api_workflow_worker.activities.nas_errors import (
     raise_if_permanent_dsm_error,
 )
+from fishsense_api_workflow_worker.activities.nas_frames import (
+    build_nas_client,
+)
 from fishsense_api_workflow_worker.config import settings
-from fishsense_api_workflow_worker.nas import NasDownloadClient, NasEntry
+from fishsense_api_workflow_worker.nas import NasEntry
 from fishsense_shared.ingest_contracts import IngestDiveRequest, SubfolderReport
 
 # Case-insensitive: Olympus writes `.ORF`, but operators and copy tools produce
@@ -61,14 +64,6 @@ class DiveFolderListing:
     #: Immediate subdirectories that hold `.ORF`s — separate dives, reported
     #: for the operator to submit themselves.
     subfolders: List[SubfolderReport] = field(default_factory=list)
-
-
-def _build_nas_client() -> NasDownloadClient:
-    return NasDownloadClient(
-        nas_url=settings.e4e_nas.url,
-        username=settings.e4e_nas.username,
-        password=settings.e4e_nas.password,
-    )
 
 
 def resolve_nas_folder(relative_path: str) -> str:
@@ -108,7 +103,7 @@ async def _list(client, folder_path: str) -> List[NasEntry]:
 async def list_dive_folder_activity(
     request: IngestDiveRequest,
 ) -> DiveFolderListing:
-    client = _build_nas_client()
+    client = build_nas_client()
     folder_path = resolve_nas_folder(request.dive_path)
 
     entries = await _list(client, folder_path)
