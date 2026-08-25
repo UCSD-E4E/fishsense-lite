@@ -484,16 +484,25 @@ PROVISIONAL_FISH_MODELS = frozenset({"Weasly Fish"})
 
 FISH_MODEL_NOTES = {
     "Weasly Fish": (
-        "Length 0.30 m is PROVISIONAL — an estimate, not a caliper reading. "
-        "Confirm it if measurements read systematically short; until then a "
-        "negative bias on this model is as likely to be the reference as the "
-        "calibration. "
-        "Body widths ARE calipered, 2026-08-20: 58.69 mm at mid-body, "
-        "29.56 mm at the caudal peduncle. They are recorded as an independent "
-        "input for the round-model thickness work and must never be "
-        "back-solved from measurement error — thickness inferred that way "
-        "absorbs whatever calibration bias is present, and the validation set "
-        "starts grading itself."
+        "Fork length 0.30 m. PROVISIONAL: an operator estimate, not a caliper "
+        "reading. Nothing observed contradicts it as of 2026-08-25 — but "
+        "nothing had tested it either, since no Weasly Fish measurement had "
+        "ever reached the accuracy view (the row did not exist). "
+        "Reading the first results: every other model reads SHORT against its "
+        "reference by a ladder ordered by fork depth (Purple Angel -2.2%, "
+        "Shark -2.6%, Grouper -5.1%, Snook -9.6%) — the signature of a "
+        "total-length reference measured to the fork. This reference is "
+        "ALREADY a fork length, so that offset should not apply to it: expect "
+        "a reading nearer 0% than the ladder, and treat a ladder-shaped "
+        "negative here as evidence the landmark story is wrong rather than "
+        "the length. Materially negative beyond that says 0.30 m is too long; "
+        "positive says too short. Recalipering settles it; the view is the "
+        "instrument, not the authority. "
+        "width_midbody_mm=58.69; width_caudal_peduncle_mm=29.56 (calipered "
+        "2026-08-20). The widths are an INDEPENDENT input for the round-model "
+        "thickness work and must never be back-solved from measurement error "
+        "— thickness inferred that way absorbs whatever calibration bias is "
+        "present and the held-out validation set starts grading itself."
     ),
 }
 

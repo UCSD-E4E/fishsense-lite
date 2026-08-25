@@ -63,6 +63,33 @@ def test_known_models_cover_the_labeled_taxonomy():
     assert labeled <= known, f"labelable but ungradeable: {sorted(labeled - known)}"
 
 
+def test_weasly_fish_records_which_landmark_its_length_uses():
+    """0.30 m is a FORK length, and the note has to say which landmark it is.
+
+    The landmark definition is the open term across this whole validation set:
+    every other model reads short against its reference by a ladder ordered by
+    fork depth (Purple Angel -2.2%, Shark -2.6%, Grouper -5.1%, Snook -9.6%),
+    which is the signature of a total-length reference measured to the fork.
+
+    A reference that does not say which end it means cannot be reconciled with
+    that later — the number alone is ambiguous by ~5pp, which is larger than
+    most of the errors being chased.
+    """
+    assert "fork length" in FISH_MODEL_NOTES["Weasly Fish"].lower()
+
+
+def test_weasly_fish_widths_are_machine_reparsable():
+    """The widths are the input to a separate experiment, so they need to come
+    back out as numbers rather than being readable prose only."""
+    import re
+
+    notes = FISH_MODEL_NOTES["Weasly Fish"]
+    found = dict(re.findall(r"(width_\w+_mm)=([0-9.]+)", notes))
+
+    assert float(found["width_midbody_mm"]) == pytest.approx(58.69)
+    assert float(found["width_caudal_peduncle_mm"]) == pytest.approx(29.56)
+
+
 def test_weasly_fish_records_the_calipered_widths():
     """The round-model thickness work needs thickness as an INDEPENDENT input.
 
