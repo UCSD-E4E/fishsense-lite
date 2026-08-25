@@ -62,10 +62,12 @@ from fishsense_api_workflow_worker.activities.list_dive_folder_activity import (
 from fishsense_api_workflow_worker.activities.nas_errors import (
     raise_if_permanent_dsm_error,
 )
+from fishsense_api_workflow_worker.activities.nas_frames import (
+    build_nas_client,
+)
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
 from fishsense_api_workflow_worker.config import settings
 from fishsense_api_workflow_worker.exif import read_exif
-from fishsense_api_workflow_worker.nas import NasDownloadClient
 from fishsense_shared.ingest_contracts import (
     IngestDiveRequest,
     IngestPreflight,
@@ -83,14 +85,6 @@ EXIF_HEADER_BYTES = 1024 * 1024
 MAX_PATH_LENGTH = 255
 
 __all__ = ["EXIF_HEADER_BYTES", "MAX_PATH_LENGTH", "preflight_ingest_activity"]
-
-
-def _build_nas_client() -> NasDownloadClient:
-    return NasDownloadClient(
-        nas_url=settings.e4e_nas.url,
-        username=settings.e4e_nas.username,
-        password=settings.e4e_nas.password,
-    )
 
 
 def _relative_path(absolute_path: str) -> str:
@@ -238,7 +232,7 @@ async def preflight_ingest_activity(
             "as its own request; it is not included here."
         )
 
-    nas = _build_nas_client()
+    nas = build_nas_client()
     images: List[PreflightImage] = []
     serials: set[str] = set()
     artists: set[str] = set()

@@ -22,18 +22,12 @@ from pathlib import Path
 
 from temporalio import activity
 
+from fishsense_api_workflow_worker.activities.nas_frames import (
+    build_nas_client,
+)
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
 from fishsense_api_workflow_worker.config import settings
 from fishsense_api_workflow_worker.object_store import open_object_store_client
-from fishsense_api_workflow_worker.nas import NasDownloadClient
-
-
-def _build_nas_client() -> NasDownloadClient:
-    return NasDownloadClient(
-        nas_url=settings.e4e_nas.url,
-        username=settings.e4e_nas.username,
-        password=settings.e4e_nas.password,
-    )
 
 
 def _resolve_nas_path(relative_path: str) -> str:
@@ -73,7 +67,7 @@ async def stage_slate_pdf_activity(slate_id: int) -> bool:
         )
         return True
 
-    nas = _build_nas_client()
+    nas = build_nas_client()
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = _resolve_nas_path(slate.path)
         await asyncio.to_thread(

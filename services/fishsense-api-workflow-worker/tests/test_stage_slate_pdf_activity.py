@@ -88,7 +88,7 @@ async def test_skips_nas_when_pdf_already_present(monkeypatch):
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
     nas = MagicMock()
     nas.download_to = MagicMock()
-    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+    monkeypatch.setattr(sut, "build_nas_client", lambda: nas)
 
     with _moto_store(monkeypatch, preexisting_slate_ids=(7,)) as s3:
         result = await ActivityEnvironment().run(
@@ -119,7 +119,7 @@ async def test_downloads_and_puts_when_pdf_missing(monkeypatch):
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
     nas = MagicMock()
     nas.download_to = MagicMock()
-    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+    monkeypatch.setattr(sut, "build_nas_client", lambda: nas)
     _patch_tempfile_read(monkeypatch, b"pdf-bytes")
 
     with _moto_store(monkeypatch) as s3:
@@ -176,7 +176,7 @@ async def test_relative_slate_path_gets_prefixed_before_nas_download(monkeypatch
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
     nas = MagicMock()
     nas.download_to = MagicMock()
-    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+    monkeypatch.setattr(sut, "build_nas_client", lambda: nas)
     _patch_tempfile_read(monkeypatch, b"pdf-bytes")
 
     with _moto_store(monkeypatch):

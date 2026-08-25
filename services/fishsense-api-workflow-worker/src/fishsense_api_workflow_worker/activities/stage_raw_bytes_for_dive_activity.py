@@ -48,10 +48,12 @@ from fishsense_api_workflow_worker.activities.nas_errors import (
     NAS_FILE_NOT_FOUND_TYPE,
     raise_if_permanent_dsm_error,
 )
+from fishsense_api_workflow_worker.activities.nas_frames import (
+    build_nas_client,
+)
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
 from fishsense_api_workflow_worker.config import settings
 from fishsense_api_workflow_worker.object_store import open_object_store_client
-from fishsense_api_workflow_worker.nas import NasDownloadClient
 
 # Default max concurrent raw `.ORF` downloads per staging activity, used
 # when `e4e_nas.stage_concurrency` isn't set. FileStation's download backend
@@ -95,14 +97,6 @@ class StageRawBytesResult:
     staged: int  # newly downloaded + uploaded
     skipped_already_present: int
     no_path: int  # images whose `path` was None — skipped, surfaced in count
-
-
-def _build_nas_client() -> NasDownloadClient:
-    return NasDownloadClient(
-        nas_url=settings.e4e_nas.url,
-        username=settings.e4e_nas.username,
-        password=settings.e4e_nas.password,
-    )
 
 
 def _iter_leaf_exceptions(exc: BaseException):
@@ -164,7 +158,7 @@ async def stage_raw_bytes_for_dive_activity(
         images = [image for image in images if image.is_canonical]
     activity.logger.info("staging raw bytes dive_id=%d images=%d", dive_id, len(images))
 
-    nas = _build_nas_client()
+    nas = build_nas_client()
     concurrency = _stage_concurrency()
     activity.logger.info("staging concurrency=%d dive_id=%d", concurrency, dive_id)
     sem = asyncio.Semaphore(concurrency)

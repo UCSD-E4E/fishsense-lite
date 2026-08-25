@@ -45,10 +45,12 @@ from synology_filestation import DSMError
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.nas_errors import dsm_error_code
+from fishsense_api_workflow_worker.activities.nas_frames import (
+    build_nas_client,
+)
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
 from fishsense_api_workflow_worker.config import settings
 from fishsense_api_workflow_worker.exif import read_exif
-from fishsense_api_workflow_worker.nas import NasDownloadClient
 from fishsense_shared.ingest_contracts import (
     ChecksumMismatch,
     VerifyChecksumsReport,
@@ -68,14 +70,6 @@ _EXIF_HEADER_BYTES = 1024 * 1024
 _DSM_NOT_FOUND = 408
 
 __all__ = ["verify_dive_checksums_activity"]
-
-
-def _build_nas_client() -> NasDownloadClient:
-    return NasDownloadClient(
-        nas_url=settings.e4e_nas.url,
-        username=settings.e4e_nas.username,
-        password=settings.e4e_nas.password,
-    )
 
 
 def _resolve_nas_path(relative_path: str) -> str:
@@ -184,7 +178,7 @@ async def verify_dive_checksums_activity(
     report = VerifyChecksumsReport(dive_id=dive_id, total_in_dive=len(ordered))
     selected = ordered if limit is None else ordered[:limit]
 
-    nas = _build_nas_client()
+    nas = build_nas_client()
     for index, image in enumerate(selected):
         if not image.path:
             continue

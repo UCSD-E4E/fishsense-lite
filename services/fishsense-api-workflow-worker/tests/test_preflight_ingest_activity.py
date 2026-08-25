@@ -114,7 +114,7 @@ async def _run(request, listing, monkeypatch, *, fs=None, headers=None):
         headers.get(file_path.rsplit("/", 1)[-1], default)
     )
 
-    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+    monkeypatch.setattr(sut, "build_nas_client", lambda: nas)
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs or _fs())
     # Preflight heartbeats per frame — a 500-frame dive is a long activity —
     # so it needs a real activity context.
@@ -378,7 +378,7 @@ async def test_reads_only_the_first_megabyte_of_each_frame(monkeypatch):
     nas.download_range.return_value = build_orf(
         date_time="2024:08:21 08:56:51", serial_number=SERIAL
     )
-    monkeypatch.setattr(sut, "_build_nas_client", lambda: nas)
+    monkeypatch.setattr(sut, "build_nas_client", lambda: nas)
     monkeypatch.setattr(sut, "get_fs_client", _fs)
 
     await ActivityEnvironment().run(
