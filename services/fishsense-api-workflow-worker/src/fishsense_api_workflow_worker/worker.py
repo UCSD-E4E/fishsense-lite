@@ -169,6 +169,9 @@ from fishsense_api_workflow_worker.activities.sync_users_label_studio_activity i
 from fishsense_api_workflow_worker.activities.update_dive_image_groups_activity import (
     update_dive_image_groups_activity,
 )
+from fishsense_api_workflow_worker.activities.scan_and_register_images_activity import (  # pylint: disable=line-too-long
+    scan_and_register_images_activity,
+)
 from fishsense_api_workflow_worker.activities.select_canonical_dive_ids_activity import (  # pylint: disable=line-too-long
     select_canonical_dive_ids_activity,
 )
@@ -709,6 +712,7 @@ async def main():
                 update_dive_image_groups_activity,
                 verify_dive_checksums_activity,
                 select_canonical_dive_ids_activity,
+                scan_and_register_images_activity,
                 resolve_dive_frame_clustering_inputs_activity,
                 resolve_laser_preprocess_inputs_activity,
                 resolve_laser_predict_inputs_activity,
