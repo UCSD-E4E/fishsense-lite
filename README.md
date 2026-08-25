@@ -12,7 +12,8 @@ Services (each is a workspace member with its own Dockerfile under
 - `services/fishsense-api-workflow-worker/` — Temporal worker, NAS + Label
   Studio orchestration (api side)
 - `services/fishsense-data-processing-workflow-worker/` — Temporal worker
-  for per-image preprocessing (rectify, overlay, JPEG, file-exchange PUT)
+  for per-image preprocessing (rectify, overlay, JPEG → Garage). Runs on
+  NRP/Kubernetes, scaled 0↔N by the api-worker
 - `services/fishsense-backup-worker/` — Temporal worker for nightly
   Postgres → NAS backups + retention pruning
 
@@ -109,14 +110,17 @@ Consumed via released wheels / git refs, not part of this monorepo:
 ## Where to read next
 
 - **[CLAUDE.md](CLAUDE.md)** — the operating manual. Service map,
-  notebook-port status, data-worker activity pattern, file-exchange
-  URL contract, Dynaconf eager-validation gotcha, build → release →
+  notebook-port status, data-worker activity pattern, the Garage object-store
+  key contract, dive ingestion, Dynaconf eager-validation gotcha, build → release →
   promote → deploy pipeline, service Dockerfile pattern, **and the
   operational ground truth** (no staging tier, authentik in front of
   the API, `E4EFS_` env prefix, SDK ↔ API drift policing) plus the
   open follow-ups (migration finding #1, phase-6 polyrepo cutover,
   stage14 real-frame regression, Label Studio bootstrap chicken-and-egg).
   **Read this before editing.**
+- **[docs/ingest.md](docs/ingest.md)** — how to ingest a dive folder from
+  the NAS: dry-run first, what preflight refuses and why, and what the
+  warnings mean.
 - **[docs/diagrams.md](docs/diagrams.md)** — Mermaid diagrams: system
   context, deploy topology, domain model, SDK class diagram, per-stage
   sequence flows, CI/CD state machine. Useful as a high-level
