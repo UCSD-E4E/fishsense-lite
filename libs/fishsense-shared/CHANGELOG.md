@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.10.0...fishsense-shared-v0.10.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **ingest:** delete verify_existing, which was honoured by no code ([#618](https://github.com/UCSD-E4E/fishsense-lite/issues/618)) ([795292e](https://github.com/UCSD-E4E/fishsense-lite/commit/795292eec11362f1f92a62f57748c7a9bacdf3c2))
+
+
+### Documentation
+
+* bring the package READMEs back in line with the code ([#619](https://github.com/UCSD-E4E/fishsense-lite/issues/619)) ([588d39a](https://github.com/UCSD-E4E/fishsense-lite/commit/588d39a2fd6afc036ec7534955adad0dda757d7d))
+
 ## [0.10.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.9.0...fishsense-shared-v0.10.0) (2026-08-25)
 
 
