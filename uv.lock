@@ -659,7 +659,7 @@ wheels = [
 
 [[package]]
 name = "fishsense-api"
-version = "1.48.0"
+version = "1.48.1"
 source = { editable = "services/fishsense-api" }
 dependencies = [
     { name = "alembic" },
@@ -739,7 +739,7 @@ dev = [
 
 [[package]]
 name = "fishsense-api-workflow-worker"
-version = "1.52.0"
+version = "1.53.0"
 source = { editable = "services/fishsense-api-workflow-worker" }
 dependencies = [
     { name = "boto3" },
