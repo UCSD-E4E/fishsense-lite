@@ -77,7 +77,7 @@ landed; the clones behind them are now collapsed into
 | Service | Purpose | Task queue |
 |---|---|---|
 | `services/fishsense-api/` | FastAPI app (DB CRUD, label endpoints) | — |
-| `services/fishsense-api-workflow-worker/` | api-side Temporal worker: hourly Label Studio sync (laser/headtail/dive-slate/species), on-demand Create/Populate × {Laser,Species,HeadTail,DiveSlate} LS project workflows, hourly preprocess parents for stages 0.1 / 1 / 2 / 5.1 / 9 (select + resolve; dispatch child to data-worker) | `fishsense_api_queue` |
+| `services/fishsense-api-workflow-worker/` | api-side Temporal worker: hourly Label Studio sync (laser/headtail/dive-slate/species), on-demand Create/Populate × {Laser,Species,HeadTail,DiveSlate} LS project workflows, on-demand dive ingestion (`IngestDiveWorkflow`, see below) + checksum verification, hourly preprocess parents for stages 0.1 / 1 / 2 / 5.1 / 9 (select + resolve; dispatch child to data-worker) | `fishsense_api_queue` |
 | `apps/fishsense-lite-web/` | Next.js 15 (App Router) + React + TS landing page at `fishsense.e4e.ucsd.edu`. SSR fetches LS project IDs from fishsense-api, resolves names from Label Studio, renders categorized link cards. Auth.js (next-auth v5) with Authentik OIDC gates `/portal/*`; landing stays public. Replaces the prior mafl dashboard + its hourly config-writer workflow. Will grow into a full web app. | — |
 | `services/fishsense-data-processing-workflow-worker/` | image preprocessing (rectify/overlay/JPEG), laser calibration, fish measurement | `fishsense_data_processing_queue` |
 | `services/fishsense-backup-worker/` | nightly Postgres → NAS backups + retention | `fishsense_backup_queue` |
@@ -713,6 +713,91 @@ axis belongs to the dive's calibration, so it makes every image in that dive
 unprocessable. `test_laser_geometry.py` pins all of this, the epipolar
 blindness included, so nobody later promotes the residual into a gate on its
 own.
+
+## Dive ingestion (`IngestDiveWorkflow`)
+
+Turns a NAS folder of `.ORF` files into a `Dive` and its `Image` rows. Before
+this, rows were only ever created by an external crawler
+(`UCSD-E4E/fishsense-data-processing-spider`) that is now retired and archived.
+
+Operator runbook: [docs/ingest.md](docs/ingest.md). Design and archaeology:
+[docs/plans/dive-image-ingestion.md](docs/plans/dive-image-ingestion.md).
+On-demand, no schedule, api-worker, `fishsense_api_queue`.
+
+**Every convention below was recovered by reading spider's source and then
+re-verified against the corpus** — `VerifyAllDivesChecksumsWorkflow` re-hashed
+1,619 frames across all 272 canonical dives on 2026-08-17 with zero checksum
+disagreements. They are not inferences.
+
+| Field | Convention | Where |
+|---|---|---|
+| `Image.checksum` | `md5` of the **whole file**, streamed in 8192-byte chunks | `nas_frames.file_checksum` |
+| `Image.taken_datetime` | naive EXIF tag **0x0132** (NOT 0x9003) stamped UTC, camera offset **not applied** | `nas_frames.read_taken_datetime` |
+| `Dive.dive_datetime` | **MAX** of the frames' timestamps | `finalize_dive_activity` |
+| `Image.is_canonical` | first-checksum-wins, computed **server-side** | `image_controller` |
+| dive identity | `dive = image.parent` — exactly one directory | `list_dive_folder_activity` |
+
+Both of the first two fail **silently** when wrong, which is why they live in
+one module: a divergent checksum makes duplicate detection report *zero overlap*
+rather than erroring, and a divergent timestamp corrupts stage-1 clustering,
+which is pure timestamp arithmetic. `nas_frames.py` was extracted when
+`duplicate-code` flagged 42 identical lines and `_build_nas_client` turned out
+to be copied six times.
+
+**The pipeline shape:**
+
+```
+list_dive_folder -> preflight_ingest -> create_dive -> scan_and_register (xN) -> finalize_dive
+                         (writes nothing)     LOW              batches of 25            HIGH
+```
+
+**Priority is the commit flag.** `create_dive` writes the dive at `LOW`
+*regardless of the request*, because every hourly cohort selects on HIGH — a dive
+created HIGH before its frames land gets clustered on some of them and populated
+into Label Studio missing others. `finalize_dive` promotes it only when
+`registered + skipped == total` and nothing was rejected, both refusals being
+non-retryable. A crash in between therefore leaves a dive and images that no
+stage will touch, and re-running is safe (`dives.post` upserts on `path`, the
+scan skips registered frames without downloading, a fully-skipped re-run still
+commits).
+
+**Non-recursion is precedent, not simplification.** Spider walked the tree but
+assigned `dive = image.parent.relative_to(data_root)`, so a nested folder always
+became its own dive row. Attaching a subdirectory's frames to the named dive
+would merge dives that are distinct rows in prod, with nothing left in the data
+to say which frames came from where. Subdirectories holding `.ORF`s are
+*reported* — the Olympus rollover case, where the TG-6 wraps its counter at
+`PA199999` and starts a child folder mid-dive.
+
+**Preflight reports every fault at once, and refuses on unstated intent.** The
+one worth knowing: exactly one of `self_calibrates` / `calibration_dive_id` is
+required, because a fish-only dive with no slate can never self-calibrate and
+nothing in the files reveals that. There is deliberately **no fallback from the
+MakerNote serial to the EXIF `Artist` tag** — a free-text rig label would bind
+intrinsics belonging to different glass and stage 14 would report confident wrong
+lengths.
+
+**Duplicate detection is containment, not the legacy MD5 aggregate.**
+`|new ∩ existing| / |new|` over content checksums, computed in `finalize`
+because it needs checksums that only exist once the scan has written the rows.
+Set-based, so immune to filenames and ordering, and it degrades to a partial
+overlap — which the whole-dive digest (`MD5(STRING_AGG(basename || ':' || md5))`)
+could not do, and is why it disappointed on a corpus that is ~50% duplicates.
+Reported, never blocking: duplicate rows land non-canonical and are invisible to
+every cohort.
+
+**`VerifyDiveChecksumsWorkflow` / `VerifyAllDivesChecksumsWorkflow`** re-hash
+existing rows against the NAS, read-only, with a source tripwire. Note they
+invert the staging activities' failure semantics on purpose: a missing file is a
+*finding*, because verification is asking a question, whereas staging and ingest
+are trying to do something and a missing file is a failure.
+
+**Open:** `IngestDiveRequest.verify_existing` is declared and honoured nowhere —
+wire it or delete it. The API-side Temporal client + `ingest_controller`
+(plan §2.7) and `/portal/ingest` are unbuilt, so ingest is CLI-only. When the
+controller lands, **add `fishsense-api` to `temporal.reload` in `flake.nix`** —
+the tell is the service gaining a `/run/tenant/temporal` mount, and missing it
+means the API silently holds an expired cert until something else restarts it.
 
 ## Data-worker activity pattern
 
