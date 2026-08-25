@@ -18,18 +18,31 @@ Task queue: `fishsense_api_queue`.
 
 | Workflow | Cadence | Purpose |
 |---|---|---|
-| `SyncLabelStudioLaserLabelsWorkflow` | every 1 h | Pull laser labels from Label Studio projects → write to fishsense-api. |
-| `SyncLabelStudioHeadTailLabelsWorkflow` | every 1 h | Same shape for head/tail labels. |
-| `Create<Stage>LabelStudioProjectWorkflow` × 4 | on-demand | Idempotently create the LS project for a stage (laser / species / headtail / dive_slate). Title-lookup or create from labeling-config XML. |
-| `Populate<Stage>LabelStudioProjectWorkflow(dive_id)` × 4 | on-demand | Query SQL for active LS projects (`incomplete=True`), fan out task imports across them with `Semaphore(4)`. |
-| `PreprocessLaserImagesParentWorkflow` | every 1 h (`overlap=SKIP`) | Stage-0.1 orchestrator: select → resolve → stage raw `.ORF`s NAS→file-exchange → dispatch `PreprocessLaserImagesWorkflow` → archive JPEGs file-exchange→NAS → cleanup raw `.ORF`s. |
-| `ClusterDiveFramesParentWorkflow` | every 1 h, +5 min (`overlap=SKIP`) | Stage-1 orchestrator (laser-valid dive without PREDICTION clusters). Selector → resolver → dispatch `DiveFrameClusteringWorkflow` → persist PREDICTION clusters via SDK. No NAS or file-exchange staging. |
-| `PreprocessSpeciesImagesParentWorkflow` | every 1 h, +15 min (`overlap=SKIP`) | Stage-2 orchestrator (PREDICTION cluster + laser-valid image without species label). Same five-step shape. |
-| `PreprocessHeadtailImagesParentWorkflow` | every 1 h, +30 min (`overlap=SKIP`) | Stage-5.1 orchestrator (laser-valid image without head/tail label). Same shape. |
-| `PreprocessSlateImagesParentWorkflow` | every 1 h, +45 min (`overlap=SKIP`) | Stage-9 orchestrator (slate-marked species labels lacking slate labels). Also stages the slate template PDF (`stage_slate_pdf_activity`) before dispatch. |
-| `PerformLaserCalibrationParentWorkflow` | every 1 h, +50 min (`overlap=SKIP`) | Stage-13 orchestrator: select → dispatch `PerformLaserCalibrationWorkflow`. No NAS/file-exchange staging. |
-| `MeasureFishParentWorkflow` | on-demand (`overlap=SKIP` when scheduled) | Stage-14 orchestrator: select → dispatch `MeasureFishWorkflow`. Drains one dive per run; not scheduled (measurement isn't idempotent — see CLAUDE.md). |
-| `ScaleDownIdleDataWorkerWorkflow` | every 1 h, +55 min (`overlap=SKIP`) | Scale the NRP data-worker Deployment to 0 if `fishsense_data_processing_queue` has had no running or recently-closed workflow for `kubernetes.idle_cooldown_minutes`. No-op when k8s scaling isn't configured. |
+| `SyncLabelStudio{Laser,HeadTail,Species,DiveSlate}LabelsWorkflow` | every 1 h, +0 | Pull labels from Label Studio → write to fishsense-api. All four share +0 deliberately: they select no dives, so they cannot race each other. |
+| `ReconcileLabelingConfigsWorkflow` | every 1 h | Keep each per-dive project's labeling-config XML in step with the stored constant. |
+| `Create<Stage>LabelStudioProjectWorkflow` × 4 | on-demand | Idempotently create **the dive's** LS project — title-lookup or create from the stored labeling-config XML. |
+| `Populate<Stage>LabelStudioProjectWorkflow(dive_id)` × 4 | on-demand | Materialize the per-dive project (calls the Create activity), then import that one dive's tasks. **Projects are per-dive**, so there is no discovery query and no fan-out. Idempotent: it selects only images without a non-sentinel label row, and `import_tasks_and_record_labels` dedupes by URL against tasks already in the project. |
+| `PopulateLaserLabelStudioProjectParentWorkflow` | every 1 h, +0 | Fans the laser populate child out over the cohort needing it. |
+| `PopulateSpeciesLabelStudioProjectParentWorkflow` | every 1 h, +20 | Species populate is **decoupled** from the stage-2 preprocess parent; it selects the superseded-aware cohort and is JPEG-gated per image. |
+| `PreprocessLaserImagesParentWorkflow` | every 1 h, +0 (`overlap=SKIP`) | Stage-0.1: select → resolve → stage raw `.ORF`s NAS→Garage → wake the data-worker → dispatch `PreprocessLaserImagesWorkflow` → delete the staged raw scratch → dispatch the populate child. |
+| `ClusterDiveFramesParentWorkflow` | every 1 h, +5 (`overlap=SKIP`) | Stage-1 (laser-valid dive without PREDICTION clusters). Selector → resolver → dispatch `DiveFrameClusteringWorkflow` → persist PREDICTION clusters. No NAS or object-store traffic — clustering is pure maths on `(image_id, taken_datetime)`. |
+| `PreprocessSpeciesImagesParentWorkflow` | every 1 h, +15 (`overlap=SKIP`) | Stage-2 (PREDICTION clusters + laser-valid image without a species row). Writes JPEGs only; populate is separate. |
+| `PreprocessHeadtailImagesParentWorkflow` | every 1 h, +30 (`overlap=SKIP`) | Stage-5.1 (laser-valid image without a head/tail row). |
+| `ComputeLaserDepthsParentWorkflow` | every 1 h, +35 (`overlap=SKIP`) | Per-image `LaserDepth`. Selects on **provenance mismatch**, not absence, so a recalibration drains as an ordinary cohort. |
+| `MeasureFishParentWorkflow` | every 1 h, +40 (`overlap=SKIP`) | Stage-14. Idempotent since 2026-07-17 (`post_measurement` upserts on `(image_id, fish_id)`); drains one dive per run. |
+| `PreprocessSlateImagesParentWorkflow` | every 1 h, +45 (`overlap=SKIP`) | Stage-9. Also stages the slate template PDF before dispatch. |
+| `PerformLaserCalibrationParentWorkflow` | every 1 h, +50 (`overlap=SKIP`) | Stage-13: select → dispatch `PerformLaserCalibrationWorkflow`. No NAS or object-store staging. |
+| `ScaleDownIdleDataWorkerWorkflow` | every 1 h, +55 (`overlap=SKIP`) | Scale the NRP data-worker Deployment to 0 when its queue is idle — **or when it is busy but *wedged*** (`spec.replicas > 0` with nothing Ready), which is how a crash-looping worker stops holding GPUs 24/7. No-op when k8s scaling isn't configured. |
+| `IngestDiveWorkflow(request)` | on-demand | Ingest one NAS folder into a `Dive` + its `Image` rows. See [docs/ingest.md](../../docs/ingest.md). |
+| `VerifyDiveChecksumsWorkflow` / `VerifyAllDivesChecksumsWorkflow` | on-demand | Re-hash existing rows against the NAS and report. Read-only, with a source tripwire. |
+| `UpdateDiveImageGroupsWorkflow(dive_id)` | on-demand | Stage-6.1: reconcile species labels into LABEL_STUDIO clusters. Refuses to re-run when clusters already exist — the cluster API has no DELETE, so a re-POST would double-count. |
+| `PredictSlateImagesParentWorkflow`, `BackfillSlatePredictionsWorkflow` | **dormant** | Model-assisted slate labeling, shut down 2026-08-03 — the ECC gate does not transfer out of distribution. Registered so a future evaluation can start it by hand; its schedule is *actively deleted* at startup. |
+
+The stagger is not cosmetic: it keeps the parents' selectors from all hitting
+`dives.get()` at the top of the hour, and it is pinned by
+`test_schedule_registration.py`. There is **no NAS archive step** — JPEGs are
+durable in Garage, and the api-worker's NAS access is read-only (a tripwire
+asserts the cleanup module imports no NAS client).
 
 Schedules are auto-registered at worker startup if missing, so the
 first deploy creates them and subsequent deploys are no-ops. To change

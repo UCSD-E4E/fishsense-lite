@@ -1,8 +1,13 @@
 # fishsense-data-processing-workflow-worker
 
-Temporal worker for per-image preprocessing — rectify the raw `.ORF`,
-draw a stage-specific overlay, JPEG-encode, and `PUT` the result back
-to the file-exchange. CPU-bound, opencv-heavy.
+Temporal worker for per-image preprocessing — rectify the raw `.ORF`, draw a
+stage-specific overlay, JPEG-encode, and write the result to the Garage object
+store. CPU-bound, opencv-heavy.
+
+It is **Garage-only**: it reads the raw scratch the api-worker staged and writes
+JPEGs, and holds no NAS credentials at all. That is what lets it run off-prem
+(NRP) without a stable egress IP — S3 access keys authenticate from anywhere,
+whereas the NAS does not — and it keeps NAS credentials off the cluster.
 
 Task queue: `fishsense_data_processing_queue`.
 
@@ -25,13 +30,17 @@ fishsense-core).
 
 Every per-image stage follows the same shape:
 
-1. `download_raw(checksum)` from the file-exchange.
-2. (stage 9 only) `download_slate_pdf(slate_id)`.
+1. `download_raw(checksum)` from Garage (`raw/{checksum}.ORF`).
+2. (stage 9 only) `download_slate_pdf(slate_id)`
+   (`slate_pdf/{slate_id}.pdf`).
 3. Off-loop CPU work via `asyncio.to_thread`: rectify
    (`RectifiedImage(RawImage(bytes), intrinsics)` — rawpy + auto-gamma
    + CLAHE + `cv2.undistort`) → stage-specific overlay → `cv2.imencode`.
-4. `upload_processed_jpeg(folder, checksum, jpeg_bytes)` to the
-   file-exchange.
+4. `upload_processed_jpeg(folder, checksum, jpeg_bytes)` to Garage
+   (`{jpeg_prefix}/{checksum}.JPG`). Those keys are **physical** — the populate
+   activities embed the same `s3://` URIs in Label Studio task data, so there is
+   no virtual→physical rewrite layer. The key helpers live once, in
+   `fishsense_shared.object_store`.
 
 The stages are intentionally **not** refactored into a shared base
 activity. Each has a distinct overlay shape (text vs rectangle vs

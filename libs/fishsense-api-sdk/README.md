@@ -27,11 +27,18 @@ that's opened in `__aenter__` and closed in `__aexit__`.
 
 ## Authentication
 
-Currently HTTP basic auth via `username` / `password`. Note:
-`orchestrator.fishsense.e4e.ucsd.edu` is fronted by Authentik OAuth in
-prod, which 302-redirects basic-auth requests — for dev access use
-Postgres direct or a port-forward to the internal API instead of going
-through the public host.
+HTTP basic auth via `username` / `password`.
+
+The public host is `api.fishsense.e4e.ucsd.edu` (renamed from `orchestrator.`
+at the Incus migration) and sits behind an Authentik forwardAuth middleware. A
+**302 from it means the credentials were rejected**, not that basic auth is
+unsupported — passthrough is enabled. Workers are unaffected either way: they
+reach `fishsense-api:8000` on the interior docker network and never touch the
+proxy.
+
+For dev access from outside, easiest first: `incus exec` into the slot and point
+`fishsense_api.url` at the interior address; or read Postgres directly for
+read-only work, which has no auth story and no write surface to worry about.
 
 ## Models
 
