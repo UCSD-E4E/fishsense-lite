@@ -60,7 +60,6 @@ anything is written.
 | `dive_slate_id` | The dive's slate, if it has one. |
 | `flip_dive_slate` | Passed through to the dive row. |
 | `dry_run` | Stop after preflight, having written nothing. |
-| `verify_existing` | **Declared but not implemented — it does nothing.** See "Known gaps". |
 
 ### Calibration intent is required, and cannot be inferred
 
@@ -195,10 +194,12 @@ zero checksum disagreements.**
 
 ## Known gaps
 
-* **`verify_existing` does nothing.** The field exists on `IngestDiveRequest` and
-  is honoured by no code. Use `VerifyDiveChecksumsWorkflow` above instead. The
-  flag should be either wired up or removed — a flag that silently does nothing
-  is worse than an absent one.
 * **No API or portal route yet.** Ingest is CLI-only; the Temporal client and
   `ingest_controller` in fishsense-api are unbuilt (see
   `docs/plans/dive-image-ingestion.md` §2.7), and `/portal/ingest` after that.
+
+There is deliberately **no `verify_existing` option on an ingest request.** One
+shipped briefly, honoured by no code, so setting it produced a normal ingest and
+no warning; it was removed rather than wired (#618). Verification is the
+workflows above — read-only by construction, sampling, and sharing exactly one
+definition of the checksum and timestamp conventions with ingest itself.

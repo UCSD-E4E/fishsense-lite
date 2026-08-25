@@ -792,8 +792,13 @@ invert the staging activities' failure semantics on purpose: a missing file is a
 *finding*, because verification is asking a question, whereas staging and ingest
 are trying to do something and a missing file is a failure.
 
-**Open:** `IngestDiveRequest.verify_existing` is declared and honoured nowhere —
-wire it or delete it. The API-side Temporal client + `ingest_controller`
+There is deliberately **no `verify_existing` flag** on an ingest request. One
+shipped briefly, honoured by no code — a declared safety measure that did
+nothing — and was removed rather than wired (#618): verification wants to be
+read-only and to report findings rather than fail, which is the opposite of what
+ingest wants, and one code path cannot hold both honestly.
+
+**Open:** the API-side Temporal client + `ingest_controller`
 (plan §2.7) and `/portal/ingest` are unbuilt, so ingest is CLI-only. When the
 controller lands, **add `fishsense-api` to `temporal.reload` in `flake.nix`** —
 the tell is the service gaining a `/run/tenant/temporal` mount, and missing it
