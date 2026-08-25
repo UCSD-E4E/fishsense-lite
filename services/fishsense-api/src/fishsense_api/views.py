@@ -437,6 +437,22 @@ FISH_MODEL_ACCURACY_VIEW_NAME = "fish_model_measurement_accuracy"
 # calibrates from its own answer key measures nothing. Calibration comes from
 # slates only.
 #
+# **Every length here is a FORK length** (operator-confirmed 2026-08-25) — snout
+# to the fork of the caudal fin, not to the tail tip. One convention across the
+# whole set; there is no per-model landmark to reconcile.
+#
+# That refutes the standing explanation for the residual error ladder. The four
+# models with enough measurements read short by
+# Purple Angel -2.2%, Shark -2.6%, Grouper -5.1%, Snook -9.6%, and that was read
+# as a total-length-vs-fork mismatch ordered by fork depth — "ONE definition
+# fix, not four". It cannot be: the references were fork lengths all along, and
+# a labeler clicking the tip instead would read LONG, not short.
+#
+# Nor is it size: ordered by length the errors go -2.2, -5.1, -9.6, -2.6, with
+# the longest model (Shark) second-best. **The cause is OPEN.** Note also that
+# four models ordered by anything is weak evidence, so the "ladder" may not be a
+# ladder. Do not spend the residual on a landmark fix.
+#
 # Field model dates: 2024-08-21 and 2024-10-16.
 KNOWN_FISH_MODELS = [
     {"name": "Snook", "known_length_m": 0.455},
@@ -502,17 +518,17 @@ FISH_MODEL_NOTES = {
         "small negative here is the reference, not calibration bias. The "
         "midpoint (305 mm) would have made that symmetric at +-1.64%; "
         "publication consistency was judged worth the one-sided 1.6pp. "
-        "Reading the first results: every other model reads SHORT against its "
-        "reference by a ladder ordered by fork depth (Purple Angel -2.2%, "
-        "Shark -2.6%, Grouper -5.1%, Snook -9.6%) — the signature of a "
-        "total-length reference measured to the fork. This reference is "
-        "ALREADY a fork length, so that offset should not apply to it: expect "
-        "a reading nearer 0% than the ladder, and treat a ladder-shaped "
-        "negative here as evidence the landmark story is wrong rather than "
-        "the length. Materially negative beyond the reference band says 0.310 m "
-        "is too long; positive says too short. "
-        "Recalipering settles it; the view is the "
-        "instrument, not the authority. "
+        "Fork length is the convention for EVERY reference in this table, so "
+        "this model carries no special landmark caveat — expect it to behave "
+        "like the others. That is also why a negative reading here is weak "
+        "evidence about the 310 figure: the other models read short by "
+        "-2.2%..-9.6% for reasons still unexplained (see KNOWN_FISH_MODELS), "
+        "so a Weasly Fish landing in that range says more about the unexplained "
+        "residual than about this length. A POSITIVE reading is the informative "
+        "one — nothing known pushes measurements long, so it would say 310 mm "
+        "is too short, which the [300, 310] interval already argues against. "
+        "Recalipering settles it; the view is the instrument, not the "
+        "authority. "
         "width_midbody_mm=58.69; width_caudal_peduncle_mm=29.56 (calipered "
         "2026-08-20). The widths are an INDEPENDENT input for the round-model "
         "thickness work and must never be back-solved from measurement error "

@@ -64,18 +64,33 @@ def test_known_models_cover_the_labeled_taxonomy():
 
 
 def test_weasly_fish_records_which_landmark_its_length_uses():
-    """0.30 m is a FORK length, and the note has to say which landmark it is.
-
-    The landmark definition is the open term across this whole validation set:
-    every other model reads short against its reference by a ladder ordered by
-    fork depth (Purple Angel -2.2%, Shark -2.6%, Grouper -5.1%, Snook -9.6%),
-    which is the signature of a total-length reference measured to the fork.
-
-    A reference that does not say which end it means cannot be reconciled with
-    that later — the number alone is ambiguous by ~5pp, which is larger than
-    most of the errors being chased.
-    """
+    """A reference that does not say which end it means is ambiguous by ~5pp —
+    larger than most of the errors being chased — so the landmark has to be on
+    the record even though every reference here shares one."""
     assert "fork length" in FISH_MODEL_NOTES["Weasly Fish"].lower()
+
+
+def test_the_fork_convention_is_recorded_for_the_whole_table():
+    """All reference lengths are fork lengths, and that is a property of the
+    SET, not of one row.
+
+    Recorded centrally because it retires a standing hypothesis: the residual
+    ladder (Purple Angel -2.2%, Shark -2.6%, Grouper -5.1%, Snook -9.6%) was
+    read as a total-length-vs-fork mismatch ordered by fork depth — "one
+    definition fix, not four". It cannot be, if the references were fork
+    lengths all along; and a labeler clicking the tail tip instead would read
+    LONG, not short. Someone will re-derive that hypothesis from the shape of
+    the numbers unless the refutation sits next to them.
+    """
+    import inspect
+
+    from fishsense_api import views
+
+    src = inspect.getsource(views)
+    head = src[: src.index("KNOWN_FISH_MODELS = [")]
+
+    assert "FORK length" in head
+    assert "OPEN" in head
 
 
 def test_weasly_fish_widths_are_machine_reparsable():
