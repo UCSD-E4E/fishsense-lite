@@ -487,19 +487,15 @@ KNOWN_FISH_MODELS = [
     # without re-instructing labelers to click a physical 0 that the scale does
     # not print.
     {"name": "Ruler", "known_length_m": 0.3429},
-    # 0.310 m = 31 cm, the value used in a prior publication. Chosen for
-    # CONSISTENCY, not because it is the best point estimate: the true fork
-    # length is known only to lie in [300, 310] mm, whose midpoint (305) would
-    # halve the worst-case reference error and make it symmetric (+-1.6% rather
-    # than 0..-3.2%). A reference that disagrees with an already-published
-    # number is worse — it makes every future comparison something a reader has
-    # to reconcile by hand.
+    # 0.310 m = 31 cm, the fork length used in a prior publication. Adopted so
+    # the two agree: a reference that disagrees with an already-published number
+    # turns every future comparison into something a reader reconciles by hand.
     #
-    # Consequence to carry into any reading: a PERFECT measurement of this model
-    # lands anywhere in 0.00%..-3.23% purely from the reference. Do not read a
-    # small negative here as calibration bias. See FISH_MODEL_NOTES.
-    #
-    # Still uncalipered, hence `PROVISIONAL_FISH_MODELS`.
+    # GROUNDWORK, not backfill — there are no Weasly Fish frames in the dataset
+    # yet. The row exists so the first ones GRADE instead of vanishing: the
+    # accuracy view inner-joins on `Fish.name`, so a measurement of a model with
+    # no reference row is silently absent rather than wrong. That is the whole
+    # point of seeding it ahead of the data.
     {"name": "Weasly Fish", "known_length_m": 0.310},
 ]
 
@@ -509,7 +505,17 @@ KNOWN_FISH_MODELS = [
 # bound on (name, known_length_m), so changing the row shape changes what those
 # already-applied migrations do. Seed data being canonical in this module is
 # worth keeping; retroactively editing migration behaviour is not.
-# Models whose `known_length_m` is an ESTIMATE, not a caliper reading.
+# Models whose `known_length_m` is an ESTIMATE rather than a measurement.
+#
+# **Currently empty, and that is the correct state.** Weasly Fish was listed here
+# while its length was an eyeball 30 cm; it is now 31 cm, a fork length used in a
+# prior publication, so the label no longer describes it.
+#
+# Do NOT reach for this to suppress mislabel-view noise. The flag excludes a row
+# from the best-fit search, and the reason a model attracts other models' frames
+# is that it EXISTS at that length, not how the length was obtained — a
+# foreshortened Grouper lands on a 310 mm reference whether or not anyone
+# calipered it. Use this only for a length nobody has actually measured.
 #
 # A separate set for the same reason `FISH_MODEL_NOTES` is a separate mapping:
 # historical migrations import `KNOWN_FISH_MODELS` and bind it to an
@@ -518,17 +524,18 @@ KNOWN_FISH_MODELS = [
 #
 # Consumed by the seed migration, which sets `fishmodelreference.is_provisional`
 # — see that column for why it is load-bearing rather than documentation.
-PROVISIONAL_FISH_MODELS = frozenset({"Weasly Fish"})
+PROVISIONAL_FISH_MODELS: frozenset[str] = frozenset()
 
 FISH_MODEL_NOTES = {
     "Weasly Fish": (
-        "Fork length 0.310 m (31 cm), the value used in a PRIOR PUBLICATION "
-        "and adopted here for consistency with it. Still PROVISIONAL: "
-        "length_range_mm=300-310, i.e. the true fork length is known only "
-        "to lie in that interval and has never been calipered. "
-        "Nothing observed contradicts it as of 2026-08-25 "
-        "— but nothing had tested it either, since no Weasly Fish measurement "
-        "had ever reached the accuracy view (the row did not exist). "
+        "Fork length 0.310 m (31 cm) — the measurement used in a PRIOR "
+        "PUBLICATION, adopted here so the two agree. length_range_mm=300-310 "
+        "records the interval it is known to within (+-5 mm, ~1.6%), well "
+        "inside the 10% gate the mislabel view uses — this is not a weaker "
+        "reference than the others. "
+        "As of 2026-08-25 there are NO Weasly Fish frames in the dataset; this "
+        "row is groundwork so the first ones grade rather than vanish through "
+        "the accuracy view's inner join. "
         "Because 310 is the TOP of the range, a perfect measurement of this "
         "model reads anywhere in 0.00%..-3.23% from the reference alone. A "
         "small negative here is the reference, not calibration bias. The "

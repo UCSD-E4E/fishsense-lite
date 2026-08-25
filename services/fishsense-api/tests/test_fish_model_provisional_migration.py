@@ -128,9 +128,16 @@ def test_backfills_notes_an_earlier_migration_inserted_without(
     assert "29.56" in row["notes"]
 
 
-def test_marks_the_provisional_row_and_leaves_measured_ones_alone(
-    provisional_migration, conn
-):
+def test_marks_whatever_the_declared_set_names(provisional_migration, conn, monkeypatch):
+    """The flag is driven by `PROVISIONAL_FISH_MODELS`, not a literal.
+
+    That set is currently EMPTY and should stay that way unless a length is
+    genuinely unmeasured — so the mechanism is exercised with a stand-in rather
+    than by marking a real row.
+    """
+    monkeypatch.setattr(
+        provisional_migration, "PROVISIONAL_FISH_MODELS", frozenset({"Grouper"})
+    )
     conn.execute(
         sa.text(
             "INSERT INTO fishmodelreference (name, known_length_m) "
@@ -141,13 +148,13 @@ def test_marks_the_provisional_row_and_leaves_measured_ones_alone(
 
     _run(provisional_migration, conn)
 
-    assert _row(conn)["is_provisional"] == 1
+    assert _row(conn)["is_provisional"] == 0
     grouper = conn.execute(
         sa.text(
             "SELECT is_provisional FROM fishmodelreference WHERE name='Grouper'"
         )
     ).scalar_one()
-    assert grouper == 0
+    assert grouper == 1
 
 
 def test_never_overwrites_notes_an_operator_wrote(provisional_migration, conn):
@@ -178,7 +185,7 @@ def test_running_twice_is_safe(provisional_migration, conn):
     _run(provisional_migration, conn)
     _run(provisional_migration, conn)
 
-    assert _row(conn)["is_provisional"] == 1
+    assert _row(conn)["is_provisional"] == 0
 
 
 def test_the_seed_then_provisional_chain_ends_with_both(
@@ -190,5 +197,72 @@ def test_the_seed_then_provisional_chain_ends_with_both(
 
     row = _row(conn)
     assert row["known_length_m"] == pytest.approx(0.310)
-    assert row["is_provisional"] == 1
+    # 31 cm is a published measurement, not an estimate — nothing is provisional.
+    assert row["is_provisional"] == 0
     assert "58.69" in row["notes"]
+
+
+# ── a4c17f2b9e08: 31 cm is a measurement, not an estimate ─────────────
+
+
+@pytest.fixture
+def unprovision_migration():
+    return _load("a4c17f2b9e08_weasly_fish_is_not_provisional.py", "unprov_mig")
+
+
+def test_clears_a_flag_set_by_the_earlier_migration(unprovision_migration, conn):
+    conn.execute(
+        sa.text(
+            "CREATE TABLE IF NOT EXISTS _x (i INTEGER)"
+        )
+    )
+    conn.execute(
+        sa.text(
+            "ALTER TABLE fishmodelreference ADD COLUMN is_provisional "
+            "BOOLEAN NOT NULL DEFAULT 0"
+        )
+    )
+    conn.execute(
+        sa.text(
+            "INSERT INTO fishmodelreference (name, known_length_m, is_provisional) "
+            "VALUES (:n, 0.310, 1)"
+        ),
+        {"n": NAME},
+    )
+
+    _run(unprovision_migration, conn)
+
+    assert _row(conn)["is_provisional"] == 0
+
+
+def test_reconciles_rather_than_blanket_clearing(unprovision_migration, conn, monkeypatch):
+    """A model named in `PROVISIONAL_FISH_MODELS` must still come out flagged,
+    so re-adding a genuinely unmeasured length later needs no new migration."""
+    monkeypatch.setattr(
+        unprovision_migration, "PROVISIONAL_FISH_MODELS", frozenset({"Grouper"})
+    )
+    conn.execute(
+        sa.text(
+            "ALTER TABLE fishmodelreference ADD COLUMN is_provisional "
+            "BOOLEAN NOT NULL DEFAULT 0"
+        )
+    )
+    conn.execute(
+        sa.text(
+            "INSERT INTO fishmodelreference (name, known_length_m, is_provisional) "
+            "VALUES (:n, 0.310, 1), ('Grouper', 0.360, 0)"
+        ),
+        {"n": NAME},
+    )
+
+    _run(unprovision_migration, conn)
+
+    assert _row(conn)["is_provisional"] == 0
+    assert conn.execute(
+        sa.text("SELECT is_provisional FROM fishmodelreference WHERE name='Grouper'")
+    ).scalar_one() == 1
+
+
+def test_is_a_no_op_when_the_column_does_not_exist(unprovision_migration, conn):
+    """Runs on databases that never reached f2b8c04e71a3."""
+    _run(unprovision_migration, conn)  # must not raise
