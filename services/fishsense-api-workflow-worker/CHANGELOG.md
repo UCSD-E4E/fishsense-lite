@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.53.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.52.0...fishsense-api-workflow-worker-v1.53.0) (2026-08-25)
+
+
+### Features
+
+* **ingest:** create, finalize, and the workflow that ties them together ([#613](https://github.com/UCSD-E4E/fishsense-lite/issues/613)) ([0251329](https://github.com/UCSD-E4E/fishsense-lite/commit/0251329736b98077a50370a355dfe367b7b56ec6))
+* **ingest:** download, hash and register a batch of frames ([#611](https://github.com/UCSD-E4E/fishsense-lite/issues/611)) ([7f323d6](https://github.com/UCSD-E4E/fishsense-lite/commit/7f323d6d70531987bad83c8e6ec589726a369d2f))
+
 ## [1.52.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.51.1...fishsense-api-workflow-worker-v1.52.0) (2026-08-25)
 
 
