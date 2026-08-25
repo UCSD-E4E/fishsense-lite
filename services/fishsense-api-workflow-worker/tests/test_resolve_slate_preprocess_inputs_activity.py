@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from unittest.mock import AsyncMock, MagicMock
 
-import numpy as np
 import pytest
 from temporalio.testing import ActivityEnvironment
 
@@ -21,9 +20,14 @@ from fishsense_api_workflow_worker.activities import (
     resolve_slate_preprocess_inputs_activity as sut,
 )
 
+# Shared with the other resolver suites — see `worker_tests_support.preprocess`.
+from worker_tests_support.preprocess import (  # noqa: F401
+    CAMERA_MATRIX as _K,
+    DISTORTION as _D,
+    image as _image,
+)
 
-_K = np.array([[3000.0, 0.0, 2048.0], [0.0, 3000.0, 1536.0], [0.0, 0.0, 1.0]])
-_D = np.array([-0.05, 0.01, 0.0, 0.0, 0.0])
+
 SLATE = "Slate, Laser on slate"
 
 
@@ -48,18 +52,6 @@ def _slate(slate_id: int = 7, *, dpi: int | None = 300, refs=None) -> DiveSlate:
         path="/dev/null",
         created_at=None,
         reference_points=refs if refs is not None else [(0.0, 0.0), (1.0, 1.0)],
-    )
-
-
-def _image(image_id: int, checksum: str) -> Image:
-    return Image(
-        id=image_id,
-        path=f"/dev/null/{image_id}",
-        taken_datetime=datetime(2025, 1, 1, tzinfo=timezone.utc),
-        checksum=checksum,
-        is_canonical=True,
-        dive_id=42,
-        camera_id=1,
     )
 
 

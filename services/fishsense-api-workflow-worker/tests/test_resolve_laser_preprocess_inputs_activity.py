@@ -16,11 +16,9 @@ Pins down:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import List, Optional
 from unittest.mock import AsyncMock, MagicMock
 
-import numpy as np
 import pytest
 from temporalio.testing import ActivityEnvironment
 
@@ -32,61 +30,17 @@ from fishsense_api_workflow_worker.activities import (
     resolve_laser_preprocess_inputs_activity as sut,
 )
 
-
-_K = np.array([[3000.0, 0.0, 2048.0], [0.0, 3000.0, 1536.0], [0.0, 0.0, 1.0]])
-_D = np.array([-0.05, 0.01, 0.0, 0.0, 0.0])
-
-
-def _dive(dive_id: int = 42, *, camera_id: Optional[int] = 1) -> Dive:
-    return Dive(
-        id=dive_id,
-        name=f"dive-{dive_id}",
-        path=f"/dev/null/{dive_id}",
-        dive_datetime=datetime(2025, 1, 1, tzinfo=timezone.utc),
-        priority="HIGH",
-        flip_dive_slate=False,
-        camera_id=camera_id,
-        dive_slate_id=None,
-    )
+# Shared with the other resolver suites — see `worker_tests_support.preprocess`.
+from worker_tests_support.preprocess import (  # noqa: F401
+    CAMERA_MATRIX as _K,
+    DISTORTION as _D,
+    dive as _dive,
+    image as _image,
+    laser_label as _label,
+    intrinsics as _intrinsics,
+)
 
 
-def _image(image_id: int, checksum: str) -> Image:
-    return Image(
-        id=image_id,
-        path=f"/dev/null/{image_id}",
-        taken_datetime=datetime(2025, 1, 1, tzinfo=timezone.utc),
-        checksum=checksum,
-        is_canonical=True,
-        dive_id=42,
-        camera_id=1,
-    )
-
-
-def _label(
-    image_id: int, *, completed: bool, project_id: Optional[int] = 73
-) -> LaserLabel:
-    return LaserLabel(
-        id=None,
-        image_id=image_id,
-        label_studio_task_id=image_id * 10,
-        label_studio_project_id=project_id,
-        updated_at=None,
-        completed=completed,
-        label_studio_json={},
-        user_id=None,
-        superseded=False,
-        x=None,
-        y=None,
-        label=None,
-    )
-
-
-def _intrinsics() -> CameraIntrinsics:
-    return CameraIntrinsics(
-        camera_matrix=_K,
-        distortion_coefficients=_D,
-        camera_id=1,
-    )
 
 
 def _make_fs(
