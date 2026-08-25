@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.48.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.48.0...fishsense-api-v1.48.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **reference:** Weasly Fish is not provisional — 31 cm is a measurement ([#610](https://github.com/UCSD-E4E/fishsense-lite/issues/610)) ([89c75c6](https://github.com/UCSD-E4E/fishsense-lite/commit/89c75c6cd4ac067698fc64260a6f082d0060781b))
+
 ## [1.48.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.47.2...fishsense-api-v1.48.0) (2026-08-25)
 
 
