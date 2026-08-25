@@ -161,8 +161,8 @@ target-version = ["py313"]
 # `check.sh lint` runs `black --check` over exactly this set, so the config and
 # the gate cannot disagree about what is formatted.
 #
-# NOT yet applied to `tests/`, and the reason is measured rather than
-# aesthetic. Formatting the whole tree reformats 261 files and produces 48
+# NOT applied to `tests/`, and after actually attempting it that looks like the
+# right long-term answer rather than a temporary gap. The reason is measured. Formatting the whole tree reformats 261 files and produces 48
 # pylint findings, 14 of them `duplicate-code` pairs across five clusters of
 # near-identical test suites (the two big api predicate suites, the four
 # `resolve_*_preprocess_inputs` suites, the sync-label workflow tests, and two
@@ -170,8 +170,26 @@ target-version = ["py313"]
 # change makes those files move together — and extracting them is a piece of
 # work in its own right, comparable to the extraction that came with
 # centralising the `import-outside-toplevel` pragmas. `src/` alone is 133 files
-# and 9 findings, all fixed here. Widening this is a deliberate follow-up: do
-# the fixture extraction first, or CI goes red.
+# and 9 findings, all fixed here.
+#
+# The extraction was attempted (2026-08-25). Five of the fourteen pairs came
+# out cleanly — the resolver suites' shared builders, now in
+# `worker_tests_support/preprocess.py`. The other nine did not, and the reason
+# is that they are not helper-shaped:
+#
+#   * Four pairs are seed literals inside test bodies —
+#     `LaserLabel(...)`/`SpeciesLabel(...)` constructions repeated across
+#     `test_dive_pipeline_status_view` and `test_select_next_dive_endpoints`,
+#     133 of them across 3850 lines. Those two suites are what pin the
+#     cohort-selector/`dive_pipeline_status` agreement that CLAUDE.md requires,
+#     and rewriting their seed data to break a lint clone is a poor trade.
+#   * Five pairs are Temporal test-harness bodies — stub activities and
+#     concurrency gates whose activity names differ per stage.
+#
+# So `tests/` stays unformatted. The cost of widening is a refactor of the
+# repo's most semantically load-bearing tests; the benefit is formatting
+# consistency in files no image ships. Revisit only if those suites are being
+# restructured for their own reasons.
 #
 # `scripts/` and `tools/` are dev utilities that are not shipped; including
 # them would pull their own pre-existing lint debt into the gate.
