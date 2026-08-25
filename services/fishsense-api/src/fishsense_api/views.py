@@ -455,14 +455,20 @@ KNOWN_FISH_MODELS = [
     # without re-instructing labelers to click a physical 0 that the scale does
     # not print.
     {"name": "Ruler", "known_length_m": 0.3429},
-    # PROVISIONAL length — an eyeball estimate, not a caliper reading. Recorded
-    # so the model becomes gradeable at all: it has been pickable in the species
-    # XML all along, and `fish_model_measurement_accuracy` inner-joins on
-    # `Fish.name`, so every Weasly Fish measurement has been silently absent
-    # from the accuracy view rather than wrong in it.
+    # 0.310 m = 31 cm, the value used in a prior publication. Chosen for
+    # CONSISTENCY, not because it is the best point estimate: the true fork
+    # length is known only to lie in [300, 310] mm, whose midpoint (305) would
+    # halve the worst-case reference error and make it symmetric (+-1.6% rather
+    # than 0..-3.2%). A reference that disagrees with an already-published
+    # number is worse — it makes every future comparison something a reader has
+    # to reconcile by hand.
     #
-    # Revisit if it reads systematically short — see FISH_MODEL_NOTES.
-    {"name": "Weasly Fish", "known_length_m": 0.30},
+    # Consequence to carry into any reading: a PERFECT measurement of this model
+    # lands anywhere in 0.00%..-3.23% purely from the reference. Do not read a
+    # small negative here as calibration bias. See FISH_MODEL_NOTES.
+    #
+    # Still uncalipered, hence `PROVISIONAL_FISH_MODELS`.
+    {"name": "Weasly Fish", "known_length_m": 0.310},
 ]
 
 # Provenance for a reference row, keyed by name. Deliberately a SEPARATE
@@ -484,10 +490,18 @@ PROVISIONAL_FISH_MODELS = frozenset({"Weasly Fish"})
 
 FISH_MODEL_NOTES = {
     "Weasly Fish": (
-        "Fork length 0.30 m. PROVISIONAL: an operator estimate, not a caliper "
-        "reading. Nothing observed contradicts it as of 2026-08-25 — but "
-        "nothing had tested it either, since no Weasly Fish measurement had "
-        "ever reached the accuracy view (the row did not exist). "
+        "Fork length 0.310 m (31 cm), the value used in a PRIOR PUBLICATION "
+        "and adopted here for consistency with it. Still PROVISIONAL: "
+        "length_range_mm=300-310, i.e. the true fork length is known only "
+        "to lie in that interval and has never been calipered. "
+        "Nothing observed contradicts it as of 2026-08-25 "
+        "— but nothing had tested it either, since no Weasly Fish measurement "
+        "had ever reached the accuracy view (the row did not exist). "
+        "Because 310 is the TOP of the range, a perfect measurement of this "
+        "model reads anywhere in 0.00%..-3.23% from the reference alone. A "
+        "small negative here is the reference, not calibration bias. The "
+        "midpoint (305 mm) would have made that symmetric at +-1.64%; "
+        "publication consistency was judged worth the one-sided 1.6pp. "
         "Reading the first results: every other model reads SHORT against its "
         "reference by a ladder ordered by fork depth (Purple Angel -2.2%, "
         "Shark -2.6%, Grouper -5.1%, Snook -9.6%) — the signature of a "
@@ -495,8 +509,9 @@ FISH_MODEL_NOTES = {
         "ALREADY a fork length, so that offset should not apply to it: expect "
         "a reading nearer 0% than the ladder, and treat a ladder-shaped "
         "negative here as evidence the landmark story is wrong rather than "
-        "the length. Materially negative beyond that says 0.30 m is too long; "
-        "positive says too short. Recalipering settles it; the view is the "
+        "the length. Materially negative beyond the reference band says 0.310 m "
+        "is too long; positive says too short. "
+        "Recalipering settles it; the view is the "
         "instrument, not the authority. "
         "width_midbody_mm=58.69; width_caudal_peduncle_mm=29.56 (calipered "
         "2026-08-20). The widths are an INDEPENDENT input for the round-model "
