@@ -441,17 +441,33 @@ FISH_MODEL_ACCURACY_VIEW_NAME = "fish_model_measurement_accuracy"
 # to the fork of the caudal fin, not to the tail tip. One convention across the
 # whole set; there is no per-model landmark to reconcile.
 #
-# That refutes the standing explanation for the residual error ladder. The four
-# models with enough measurements read short by
-# Purple Angel -2.2%, Shark -2.6%, Grouper -5.1%, Snook -9.6%, and that was read
-# as a total-length-vs-fork mismatch ordered by fork depth — "ONE definition
-# fix, not four". It cannot be: the references were fork lengths all along, and
-# a labeler clicking the tip instead would read LONG, not short.
+# That retires the "landmark offset" term from the error budget. The four models
+# with enough measurements read short by Purple Angel -2.2%, Shark -2.6%,
+# Grouper -5.1%, Snook -9.6%, and that was read as a total-length-vs-fork
+# mismatch ordered by fork depth — "ONE definition fix, not four". It cannot be:
+# the references were fork lengths all along, and a labeler clicking the tip
+# instead would read LONG, not short.
 #
-# Nor is it size: ordered by length the errors go -2.2, -5.1, -9.6, -2.6, with
-# the longest model (Shark) second-best. **The cause is OPEN.** Note also that
-# four models ordered by anything is weak evidence, so the "ladder" may not be a
-# ladder. Do not spend the residual on a landmark fix.
+# **There is no third term. The residual is calibration and foreshortening**,
+# both already in the budget:
+#
+#   * **Foreshortening** — stage 14 back-projects head and tail at a single
+#     laser-derived depth, so it measures the PROJECTION. An out-of-plane fish
+#     reads short and never long. One-sided negative, and geometry rather than
+#     error.
+#   * **Per-dive calibration scale** — bidirectional, -8..+4%, and invisible to
+#     reprojection (reprojection pins 2 of 4 DOF and is blind to scale).
+#
+# So the per-model "ladder" is a MEAN artifact, not a per-model reference error:
+# the models differ in how much foreshortened material their frames carry, and a
+# mean over a one-sided negative tail inherits it. The frame-level statistics say
+# the same thing — median +0.3% with skew -4.87, i.e. a typical frame accurate to
+# ~1pp plus a long negative tail. That is why p90-over-frames beats the mean
+# (4.35% -> 2.26%): it rejects the tail instead of averaging it.
+#
+# **Judge a reference length at p90 over frames, on a dive with sound
+# calibration — never on an uncentered mean.** The mean measures the pose
+# distribution, not the model.
 #
 # Field model dates: 2024-08-21 and 2024-10-16.
 KNOWN_FISH_MODELS = [
@@ -519,16 +535,18 @@ FISH_MODEL_NOTES = {
         "midpoint (305 mm) would have made that symmetric at +-1.64%; "
         "publication consistency was judged worth the one-sided 1.6pp. "
         "Fork length is the convention for EVERY reference in this table, so "
-        "this model carries no special landmark caveat — expect it to behave "
-        "like the others. That is also why a negative reading here is weak "
-        "evidence about the 310 figure: the other models read short by "
-        "-2.2%..-9.6% for reasons still unexplained (see KNOWN_FISH_MODELS), "
-        "so a Weasly Fish landing in that range says more about the unexplained "
-        "residual than about this length. A POSITIVE reading is the informative "
-        "one — nothing known pushes measurements long, so it would say 310 mm "
-        "is too short, which the [300, 310] interval already argues against. "
-        "Recalipering settles it; the view is the instrument, not the "
-        "authority. "
+        "this model carries no special landmark caveat. HOW TO JUDGE 310 mm: "
+        "p90 over the fish's frames, on a dive with sound calibration — never "
+        "an uncentered mean. Foreshortening is one-sided negative (stage 14 "
+        "measures the projection), so a mean measures the pose distribution "
+        "rather than the model; the other models' -2.2%..-9.6% means are that "
+        "artifact, not four reference errors. At p90 a sound-calibration dive "
+        "grades to ~1%, which is the resolution this length can actually be "
+        "tested at. Expect 0.00%..-3.23% from the reference alone (310 is the "
+        "top of the interval) on top of that. A POSITIVE reading beyond it is "
+        "the informative one — nothing known pushes measurements long, so it "
+        "would say 310 mm is too short. Recalipering settles it; the view is "
+        "the instrument, not the authority. "
         "width_midbody_mm=58.69; width_caudal_peduncle_mm=29.56 (calipered "
         "2026-08-20). The widths are an INDEPENDENT input for the round-model "
         "thickness work and must never be back-solved from measurement error "

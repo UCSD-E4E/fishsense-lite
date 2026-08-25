@@ -74,13 +74,17 @@ def test_the_fork_convention_is_recorded_for_the_whole_table():
     """All reference lengths are fork lengths, and that is a property of the
     SET, not of one row.
 
-    Recorded centrally because it retires a standing hypothesis: the residual
-    ladder (Purple Angel -2.2%, Shark -2.6%, Grouper -5.1%, Snook -9.6%) was
-    read as a total-length-vs-fork mismatch ordered by fork depth — "one
-    definition fix, not four". It cannot be, if the references were fork
-    lengths all along; and a labeler clicking the tail tip instead would read
-    LONG, not short. Someone will re-derive that hypothesis from the shape of
-    the numbers unless the refutation sits next to them.
+    Recorded centrally because it retires a term from the error budget: the
+    residual ladder (Purple Angel -2.2%, Shark -2.6%, Grouper -5.1%,
+    Snook -9.6%) was read as a total-length-vs-fork mismatch ordered by fork
+    depth — "one definition fix, not four". It cannot be, if the references
+    were fork lengths all along; and a labeler clicking the tail tip instead
+    would read LONG, not short.
+
+    What is left is calibration and foreshortening, both already budgeted. The
+    comment has to carry that too, because the bare refutation would read as an
+    open mystery and invite someone to go hunting for a third term that isn't
+    there.
     """
     import inspect
 
@@ -90,7 +94,10 @@ def test_the_fork_convention_is_recorded_for_the_whole_table():
     head = src[: src.index("KNOWN_FISH_MODELS = [")]
 
     assert "FORK length" in head
-    assert "OPEN" in head
+    assert "Foreshortening" in head
+    assert "calibration scale" in head
+    # The mean is the trap: it measures the pose distribution, not the model.
+    assert "p90" in head
 
 
 def test_weasly_fish_widths_are_machine_reparsable():
