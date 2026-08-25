@@ -532,8 +532,10 @@ calibration_dive_id: int | None = None
 self_calibrates: bool = False      # exactly one of this / calibration_dive_id
 flip_dive_slate: bool = False
 dry_run: bool = False
-verify_existing: bool = False      # re-hash + report, never write (§4.6)
 ```
+
+**No `verify_existing`** — see §4.6. It shipped as a declared field honoured by
+no code and was removed rather than wired.
 
 ### 3.2 `IngestPreflight`, `IngestProgress`, `IngestReport`
 
@@ -682,14 +684,35 @@ Otherwise `dives.post` again with real `dive_datetime` = **max** taken_datetime
 carries the §4.2.1 containment report, so the duplicate picture is in front of the
 operator at the moment of commit.
 
-### 4.6 `verify_existing` mode
+### 4.6 Verifying existing rows — a workflow, not an ingest flag
 
-`IngestDiveRequest.verify_existing` — for a folder whose rows already exist, re-hash
-and **report** mismatches without writing. Downgraded from the previous draft's
-blocking gate now that §0.1 is resolved from source: it is a standing net against
-rows that predate spider, not a merge requirement. Also exposed as
-`tools/verify_checksum_algorithm.py` for running over a sample of arbitrary
-existing rows.
+**Resolved differently from this plan's original design.** The plan called for an
+`IngestDiveRequest.verify_existing` mode: for a folder whose rows already exist,
+re-hash and report mismatches without writing.
+
+The field shipped; the behaviour did not. It sat on the contract honoured by no
+code, so an operator setting it got a normal ingest and no warning — strictly
+worse than an absent flag, because it reads as a safety measure. **Removed**
+(#618) rather than wired.
+
+Re-hashing existing rows is `VerifyDiveChecksumsWorkflow` (one dive) and
+`VerifyAllDivesChecksumsWorkflow` (every canonical dive), which are better tools
+for the job than a mode inside ingest would have been:
+
+* **read-only by construction**, with a test tripwire asserting the module's
+  source contains no `upload` / `delete` / `post` / `put`. An ingest flag would
+  have been one `if` away from writing.
+* **findings, not failures** — a missing file or a mismatch is recorded and the
+  run continues, because that is the question being asked. Ingest inverts this
+  deliberately: it is trying to *do* something, so a missing file is a failure.
+* **no second copy of the conventions.** Both call
+  `nas_frames.file_checksum` / `read_taken_datetime`, so there is exactly one
+  definition of each — which matters because both fail silently when wrong.
+* it samples (`limit`), so "does the convention hold" costs ~20 GB rather than
+  ~930 GB.
+
+Run over all 272 canonical dives on 2026-08-17: **1,619 frames, zero checksum
+disagreements.** Two dives disagreed on timestamps — see §0.1.
 
 ---
 

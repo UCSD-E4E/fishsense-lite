@@ -67,8 +67,13 @@ class IngestDiveRequest(BaseModel):
 
     #: Preflight only: list, read EXIF headers, validate, write nothing.
     dry_run: bool = False
-    #: Re-hash an already-ingested folder and report mismatches. Never writes.
-    verify_existing: bool = False
+
+    # There is deliberately no `verify_existing` here. It existed as a declared
+    # field honoured by no code, so setting it produced a normal ingest and no
+    # warning — worse than an absent flag. Re-hashing existing rows against the
+    # NAS is `VerifyDiveChecksumsWorkflow` / `VerifyAllDivesChecksumsWorkflow`,
+    # which do it read-only, with a source tripwire, and without a second
+    # half-implementation of the same conventions to keep in step.
 
 
 class PreflightImage(BaseModel):

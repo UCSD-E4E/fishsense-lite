@@ -58,11 +58,39 @@ def test_calibration_intent_defaults_to_neither():
     assert request.self_calibrates is False
 
 
-def test_dry_run_and_verify_existing_default_to_writing_nothing_being_opt_in():
-    request = IngestDiveRequest(dive_path="d")
+def test_writing_nothing_is_opt_in():
+    """`dry_run` defaults False: the common case is an operator who means to
+    ingest. Preflight still runs either way, so a fault is caught before
+    anything is written regardless."""
+    request = IngestDiveRequest(dive_path="d", self_calibrates=True)
 
     assert request.dry_run is False
-    assert request.verify_existing is False
+
+
+def test_the_request_carries_no_verify_existing_flag():
+    """Removed, not renamed.
+
+    It was declared on this model and honoured by no code, so an operator
+    setting it got a normal ingest and no warning — worse than the flag not
+    existing. Re-hashing existing rows is `VerifyDiveChecksumsWorkflow`, which
+    does it read-only and without a second copy of the checksum convention to
+    keep in step.
+
+    Pydantic ignores unknown keys, so a stale caller passing it is silently
+    accepted rather than failing loudly. That is the right behaviour for
+    replaying an in-flight workflow's payload, and the reason this test asserts
+    the field is genuinely gone rather than trusting a rename to surface.
+    """
+    request = IngestDiveRequest(dive_path="d", self_calibrates=True)
+
+    assert "verify_existing" not in request.model_dump()
+
+    stale = IngestDiveRequest(
+        dive_path="d", self_calibrates=True, verify_existing=True
+    )
+
+    assert not hasattr(stale, "verify_existing")
+    assert "verify_existing" not in stale.model_dump()
 
 
 def test_a_preflight_image_may_have_no_timestamp():
