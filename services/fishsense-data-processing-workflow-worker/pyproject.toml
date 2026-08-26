@@ -1,6 +1,6 @@
 [project]
 name = "fishsense-data-processing-workflow-worker"
-version = "2.16.3"
+version = "2.16.4"
 description = "Add your description here"
 readme = "README.md"
 # Pinned to cp313 only: the [laser-detector] extra pulls torch, which has no
