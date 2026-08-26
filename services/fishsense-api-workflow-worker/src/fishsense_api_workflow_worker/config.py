@@ -93,6 +93,36 @@ _VALIDATORS = [
     # many minutes — so a back-to-back dive doesn't thrash the pod.
     # `resolve_scaling_config` floors a negative value at 0.
     Validator("kubernetes.idle_cooldown_minutes", cast=int, default=15),
+    # --- GPU split + CPU fallback -------------------------------------------
+    # `fishsense_data_processing_gpu_queue` is served by two Deployments
+    # running the same image: one that requests a GPU and one that does not and
+    # runs the same torch checkpoint on the CPU. Exactly one is scaled up at a
+    # time. Both names default off `kubernetes.deployment_name`, so the trio
+    # stays consistent if that is overridden. See `activities.gpu_fallback`.
+    Validator("kubernetes.gpu_deployment_name", cast=str),
+    Validator("kubernetes.gpu_fallback_deployment_name", cast=str),
+    # CPU inference is slow per image and there is little point running several
+    # in parallel; clamped to [1, 2] in `resolve_scaling_config`.
+    # How many GPU pods to hold while the predict stage is active. Separate
+    # from `active_replicas` (which sizes the CPU worker) because each of these
+    # holds a card on a contended cluster. Clamped to [1, 4].
+    Validator("kubernetes.gpu_active_replicas", cast=int, default=1),
+    Validator("kubernetes.gpu_fallback_replicas", cast=int, default=1),
+    # How long to wait for a pod before calling a start attempt failed. This is
+    # what separates "no GPU is available" from "the pod is still pulling its
+    # image" — without it every cold start would count toward the fallback.
+    Validator("kubernetes.gpu_start_timeout_seconds", cast=int, default=600),
+    # Failed starts before the GPU queue is handed to the CPU-only Deployment.
+    # Floored at 1 in `resolve_scaling_config` so the GPU is always tried.
+    Validator("kubernetes.gpu_max_start_failures", cast=int, default=3),
+    # How long to stay on CPU inference before probing the GPU again. It must
+    # expire: without it a single bad afternoon on NRP would strand the predict
+    # stage on slow CPU inference permanently.
+    Validator("kubernetes.gpu_fallback_minutes", cast=int, default=180),
+    # Minimum age of a wedge before it counts as a failed start. Clamped to at
+    # most `gpu_start_timeout_seconds` in `resolve_scaling_config` — a longer
+    # grace would swallow every observation and the fallback could never trip.
+    Validator("kubernetes.gpu_wedge_grace_minutes", cast=int, default=5),
     # Garage (S3-compatible) object store — replaces the nginx
     # file-exchange. Single bucket; the data-worker reads staged raw
     # `.ORF` + slate PDFs from it and writes processed JPEGs back. This

@@ -13,9 +13,11 @@ differs.
 
 | File | What |
 |---|---|
-| `deployment.yaml` | The Deployment. `replicas` is **omitted** — the api-worker owns the count (scales it up on demand, back to 0 when idle; see below). amd64 nodeSelector, resource requests/limits, `maxSurge: 0`, no PDB, emptyDir scratch, no PVC/GPU/NAS. |
+| `deployment.yaml` | The **CPU** worker (`role=cpu`), serving `fishsense_data_processing_queue`. `replicas` is **omitted** — the api-worker owns the count (scales it up on demand, back to 0 when idle; see below). amd64 nodeSelector, resource requests/limits, `maxSurge: 0`, no PDB, emptyDir scratch, no PVC/GPU/NAS. |
+| `deployment-gpu.yaml` | The **GPU** worker (`role=gpu`), serving `fishsense_data_processing_gpu_queue` (laser detector + slate masker). Adds `nvidia.com/gpu: 1`, the `nvidia.com/gpu:NoSchedule` toleration, and SM >= 7.5 node affinity. Allowed to be unschedulable — see "GPU split" below. |
+| `deployment-gpu-cpu-fallback.yaml` | The **CPU fallback** for the GPU queue (`role=gpu`, no GPU request). Runs the same checkpoint on the CPU when the GPU worker repeatedly fails to start. Normally 0 replicas, indefinitely. |
 | `settings.toml` | Source for the `fishsense-data-worker-settings` ConfigMap (built by kustomize's `configMapGenerator`; mounted at `/e4efs/config/settings.toml`). Credentials are **not** here — they're env vars from a Secret. |
-| `kustomization.yaml` | `kubectl apply -k` entrypoint. Holds the overridable image tag (CI bumps it). |
+| `kustomization.yaml` | `kubectl apply -k` entrypoint. Holds the overridable image tag (CI bumps it) — one entry covers all three Deployments, which share an image and differ only by `E4EFS_GENERAL__ROLE`. |
 | `deployer-rbac.yaml` | The **deploy identity**: ServiceAccount `fishsense-deployer` + a least-privilege Role (deployments/scale/configmaps) + RoleBinding + a token-minting Secret. **Not** in `kustomization.yaml` — operator-applied out-of-band (the SA can't create its own RBAC). Credential-free: the token controller populates the Secret's `.data.token` in-cluster; the JWT never enters git. |
 
 ## Who scales it
@@ -25,12 +27,16 @@ no pods run, and work just waits on `fishsense_data_processing_queue`
 until a worker appears. The **api-worker** (running in the Incus slot,
 outside this cluster) brings it back:
 
-* Each parent workflow that dispatches a data-worker child calls
-  `ensure_data_worker_running_activity` first — scales this Deployment
+* Each parent workflow that dispatches a CPU data-worker child calls
+  `ensure_data_worker_running_activity` first — scales `deployment.yaml`
   to `kubernetes.active_replicas` (default 1).
-* `ScaleDownIdleDataWorkerWorkflow` runs hourly and scales it to 0 once
-  the data-worker task queue has had no running or recently-closed
-  workflow for `kubernetes.idle_cooldown_minutes`.
+* The two predict parents instead call
+  `ensure_gpu_worker_running_activity`, which scales **one of** the GPU
+  Deployment or its CPU fallback (see the next section).
+* `ScaleDownIdleDataWorkerWorkflow` runs hourly and scales each of the
+  three to 0 once the queue *it* serves has had no running or
+  recently-closed workflow for `kubernetes.idle_cooldown_minutes`. A busy
+  CPU queue therefore never keeps a GPU pod alive.
 
 For that to work the api-worker needs the `e4e-fishsense` kubeconfig
 (vault-agent-rendered from OpenBao to `/run/tenant/nrp/kubeconfig`, #245)
@@ -39,6 +45,69 @@ and the `[kubernetes]` config section (`kubeconfig_path`, `namespace =
 `idle_cooldown_minutes`) — see the api-worker's `settings.toml` in
 `deploy/incus/worker_volumes/api_worker/config/`. The same kubeconfig is
 what CI uses to `kubectl apply` (repo secret `NRP_KUBECONFIG`).
+
+## GPU split, and why nothing waits on a GPU
+
+Until 2026-08-25 there was one Deployment, one queue, and every stage
+requested `nvidia.com/gpu: 1` with SM >= 7.5 node affinity. So rectify,
+clustering, calibration, measurement and laser depth — none of which touch a
+GPU — were all gated on NRP finding a Turing-or-newer card with free capacity,
+and then held that card idle through the hours of rawpy decode that dominate a
+real dive. At `active_replicas = 2` the second pod sat Pending on
+`Insufficient nvidia.com/gpu` (2026-08-20), paying for a card it never used.
+
+Now:
+
+* **`fishsense_data_processing_queue`** — eight stages, no GPU request. Cannot
+  be blocked by GPU scarcity.
+* **`fishsense_data_processing_gpu_queue`** — the two torch inference stages,
+  `predict_laser_image` and (retired) `predict_slate_image`. Served by *either*
+  `...-worker-gpu` or `...-worker-gpu-cpu-fallback`, never both.
+
+This queue means **prefer a GPU, not require one** — which is what makes it
+safe for a stage that merely benefits from a card. Both detectors run on the
+CPU fallback and produce the **same** output there, just slower.
+
+**The fallback state machine.** After `kubernetes.gpu_max_start_failures`
+(default 3) consecutive failed GPU starts, the api-worker scales the GPU
+Deployment to 0 and the fallback to `kubernetes.gpu_fallback_replicas`, for
+`kubernetes.gpu_fallback_minutes` (default 180), then probes the GPU again. A
+"failed start" is `spec.replicas > 0` with no Ready pod after
+`kubernetes.gpu_start_timeout_seconds` (default 600) — long enough that an
+image pull is not mistaken for an outage. The window expires so a transient NRP
+shortage cannot strand the stage on CPU inference permanently.
+
+Bookkeeping lives in annotations on the **GPU** Deployment:
+
+```
+kubectl -n e4e-fishsense describe deploy fishsense-data-processing-workflow-worker-gpu
+```
+
+| Annotation | Meaning |
+|---|---|
+| `fishsense.e4e.ucsd.edu/gpu-start-failures` | consecutive failed starts |
+| `fishsense.e4e.ucsd.edu/gpu-wedged-since` | when the current wedge was first seen |
+| `fishsense.e4e.ucsd.edu/gpu-fallback-until` | CPU fallback holds until this time |
+
+**All three are absent when everything is healthy**, so seeing any of them is
+itself the signal. They are operator-editable:
+
+```bash
+# Force CPU inference now (e.g. you know the GPU pool is drained):
+kubectl -n e4e-fishsense annotate deploy fishsense-data-processing-workflow-worker-gpu \
+  fishsense.e4e.ucsd.edu/gpu-start-failures=3 --overwrite
+
+# End a fallback early and retry the GPU on the next firing:
+kubectl -n e4e-fishsense annotate deploy fishsense-data-processing-workflow-worker-gpu \
+  fishsense.e4e.ucsd.edu/gpu-fallback-until- fishsense.e4e.ucsd.edu/gpu-start-failures-
+```
+
+`kubectl apply` does not clear them — apply only prunes fields it previously
+managed, and these are written by the api-worker.
+
+**A red GPU rollout in CI is a warning, not a failure.** `deploy.yml` rolls out
+all three but only warns if the GPU one does not converge, precisely so a GPU
+shortage on NRP cannot block shipping the CPU stages.
 
 ## One-time bootstrap (per NRP namespace)
 

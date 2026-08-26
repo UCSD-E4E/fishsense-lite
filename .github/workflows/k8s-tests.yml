@@ -81,7 +81,10 @@ jobs:
       - name: Apply the data-worker manifests (server-side validation)
         run: |
           kubectl apply -k deploy/k8s/data-worker
-          kubectl get deployment fishsense-data-processing-workflow-worker -n e4e-fishsense -o yaml
+          # All three: the CPU worker, the GPU worker, and the GPU worker's
+          # CPU-only fallback. The GPU one stays Unschedulable here (kind has no
+          # GPU nodes) — that is expected, and is what the wedge tests rely on.
+          kubectl get deployments -n e4e-fishsense -o wide
 
       - name: Test the slot-side Temporal cert forwarder
         # deploy/incus/nrp_cert_sync/sync.sh runs on the Incus slot and pushes the

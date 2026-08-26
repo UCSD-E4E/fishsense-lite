@@ -37,6 +37,9 @@ from fishsense_api_workflow_worker.activities.cleanup_raw_bytes_for_dive_activit
 from fishsense_api_workflow_worker.activities.ensure_data_worker_running_activity import (  # pylint: disable=line-too-long
     ensure_data_worker_running_activity,
 )
+from fishsense_api_workflow_worker.activities.ensure_gpu_worker_running_activity import (  # pylint: disable=line-too-long
+    ensure_gpu_worker_running_activity,
+)
 from fishsense_api_workflow_worker.activities.scale_down_data_worker_if_idle_activity import (  # pylint: disable=line-too-long
     scale_down_data_worker_if_idle_activity,
 )
@@ -752,6 +755,7 @@ async def main():
                 stage_slate_pdf_activity,
                 cleanup_raw_bytes_for_dive_activity,
                 ensure_data_worker_running_activity,
+                ensure_gpu_worker_running_activity,
                 scale_down_data_worker_if_idle_activity,
             ],
         )

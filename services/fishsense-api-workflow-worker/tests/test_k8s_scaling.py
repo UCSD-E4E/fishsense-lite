@@ -140,3 +140,70 @@ def test_deployment_is_wedged_tolerates_a_status_less_deployment():
     deployment = SimpleNamespace(spec=SimpleNamespace(replicas=2), status=None)
     api = _api_returning(deployment)
     assert k8s_scaling.deployment_is_wedged(api, "fishsense", "data-worker") is True
+
+
+def _gpu_config(monkeypatch, **section):
+    monkeypatch.setattr(
+        k8s_scaling,
+        "settings",
+        {"kubernetes": {"kubeconfig_path": "/tmp/kc", "namespace": "ns", **section}},
+    )
+    return k8s_scaling.resolve_scaling_config()
+
+
+def test_gpu_deployment_names_default_off_the_cpu_name(monkeypatch):
+    """Overriding one name must carry the whole trio, or a renamed CPU
+    Deployment silently pairs with the stock GPU ones."""
+    cfg = _gpu_config(monkeypatch, deployment_name="dw")
+    assert cfg.gpu.deployment_name == "dw-gpu"
+    assert cfg.gpu.fallback_deployment_name == "dw-gpu-cpu-fallback"
+
+
+def test_gpu_replica_count_is_independent_of_the_cpu_one(monkeypatch):
+    """`active_replicas` sizes the CPU worker; each GPU pod holds a card on a
+    contended cluster, so raising CPU throughput must not silently ask NRP for
+    more GPUs."""
+    cfg = _gpu_config(monkeypatch, active_replicas=4)
+    assert cfg.active_replicas == 4
+    assert cfg.gpu.policy.active_replicas == 1
+
+    cfg = _gpu_config(monkeypatch, gpu_active_replicas=99)
+    assert cfg.gpu.policy.active_replicas == k8s_scaling.MAX_ACTIVE_REPLICAS
+
+
+def test_fallback_replicas_clamped(monkeypatch):
+    cfg = _gpu_config(monkeypatch, gpu_fallback_replicas=99)
+    assert cfg.gpu.policy.fallback_replicas == k8s_scaling.MAX_FALLBACK_REPLICAS
+    cfg = _gpu_config(monkeypatch, gpu_fallback_replicas=0)
+    assert cfg.gpu.policy.fallback_replicas == 1
+
+
+def test_max_start_failures_is_floored_at_one(monkeypatch):
+    """At 0 the pipeline would drop to CPU inference on the first observation
+    and never actually try the GPU."""
+    assert _gpu_config(monkeypatch, gpu_max_start_failures=0) \
+        .gpu.policy.max_start_failures == 1
+
+
+def test_wedge_grace_cannot_outlast_the_start_timeout(monkeypatch):
+    """The activity waits out the start timeout and then observes. A longer
+    grace would swallow every observation, no failure would ever be counted,
+    and the CPU fallback could never trip."""
+    cfg = _gpu_config(
+        monkeypatch, gpu_wedge_grace_minutes=60, gpu_start_timeout_seconds=120
+    )
+    assert cfg.gpu.policy.wedge_grace.total_seconds() == 120
+
+
+def test_sweep_targets_pair_each_deployment_with_the_queue_it_serves(monkeypatch):
+    from fishsense_shared import (
+        DATA_PROCESSING_GPU_TASK_QUEUE,
+        DATA_PROCESSING_TASK_QUEUE,
+    )
+
+    cfg = _gpu_config(monkeypatch, deployment_name="dw")
+    assert cfg.sweep_targets() == (
+        ("dw", DATA_PROCESSING_TASK_QUEUE),
+        ("dw-gpu", DATA_PROCESSING_GPU_TASK_QUEUE),
+        ("dw-gpu-cpu-fallback", DATA_PROCESSING_GPU_TASK_QUEUE),
+    )

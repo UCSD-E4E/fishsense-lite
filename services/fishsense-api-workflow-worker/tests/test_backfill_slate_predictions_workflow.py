@@ -24,8 +24,9 @@ from fishsense_shared import (
     PredictSlateImagesInput,
     SlatePredictionResult,
 )
+from fishsense_api_workflow_worker.activities.gpu_fallback import MODE_GPU
 from fishsense_api_workflow_worker.workflows._dispatch import (
-    DATA_PROCESSING_TASK_QUEUE,
+    DATA_PROCESSING_GPU_TASK_QUEUE,
 )
 from fishsense_api_workflow_worker.workflows.backfill_slate_predictions_workflow import (  # noqa: E501  pylint: disable=line-too-long
     BackfillSlatePredictionsWorkflow,
@@ -100,9 +101,11 @@ def _predict_parent_stubs(calls: List[Tuple[str, int]]):
             images=[PredictSlateImage(image_id=1, checksum="a")],
         )
 
-    @activity.defn(name="ensure_data_worker_running_activity")
-    async def ensure() -> None:
-        return None
+    # The slate predict child runs on the GPU queue — "prefer a GPU", served by
+    # the GPU Deployment or its CPU-only fallback.
+    @activity.defn(name="ensure_gpu_worker_running_activity")
+    async def ensure() -> str:
+        return MODE_GPU
 
     @activity.defn(name="stage_raw_bytes_for_dive_activity")
     async def stage_raw(dive_id: int) -> None:
@@ -141,7 +144,7 @@ async def test_predict_parent_calls_backfill_after_persist():
             activities=acts,
         ), Worker(
             env.client,
-            task_queue=DATA_PROCESSING_TASK_QUEUE,
+            task_queue=DATA_PROCESSING_GPU_TASK_QUEUE,
             workflows=[_StubSlateChild],
             activities=acts,
         ):

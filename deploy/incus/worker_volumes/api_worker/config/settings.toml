@@ -76,10 +76,16 @@ labels_prefix = "fishsense-lite"
 [kubernetes]
 kubeconfig_path = "/run/tenant/nrp/kubeconfig"
 namespace = "e4e-fishsense"
+# The CPU worker. The GPU worker and its CPU-only fallback default off this
+# name (`-gpu`, `-gpu-cpu-fallback`), so all three move together if it changes.
 deployment_name = "fishsense-data-processing-workflow-worker"
-# 1 replica (clamped range is [1, 4]) — one pod, and since the Deployment
-# requests `nvidia.com/gpu: 1` per pod, exactly one GPU held while active.
-# Operator choice 2026-08-20: hold a single GPU on NRP for now.
+# How many CPU worker pods to hold while a stage is active (clamped [1, 4]).
+#
+# As of the 2026-08-25 GPU split this no longer holds a GPU: the CPU Deployment
+# requests none, and the GPU count is `gpu_active_replicas` below. The
+# "Insufficient nvidia.com/gpu" scheduling problem described next therefore no
+# longer applies to this setting — raising it is now an ordinary throughput
+# decision, bounded only by NRP CPU/memory quota.
 #
 # This was 2, paired with dropping the data-worker's
 # `general.max_concurrent_activities` 4 -> 2 after the 2026-07-21 OOM
@@ -89,12 +95,39 @@ deployment_name = "fishsense-data-processing-workflow-worker"
 # takes roughly twice as long; it does NOT reintroduce the OOM, which is
 # governed by max_concurrent_activities and is unchanged.
 #
-# It also removes a live scheduling problem: at 2 the second pod sat Pending on
-# `129 Insufficient nvidia.com/gpu` (2026-08-20), so the GPU was requested and
-# queued for without being used — NRP is GPU-contended and the only consumer of
-# that request, the slate detector, has been retired since 2026-08-03.
+# It also removed a live scheduling problem, which is the history that led to
+# the split: at 2 the second pod sat Pending on `129 Insufficient
+# nvidia.com/gpu` (2026-08-20), so a GPU was requested and queued for without
+# being used. Every CPU stage was paying for a card it never touched.
 #
 # Raise back to 2-4 for a giant single dive, or for active-window resilience on
 # a preemption-prone cluster. Never automatic.
 active_replicas = 1
 idle_cooldown_minutes = 15
+
+# --- GPU worker + CPU fallback ------------------------------------------------
+#
+# `fishsense_data_processing_gpu_queue` carries one stage, `predict_laser_image`
+# (the laser detector). It is served by two Deployments — `...-gpu`, which
+# requests a card, and `...-gpu-cpu-fallback`, which does not and runs the same
+# checkpoint on the CPU. Exactly one is scaled up at a time.
+#
+# After `gpu_max_start_failures` consecutive failed GPU starts the api-worker
+# scales the GPU one to 0 and the fallback to `gpu_fallback_replicas` for
+# `gpu_fallback_minutes`, then probes the GPU again. Slower predictions beat
+# none, and the window expires so a transient NRP shortage can't strand us on
+# CPU permanently. State is kept in annotations on the GPU Deployment
+# (`kubectl describe deploy fishsense-data-processing-workflow-worker-gpu`);
+# absent annotations mean nothing has gone wrong.
+#
+# One card. NRP is GPU-contended (see above) and the detector is fast; this is
+# deliberately decoupled from `active_replicas` so scaling CPU throughput never
+# silently asks for more GPUs.
+gpu_active_replicas = 1
+gpu_fallback_replicas = 1
+# 10 minutes covers an NRP cold start (image pull is the slow part). Anything
+# longer than this and the pod is not coming.
+gpu_start_timeout_seconds = 600
+gpu_max_start_failures = 3
+gpu_fallback_minutes = 180
+gpu_wedge_grace_minutes = 5

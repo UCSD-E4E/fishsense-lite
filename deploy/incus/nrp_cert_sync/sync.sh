@@ -33,7 +33,15 @@ TEMPORAL_CERT_DIR="${TEMPORAL_CERT_DIR:-/run/tenant/temporal}"
 KUBECONFIG="${KUBECONFIG:-/run/tenant/nrp/kubeconfig}"
 NRP_NAMESPACE="${NRP_NAMESPACE:-e4e-fishsense}"
 SECRET_NAME="${SECRET_NAME:-fishsense-data-worker-temporal-certs}"
+# EVERY Deployment that mounts $SECRET_NAME must be rolled, not just the first.
+# The data-worker is three Deployments as of the GPU/CPU split (cpu, gpu, and
+# the gpu CPU-fallback) and all three mount this same leaf. Rolling only one
+# would leave the others holding an expired cert and crash-looping on
+# `CertificateExpired` — which is precisely the 2026-08-14 outage this whole
+# forwarder exists to prevent, reintroduced through the back door.
+# Space-separated and overridable so CI can point it at one name.
 DEPLOY_NAME="${DEPLOY_NAME:-fishsense-data-processing-workflow-worker}"
+DEPLOY_NAMES="${DEPLOY_NAMES:-${DEPLOY_NAME} ${DEPLOY_NAME}-gpu ${DEPLOY_NAME}-gpu-cpu-fallback}"
 # Records which leaf the Secret currently holds, so a converge that changed
 # nothing does not roll the data-worker.
 FP_ANNOTATION="fishsense.e4e.ucsd.edu/leaf-sha256"
@@ -89,21 +97,31 @@ kubectl -n "$NRP_NAMESPACE" annotate secret "$SECRET_NAME" \
 # at Client.connect - so running pods keep the old leaf until they are replaced.
 # A no-op when the api-worker has it scaled to 0: the annotation lands on the
 # pod template and the next scale-up starts on the new cert.
-log "rolling $DEPLOY_NAME onto the new leaf"
-# kubectl refuses a second `rollout restart` inside the same second ("if restart
-# has already been triggered within the past second"). That guard firing means a
-# restart just landed, which is the outcome we wanted - take it rather than
-# failing the sync under `set -e`. Any other failure is real and propagates.
-if restart_out="$(kubectl -n "$NRP_NAMESPACE" rollout restart "deployment/$DEPLOY_NAME" 2>&1)"; then
-    log "$restart_out"
-else
-    case "$restart_out" in
-        *"within the past second"*)
-            log "a rollout was already triggered this second - taking it" ;;
-        *)
-            log "ERROR: $restart_out"
-            exit 1 ;;
-    esac
-fi
+for deploy in $DEPLOY_NAMES; do
+    # A Deployment that does not exist is skipped rather than fatal: the GPU
+    # pair only exists once the split's manifests have been applied, and a
+    # rotation must not start failing on a cluster that is mid-upgrade.
+    if ! kubectl -n "$NRP_NAMESPACE" get "deployment/$deploy" >/dev/null 2>&1; then
+        log "$deploy not present - skipping"
+        continue
+    fi
+    log "rolling $deploy onto the new leaf"
+    # kubectl refuses a second `rollout restart` inside the same second ("if
+    # restart has already been triggered within the past second"). That guard
+    # firing means a restart just landed, which is the outcome we wanted - take
+    # it rather than failing the sync under `set -e`. Any other failure is real
+    # and propagates.
+    if restart_out="$(kubectl -n "$NRP_NAMESPACE" rollout restart "deployment/$deploy" 2>&1)"; then
+        log "$restart_out"
+    else
+        case "$restart_out" in
+            *"within the past second"*)
+                log "a rollout was already triggered this second - taking it" ;;
+            *)
+                log "ERROR: $restart_out"
+                exit 1 ;;
+        esac
+    fi
+done
 
 log "done ($fingerprint)"
