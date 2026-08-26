@@ -1,6 +1,18 @@
-# fishsense-data-processing-workflow-worker — NRP/Kubernetes Deployment.
+# fishsense-data-processing-workflow-worker — NRP/Kubernetes Deployment (CPU).
 #
-# This is the data-worker's deployment (it no longer runs via compose).
+# The CPU half of the split data-worker: role `cpu`, serving
+# `fishsense_data_processing_queue`. That is eight of the ten stages —
+# rectify/overlay/JPEG (0.1 / 2 / 5.1 / 9), frame clustering, laser
+# calibration, fish measurement, laser depth, and laser-label validation. The
+# two torch inference stages live in deployment-gpu.yaml.
+#
+# **It requests no GPU, and that is the point.** Until 2026-08-25 one
+# Deployment served every stage and requested `nvidia.com/gpu: 1` with node
+# affinity pinned to compute capability >= 7.5, so all of the above was gated
+# on NRP finding a Turing-or-newer card with free capacity — and then held that
+# card idle through the hours of rawpy decode that dominate a real dive. The
+# torch inference stages now live in deployment-gpu.yaml on their own queue.
+#
 # The api-worker (on the orchestrator) drives this Deployment's replica
 # count: parent workflows
 # scale it up to kubernetes.active_replicas before dispatching a child,
@@ -46,38 +58,10 @@ spec:
       # also has arm64 nodes.
       nodeSelector:
         kubernetes.io/arch: amd64
-      # The laser-detector predict stage runs a torch checkpoint on the GPU
-      # (resources below request one). NRP/Nautilus GPU nodes are commonly
-      # tainted `nvidia.com/gpu:NoSchedule`; tolerate it so we can land there.
-      # Harmless on untainted nodes.
-      tolerations:
-        - key: nvidia.com/gpu
-          operator: Exists
-          effect: NoSchedule
-      # GPU compute-capability floor. The laser-detector's torch build
-      # (cu13x / cuDNN 9.2) dropped support for GPUs with SM < 7.5, so a
-      # conv2d on an older card dies at runtime with "cuDNN version 92000 is
-      # not compatible with devices with SM < 7.5" — observed live when NRP
-      # scheduled us onto a GTX 1080 Ti (SM 6.1). Require SM >= 7.5: Turing
-      # (major 7, minor 5) OR Ampere/Ada/Hopper/Blackwell+ (major >= 8).
-      # Excludes Pascal (6.x) and Volta (7.0). Labels come from NVIDIA GPU
-      # Feature Discovery (runs on NRP's GPU nodes). The two nodeSelectorTerms
-      # are OR'd; this AND's with the amd64 nodeSelector above.
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: nvidia.com/gpu.compute.major
-                    operator: In
-                    values: ["8", "9", "10", "11", "12"]
-              - matchExpressions:
-                  - key: nvidia.com/gpu.compute.major
-                    operator: In
-                    values: ["7"]
-                  - key: nvidia.com/gpu.compute.minor
-                    operator: In
-                    values: ["5"]
+      # No GPU toleration and no GPU node affinity on purpose: this pod must be
+      # schedulable on any ordinary amd64 node. Adding either back here would
+      # re-couple the whole pipeline to GPU capacity.
+      #
       # We're a guest on a shared cluster — let NRP preempt our pods
       # whenever it needs the capacity. No PodDisruptionBudget on
       # purpose; an evicted activity just times out and re-runs
@@ -110,6 +94,11 @@ spec:
             # for settings); restated here for clarity.
             - name: E4EFS_DOCKER
               value: "true"
+            # Which half of the split worker this pod is. Set per Deployment
+            # rather than in the shared settings ConfigMap, which all three
+            # Deployments mount. See `roles.py` in the worker.
+            - name: E4EFS_GENERAL__ROLE
+              value: "cpu"
             # HTTP Basic creds the SDK presents to fishsense-api
             # (authentik basic-auth-passthrough on the API route).
             - name: E4EFS_FISHSENSE_API__USERNAME
@@ -164,13 +153,7 @@ spec:
               # can fill to its own cap without tripping the container's
               # overall ephemeral-storage limit and getting evicted first.
               ephemeral-storage: 7Gi
-              # One GPU for the laser-detector predict stage (torch checkpoint).
-              # Extended resources must appear in limits; k8s copies it to
-              # requests. The whole data-worker pod carries the GPU (one
-              # Deployment, one queue) — idle during the non-laser stages, but
-              # the worker scales to zero when the queue is quiet and NRP is
-              # GPU-rich, so a dedicated GPU deployment is only an optimization.
-              nvidia.com/gpu: "1"
+              # Deliberately NO `nvidia.com/gpu` here — see the header.
           volumeMounts:
             - name: settings
               mountPath: /e4efs/config/settings.toml

@@ -34,15 +34,19 @@ from temporalio.common import RetryPolicy, WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
 with workflow.unsafe.imports_passed_through():
+    from fishsense_shared import (
+        DATA_PROCESSING_GPU_TASK_QUEUE,
+        DATA_PROCESSING_TASK_QUEUE,
+    )
+
     from fishsense_api_workflow_worker.workflows._retry_policies import (
         SCALING_RETRY_POLICY,
         SDK_FAIL_FAST_RETRY_POLICY,
         STAGE_RAW_RETRY_POLICY,
     )
 
-DATA_PROCESSING_TASK_QUEUE = "fishsense_data_processing_queue"
-
 __all__ = [
+    "DATA_PROCESSING_GPU_TASK_QUEUE",
     "DATA_PROCESSING_TASK_QUEUE",
     "STAGE_RAW_RETRY_POLICY",
     "cleanup_raw",
@@ -54,6 +58,7 @@ __all__ = [
     "stage_raw",
     "stage_slate_pdf",
     "wake_data_worker",
+    "wake_gpu_worker",
 ]
 
 
@@ -92,6 +97,33 @@ async def wake_data_worker() -> None:
         "ensure_data_worker_running_activity",
         args=(),
         schedule_to_close_timeout=timedelta(minutes=5),
+        retry_policy=SCALING_RETRY_POLICY,
+    )
+
+
+async def wake_gpu_worker() -> str:
+    """Bring up a worker for the GPU predict queue, and report which one.
+
+    The GPU counterpart of `wake_data_worker`, and it returns a value because
+    the caller has a decision to make. `fishsense_data_processing_gpu_queue` is
+    served by two Deployments — one with a GPU, one running the same checkpoint
+    on the CPU — and when neither can start, the honest answer is
+    ``"unavailable"``. **A parent that gets that must not dispatch its child.**
+    Dispatching onto an unserved queue does not fail; it hangs, sitting
+    `Running` until the child's execution timeout hours later, having also
+    staged the dive's raw `.ORF` bytes from the NAS for nothing.
+
+    Returns ``"gpu"``, ``"cpu_fallback"`` or ``"unavailable"`` — see
+    `activities.gpu_fallback`.
+    """
+    return await workflow.execute_activity(
+        "ensure_gpu_worker_running_activity",
+        args=(),
+        # Longer than `wake_data_worker`'s 5 minutes because this one waits for
+        # a pod (`gpu_start_timeout_seconds`, 10 min by default) and may then
+        # wait for a second one after flipping to the CPU fallback.
+        schedule_to_close_timeout=timedelta(minutes=30),
+        heartbeat_timeout=timedelta(minutes=5),
         retry_policy=SCALING_RETRY_POLICY,
     )
 
@@ -142,8 +174,15 @@ async def dispatch_child(
     child_id: str,
     execution_timeout: timedelta,
     result_type: type | None = None,
+    task_queue: str = DATA_PROCESSING_TASK_QUEUE,
 ) -> Any:
     """Start the data-worker child and wait for it.
+
+    ``task_queue`` selects which half of the split data-worker runs it: the
+    CPU queue by default, or `DATA_PROCESSING_GPU_TASK_QUEUE` for the two
+    predict stages. Caller-supplied because the queue is the *only* thing that
+    routes work between the two, and getting it wrong is silent — the child is
+    accepted and simply never picked up.
 
     The child id is deterministic (`preprocess-laser-{dive_id}`) and the
     reuse policy is **ALLOW_DUPLICATE**, not `ALLOW_DUPLICATE_FAILED_ONLY`.
@@ -167,7 +206,7 @@ async def dispatch_child(
             workflow_name,
             inputs,
             id=child_id,
-            task_queue=DATA_PROCESSING_TASK_QUEUE,
+            task_queue=task_queue,
             execution_timeout=execution_timeout,
             id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
             result_type=result_type,

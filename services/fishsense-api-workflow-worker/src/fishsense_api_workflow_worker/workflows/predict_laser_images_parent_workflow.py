@@ -16,6 +16,17 @@ fires with `overlap=SKIP`; the child id is deterministic
 (`predict-laser-{dive_id}`) with `ALLOW_DUPLICATE` so a dive can re-predict
 images that became eligible later; per-image predict activities are read-only
 against Garage + the SDK upsert is idempotent.
+
+**This is the only parent that dispatches to the GPU queue.** The data-worker
+is split in two — `fishsense_data_processing_queue` for the CPU stages,
+`fishsense_data_processing_gpu_queue` for the laser detector — so nothing else
+in the pipeline is gated on a GPU being schedulable. The GPU queue is served by
+either the GPU Deployment or, after repeated failed starts, a CPU-only one
+running the same checkpoint slowly; `wake_gpu_worker` decides and reports which
+(see `activities.gpu_fallback`). When it reports that neither could start, this
+parent returns **before staging any bytes**: the dive is left in the cohort and
+picked up next hour, which is strictly better than staging its raw `.ORF`s from
+the NAS and then hanging a child on an unserved queue for two hours.
 """
 
 from datetime import timedelta
@@ -23,6 +34,9 @@ from typing import List
 
 from fishsense_shared import LaserPredictionResult, PredictLaserImagesInput
 from temporalio import workflow
+
+with workflow.unsafe.imports_passed_through():
+    from fishsense_api_workflow_worker.activities.gpu_fallback import MODE_UNAVAILABLE
 
 from fishsense_api_workflow_worker.workflows import _dispatch
 
@@ -59,14 +73,30 @@ class PredictLaserImagesParentWorkflow:
         if not inputs.images:
             return inputs.dive_id
 
-        await _dispatch.wake_data_worker()
+        mode = await _dispatch.wake_gpu_worker()
+        if mode == MODE_UNAVAILABLE:
+            # Nothing is serving the GPU queue — not the GPU worker, not the
+            # CPU fallback. Bail before staging: a child dispatched now would
+            # not fail, it would sit Running until its two-hour execution
+            # timeout. The dive stays in the cohort for the next firing.
+            workflow.logger.warning(
+                "no worker available for the laser-predict queue; "
+                "skipping dive_id=%d this firing",
+                inputs.dive_id,
+            )
+            return None
+
+        workflow.logger.info("laser predict running on %s capacity", mode)
         await _dispatch.stage_raw(dive_id)
         results: List[LaserPredictionResult] = await _dispatch.dispatch_child(
             "PredictLaserImagesWorkflow",
             inputs,
             child_id=f"predict-laser-{dive_id}",
-            execution_timeout=timedelta(hours=2),
+            # Generous enough to cover the CPU fallback, which runs the same
+            # checkpoint without a GPU and is far slower per image.
+            execution_timeout=timedelta(hours=6),
             result_type=List[LaserPredictionResult],
+            task_queue=_dispatch.DATA_PROCESSING_GPU_TASK_QUEUE,
         )
 
         if results:

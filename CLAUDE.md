@@ -79,7 +79,8 @@ landed; the clones behind them are now collapsed into
 | `services/fishsense-api/` | FastAPI app (DB CRUD, label endpoints) | — |
 | `services/fishsense-api-workflow-worker/` | api-side Temporal worker: hourly Label Studio sync (laser/headtail/dive-slate/species), on-demand Create/Populate × {Laser,Species,HeadTail,DiveSlate} LS project workflows, on-demand dive ingestion (`IngestDiveWorkflow`, see below) + checksum verification, hourly preprocess parents for stages 0.1 / 1 / 2 / 5.1 / 9 (select + resolve; dispatch child to data-worker) | `fishsense_api_queue` |
 | `apps/fishsense-lite-web/` | Next.js 15 (App Router) + React + TS landing page at `fishsense.e4e.ucsd.edu`. SSR fetches LS project IDs from fishsense-api, resolves names from Label Studio, renders categorized link cards. Auth.js (next-auth v5) with Authentik OIDC gates `/portal/*`; landing stays public. Replaces the prior mafl dashboard + its hourly config-writer workflow. Will grow into a full web app. | — |
-| `services/fishsense-data-processing-workflow-worker/` | image preprocessing (rectify/overlay/JPEG), laser calibration, fish measurement | `fishsense_data_processing_queue` |
+| `services/fishsense-data-processing-workflow-worker/` | image preprocessing (rectify/overlay/JPEG), laser calibration, fish measurement, laser depth, clustering, label validation | `fishsense_data_processing_queue` (role `cpu`) |
+| ⤷ same package, role `gpu` | torch inference: laser detector + slate masker | `fishsense_data_processing_gpu_queue` |
 | `services/fishsense-backup-worker/` | nightly Postgres → NAS backups + retention | `fishsense_backup_queue` |
 
 The backup worker is **deliberately separate** from the data-processing
@@ -254,7 +255,9 @@ do it as a deliberate, separate change and drain the queue first.
      only raised while a prior populate for that dive is still
      *running*, and the parent catches it so
      the post-cleanup run still completes successfully.
-* **Child** on data-worker (`fishsense_data_processing_queue`). Thin
+* **Child** on data-worker (`fishsense_data_processing_queue`; the two
+  predict children go to `fishsense_data_processing_gpu_queue`
+  instead — see "GPU/CPU worker split"). Thin
   pre-input workflow that fans out per-image activities. No SDK
   calls and no NAS calls; all bytes already in Garage, all decisions
   baked into the input DTO.
@@ -803,6 +806,107 @@ ingest wants, and one code path cannot hold both honestly.
 controller lands, **add `fishsense-api` to `temporal.reload` in `flake.nix`** —
 the tell is the service gaining a `/run/tenant/temporal` mount, and missing it
 means the API silently holds an expired cert until something else restarts it.
+
+## GPU/CPU worker split + CPU fallback
+
+**Added 2026-08-25.** The data-worker is one package that runs in one of two
+roles, on two task queues, as three Kubernetes Deployments.
+
+| Role | Queue | Stages |
+|---|---|---|
+| `cpu` | `fishsense_data_processing_queue` | rectify/overlay/JPEG (0.1 / 2 / 5.1 / 9), clustering, calibration, measurement, laser depth, laser-label validation |
+| `gpu` | `fishsense_data_processing_gpu_queue` | `predict_laser_image`, `predict_slate_image` |
+
+`general.role` selects it (`cpu` / `gpu` / `all`); the registration lists live
+in `roles.py`, the vocabulary in the leaf `role_names.py` (config imports the
+leaf — `config -> roles -> activities.utils -> config` is a cycle), and the two
+queue names in
+[fishsense_shared.task_queues](libs/fishsense-shared/src/fishsense_shared/task_queues.py)
+because they are a cross-worker contract, like `preprocess_contracts.py`.
+`all` runs both in one process and is the default, so the devcontainer and the
+integration tests are unaffected by the split.
+
+**Why.** One Deployment used to serve everything while requesting
+`nvidia.com/gpu: 1` with node affinity pinned to compute capability >= 7.5. So
+every stage — nine of which never touch a GPU — was gated on NRP finding a
+Turing-or-newer card with free capacity, and then held that card idle through
+the hours of rawpy decode that dominate a real dive. At `active_replicas = 2`
+the second pod sat Pending on `Insufficient nvidia.com/gpu` (2026-08-20). The
+CPU Deployment now requests no GPU and cannot be blocked by GPU scarcity.
+
+**The GPU queue means "prefer a GPU", not "require one".** That is the whole
+reason both torch stages live on it. Before the CPU fallback existed, putting a
+stage on a GPU-requesting Deployment *was* gating it on GPU availability; now
+the queue is served by the GPU Deployment or a CPU-only one running the same
+checkpoints, so a stage there gets a card when there is one and still runs when
+there isn't.
+
+The two stages want that for different reasons, and the difference is worth
+knowing. `predict_laser_image` genuinely needs the GPU — CPU inference is a
+real degradation. `predict_slate_image` does not: fishsense-core measures
+`BoardMasker` at 202 ms/frame on CPU and defaults its `device=` to `"cpu"`
+saying as much. It is on the GPU queue anyway because it is still a torch model
+and the card is already there for the laser stage.
+
+That last point needed a code change to be true at all. Unlike `LaserDetector`,
+which picks `"cuda" if torch.cuda.is_available() else "cpu"` internally,
+`BoardMasker` defaults to CPU and never auto-selects — and the activity passed
+no device. So the slate mask ran on the CPU **even on the old GPU-pinned pod**,
+for its whole life, with nothing in the code saying so.
+`predict_slate_image._preferred_device` now asks. Note there are two
+independent degradations stacked under this stage: GPU → CPU inference, and
+BoardMasker → classical estimator (~13 pts less coverage). (It is also RETIRED
+as of 2026-08-03; nothing schedules it.)
+
+**The CPU fallback is the "never block on a GPU" half.** The GPU queue is
+served by *two* Deployments — `...-worker-gpu` and
+`...-worker-gpu-cpu-fallback` — running the same image in the same `gpu` role,
+one with a GPU request and one without. Exactly one is scaled up at a time.
+`LaserDetector.__init__` already defaults to
+`"cuda" if torch.cuda.is_available() else "cpu"` and `predict_laser_image`
+passes no device, so **the fallback needed no detector code at all** — it
+produces the same predictions, slowly.
+
+The policy is pure and lives in
+[activities/gpu_fallback.py](services/fishsense-api-workflow-worker/src/fishsense_api_workflow_worker/activities/gpu_fallback.py):
+after `gpu_max_start_failures` (3) consecutive failed GPU starts, scale the GPU
+one to 0 and the fallback to `gpu_fallback_replicas` for `gpu_fallback_minutes`
+(180), then probe the GPU again. A "failed start" is `deployment_is_wedged`
+after waiting out `gpu_start_timeout_seconds` (600) — long enough that an image
+pull is not mistaken for an outage. **The window expires on purpose**: without
+it, one bad afternoon on NRP would strand the stage on CPU inference forever.
+
+Three things about it are load-bearing:
+
+* **State lives in annotations on the GPU Deployment**
+  (`fishsense.e4e.ucsd.edu/gpu-start-failures`, `gpu-wedged-since`,
+  `gpu-fallback-until`), not in the api-worker. A counter that reset on every
+  api-worker restart or slot converge would never accumulate across the
+  multi-hour outage the fallback exists for. They are absent when healthy, so
+  their presence is the signal, and an operator can force or end a fallback
+  with `kubectl annotate`.
+* **The hourly sweeper writes only `deployments/scale`, never the
+  annotations.** If routine idle scale-downs also cleared them, a long GPU
+  outage would reset its own failure counter every hour and could never reach
+  the fallback. There is a tripwire test.
+* **`wedge_grace` is clamped to `gpu_start_timeout_seconds`** in
+  `resolve_scaling_config`. The activity waits out the start timeout and *then*
+  observes; a longer grace would swallow every observation and the fallback
+  could never trip.
+
+`ensure_gpu_worker_running_activity` returns `gpu` / `cpu_fallback` /
+`unavailable`. On `unavailable` both predict parents **return before
+staging any bytes** — dispatching onto an unserved queue does not fail, it
+hangs until the child's execution timeout, having staged the dive's raw `.ORF`s
+from NAS for nothing. The dive stays in the cohort for the next firing.
+
+`kubernetes.gpu_active_replicas` is deliberately separate from
+`active_replicas`: the latter now sizes CPU pods, where more is just more
+throughput, while each GPU pod holds a card on a contended cluster.
+
+Operator notes, the annotation table, and the CI behavior (a GPU rollout
+failure is a *warning*, so a GPU shortage cannot block shipping the CPU stages)
+are in `deploy/k8s/data-worker/README.md`.
 
 ## Data-worker activity pattern
 

@@ -3,10 +3,17 @@
 
 Pins down:
   1. Selector None -> parent returns None, no resolver/child.
-  2. Full path: dispatches the child on the data-worker queue with the
+  2. Full path: dispatches the child on the data-worker **GPU** queue with the
      deterministic id `predict-laser-{dive_id}`, then persists the child's
      results and returns the dive_id.
   3. Resolver returning 0 images skips the child + persist.
+  4. No GPU *or* CPU-fallback worker available -> the parent bails before
+     staging anything.
+
+(2) and (4) are the halves of the GPU split. This is the only parent that
+dispatches to `fishsense_data_processing_gpu_queue`; the stub child is
+registered there and nowhere else, so a regression that sent it back to the CPU
+queue would hang rather than pass.
 
 The child stub returns predictions; the persist stub records what the parent
 handed it (via an activity, so it survives the workflow sandbox boundary).
@@ -28,8 +35,13 @@ from fishsense_shared import (
     PredictLaserImage,
     PredictLaserImagesInput,
 )
+from fishsense_api_workflow_worker.activities.gpu_fallback import (
+    MODE_CPU_FALLBACK,
+    MODE_GPU,
+    MODE_UNAVAILABLE,
+)
 from fishsense_api_workflow_worker.workflows._dispatch import (
-    DATA_PROCESSING_TASK_QUEUE,
+    DATA_PROCESSING_GPU_TASK_QUEUE,
 )
 from fishsense_api_workflow_worker.workflows.predict_laser_images_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PredictLaserImagesParentWorkflow,
@@ -57,7 +69,7 @@ class _StubChild:
         ]
 
 
-def _stubs(dive_id, images, child_ids, persisted):
+def _stubs(dive_id, images, child_ids, persisted, staged=None, mode=MODE_GPU):
     @activity.defn(name="select_next_high_priority_dive_for_laser_prediction_activity")
     async def selector() -> int | None:
         return dive_id
@@ -72,13 +84,14 @@ def _stubs(dive_id, images, child_ids, persisted):
             wavelength=None,
         )
 
-    @activity.defn(name="ensure_data_worker_running_activity")
-    async def ensure() -> None:
-        return None
+    @activity.defn(name="ensure_gpu_worker_running_activity")
+    async def ensure_gpu() -> str:
+        return mode
 
     @activity.defn(name="stage_raw_bytes_for_dive_activity")
     async def stage(d: int) -> None:
-        return None
+        if staged is not None:
+            staged.append(d)
 
     @activity.defn(name="cleanup_raw_bytes_for_dive_activity")
     async def cleanup(d: int) -> None:
@@ -93,15 +106,15 @@ def _stubs(dive_id, images, child_ids, persisted):
     async def record(workflow_id: str, d: int) -> None:
         child_ids.append(workflow_id)
 
-    return [selector, resolver, ensure, stage, cleanup, persist, record]
+    return [selector, resolver, ensure_gpu, stage, cleanup, persist, record]
 
 
-async def _run(env, dive_id, images, child_ids, persisted):
-    activities = _stubs(dive_id, images, child_ids, persisted)
+async def _run(env, dive_id, images, child_ids, persisted, staged=None, mode=MODE_GPU):
+    activities = _stubs(dive_id, images, child_ids, persisted, staged, mode)
     # Two workers: the parent (+ its activities) on the parent queue, and the
-    # stub child on the data-processing queue the parent dispatches to — the
-    # activities are registered on both so the child's _record_child_dispatch
-    # and the parent's persist both resolve.
+    # stub child on the data-processing GPU queue the parent dispatches to —
+    # the activities are registered on both so the child's
+    # _record_child_dispatch and the parent's persist both resolve.
     async with Worker(
         env.client,
         task_queue="test-predict-parent",
@@ -109,7 +122,7 @@ async def _run(env, dive_id, images, child_ids, persisted):
         activities=activities,
     ), Worker(
         env.client,
-        task_queue=DATA_PROCESSING_TASK_QUEUE,
+        task_queue=DATA_PROCESSING_GPU_TASK_QUEUE,
         workflows=[_StubChild],
         activities=activities,
     ):
@@ -154,5 +167,38 @@ async def test_no_images_skips_child_and_persist():
     async with await WorkflowEnvironment.start_time_skipping() as env:
         result = await _run(env, 440, [], child_ids, persisted)
     assert result == 440
+    assert not child_ids
+    assert not persisted
+
+
+@pytest.mark.asyncio
+async def test_cpu_fallback_capacity_still_dispatches():
+    """A CPU-fallback pod serves the same queue, so the parent's path is
+    identical — the mode is informational, not routing."""
+    child_ids: List[str] = []
+    persisted: List = []
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        result = await _run(
+            env, 441, [(1, "a")], child_ids, persisted, mode=MODE_CPU_FALLBACK
+        )
+    assert result == 441
+    assert child_ids == ["predict-laser-441"]
+
+
+@pytest.mark.asyncio
+async def test_unavailable_capacity_bails_before_staging_anything():
+    """No worker can serve the GPU queue. Staging the dive's raw `.ORF` bytes
+    from the NAS and then dispatching would not fail — the child would sit
+    Running until its execution timeout — so the parent must stop here and let
+    the cohort selector re-offer the dive next hour."""
+    child_ids: List[str] = []
+    persisted: List = []
+    staged: List[int] = []
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        result = await _run(
+            env, 442, [(1, "a")], child_ids, persisted, staged, MODE_UNAVAILABLE
+        )
+    assert result is None
+    assert not staged
     assert not child_ids
     assert not persisted

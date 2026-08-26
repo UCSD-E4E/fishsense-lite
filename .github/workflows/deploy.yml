@@ -354,7 +354,31 @@ jobs:
             echo "::warning::Deployment is absent and will be recreated - NRP's 2-week GC has collected it. Request a permanent-service exception for the e4e-fishsense namespace (Matrix, https://nrp.ai/contact); see deploy/k8s/data-worker/README.md."
           fi
           kubectl apply -k deploy/k8s/data-worker
-          kubectl rollout status deployment/fishsense-data-processing-workflow-worker --timeout=5m
+          # Three Deployments now: the CPU worker, the GPU worker, and the GPU
+          # worker's CPU-only fallback. Roll them out one at a time.
+          #
+          # The GPU one is allowed to be unschedulable — that is the whole
+          # reason the fallback exists — so a `rollout status` failure there
+          # must NOT fail the deploy. It is reported and moved past; the
+          # api-worker's `ensure_gpu_worker_running_activity` handles it at
+          # runtime by routing predict work to the CPU fallback. Failing here
+          # instead would mean a GPU shortage on NRP blocked shipping the CPU
+          # stages, which is exactly the coupling this release removes.
+          #
+          # Each is normally scaled to 0, and `rollout status` returns
+          # immediately for a Deployment with no desired replicas.
+          for dep in fishsense-data-processing-workflow-worker \
+                     fishsense-data-processing-workflow-worker-gpu-cpu-fallback; do
+            kubectl rollout status "deployment/$dep" --timeout=5m
+          done
+          if ! kubectl rollout status \
+                 deployment/fishsense-data-processing-workflow-worker-gpu --timeout=5m; then
+            echo "::warning::The GPU data-worker did not roll out. This does NOT block the pipeline - after $E4EFS_GPU_MAX_FAILURES failed starts the api-worker routes laser prediction to the CPU fallback. Check GPU capacity/quota on NRP if it persists."
+          fi
+        env:
+          # Only used in the warning text above; keep in step with
+          # `kubernetes.gpu_max_start_failures` in the api-worker settings.
+          E4EFS_GPU_MAX_FAILURES: "3"
 
       - name: Diagnose a failed rollout
         if: failure()

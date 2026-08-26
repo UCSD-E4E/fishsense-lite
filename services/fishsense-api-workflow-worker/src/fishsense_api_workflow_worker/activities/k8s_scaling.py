@@ -26,8 +26,15 @@ accident:
 from __future__ import annotations
 
 import ssl
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import timedelta
 
+from fishsense_shared import (
+    DATA_PROCESSING_GPU_TASK_QUEUE,
+    DATA_PROCESSING_TASK_QUEUE,
+)
+
+from fishsense_api_workflow_worker.activities.gpu_fallback import FallbackPolicy
 from fishsense_api_workflow_worker.config import settings
 
 # Upper bound on the active-window replica count. >1 is only ever a
@@ -38,6 +45,34 @@ MAX_ACTIVE_REPLICAS = 4
 MIN_ACTIVE_REPLICAS = 1
 
 DEFAULT_DEPLOYMENT_NAME = "fishsense-data-processing-workflow-worker"
+# The GPU half of the split worker, and the CPU-only Deployment that serves the
+# same `fishsense_data_processing_gpu_queue` when the GPU one cannot start.
+# Exactly one of the two is ever scaled up; see `gpu_fallback`.
+DEFAULT_GPU_DEPLOYMENT_NAME = f"{DEFAULT_DEPLOYMENT_NAME}-gpu"
+DEFAULT_GPU_FALLBACK_DEPLOYMENT_NAME = f"{DEFAULT_GPU_DEPLOYMENT_NAME}-cpu-fallback"
+
+# The CPU fallback runs the same torch checkpoint without a GPU, so it is far
+# slower per image and there is no point running several. Capped low
+# independently of `active_replicas`, which sizes GPU pods.
+MAX_FALLBACK_REPLICAS = 2
+
+
+@dataclass(frozen=True)
+class GpuScalingConfig:
+    """Which Deployment serves the GPU queue, and when to stop waiting for it.
+
+    ``deployment_name`` requests a GPU; ``fallback_deployment_name`` does not
+    and runs the same torch checkpoint on the CPU. Exactly one is scaled up at
+    a time — see `activities.gpu_fallback`.
+    """
+
+    deployment_name: str = DEFAULT_GPU_DEPLOYMENT_NAME
+    fallback_deployment_name: str = DEFAULT_GPU_FALLBACK_DEPLOYMENT_NAME
+    # How long to wait for a pod before calling a start attempt failed. This is
+    # what separates "no GPU is available" from "the pod is still pulling its
+    # image".
+    start_timeout_seconds: int = 600
+    policy: FallbackPolicy = field(default_factory=FallbackPolicy)
 
 
 @dataclass(frozen=True)
@@ -49,6 +84,27 @@ class ScalingConfig:
     deployment_name: str
     active_replicas: int
     idle_cooldown_minutes: int
+    # Grouped rather than flattened: these four are one subsystem (which
+    # Deployment serves the GPU queue, and when to give up on the GPU one), and
+    # they are the only part of the config a caller that just wants the CPU
+    # worker never touches. Defaulted so such a caller — or a test — need not
+    # restate the GPU topology; `resolve_scaling_config` always sets it fully.
+    gpu: GpuScalingConfig = field(default_factory=GpuScalingConfig)
+
+    def sweep_targets(self) -> tuple[tuple[str, str], ...]:
+        """Every (deployment, task queue) pair the idle sweeper must consider.
+
+        Three Deployments, two queues: the CPU worker owns
+        `fishsense_data_processing_queue`, while the GPU worker and its CPU
+        fallback both serve `fishsense_data_processing_gpu_queue` (only one of
+        them is up at a time). Returning the pairing here keeps the sweeper
+        from having to know the topology.
+        """
+        return (
+            (self.deployment_name, DATA_PROCESSING_TASK_QUEUE),
+            (self.gpu.deployment_name, DATA_PROCESSING_GPU_TASK_QUEUE),
+            (self.gpu.fallback_deployment_name, DATA_PROCESSING_GPU_TASK_QUEUE),
+        )
 
 
 def resolve_scaling_config() -> ScalingConfig | None:
@@ -77,12 +133,62 @@ def resolve_scaling_config() -> ScalingConfig | None:
         min(int(section.get("active_replicas", 1)), MAX_ACTIVE_REPLICAS),
     )
     idle_cooldown_minutes = max(0, int(section.get("idle_cooldown_minutes", 15)))
+
+    # GPU names default off `deployment_name` rather than off the module
+    # constant, so overriding the CPU name (a test namespace, a second
+    # environment) carries the whole trio with it instead of silently pairing a
+    # renamed CPU Deployment with the stock GPU ones.
+    gpu_deployment_name = section.get("gpu_deployment_name") or f"{deployment_name}-gpu"
+    gpu_fallback_deployment_name = (
+        section.get("gpu_fallback_deployment_name")
+        or f"{gpu_deployment_name}-cpu-fallback"
+    )
+    # The grace window must not outlast the start timeout. `ensure_gpu_worker_
+    # running_activity` waits out `gpu_start_timeout_seconds` for a pod, then
+    # observes; if the grace were longer, that observation would always land
+    # inside it, no failure would ever be counted, and the CPU fallback could
+    # never trip — the one outcome this whole mechanism exists to prevent.
+    gpu_start_timeout_seconds = max(
+        0, int(section.get("gpu_start_timeout_seconds", 600))
+    )
+    wedge_grace_seconds = min(
+        max(0, int(section.get("gpu_wedge_grace_minutes", 5))) * 60,
+        gpu_start_timeout_seconds,
+    )
+    # The GPU count is deliberately NOT `active_replicas`. That setting now
+    # sizes the CPU worker, where more pods is simply more throughput; here
+    # each pod holds a GPU on a contended shared cluster. At 2 the second pod
+    # sat Pending on "Insufficient nvidia.com/gpu" (2026-08-20) — requesting
+    # and queueing for a card without using it. Defaults to 1, independently.
+    gpu_active_replicas = max(
+        MIN_ACTIVE_REPLICAS,
+        min(int(section.get("gpu_active_replicas", 1)), MAX_ACTIVE_REPLICAS),
+    )
+    fallback_policy = FallbackPolicy(
+        active_replicas=gpu_active_replicas,
+        fallback_replicas=max(
+            1, min(int(section.get("gpu_fallback_replicas", 1)), MAX_FALLBACK_REPLICAS)
+        ),
+        # At least 1, or the pipeline would drop to CPU inference on the very
+        # first observation and never actually try the GPU.
+        max_start_failures=max(1, int(section.get("gpu_max_start_failures", 3))),
+        wedge_grace=timedelta(seconds=wedge_grace_seconds),
+        fallback_window=timedelta(
+            minutes=max(1, int(section.get("gpu_fallback_minutes", 180)))
+        ),
+    )
     return ScalingConfig(
         kubeconfig_path=kubeconfig_path,
         namespace=namespace,
         deployment_name=deployment_name,
         active_replicas=active_replicas,
         idle_cooldown_minutes=idle_cooldown_minutes,
+        gpu=GpuScalingConfig(
+            deployment_name=gpu_deployment_name,
+            fallback_deployment_name=gpu_fallback_deployment_name,
+            start_timeout_seconds=gpu_start_timeout_seconds,
+            policy=fallback_policy,
+        ),
     )
 
 
@@ -185,14 +291,67 @@ def deployment_is_wedged(api, namespace: str, name: str) -> bool:
     scales it straight back up, and per-image activities are idempotent by
     design, so the children it interrupts simply re-run.
     """
-    deployment = api.read_namespaced_deployment(name=name, namespace=namespace)
+    return readiness(
+        api.read_namespaced_deployment(name=name, namespace=namespace)
+    ).wedged
+
+
+@dataclass(frozen=True)
+class Readiness:
+    """What one Deployment read says about whether its pods are serving.
+
+    ``ready`` and ``wedged`` are not complements: a Deployment scaled to 0 is
+    neither, which is the ordinary state of every data-worker Deployment for
+    most of the hour. `gpu_fallback.decide` depends on being able to tell that
+    third case apart — counting a scaled-to-zero Deployment as a failed start
+    would trip the CPU fallback during normal idle operation.
+    """
+
+    desired: int
+    ready_count: int
+
+    @property
+    def ready(self) -> bool:
+        """At least one pod is Ready, so the queue can drain."""
+        return self.ready_count > 0
+
+    @property
+    def wedged(self) -> bool:
+        """Pods are wanted and none is Ready."""
+        return self.desired > 0 and self.ready_count == 0
+
+
+def readiness(deployment) -> Readiness:
+    """Read `Readiness` off a Deployment object.
+
+    Takes the object rather than (api, namespace, name) so a caller that also
+    needs the annotations — `ensure_gpu_worker_running_activity` does — can
+    spend one API read on both instead of racing two.
+    """
     desired = (deployment.spec.replicas if deployment.spec else None) or 0
     status = deployment.status
     # k8s OMITS readyReplicas rather than sending 0, so this is None in exactly
     # the wedged case. Reading None as "unknown, assume healthy" is what would
     # keep the GPUs pinned.
-    ready = (status.ready_replicas if status else None) or 0
-    return desired > 0 and ready == 0
+    ready_count = (status.ready_replicas if status else None) or 0
+    return Readiness(desired=desired, ready_count=ready_count)
+
+
+def patch_deployment_annotations(
+    api, namespace: str, name: str, annotations: dict[str, str | None]
+) -> None:
+    """Merge annotations onto a Deployment; a ``None`` value removes the key.
+
+    This is a metadata-only strategic-merge patch. It deliberately never
+    touches `spec.template`, so it cannot roll the pods — an annotation write
+    on the *pod template* would restart the very worker we are trying to get
+    running. `tests/test_ensure_gpu_worker_running_activity.py` pins that.
+    """
+    api.patch_namespaced_deployment(
+        name=name,
+        namespace=namespace,
+        body={"metadata": {"annotations": annotations}},
+    )
 
 
 def set_deployment_replicas(api, namespace: str, name: str, replicas: int) -> None:
