@@ -359,28 +359,103 @@ jobs:
       - name: Diagnose a failed rollout
         if: failure()
         # `rollout status` reports only "timed out waiting for the condition",
-        # which names no cause. Everything needed to tell an expired cert from an
-        # OOMKill from an unschedulable GPU request is one API call away — collect
-        # it here so the job log is self-sufficient and nobody has to reproduce
-        # cluster access to read it.
+        # which names no cause — it reads identically for an expired cert, an
+        # OOMKill, an unschedulable GPU request and a quota denial.
+        #
+        # This step used to shell out to `get pods`, `get events` and `logs`.
+        # Every one of those returns **Forbidden**: the deploy identity holds
+        # `deployments` + `deployments/scale` and nothing else, by design. So the
+        # step that exists because a timeout is not a diagnosis was itself
+        # producing no diagnosis, and an operator had to go through the
+        # api-worker's own k8s wrapper to learn anything.
+        #
+        # It now derives what it can from the ONE object it is allowed to read,
+        # and says plainly when it has hit the edge of its permissions rather
+        # than printing a Forbidden and moving on.
         run: |
           ns=e4e-fishsense
-          echo "::group::Pods"
-          kubectl -n "$ns" get pods -o wide || true
+          dep=fishsense-data-processing-workflow-worker
+
+          echo "::group::Deployment state (the only object this identity can read)"
+          kubectl -n "$ns" get deployment "$dep" -o json > /tmp/dep.json 2>/dev/null || {
+            echo "::error::Could not read the Deployment either — the kubeconfig or namespace is wrong, not the workload."
+            exit 0
+          }
+          python3 - <<'PY'
+          import json
+
+          d = json.load(open("/tmp/dep.json"))
+          spec, status = d.get("spec", {}), d.get("status", {})
+          want = spec.get("replicas", 1)
+          # `readyReplicas` is ABSENT, not 0, when nothing is Ready. Reading a
+          # missing key as "unknown, assume healthy" is what once kept two NRP
+          # GPUs pinned around the clock behind a crash-looping worker.
+          ready = status.get("readyReplicas", 0)
+          updated = status.get("updatedReplicas", 0)
+          image = spec["template"]["spec"]["containers"][0]["image"]
+
+          print(f"image:    {image}")
+          print(f"replicas: want={want} updated={updated} ready={ready} "
+                f"available={status.get('availableReplicas', 0)}")
+          created = d["metadata"].get("creationTimestamp")
+          if created:
+            # Worth checking against the ConfigMaps' age: NRP garbage-collects
+            # Deployments older than two weeks unless the namespace holds a
+            # permanent-service exception, and `apply` silently recreates one.
+            print(f"created:  {created}")
+          for c in status.get("conditions", []):
+            print(f"cond:     {c['type']}={c['status']} {c.get('reason')}: {c.get('message','')[:120]}")
+
+          print()
+          if updated < want:
+            print("VERDICT: the new ReplicaSet is not being created. Look at quota "
+                  "or admission (the Deployment spec was accepted, so the manifest "
+                  "itself is valid).")
+          elif ready == 0:
+            print("VERDICT: the new image IS applied, but no pod became Ready.")
+            print("  Typical causes, in the order they have actually happened here:")
+            print("   1. expired Temporal client cert -> CrashLoopBackOff. The")
+            print("      preflight above checks this, so if it passed, rule it out.")
+            print("   2. unschedulable GPU request / NRP contention. The rollout")
+            print("      window is 5 min, which is short for GPU scheduling.")
+            print("   3. bad image tag or a pull failure.")
+            print("  The api-worker's :55 sweeper treats this as WEDGED and scales")
+            print("  the Deployment to 0, reclaiming the GPUs. That bounds the cost")
+            print("  but fixes nothing — the backlog left behind is real work.")
+          else:
+            print("VERDICT: pods are Ready now; the rollout simply outran the "
+                  "status window. Re-running the deploy should go green.")
+
+          if any(c["type"] == "Available" and c["status"] == "True"
+                 for c in status.get("conditions", [])):
+            print()
+            print("NOTE: the `Available=True` above is NOT evidence of health. The pod")
+            print("has no readinessProbe, so that condition can reflect an older")
+            print("ReplicaSet and flaps on every crash cycle. Trust `ready`, not it.")
+          PY
           echo "::endgroup::"
-          echo "::group::Container state (exit codes, restart counts)"
-          kubectl -n "$ns" get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}  waiting: {.status.containerStatuses[*].state.waiting.reason}{"\n"}  lastTerminated: {.status.containerStatuses[*].lastState.terminated.reason}{" exit="}{.status.containerStatuses[*].lastState.terminated.exitCode}{"\n"}  restarts: {.status.containerStatuses[*].restartCount}{"\n"}{end}' || true
-          echo "::endgroup::"
-          echo "::group::Recent events"
-          kubectl -n "$ns" get events --sort-by=.lastTimestamp | tail -30 || true
-          echo "::endgroup::"
-          echo "::group::Pod logs"
-          for p in $(kubectl -n "$ns" get pods -l app.kubernetes.io/name=fishsense-data-processing-workflow-worker -o name 2>/dev/null); do
-            echo "--- $p (previous container) ---"
-            kubectl -n "$ns" logs "$p" --tail=40 --previous 2>/dev/null \
-              || kubectl -n "$ns" logs "$p" --tail=40 2>/dev/null \
-              || echo "(no logs)"
-          done
+
+          echo "::group::What this identity cannot read, and how to see it"
+          cat <<'EOF'
+          Pod-level detail (describe/events/logs) needs `pods` RBAC, which the
+          deploy service account deliberately does not have. To go deeper, use a
+          kubeconfig with more rights:
+
+            kubectl -n e4e-fishsense describe pod \
+              -l app.kubernetes.io/name=fishsense-data-processing-workflow-worker
+            kubectl -n e4e-fishsense logs --previous \
+              -l app.kubernetes.io/name=fishsense-data-processing-workflow-worker
+
+          Or read the same Deployment state through the api-worker's own wrapper,
+          which is the documented recipe and needs no extra credentials:
+
+            ssh krg-admin@krg-nat.ucsd.edu \
+              'incus exec fishsense --project fishsense -- docker exec \
+                 fishsense-fishsense-api-workflow-worker-1 /app/.venv/bin/python -c \
+                 "from fishsense_api_workflow_worker.activities import k8s_scaling as k;
+                  c=k.resolve_scaling_config(); a=k.apps_v1_api(c.kubeconfig_path);
+                  print(k.deployment_is_wedged(a, c.namespace, c.deployment_name))"'
+          EOF
           echo "::endgroup::"
 
       - name: Clean up kubeconfig
