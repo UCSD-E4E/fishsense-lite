@@ -137,3 +137,69 @@ def test_get_masker_falls_back_to_none_and_caches(monkeypatch):
     assert sut._get_masker() is None
     assert sut._get_masker() is None  # cached
     assert calls["n"] == 1  # loaded once, failure cached
+
+
+def _reset_masker(monkeypatch, checkpoint=""):
+    # pylint: disable=protected-access
+    monkeypatch.setattr(sut, "DEFAULT_SLATE_CHECKPOINT_PATH", checkpoint)
+    monkeypatch.setattr(sut, "_MASKER", None)
+    monkeypatch.setattr(sut, "_MASKER_LOADED", False)
+
+
+@pytest.mark.parametrize(
+    ("cuda_available", "expected"), [(True, "cuda"), (False, "cpu")]
+)
+def test_preferred_device_follows_cuda_availability(
+    monkeypatch, cuda_available, expected
+):
+    # pylint: disable=protected-access
+    """`BoardMasker` defaults to device="cpu" and, unlike `LaserDetector`, does
+    NOT auto-select CUDA — so without asking, the mask runs on the CPU even on
+    a GPU pod. It did exactly that for this activity's whole life."""
+    import torch
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: cuda_available)
+    assert sut._preferred_device() == expected
+
+
+def test_preferred_device_is_cpu_when_torch_is_unusable(monkeypatch):
+    # pylint: disable=protected-access
+    """A broken CUDA runtime must degrade to CPU, not fail the frame. This
+    stage has two independent fallbacks under it and neither should be
+    triggered by merely asking what device to use."""
+    import torch
+
+    def _boom():
+        raise RuntimeError("no CUDA driver")
+
+    monkeypatch.setattr(torch.cuda, "is_available", _boom)
+    assert sut._preferred_device() == "cpu"
+
+
+def test_masker_is_loaded_onto_the_preferred_device(monkeypatch):
+    # pylint: disable=protected-access
+    """The move to the GPU queue is cosmetic unless the device is passed
+    through — pin that it reaches both load paths."""
+    import fishsense_core.slate as slate_mod
+
+    monkeypatch.setattr(sut, "_preferred_device", lambda: "cuda")
+    seen = {}
+
+    def _from_pretrained(*_a, device="cpu", **_k):
+        seen["pretrained"] = device
+        return object()
+
+    def _from_checkpoint(_path, *_a, device="cpu", **_k):
+        seen["checkpoint"] = device
+        return object()
+
+    monkeypatch.setattr(slate_mod.BoardMasker, "from_pretrained", _from_pretrained)
+    monkeypatch.setattr(slate_mod.BoardMasker, "from_checkpoint", _from_checkpoint)
+
+    _reset_masker(monkeypatch)
+    assert sut._get_masker() is not None
+    assert seen == {"pretrained": "cuda"}
+
+    _reset_masker(monkeypatch, checkpoint=__file__)  # any path that exists
+    assert sut._get_masker() is not None
+    assert seen["checkpoint"] == "cuda"

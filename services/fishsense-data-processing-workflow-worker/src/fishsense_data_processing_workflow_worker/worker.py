@@ -3,87 +3,34 @@
 Single ``build_worker`` construction point (shared with tests) plus the
 ``main`` scale-to-zero-friendly run loop. Caps activity concurrency to keep
 the CPU-heavy per-image rectify/decode work under the pod's memory limit.
+
+The worker runs in one of two roles — ``cpu`` or ``gpu`` — each polling its
+own task queue, or ``all`` (both, in one process) for local development. What
+each role registers lives in `roles.py`; this module only turns a role into
+Temporal ``Worker`` objects and runs them.
 """
 
 import asyncio
 import logging
 import signal
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import AsyncExitStack
 from datetime import timedelta
 
-from fishsense_shared import build_tls_config, temporal_namespace
+from fishsense_shared import (
+    DATA_PROCESSING_TASK_QUEUE,
+    build_tls_config,
+    temporal_namespace,
+)
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from fishsense_data_processing_workflow_worker.activities.cluster_dive_frames import (
-    cluster_dive_frames,
-)
-from fishsense_data_processing_workflow_worker.activities.compute_laser_depths_activity import (  # noqa: E501  pylint: disable=line-too-long
-    compute_laser_depths_activity,
-)
-from fishsense_data_processing_workflow_worker.activities.measure_fish_activity import (
-    measure_fish_activity,
-)
-from fishsense_data_processing_workflow_worker.activities.perform_laser_calibration_activity import (  # noqa: E501  pylint: disable=line-too-long
-    perform_laser_calibration_activity,
-)
-from fishsense_data_processing_workflow_worker.activities.preprocess_species_image import (
-    preprocess_species_image,
-)
-from fishsense_data_processing_workflow_worker.activities.preprocess_headtail_image import (
-    preprocess_headtail_image,
-)
-from fishsense_data_processing_workflow_worker.activities.predict_laser_image import (
-    predict_laser_image,
-)
-from fishsense_data_processing_workflow_worker.activities.predict_slate_image import (
-    predict_slate_image,
-)
-from fishsense_data_processing_workflow_worker.activities.preprocess_laser_image import (
-    preprocess_laser_image,
-)
-from fishsense_data_processing_workflow_worker.activities.preprocess_slate_image import (
-    preprocess_slate_image,
-)
-from fishsense_data_processing_workflow_worker.activities.validate_laser_labels_for_dive_activity import (  # noqa: E501  pylint: disable=line-too-long
-    validate_laser_labels_for_dive_activity,
-)
+from fishsense_data_processing_workflow_worker import roles
 from fishsense_data_processing_workflow_worker.config import configure_logging, settings
-from fishsense_data_processing_workflow_worker.workflows.dive_frame_clustering_workflow import (
-    DiveFrameClusteringWorkflow,
-)
-from fishsense_data_processing_workflow_worker.workflows.compute_laser_depths_workflow import (  # noqa: E501  pylint: disable=line-too-long
-    ComputeLaserDepthsWorkflow,
-)
-from fishsense_data_processing_workflow_worker.workflows.measure_fish_workflow import (
-    MeasureFishWorkflow,
-)
-from fishsense_data_processing_workflow_worker.workflows.perform_laser_calibration_workflow import (  # noqa: E501  pylint: disable=line-too-long
-    PerformLaserCalibrationWorkflow,
-)
-from fishsense_data_processing_workflow_worker.workflows.preprocess_species_images_workflow import (  # noqa: E501  pylint: disable=line-too-long
-    PreprocessSpeciesImagesWorkflow,
-)
-from fishsense_data_processing_workflow_worker.workflows.preprocess_headtail_images_workflow import (  # noqa: E501  pylint: disable=line-too-long
-    PreprocessHeadtailImagesWorkflow,
-)
-from fishsense_data_processing_workflow_worker.workflows.predict_laser_images_workflow import (  # noqa: E501  pylint: disable=line-too-long
-    PredictLaserImagesWorkflow,
-)
-from fishsense_data_processing_workflow_worker.workflows.predict_slate_images_workflow import (  # noqa: E501  pylint: disable=line-too-long
-    PredictSlateImagesWorkflow,
-)
-from fishsense_data_processing_workflow_worker.workflows.preprocess_laser_images_workflow import (
-    PreprocessLaserImagesWorkflow,
-)
-from fishsense_data_processing_workflow_worker.workflows.preprocess_slate_images_workflow import (
-    PreprocessSlateImagesWorkflow,
-)
-from fishsense_data_processing_workflow_worker.workflows.validate_laser_labels_for_dive_workflow import (  # noqa: E501  pylint: disable=line-too-long
-    ValidateLaserLabelsForDiveWorkflow,
-)
 
-TASK_QUEUE_NAME = "fishsense_data_processing_queue"
+# Retained for the CPU queue's historical name so existing callers and tests
+# keep reading one constant. `roles.queue_for_role` is the general form.
+TASK_QUEUE_NAME = DATA_PROCESSING_TASK_QUEUE
 
 # How long in-flight activities get to finish when the worker is asked to
 # stop. On NRP the api-worker scales this deployment to zero when idle, so
@@ -119,50 +66,63 @@ async def schedule_workflows(_: Client):
     """
 
 
+def _build(
+    client: Client,
+    activity_executor: ThreadPoolExecutor,
+    max_concurrent_activities: int,
+    registration: roles.Registration,
+) -> Worker:
+    """Turn one role's wiring into a Temporal ``Worker``."""
+    return Worker(
+        client,
+        task_queue=registration.task_queue,
+        max_concurrent_activities=max_concurrent_activities,
+        workflows=list(registration.workflows),
+        activity_executor=activity_executor,
+        activities=list(registration.activities),
+        graceful_shutdown_timeout=GRACEFUL_SHUTDOWN_TIMEOUT,
+    )
+
+
 def build_worker(
     client: Client,
     activity_executor: ThreadPoolExecutor,
     max_concurrent_activities: int = DEFAULT_MAX_CONCURRENT_ACTIVITIES,
+    role: str = roles.ROLE_CPU,
 ) -> Worker:
-    """Construct the data-worker Temporal worker.
+    """Construct one role's Temporal worker.
 
     Single construction point so the worker config (workflows, activities,
     graceful-shutdown window, activity concurrency cap) is exercised by tests
     without standing up the full ``main`` loop.
+
+    Raises ``ValueError`` for ``all`` — that is two queues, so it has no single
+    answer. Use ``build_workers``.
     """
-    return Worker(
+    return _build(
         client,
-        task_queue=TASK_QUEUE_NAME,
-        max_concurrent_activities=max_concurrent_activities,
-        workflows=[
-            ComputeLaserDepthsWorkflow,
-            DiveFrameClusteringWorkflow,
-            MeasureFishWorkflow,
-            PerformLaserCalibrationWorkflow,
-            PreprocessSpeciesImagesWorkflow,
-            PreprocessHeadtailImagesWorkflow,
-            PredictLaserImagesWorkflow,
-            PredictSlateImagesWorkflow,
-            PreprocessLaserImagesWorkflow,
-            PreprocessSlateImagesWorkflow,
-            ValidateLaserLabelsForDiveWorkflow,
-        ],
-        activity_executor=activity_executor,
-        activities=[
-            cluster_dive_frames,
-            compute_laser_depths_activity,
-            measure_fish_activity,
-            perform_laser_calibration_activity,
-            predict_laser_image,
-            predict_slate_image,
-            preprocess_species_image,
-            preprocess_headtail_image,
-            preprocess_laser_image,
-            preprocess_slate_image,
-            validate_laser_labels_for_dive_activity,
-        ],
-        graceful_shutdown_timeout=GRACEFUL_SHUTDOWN_TIMEOUT,
+        activity_executor,
+        max_concurrent_activities,
+        roles.registration_for_role(role),
     )
+
+
+def build_workers(
+    client: Client,
+    activity_executor: ThreadPoolExecutor,
+    max_concurrent_activities: int = DEFAULT_MAX_CONCURRENT_ACTIVITIES,
+    role: str = roles.ROLE_ALL,
+) -> list[Worker]:
+    """Every worker this process should run for ``role``.
+
+    One entry for ``cpu``/``gpu``; both for ``all``, which is what the
+    devcontainer and the integration tests use so a local process still serves
+    every queue the api-worker dispatches to.
+    """
+    return [
+        _build(client, activity_executor, max_concurrent_activities, registration)
+        for registration in roles.registrations_for_role(role)
+    ]
 
 
 async def main():
@@ -171,13 +131,15 @@ async def main():
     configure_logging()
     log = logging.getLogger()
 
+    role = settings.general.get("role", roles.ROLE_ALL)
     tls_config = build_tls_config(settings.temporal)
 
     log.info(
-        "connecting to Temporal host=%s:%d tls=%s",
+        "connecting to Temporal host=%s:%d tls=%s role=%s",
         settings.temporal.host,
         settings.temporal.port,
         bool(tls_config),
+        role,
     )
     client = await Client.connect(
         f"{settings.temporal.host}:{settings.temporal.port}",
@@ -191,14 +153,25 @@ async def main():
         loop.add_signal_handler(sig, interrupt_event.set)
 
     with ThreadPoolExecutor(max_workers=settings.general.max_workers) as executor:
-        async with build_worker(
+        workers = build_workers(
             client,
             executor,
             settings.general.get(
                 "max_concurrent_activities", DEFAULT_MAX_CONCURRENT_ACTIVITIES
             ),
-        ):
-            log.info("Worker started, scheduling workflows...")
+            role=role,
+        )
+        # AsyncExitStack rather than a single `async with`: the `all` role runs
+        # two workers (one per queue) in this one process, and both must be
+        # entered and — importantly — drained on the way out. Exiting the stack
+        # gives each its own graceful-shutdown window.
+        async with AsyncExitStack() as stack:
+            for worker in workers:
+                await stack.enter_async_context(worker)
+            log.info(
+                "Worker started on %s, scheduling workflows...",
+                ", ".join(worker.config()["task_queue"] for worker in workers),
+            )
             await schedule_workflows(client)
             await interrupt_event.wait()
             log.info(

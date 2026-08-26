@@ -48,12 +48,45 @@ _log = logging.getLogger(__name__)
 # local checkpoint path overrides the HuggingFace download. The classical path
 # (board_mask=None) is a supported fallback (~13 pts less coverage), so any
 # load/inference failure degrades gracefully instead of failing the frame.
+#
+# This activity runs on `fishsense_data_processing_gpu_queue` and *prefers* a
+# GPU (see `_preferred_device`) without requiring one: that queue is served by
+# a GPU Deployment or, when it can't start, a CPU-only one. Two independent
+# degradations therefore sit under it — GPU -> CPU inference, and
+# BoardMasker -> classical estimator.
 DEFAULT_SLATE_CHECKPOINT_PATH = os.environ.get("E4EFS_SLATE_DETECTOR__CHECKPOINT", "")
 _MASKER: Any = None
 _MASKER_LOADED = False
 # See `_get_masker` — the flag must only ever be published *after* `_MASKER`,
 # and the lock is what stops a concurrent caller reading the pair mid-load.
 _MASKER_LOCK = threading.Lock()
+
+
+def _preferred_device() -> str:
+    """``"cuda"`` when a GPU is actually usable in this process, else ``"cpu"``.
+
+    `BoardMasker` defaults to ``device="cpu"`` and does NOT auto-select CUDA
+    the way `LaserDetector` does, so without this the mask ran on the CPU even
+    on a GPU-scheduled pod — which it silently did for this activity's whole
+    life. fishsense-core's default is a reasonable one for a 202 ms/frame model
+    that it assumed would never be GPU-scheduled; this activity now runs on the
+    GPU queue, so it asks.
+
+    "Prefer", not "require": this stage degrades all the way down — no GPU
+    means CPU inference, and no torch at all means the classical estimator
+    (`_get_masker` returns None). Any failure here just means CPU.
+    """
+    try:
+        import torch  # pylint: disable=import-error
+
+        if torch.cuda.is_available():
+            return "cuda"
+    except Exception:  # pylint: disable=broad-except
+        # torch missing or a broken CUDA runtime — the caller's own try/except
+        # would catch it later anyway, but there is no reason to ask for a
+        # device we could not verify.
+        _log.debug("no usable CUDA device; BoardMasker will run on the CPU")
+    return "cpu"
 
 
 def _get_masker() -> Any:
@@ -83,13 +116,16 @@ def _get_masker() -> Any:
                 BoardMasker,
             )
 
+            device = _preferred_device()
             if DEFAULT_SLATE_CHECKPOINT_PATH and os.path.exists(
                 DEFAULT_SLATE_CHECKPOINT_PATH
             ):
-                _MASKER = BoardMasker.from_checkpoint(DEFAULT_SLATE_CHECKPOINT_PATH)
+                _MASKER = BoardMasker.from_checkpoint(
+                    DEFAULT_SLATE_CHECKPOINT_PATH, device=device
+                )
             else:
-                _MASKER = BoardMasker.from_pretrained()
-            _log.info("loaded BoardMasker (learned board mask)")
+                _MASKER = BoardMasker.from_pretrained(device=device)
+            _log.info("loaded BoardMasker (learned board mask) device=%s", device)
         except Exception as exc:  # pylint: disable=broad-except
             # torch/hf missing, no network, or bad checkpoint — fall back to the
             # classical estimator. The mask only adds coverage; it's never required.
