@@ -1147,10 +1147,16 @@ two consumers are arranged differently.
   k8s Secret `fishsense-data-worker-temporal-certs`. vault-agent cannot
   reach the cluster, so the slot forwards it:
   `deploy/incus/nrp_cert_sync/` is a one-shot compose service, also listed
-  in `temporal.reload`, that upserts the Secret and `rollout restart`s the
-  Deployment. It short-circuits on an unchanged leaf via a
-  `fishsense.e4e.ucsd.edu/leaf-sha256` annotation, so running it on every
-  converge costs nothing.
+  in `temporal.reload`, that upserts the Secret and `rollout restart`s
+  **every Deployment that mounts it** — since the GPU/CPU split that is all
+  three (`...-worker`, `-gpu`, `-gpu-cpu-fallback`), via `DEPLOY_NAMES` in
+  `sync.sh`. Rolling only one would leave the others holding the expired leaf
+  and crash-looping on `CertificateExpired`, i.e. the 2026-08-14 outage
+  reintroduced through the back door; `test_sync.sh` asserts each one's
+  `restartedAt` actually changes. **Add a Deployment there whenever one gains
+  a `fishsense-data-worker-temporal-certs` mount.** It short-circuits on an
+  unchanged leaf via a `fishsense.e4e.ucsd.edu/leaf-sha256` annotation, so
+  running it on every converge costs nothing.
 
 **This is the shape of the 2026-08-14 outage.** The NRP copy was minted by
 hand at `ttl=720h` and renewed by nobody. It expired, every data-worker pod
