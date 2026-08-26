@@ -13,6 +13,8 @@ from fishsense_shared import (
     url_condition,
 )
 
+from fishsense_data_processing_workflow_worker.role_names import ROLE_ALL, ROLES
+
 APP_NAME = "e4efs_data_processing_workflow_worker"
 
 
@@ -33,6 +35,20 @@ _VALIDATORS = [
         cast=int,
         default=4,
         condition=lambda x: x > 0,
+    ),
+    # Which half of the split worker this process is. `cpu` polls
+    # `fishsense_data_processing_queue` (rectify/cluster/calibrate/measure/
+    # depth/validate); `gpu` polls `fishsense_data_processing_gpu_queue` (the
+    # two torch predict stages). `all` runs both in one process and is the
+    # default so the devcontainer and the integration tests still serve every
+    # queue the api-worker dispatches to; the k8s Deployments each set
+    # `E4EFS_GENERAL__ROLE` explicitly. See `roles.py`.
+    Validator(
+        "general.role",
+        required=True,
+        cast=str,
+        default=ROLE_ALL,
+        condition=lambda x: x in ROLES,
     ),
     Validator("temporal.host", required=True, cast=str, condition=validators.hostname),
     Validator("temporal.port", required=True, cast=int, default=7233),
