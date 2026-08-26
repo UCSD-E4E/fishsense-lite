@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.54.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.53.2...fishsense-api-workflow-worker-v1.54.0) (2026-08-26)
+
+
+### Features
+
+* **api-worker:** GPU queue for prediction, with an automatic CPU fallback ([#632](https://github.com/UCSD-E4E/fishsense-lite/issues/632)) ([79920a1](https://github.com/UCSD-E4E/fishsense-lite/commit/79920a14c8d36a2cfadbe97cf70c62cf846e594f))
+
 ## [1.53.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.53.1...fishsense-api-workflow-worker-v1.53.2) (2026-08-26)
 
 

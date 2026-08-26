@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.17.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.16.4...fishsense-data-processing-workflow-worker-v2.17.0) (2026-08-26)
+
+
+### Features
+
+* **api-worker:** GPU queue for prediction, with an automatic CPU fallback ([#632](https://github.com/UCSD-E4E/fishsense-lite/issues/632)) ([79920a1](https://github.com/UCSD-E4E/fishsense-lite/commit/79920a14c8d36a2cfadbe97cf70c62cf846e594f))
+* **data-worker:** split into CPU and GPU roles on separate task queues ([#631](https://github.com/UCSD-E4E/fishsense-lite/issues/631)) ([3225273](https://github.com/UCSD-E4E/fishsense-lite/commit/3225273d849ab5a38a6041275cf25ac30ac9a749))
+
 ## [2.16.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.16.3...fishsense-data-processing-workflow-worker-v2.16.4) (2026-08-26)
 
 
