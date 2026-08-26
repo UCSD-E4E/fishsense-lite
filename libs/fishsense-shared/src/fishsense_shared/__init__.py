@@ -33,6 +33,10 @@ from fishsense_shared.preprocess_contracts import (
     PreprocessSpeciesImagesInput,
     SlatePredictionResult,
 )
+from fishsense_shared.task_queues import (
+    DATA_PROCESSING_GPU_TASK_QUEUE,
+    DATA_PROCESSING_TASK_QUEUE,
+)
 from fishsense_shared.temporal import (
     build_tls_config,
     ensure_schedule,
@@ -49,6 +53,8 @@ __all__ = [
     "PreflightImage",
     "RejectedImage",
     "SubfolderReport",
+    "DATA_PROCESSING_GPU_TASK_QUEUE",
+    "DATA_PROCESSING_TASK_QUEUE",
     "ClusterDiveFrameImage",
     "ClusterDiveFramesInput",
     "ExceptionGroupErrorLogging",
