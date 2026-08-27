@@ -77,6 +77,8 @@ SPECIES_LABELING_CONFIG_XML = """\
       <Choice value="V-Slate 2"/>
       <Choice value="V-Slate 3"/>
       <Choice value="V-Slate 4"/>
+
+      <Choice value="Slate not in list"/>
     </Choice>
     <Choice value="Fish">
       <Choice value="Hogfish (Lachnolaimus maximus)"/>

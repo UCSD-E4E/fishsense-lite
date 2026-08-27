@@ -9,6 +9,10 @@ from typing import Any
 from pydantic import AwareDatetime, BaseModel, Field, constr
 
 
+class BodySetNotesApiV1DivesDiveIdNotesPut(BaseModel):
+    notes: str | None = Field(None, title='Notes')
+
+
 class CalibrationCandidate(BaseModel):
     """
     A dive whose laser-line fingerprint matches the target's, so its

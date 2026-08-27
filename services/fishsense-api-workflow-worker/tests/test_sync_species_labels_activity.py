@@ -89,6 +89,10 @@ def _make_fs_client(label_lookup, *, cursor=None, dive_slates=None, image_to_div
 
     fs.dives = MagicMock()
     fs.dives.set_dive_slate = AsyncMock()
+    fs.dives.set_notes = AsyncMock()
+    # Default: the dive carries no operator note, so the sentinel pass is
+    # free to write one.
+    fs.dives.get = AsyncMock(return_value=SimpleNamespace(id=7, notes=None))
     return fs
 
 
@@ -543,3 +547,128 @@ async def test_sync_most_recent_completed_slate_choice_wins(monkeypatch):
 
     # H-Slate (id 1) is the most-recent completed choice for dive 7.
     fs.dives.set_dive_slate.assert_awaited_once_with(7, 1)
+
+
+# --- the "slate not in list" sentinel --------------------------------------
+
+
+def test_slate_type_choice_never_returns_the_sentinel():
+    """The safety property, pinned directly.
+
+    A slate the labeler cannot identify must not resolve to a
+    `dive_slate_id`. Today that holds because the sentinel is not a
+    `DiveSlate` row and so is not in `valid_names` — but a future operator
+    seeding a template with that literal name would silently turn "I don't
+    know which slate this is" into a confident, wrong calibration.
+    """
+    from fishsense_shared import taxonomy
+
+    results = [
+        {
+            "from_name": "species",
+            "value": {"taxonomy": [["Slate", taxonomy.SLATE_NOT_IN_LIST_LEAF]]},
+        }
+    ]
+    # Even if the sentinel somehow appears among the valid template names.
+    valid = {"H-Slate", "V-Slate 2", taxonomy.SLATE_NOT_IN_LIST_LEAF}
+
+    assert sut._slate_type_choice(results, valid) is None  # pylint: disable=protected-access
+
+
+def test_slate_type_choice_still_finds_a_real_slate_alongside_the_sentinel():
+    """The sentinel must not shadow a genuine answer on another path."""
+    from fishsense_shared import taxonomy
+
+    results = [
+        {
+            "from_name": "species",
+            "value": {
+                "taxonomy": [
+                    ["Slate", taxonomy.SLATE_NOT_IN_LIST_LEAF],
+                    ["Slate", "V-Slate 2"],
+                ]
+            },
+        }
+    ]
+
+    assert (
+        sut._slate_type_choice(results, {"V-Slate 2"})  # pylint: disable=protected-access
+        == "V-Slate 2"
+    )
+
+
+@pytest.mark.asyncio
+async def test_sync_notes_the_dive_when_the_slate_is_not_in_the_list(monkeypatch):
+    from fishsense_shared import taxonomy
+
+    annotation = {
+        "result": [
+            {
+                "from_name": "species",
+                "value": {
+                    "taxonomy": [
+                        ["Slate", "Laser on slate"],
+                        ["Slate", taxonomy.SLATE_NOT_IN_LIST_LEAF],
+                    ]
+                },
+            }
+        ]
+    }
+    task = _make_task(101, annotations=[annotation])
+    task.is_labeled = True
+    task.updated_at = "2026-08-27T10:00:00Z"
+    label = _empty_species_label(image_id=42)
+    fs = _make_fs_client(label_lookup={101: label}, image_to_dive={42: 7})
+    ls = _make_ls_client([task])
+
+    monkeypatch.setattr(sut_utils, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "get_ls_client", lambda: ls)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    await ActivityEnvironment().run(
+        sut.sync_species_labels_for_label_studio_project_activity, 1
+    )
+
+    # No slate assigned...
+    fs.dives.set_dive_slate.assert_not_awaited()
+    # ...and the reason recorded on the dive.
+    fs.dives.set_notes.assert_awaited_once()
+    dive_id, note = fs.dives.set_notes.await_args.args
+    assert dive_id == 7
+    assert taxonomy.SLATE_NOT_IN_LIST_LEAF.lower() in note.lower()
+
+
+@pytest.mark.asyncio
+async def test_sync_does_not_clobber_an_existing_note(monkeypatch):
+    """`notes` is an operator field; an hourly sync must not overwrite it."""
+    from fishsense_shared import taxonomy
+
+    annotation = {
+        "result": [
+            {
+                "from_name": "species",
+                "value": {
+                    "taxonomy": [["Slate", taxonomy.SLATE_NOT_IN_LIST_LEAF]]
+                },
+            }
+        ]
+    }
+    task = _make_task(101, annotations=[annotation])
+    task.is_labeled = True
+    task.updated_at = "2026-08-27T10:00:00Z"
+    label = _empty_species_label(image_id=42)
+    fs = _make_fs_client(label_lookup={101: label}, image_to_dive={42: 7})
+    fs.dives.get.return_value = SimpleNamespace(
+        id=7, notes="operator: re-shoot scheduled"
+    )
+    ls = _make_ls_client([task])
+
+    monkeypatch.setattr(sut_utils, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "get_ls_client", lambda: ls)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    await ActivityEnvironment().run(
+        sut.sync_species_labels_for_label_studio_project_activity, 1
+    )
+
+    fs.dives.set_notes.assert_not_awaited()

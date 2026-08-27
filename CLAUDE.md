@@ -435,6 +435,37 @@ cohort. The markers and parsers live **once**, in
 | `"Fish Model, Weasly Fish"` | rigid model, name-keyed |
 | `"Calibration Targets, Ruler"` | the ruler, name-keyed |
 | `"Slate, Laser on slate"` | stage-9 slate frame (not measurable) |
+| `"Slate not in list"` | slate-type sentinel — see below (not measurable) |
+
+**`SLATE_NOT_IN_LIST_LEAF` is a sentinel, not a slate.** The slate-type
+choices in the species taxonomy are exactly the 11 `DiveSlate` template rows,
+and a slate can be missing from that table *permanently*: V-Slate 7 was lost
+during a dive, so it can never be scanned and never added. Before the sentinel
+(added 2026-08-27) a labeler facing it had two options, both bad — pick a wrong
+neighbour, or say nothing.
+
+The wrong neighbour is the dangerous one, and this is the reason the sentinel
+exists at all: a wrong slate template yields a wrong **scale**, and scale error
+is precisely what reprojection residual cannot see (the dive-84 lesson in the
+fish-model memory entry). It would calibrate cleanly and measure every fish in
+the dive wrong.
+
+So the sentinel must never resolve to a `dive_slate_id` — `_slate_type_choice`
+skips it explicitly rather than relying on it being absent from the template
+names, because seeding a `DiveSlate` row with that literal would silently turn
+"I don't know" into a confident wrong calibration. With `dive_slate_id` left
+NULL the dive simply stays out of stages 9 and 13.
+
+What it *does* do is write `Dive.notes` (via `PUT /api/v1/dives/{id}/notes`),
+and only that. It deliberately does not set `Priority.NONE`: an unidentifiable
+slate means the dive cannot *self*-calibrate, but it can still borrow a
+sibling's via `calibration_dive_id`, so parking it stays a human decision. It
+also never overwrites an existing note — `notes` is an operator field and this
+sync runs hourly.
+
+Existing LS projects pick the new choice up automatically: `heal_labeling_config`
+converges an already-created project onto the current XML constant, and adding
+a choice is additive so LS won't reject it.
 
 `taxonomy.is_measurable` is the **definition of record**: measurable
 means `measure_fish_activity` will actually bind a Measurement. The

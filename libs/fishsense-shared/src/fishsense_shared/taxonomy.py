@@ -82,6 +82,23 @@ LABELED_FISH_MODELS = (
 # sync maps to `Dive.dive_slate_id`.
 SLATE_CONTENT_MARKER = "Slate, Laser on slate"
 
+# The slate-type answer for "I can see a slate, and it is not one of the
+# templates you are offering me."
+#
+# Not a nicety. The slate-type choices in the species taxonomy are exactly the
+# `DiveSlate` template rows, and a slate can be absent from that table
+# permanently -- V-Slate 7 was lost during a dive, so it can never be scanned
+# and can never be added. A labeler facing it previously had two options, both
+# bad: pick a wrong neighbour, or say nothing. The wrong neighbour is the
+# dangerous one, because a wrong slate template yields a wrong *scale*, and
+# scale error is the one thing reprojection residual cannot see -- it would
+# calibrate cleanly and measure every fish in the dive wrong.
+#
+# It is deliberately NOT a `DiveSlate` row: it must never resolve to a
+# `dive_slate_id`, which is what keeps such a dive out of stages 9 and 13
+# rather than calibrating it against a slate it isn't.
+SLATE_NOT_IN_LIST_LEAF = "Slate not in list"
+
 # --- SQL LIKE patterns, for the SQLAlchemy + raw-SQL consumers -------------
 
 # A real fish carries a `Common Name (Scientific name)` leaf. `(` and `)` are
@@ -98,6 +115,7 @@ __all__ = [
     "RULER_CONTENT",
     "RULER_NAME",
     "SLATE_CONTENT_MARKER",
+    "SLATE_NOT_IN_LIST_LEAF",
     "SQL_BROADER_THAN_PYTHON",
     "is_measurable",
     "measurable_species_sql",

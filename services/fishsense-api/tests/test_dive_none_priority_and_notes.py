@@ -196,3 +196,68 @@ async def test_none_priority_dive_is_not_selected_by_a_cohort(session):
     await session.flush()
 
     assert await select_next_for_laser_preprocessing(session=session) is None
+
+
+# --- the notes endpoint ----------------------------------------------------
+#
+# A dedicated endpoint rather than a `post_dive` partial re-post: the species
+# sync writes this, and a read-modify-write through the upsert would race any
+# concurrent write to the same row.
+
+
+async def test_set_notes_writes_the_note(session):
+    from fishsense_api.controllers.dive_controller import set_notes
+    from fishsense_api.models.dive import Dive
+    from tests_support.db import dive
+
+    session.add(dive(1))
+    await session.flush()
+
+    note = "Slate not in list (V-Slate 7, lost); cannot be calibrated."
+    assert await set_notes(1, note, session=session) == 1
+    assert (await session.get(Dive, 1)).notes == note
+
+
+async def test_set_notes_can_clear(session):
+    from fishsense_api.controllers.dive_controller import set_notes
+    from fishsense_api.models.dive import Dive
+    from tests_support.db import dive
+
+    session.add(dive(1))
+    await session.flush()
+
+    await set_notes(1, "something", session=session)
+    await set_notes(1, None, session=session)
+
+    assert (await session.get(Dive, 1)).notes is None
+
+
+async def test_set_notes_404s_on_a_missing_dive(session):
+    from fastapi import HTTPException
+
+    from fishsense_api.controllers.dive_controller import set_notes
+
+    with pytest.raises(HTTPException) as exc:
+        await set_notes(999, "x", session=session)
+    assert exc.value.status_code == 404
+
+
+async def test_set_notes_leaves_priority_and_slate_alone(session):
+    """Writing a note must not be a back door into pipeline state.
+
+    The species sync calls this automatically, so it must touch exactly one
+    column — parking a dive stays an operator decision.
+    """
+    from fishsense_api.controllers.dive_controller import set_notes
+    from fishsense_api.models.dive import Dive
+    from fishsense_api.models.priority import Priority
+    from tests_support.db import dive
+
+    session.add(dive(1, priority=Priority.HIGH, dive_slate_id=9))
+    await session.flush()
+
+    await set_notes(1, "unidentifiable slate", session=session)
+
+    row = await session.get(Dive, 1)
+    assert row.priority is Priority.HIGH
+    assert row.dive_slate_id == 9

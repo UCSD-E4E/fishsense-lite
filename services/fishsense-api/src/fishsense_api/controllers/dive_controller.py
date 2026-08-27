@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timezone
 from typing import List
 
-from fastapi import Depends, HTTPException
+from fastapi import Body, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -453,6 +453,39 @@ async def set_dive_slate(
         raise HTTPException(status_code=404, detail="DiveSlate template not found")
 
     dive.dive_slate_id = dive_slate_id
+    session.add(dive)
+    await session.flush()
+
+    return dive_id
+
+
+@app.put("/api/v1/dives/{dive_id}/notes")
+async def set_notes(
+    dive_id: int,
+    notes: str | None = Body(default=None, embed=True),
+    session: AsyncSession = Depends(get_async_session),
+) -> int:
+    """Set (or clear) a dive's free-text operator note.
+
+    A dedicated endpoint rather than a `post_dive` partial re-post because
+    the species-label sync writes this automatically: the upsert path would
+    have to read the row, overlay, and write it back, racing any concurrent
+    write to the same dive. This touches exactly one column.
+
+    Deliberately does NOT touch `priority`. The sync's caller knows a slate
+    could not be identified, which is *evidence* a dive may never calibrate,
+    but a dive can still borrow a sibling's calibration via
+    `calibration_dive_id` — so parking it (`Priority.NONE`) stays a human
+    decision informed by this note, not an automatic consequence of it.
+
+    Returns the dive id. 404 if the dive is missing.
+    """
+    logger.debug("Setting dive id=%d notes", dive_id)
+    dive = await session.get(Dive, dive_id)
+    if dive is None:
+        raise HTTPException(status_code=404, detail="Dive not found")
+
+    dive.notes = notes
     session.add(dive)
     await session.flush()
 

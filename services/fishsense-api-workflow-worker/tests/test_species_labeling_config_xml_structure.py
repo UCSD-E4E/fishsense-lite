@@ -137,3 +137,29 @@ def test_no_slate_upside_down_choice(root):
     stripped accordingly. Pin the absence."""
     slate_choices = root.findall(".//Choices[@name='slate']")
     assert not slate_choices
+
+
+def test_slate_branch_offers_the_not_in_list_sentinel(root):
+    """A labeler must be able to say "that slate isn't on your list".
+
+    The slate-type leaves are exactly the `DiveSlate` template rows, and a
+    slate can be missing from that table permanently — V-Slate 7 was lost
+    during a dive, so it can never be scanned and never added. Without this
+    leaf the only options are a wrong neighbour or silence, and the wrong
+    neighbour is the harmful one: a wrong slate template gives a wrong
+    *scale*, which reprojection residual cannot detect.
+    """
+    from fishsense_shared import taxonomy
+
+    slate_branch = None
+    for child in root.findall(".//Taxonomy[@name='species']/Choice"):
+        if child.get("value") == "Slate":
+            slate_branch = child
+    assert slate_branch is not None, "Slate top-level Choice missing"
+
+    leaves = {c.get("value") for c in slate_branch.findall("Choice")}
+    assert taxonomy.SLATE_NOT_IN_LIST_LEAF in leaves, (
+        "the species taxonomy must offer "
+        f"{taxonomy.SLATE_NOT_IN_LIST_LEAF!r} so an unidentifiable slate "
+        "has an honest answer"
+    )
