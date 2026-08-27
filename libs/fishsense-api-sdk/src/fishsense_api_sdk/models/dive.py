@@ -22,3 +22,7 @@ class Dive(ModelBase):
     # column existed — older API responses, worker test fixtures — still
     # validate. A newly-added optional column must be optional on the wire.
     calibration_dive_id: int | None = None
+    # Defaulted for the same reason as `calibration_dive_id` above: a newly
+    # added optional column must be optional on the wire, or every consumer
+    # built against an older API response fails validation.
+    notes: str | None = None

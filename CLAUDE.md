@@ -764,6 +764,27 @@ stage will touch, and re-running is safe (`dives.post` upserts on `path`, the
 scan skips registered frames without downloading, a fully-skipped re-run still
 commits).
 
+**`Priority.NONE` means "deliberately excluded", LOW means "not yet."**
+Added 2026-08-27 with `Dive.notes`. Every cohort selects `== HIGH`, so LOW
+and NONE are equally invisible to the pipeline — the distinction is for the
+human reading the table. LOW cannot carry intent, because it is the state
+every dive passes through on ingest, so a dive parked forever and a dive
+waiting its turn were indistinguishable. `notes` is free text and nothing in
+the pipeline reads it; it exists so the reason travels with the row. The
+standing example is dive 437, labelled `V-Slate 7` — a slate with no scan, so
+it can never be calibrated and can never be measured.
+
+Two things about the migration (`b3d5e91a7c42`) worth knowing before adding a
+fourth member: `priority` is a Postgres *native enum*, so a new value needs
+`ALTER TYPE ... ADD VALUE`, guarded on the dialect because the migration tests
+run against SQLite (which renders the column as VARCHAR). The `IF NOT EXISTS`
+is load-bearing, not defensive — `lifespan` runs `create_all` *before*
+`run_alembic_upgrade`, so on a fresh database the type already exists with the
+new member and the bare statement would raise `DuplicateObject` and stop the
+API from starting. The downgrade drops `notes` only: Postgres cannot remove an
+enum value, and rebuilding the type would have to decide what to do with rows
+already sitting at NONE.
+
 **Non-recursion is precedent, not simplification.** Spider walked the tree but
 assigned `dive = image.parent.relative_to(data_root)`, so a nested folder always
 became its own dive row. Attaching a subdirectory's frames to the named dive
