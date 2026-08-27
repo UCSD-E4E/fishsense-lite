@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.49.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.49.0...fishsense-api-v1.49.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **labeling:** correct the expected-laser region, and let overlay changes reach existing images ([#647](https://github.com/UCSD-E4E/fishsense-lite/issues/647)) ([cf4be94](https://github.com/UCSD-E4E/fishsense-lite/commit/cf4be94496832671598769a09661d4630f98f101))
+
 ## [1.49.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.48.2...fishsense-api-v1.49.0) (2026-08-27)
 
 
