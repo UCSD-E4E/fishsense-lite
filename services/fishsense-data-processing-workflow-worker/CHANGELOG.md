@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.17.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.17.0...fishsense-data-processing-workflow-worker-v2.17.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **deps:** pin fishsense-api-sdk&gt;=1.47.0 ([#641](https://github.com/UCSD-E4E/fishsense-lite/issues/641)) ([8bae192](https://github.com/UCSD-E4E/fishsense-lite/commit/8bae1928343e483af2366e1e14bb255a1a02eb80))
+
 ## [2.17.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.16.4...fishsense-data-processing-workflow-worker-v2.17.0) (2026-08-26)
 
 

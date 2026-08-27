@@ -2,6 +2,18 @@
 
 <!-- version list -->
 
+## [1.55.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.54.0...fishsense-api-workflow-worker-v1.55.0) (2026-08-27)
+
+
+### Features
+
+* **labeling:** add a "Slate not in list" species taxonomy sentinel ([#639](https://github.com/UCSD-E4E/fishsense-lite/issues/639)) ([419f7b5](https://github.com/UCSD-E4E/fishsense-lite/commit/419f7b576866b2df5f92215ee9b99afc3372a8dd))
+
+
+### Bug Fixes
+
+* **deps:** pin fishsense-api-sdk&gt;=1.47.0 ([#641](https://github.com/UCSD-E4E/fishsense-lite/issues/641)) ([8bae192](https://github.com/UCSD-E4E/fishsense-lite/commit/8bae1928343e483af2366e1e14bb255a1a02eb80))
+
 ## [1.54.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.53.2...fishsense-api-workflow-worker-v1.54.0) (2026-08-26)
 
 

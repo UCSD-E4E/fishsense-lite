@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.11.0...fishsense-shared-v0.12.0) (2026-08-27)
+
+
+### Features
+
+* **labeling:** add a "Slate not in list" species taxonomy sentinel ([#639](https://github.com/UCSD-E4E/fishsense-lite/issues/639)) ([419f7b5](https://github.com/UCSD-E4E/fishsense-lite/commit/419f7b576866b2df5f92215ee9b99afc3372a8dd))
+
 ## [0.11.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.10.1...fishsense-shared-v0.11.0) (2026-08-26)
 
 
