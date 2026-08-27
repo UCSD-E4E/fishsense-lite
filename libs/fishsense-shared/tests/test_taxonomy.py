@@ -211,20 +211,14 @@ def test_slate_not_in_list_is_distinct_from_the_stage9_marker():
     laser on it"); the sentinel is the slate-*type* answer. Collapsing them
     would make an unidentifiable slate drop out of stage 9 as well.
     """
-    from fishsense_shared import taxonomy
-
-    assert taxonomy.SLATE_NOT_IN_LIST_LEAF != taxonomy.SLATE_CONTENT_MARKER
+    assert sut.SLATE_NOT_IN_LIST_LEAF != sut.SLATE_CONTENT_MARKER
 
 
 def test_slate_not_in_list_is_not_measurable():
     """It must never reach stage 14 as a measurable target."""
-    from fishsense_shared import taxonomy
-
-    assert not taxonomy.is_measurable(taxonomy.SLATE_NOT_IN_LIST_LEAF)
-    assert not taxonomy.is_measurable(f"Slate, {taxonomy.SLATE_NOT_IN_LIST_LEAF}")
+    assert not sut.is_measurable(sut.SLATE_NOT_IN_LIST_LEAF)
+    assert not sut.is_measurable(f"Slate, {sut.SLATE_NOT_IN_LIST_LEAF}")
 
 
 def test_slate_not_in_list_is_exported():
-    from fishsense_shared import taxonomy
-
-    assert "SLATE_NOT_IN_LIST_LEAF" in taxonomy.__all__
+    assert "SLATE_NOT_IN_LIST_LEAF" in sut.__all__
