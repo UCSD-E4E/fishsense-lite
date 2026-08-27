@@ -276,6 +276,7 @@ class Priority(Enum):
 
     LOW = 'LOW'
     HIGH = 'HIGH'
+    NONE = 'NONE'
 
 
 class SlatePrediction(BaseModel):
@@ -372,6 +373,7 @@ class Dive(BaseModel):
     dive_datetime: AwareDatetime | None = Field(None, title='Dive Datetime')
     priority: Priority | None = 'LOW'
     flip_dive_slate: bool | None = Field(False, title='Flip Dive Slate')
+    notes: str | None = Field(None, title='Notes')
     camera_id: int | None = Field(None, title='Camera Id')
     dive_slate_id: int | None = Field(None, title='Dive Slate Id')
     calibration_dive_id: int | None = Field(None, title='Calibration Dive Id')
