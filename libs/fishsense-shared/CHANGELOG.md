@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.12.0...fishsense-shared-v0.12.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **labeling:** correct the expected-laser region, and let overlay changes reach existing images ([#647](https://github.com/UCSD-E4E/fishsense-lite/issues/647)) ([cf4be94](https://github.com/UCSD-E4E/fishsense-lite/commit/cf4be94496832671598769a09661d4630f98f101))
+
 ## [0.12.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.11.0...fishsense-shared-v0.12.0) (2026-08-27)
 
 
