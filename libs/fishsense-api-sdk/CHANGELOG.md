@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.47.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.46.1...fishsense-api-sdk-v1.47.0) (2026-08-27)
+
+
+### Features
+
+* **api:** add Priority.NONE and Dive.notes for parking a dive ([#637](https://github.com/UCSD-E4E/fishsense-lite/issues/637)) ([a0935dd](https://github.com/UCSD-E4E/fishsense-lite/commit/a0935dd1a72f585a3087a321ecb72b75f3b33121))
+
 ## [1.46.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.46.0...fishsense-api-sdk-v1.46.1) (2026-08-25)
 
 
