@@ -26,6 +26,12 @@ class SpeciesLabel(ModelBase, table=True):
     updated_at: datetime | None = Field(sa_type=DateTime(timezone=True), default=None)
     completed: bool | None = Field(default=False)
     superseded: bool | None = Field(default=False)
+    # True when this label's image must have its overlay JPEG regenerated:
+    # the preprocess cohorts select on "no label row of this kind", so an
+    # image drops out the moment a row exists and its JPEG is otherwise
+    # frozen for good. Distinct from `superseded`, which dead-letters the
+    # label itself. See tests/test_label_needs_reprocess_flag.py.
+    needs_reprocess: bool = Field(default=False)
     grouping: str | None = Field(default=None)
     top_three_photos_of_group: bool | None = Field(default=None)
     slate_upside_down: bool | None = Field(default=None)

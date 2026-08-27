@@ -8,7 +8,10 @@ Pins down:
      the resolver must not return it. Matches the API selector
      predicate.
   2. Camera intrinsics are flattened from numpy to lists.
-  3. Default bbox lands in the resolved input.
+  3. Default bbox + laser region land in the resolved input.
+  3b. An image whose label is flagged `needs_reprocess` comes back even
+     though it is labelled -- the resolver must mirror the selector, or
+     the dive is picked and then found to have no work, every hour.
   4. Missing dive / camera_id / intrinsics raise ValueError so the
      parent workflow surfaces the data problem instead of silently
      dispatching 0-image work to the data-worker.
@@ -244,3 +247,46 @@ async def test_raises_when_camera_has_no_intrinsics(monkeypatch):
         await ActivityEnvironment().run(
             sut.resolve_laser_preprocess_inputs_activity, 42
         )
+
+
+def test_flagged_image_is_returned_though_labelled():
+    """`needs_reprocess` overrides "already has a row".
+
+    The selector picks a dive on this flag; if the resolver did not agree,
+    the parent would stage that dive's raw `.ORF`s from the NAS, resolve
+    zero images, and repeat on every hourly firing while the flag stayed up.
+    """
+    images = [_image(1, "a"), _image(2, "b")]
+    labels = [
+        _label(1, completed=True, needs_reprocess=True),
+        _label(2, completed=True, needs_reprocess=False),
+    ]
+    assert [i.id for i in sut._select_unlabeled_images(images, labels)] == [1]
+
+
+def test_unflagged_fully_labelled_set_is_empty():
+    """The unchanged default -- without a flag a labelled image stays out."""
+    images = [_image(1, "a")]
+    labels = [_label(1, completed=True)]
+    assert sut._select_unlabeled_images(images, labels) == []
+
+
+def test_unlabelled_and_flagged_images_are_both_returned():
+    images = [_image(1, "a"), _image(2, "b"), _image(3, "c")]
+    labels = [
+        _label(1, completed=True, needs_reprocess=True),
+        _label(2, completed=True, needs_reprocess=False),
+    ]
+    assert [i.id for i in sut._select_unlabeled_images(images, labels)] == [1, 3]
+
+
+def test_bbox_is_the_region_polygons_bounding_box():
+    """The data-worker draws `laser_region` and falls back to `bbox`; the
+    resolver has to send both, and they have to agree."""
+    assert sut.LASER_REGION_POLYGON
+    assert sut.DEFAULT_LASER_BBOX == [
+        min(v[0] for v in sut.LASER_REGION_POLYGON),
+        min(v[1] for v in sut.LASER_REGION_POLYGON),
+        max(v[0] for v in sut.LASER_REGION_POLYGON),
+        max(v[1] for v in sut.LASER_REGION_POLYGON),
+    ]

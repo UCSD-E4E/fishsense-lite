@@ -19,6 +19,7 @@ class HeadTailLabel(ModelBase):
     updated_at: datetime | None
     superseded: bool | None
     completed: bool | None
+    needs_reprocess: bool = False
     label_studio_json: Dict[str, Any] | str | None
 
     image_id: int | None
