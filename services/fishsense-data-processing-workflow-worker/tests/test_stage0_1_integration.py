@@ -24,6 +24,10 @@ from fishsense_data_processing_workflow_worker.workflows.preprocess_laser_images
     PreprocessLaserImagesWorkflow,
 )
 
+# The sibling-helper import every stage's integration test uses. CI runs
+# pylint from the repo root over a changed-file list, where `tests` is not
+# an importable package -- resolvable only by pytest's rootdir, not pylint's.
+# pylint: disable-next=import-error
 from ._object_store_itest import BUCKET, make_s3_client, set_object_store_env
 
 pytestmark = pytest.mark.integration

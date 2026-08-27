@@ -36,9 +36,23 @@ async def session():
     await engine.dispose()
 
 
+def _image(session, image_id: int, *, dive: int, canonical: bool):
+    from fishsense_api.models.image import Image
+
+    session.add(
+        Image(
+            id=image_id,
+            dive_id=dive,
+            path=f"/d{dive}/{image_id}.ORF",
+            taken_datetime=datetime(2026, 8, 1, tzinfo=timezone.utc),
+            checksum=f"c{image_id}",
+            is_canonical=canonical,
+        )
+    )
+
+
 async def _seed(session):
     from fishsense_api.models.dive import Dive
-    from fishsense_api.models.image import Image
     from fishsense_api.models.laser_label import LaserLabel
     from fishsense_api.models.priority import Priority
 
@@ -46,11 +60,11 @@ async def _seed(session):
     session.add(Dive(id=1, path="/d1", priority=Priority.HIGH, dive_datetime=when))
     session.add(Dive(id=2, path="/d2", priority=Priority.HIGH, dive_datetime=when))
     # dive 1: two canonical images (labelled) + one non-canonical duplicate
-    session.add(Image(id=10, dive_id=1, path="/d1/a.ORF", taken_datetime=when, checksum="a", is_canonical=True))
-    session.add(Image(id=11, dive_id=1, path="/d1/b.ORF", taken_datetime=when, checksum="b", is_canonical=True))
-    session.add(Image(id=12, dive_id=1, path="/d1/c.ORF", taken_datetime=when, checksum="c", is_canonical=False))
+    _image(session, 10, dive=1, canonical=True)
+    _image(session, 11, dive=1, canonical=True)
+    _image(session, 12, dive=1, canonical=False)
     # dive 2: must be untouched by a dive-1 call
-    session.add(Image(id=20, dive_id=2, path="/d2/d.ORF", taken_datetime=when, checksum="d", is_canonical=True))
+    _image(session, 20, dive=2, canonical=True)
     for image_id in (10, 11, 12, 20):
         session.add(
             LaserLabel(image_id=image_id, label_studio_project_id=1, completed=True)
@@ -61,9 +75,11 @@ async def _seed(session):
 async def _flags(session, image_ids):
     from fishsense_api.models.laser_label import LaserLabel
 
-    rows = (
-        await session.exec(select(LaserLabel).where(LaserLabel.image_id.in_(image_ids)))
-    ).all()
+    # `LaserLabel.image_id` is a SQLModel column at runtime; pylint sees the
+    # pydantic FieldInfo and does not know it grows `.in_`.
+    # pylint: disable-next=no-member
+    query = select(LaserLabel).where(LaserLabel.image_id.in_(image_ids))
+    rows = (await session.exec(query)).all()
     return {r.image_id: r.needs_reprocess for r in rows}
 
 

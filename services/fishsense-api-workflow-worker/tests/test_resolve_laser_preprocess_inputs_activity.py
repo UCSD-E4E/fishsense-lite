@@ -1,4 +1,4 @@
-# pylint: disable=unused-argument
+# pylint: disable=unused-argument,protected-access
 """Unit tests for resolve_laser_preprocess_inputs_activity.
 
 Pins down:

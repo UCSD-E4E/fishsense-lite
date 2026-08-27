@@ -219,7 +219,7 @@ async def test_dispatches_child_with_deterministic_id_and_correct_payload():
 
 @pytest.mark.asyncio
 async def test_returns_none_when_selector_finds_no_dive():
-    activities, selector_calls, resolver_calls, stage_calls, clear_calls = (
+    activities, selector_calls, resolver_calls, stage_calls, _ = (
         _make_stub_activities(selector_result=None, resolver_result=None)
     )
     child_runs: List[tuple] = []
