@@ -329,3 +329,24 @@ class DiveClient(ClientBase):
         response.raise_for_status()
 
         return response.json()
+
+    async def set_notes(self, dive_id: int, notes: str | None) -> int:
+        """Set (or clear) a dive's free-text operator note.
+
+        Records *why* a dive is in an unusual state — most often why it was
+        parked at `Priority.NONE`. Writing a note never changes priority or
+        any other pipeline state; see the endpoint's docstring.
+
+        Args:
+            dive_id (int): The dive to annotate.
+            notes (str | None): The note text, or None to clear it.
+
+        Returns:
+            int: The dive id.
+        """
+        response = await self._put(
+            f"/api/v1/dives/{dive_id}/notes", json={"notes": notes}
+        )
+        response.raise_for_status()
+
+        return response.json()

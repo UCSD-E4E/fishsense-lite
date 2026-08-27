@@ -24,6 +24,7 @@ from typing import Any, Dict
 
 from fishsense_api_sdk.client import Client
 from fishsense_api_sdk.models.species_label import SpeciesLabel
+from fishsense_shared import taxonomy
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.utils import (
@@ -58,9 +59,9 @@ def _first_taxonomy_leaf(results: list[dict], from_name: str) -> str | None:
     """
     for r in results:
         if r["from_name"] == from_name:
-            taxonomy = r.get("value", {}).get("taxonomy") or []
-            if taxonomy and taxonomy[0]:
-                return taxonomy[0][0]
+            paths = r.get("value", {}).get("taxonomy") or []
+            if paths and paths[0]:
+                return paths[0][0]
     return None
 
 
@@ -74,9 +75,9 @@ def _content_of_image(results: list[dict]) -> str | None:
     """
     for r in results:
         if r["from_name"] == "species":
-            taxonomy = r.get("value", {}).get("taxonomy") or []
-            if taxonomy:
-                return ", ".join(taxonomy[0])
+            paths = r.get("value", {}).get("taxonomy") or []
+            if paths:
+                return ", ".join(paths[0])
     return None
 
 
@@ -134,9 +135,35 @@ def _slate_type_choice(results: list[dict], valid_slate_names: set[str]) -> str 
     for r in results:
         if r.get("from_name") == "species":
             for path in r.get("value", {}).get("taxonomy") or []:
-                if path and path[-1] in valid_slate_names:
-                    return path[-1]
+                if not path:
+                    continue
+                leaf = path[-1]
+                # "Slate not in list" is the labeler saying they cannot
+                # identify it. Guarded explicitly rather than relying on it
+                # being absent from `valid_slate_names`: seeding a DiveSlate
+                # row with that literal name would otherwise turn "I don't
+                # know" into a confident wrong calibration, and a wrong slate
+                # is a wrong *scale*, which reprojection residual cannot see.
+                if leaf == taxonomy.SLATE_NOT_IN_LIST_LEAF:
+                    continue
+                if leaf in valid_slate_names:
+                    return leaf
     return None
+
+
+def _slate_not_in_list(results: list[dict]) -> bool:
+    """Did the labeler explicitly say the slate isn't one of the templates?
+
+    Distinct from `_slate_type_choice(...) is None`, which also covers "no
+    slate in this frame" and "labeler didn't answer". Only the explicit
+    sentinel is evidence about the dive.
+    """
+    for r in results:
+        if r.get("from_name") == "species":
+            for path in r.get("value", {}).get("taxonomy") or []:
+                if path and path[-1] == taxonomy.SLATE_NOT_IN_LIST_LEAF:
+                    return True
+    return False
 
 
 def _reduce_slate_winners(
@@ -183,6 +210,42 @@ async def _update_species_label(fs: Client, task: Any) -> int | None:
     return species_label.image_id
 
 
+async def _collect_slate_votes(
+    fs,
+    completed: list[tuple[int, datetime | None, list[dict]]],
+    valid_names: set[str],
+    name_to_id: dict[str, int],
+) -> tuple[list[tuple[int, datetime | None, int]], set[int]]:
+    """Split completed tasks into slate votes and unidentifiable-slate dives.
+
+    Returns `(votes, unidentified)`. A frame contributes to at most one:
+    naming a real template is an answer, and the sentinel is only consulted
+    when there is no answer on that frame.
+    """
+    votes: list[tuple[int, datetime | None, int]] = []
+    unidentified: set[int] = set()
+    dive_by_image: dict[int, int | None] = {}
+
+    async def _dive_for(image_id: int) -> int | None:
+        if image_id not in dive_by_image:
+            image = await fs.images.get(image_id=image_id)
+            dive_by_image[image_id] = image.dive_id if image else None
+        return dive_by_image[image_id]
+
+    for image_id, ts, results in completed:
+        slate_name = _slate_type_choice(results, valid_names)
+        if slate_name is not None:
+            dive_id = await _dive_for(image_id)
+            if dive_id is not None:
+                votes.append((dive_id, ts, name_to_id[slate_name]))
+        elif _slate_not_in_list(results):
+            dive_id = await _dive_for(image_id)
+            if dive_id is not None:
+                unidentified.add(dive_id)
+
+    return votes, unidentified
+
+
 async def _resolve_dive_slates(
     completed: list[tuple[int, datetime | None, list[dict]]],
 ) -> None:
@@ -203,26 +266,53 @@ async def _resolve_dive_slates(
         name_to_id = {slate.name: slate.id for slate in slates}
         valid_names = set(name_to_id)
 
-        votes: list[tuple[int, datetime | None, int]] = []
-        dive_by_image: dict[int, int | None] = {}
-        for image_id, ts, results in completed:
-            slate_name = _slate_type_choice(results, valid_names)
-            if slate_name is None:
-                continue
-            if image_id not in dive_by_image:
-                image = await fs.images.get(image_id=image_id)
-                dive_by_image[image_id] = image.dive_id if image else None
-            dive_id = dive_by_image[image_id]
-            if dive_id is not None:
-                votes.append((dive_id, ts, name_to_id[slate_name]))
+        votes, unidentified = await _collect_slate_votes(
+            fs, completed, valid_names, name_to_id
+        )
 
-        for dive_id, slate_id in _reduce_slate_winners(votes).items():
+        winners = _reduce_slate_winners(votes)
+        for dive_id, slate_id in winners.items():
             await fs.dives.set_dive_slate(dive_id, slate_id)
             activity.logger.info(
                 "species sync set dive_slate dive_id=%d dive_slate_id=%d",
                 dive_id,
                 slate_id,
             )
+
+        # A dive that got a real slate on some *other* frame is identified;
+        # only note the ones left with no answer at all.
+        await _note_unidentified_slates(fs, unidentified - set(winners))
+
+
+async def _note_unidentified_slates(fs, dive_ids: set[int]) -> None:
+    """Record "the slate here isn't one of ours" on each dive.
+
+    Deliberately does three things it could plausibly do more of:
+
+    * It writes only `notes`, never `priority`. An unidentifiable slate means
+      the dive cannot *self*-calibrate, but it can still borrow a sibling's
+      calibration via `calibration_dive_id` — so parking it stays a human
+      decision, informed by this note.
+    * It never overwrites an existing note. `notes` is an operator field and
+      this runs hourly; clobbering a human's reason with a generated one is
+      strictly worse than staying quiet.
+    * It leaves `dive_slate_id` NULL, which is what keeps the dive out of
+      stages 9 and 13 rather than calibrating it against a slate it isn't.
+    """
+    for dive_id in sorted(dive_ids):
+        dive = await fs.dives.get(dive_id)
+        if dive is None or getattr(dive, "notes", None):
+            continue
+        note = (
+            f"Species labeling reported '{taxonomy.SLATE_NOT_IN_LIST_LEAF}': "
+            "the slate in frame is not one of the DiveSlate templates, so "
+            "this dive cannot self-calibrate. Link a sibling dive via "
+            "calibration_dive_id, or set priority=NONE to park it."
+        )
+        await fs.dives.set_notes(dive_id, note)
+        activity.logger.warning(
+            "species sync: dive_id=%d has an unidentifiable slate; noted", dive_id
+        )
 
 
 @activity.defn

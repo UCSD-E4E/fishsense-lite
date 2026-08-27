@@ -192,3 +192,33 @@ def test_sql_broader_rows_are_not_also_in_the_corpus():
     mismatch. A value in both would make one of the two tests a lie."""
     corpus_values = {c for c, _ in sut.MEASURABILITY_CORPUS}
     assert not corpus_values & set(sut.SQL_BROADER_THAN_PYTHON)
+
+
+# --- the "slate not in list" sentinel --------------------------------------
+#
+# Added 2026-08-27. V-Slate 7 was lost during a dive, so it can never be
+# scanned and can never become a `DiveSlate` template row. Before the
+# sentinel, a labeler looking at it was offered only V-Slate 1..4 and had to
+# either pick a wrong neighbour or say nothing -- and a wrong slate produces a
+# wrong *scale*, which reprojection error is blind to. The sentinel is the
+# honest third answer.
+
+
+def test_slate_not_in_list_is_distinct_from_the_stage9_marker():
+    """They live on separate taxonomy paths and mean different things.
+
+    `SLATE_CONTENT_MARKER` is taxonomy[0] ("this frame shows a slate with the
+    laser on it"); the sentinel is the slate-*type* answer. Collapsing them
+    would make an unidentifiable slate drop out of stage 9 as well.
+    """
+    assert sut.SLATE_NOT_IN_LIST_LEAF != sut.SLATE_CONTENT_MARKER
+
+
+def test_slate_not_in_list_is_not_measurable():
+    """It must never reach stage 14 as a measurable target."""
+    assert not sut.is_measurable(sut.SLATE_NOT_IN_LIST_LEAF)
+    assert not sut.is_measurable(f"Slate, {sut.SLATE_NOT_IN_LIST_LEAF}")
+
+
+def test_slate_not_in_list_is_exported():
+    assert "SLATE_NOT_IN_LIST_LEAF" in sut.__all__
