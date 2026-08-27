@@ -34,7 +34,20 @@ _ORF_FIXTURE = _FIXTURE_DIR / "stage2_sample.ORF"
 
 _K = [[3000.0, 0.0, 2000.0], [0.0, 3000.0, 1500.0], [0.0, 0.0, 1.0]]
 _D = [-0.05, 0.01, 0.0, 0.0, 0.0]
-_BBOX = [1800, 700, 2400, 1600]
+_BBOX = [1580, 395, 2470, 1905]
+# The production region. Passing it exercises the polygon path end-to-end,
+# which is what the api-worker actually sends; the bbox-only fallback is
+# covered by the unit and notebook-parity tests.
+_REGION = [
+    [1580, 570],
+    [1700, 465],
+    [2335, 395],
+    [2455, 525],
+    [2470, 1610],
+    [2185, 1890],
+    [1920, 1905],
+    [1625, 1365],
+]
 
 
 def _temporal_target() -> str:
@@ -84,6 +97,7 @@ async def test_workflow_processes_one_image_end_to_end(raw_orf_bytes: bytes):
                 camera_matrix=_K,
                 distortion_coefficients=_D,
                 bbox=_BBOX,
+                laser_region=_REGION,
             ),
             id=f"stage01-itest-{uuid.uuid4().hex}",
             task_queue=task_queue,

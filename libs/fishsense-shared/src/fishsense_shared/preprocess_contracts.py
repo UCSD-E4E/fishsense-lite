@@ -15,7 +15,7 @@ construction.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from pydantic import BaseModel
 
@@ -47,9 +47,26 @@ class PreprocessLaserImagesInput(BaseModel):
 
     Constructed by the api-worker parent (selector + resolver), passed
     to the data-worker `PreprocessLaserImagesWorkflow` child. The
-    expected-laser bbox is part of the input rather than baked into
-    the data-worker so the api-worker can pick a per-camera bbox if
-    we ever ship more than one sensor.
+    expected-laser region is part of the input rather than baked into
+    the data-worker so the api-worker can pick a per-camera one if we
+    ever ship more than one sensor.
+
+    `laser_region` is the real shape — a convex polygon of `[x, y]`
+    vertices in rectified pixels, drawn in the order given. `bbox` is
+    its bounding box, carried alongside rather than replaced because
+    the two workers deploy independently and often days apart (in-slot
+    converge vs. `kubectl apply` on NRP), so both directions of the
+    skew have to render something correct:
+
+    * new api-worker -> old data-worker: pydantic ignores the unknown
+      `laser_region` and the old code draws `bbox`, a superset.
+    * old api-worker -> new data-worker: `laser_region` is absent, so
+      the new code falls back to `bbox`, which is all the old resolver
+      ever sent.
+
+    Once every data-worker in the fleet is past the polygon, `bbox`
+    can go -- that is a deliberate follow-up, not a cleanup to fold
+    into an unrelated change.
     """
 
     dive_id: int
@@ -57,6 +74,7 @@ class PreprocessLaserImagesInput(BaseModel):
     camera_matrix: List[List[float]]
     distortion_coefficients: List[float]
     bbox: List[int]
+    laser_region: Optional[List[List[int]]] = None
 
 
 class PreprocessSpeciesImagesInput(BaseModel):
