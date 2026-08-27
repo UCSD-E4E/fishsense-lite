@@ -6,7 +6,8 @@ resolved inputs to the data-worker's `PreprocessLaserImagesWorkflow` on
 `fishsense_data_processing_queue`.
 
 Cohort: HIGH-priority + at least one canonical image with no non-sentinel
-`LaserLabel` row (any real project). The earlier "no `LaserExtrinsics`"
+`LaserLabel` row (any real project), or one flagged `needs_reprocess`.
+The earlier "no `LaserExtrinsics`"
 cohort tied stage 0.1 to a downstream gate it doesn't advance, so dives
 whose laser side was done but whose slate side blocked stage-13
 calibration kept getting re-selected hourly with no work for the resolver
@@ -20,6 +21,15 @@ laser-detector predict stage (+10). Populate seeds non-sentinel
 `LaserLabel` rows and the predict cohort excludes any image that already
 has one, so populating here (at +0) would starve the predictor before it
 ever ran.
+
+`clear_laser_reprocess_flags_activity` runs last, and only on the path
+where the child actually ran. It is what makes the `needs_reprocess`
+cohort drainable: the flag is the one part of the stage-0.1 predicate that
+does not go false on its own, so a firing that redrew the JPEGs and did
+not lower it would re-select the same dive every hour and starve every
+higher-id dive behind it. Appended after `cleanup_raw` rather than slotted
+earlier so a child in flight at deploy still replays -- new commands after
+the end of history are fine, a changed command in the middle is not.
 
 The shared steps — and the cluster-correctness invariants behind each
 (schedule SKIP overlap, deterministic child ids, ALLOW_DUPLICATE reuse,
@@ -77,5 +87,8 @@ class PreprocessLaserImagesParentWorkflow:
             execution_timeout=timedelta(hours=1),
         )
         await _dispatch.cleanup_raw(dive_id)
+        await _dispatch.run_sdk_activity(
+            "clear_laser_reprocess_flags_activity", dive_id
+        )
 
         return inputs.dive_id

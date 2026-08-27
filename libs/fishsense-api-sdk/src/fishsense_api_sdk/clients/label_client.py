@@ -298,6 +298,48 @@ class LabelClient(ClientBase):
 
         raise NotImplementedError("Fetching without a parameter is not supported")
 
+    async def set_laser_needs_reprocess(self, dive_id: int) -> int:
+        """Flag a dive's laser labels so stage 0.1 redraws its overlay JPEGs.
+
+        Puts the dive back in the stage-0.1 cohort even though every image
+        already carries a label row. Use after changing what the overlay
+        draws; the JPEGs are rewritten at the same object-store keys, which
+        Label Studio presigns at serve time, so existing tasks pick the new
+        image up without a re-import.
+
+        Args:
+            dive_id (int): The dive to flag.
+
+        Returns:
+            int: The number of laser labels flagged.
+        """
+        response = await self._put(
+            f"/api/v1/dives/{dive_id}/labels/laser/needs-reprocess"
+        )
+        response.raise_for_status()
+
+        return response.json()
+
+    async def clear_laser_needs_reprocess(self, dive_id: int) -> int:
+        """Lower the redraw flag once the dive's JPEGs have been regenerated.
+
+        Called by the stage-0.1 parent after its data-worker child completes.
+        A dive that was never flagged returns 0 rather than erroring, so this
+        is safe to call unconditionally on every firing.
+
+        Args:
+            dive_id (int): The dive to clear.
+
+        Returns:
+            int: The number of laser labels cleared.
+        """
+        response = await self._delete(
+            f"/api/v1/dives/{dive_id}/labels/laser/needs-reprocess"
+        )
+        response.raise_for_status()
+
+        return response.json()
+
     async def get_laser_labels(self, dive_id: int) -> List[LaserLabel] | None:
         """Get laser labels for all images in a dive .
 

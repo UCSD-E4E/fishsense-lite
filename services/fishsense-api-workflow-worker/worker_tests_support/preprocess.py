@@ -57,7 +57,11 @@ def image(image_id: int, checksum: str) -> Image:
 
 
 def laser_label(
-    image_id: int, *, completed: bool, project_id: Optional[int] = 73
+    image_id: int,
+    *,
+    completed: bool,
+    project_id: Optional[int] = 73,
+    needs_reprocess: bool = False,
 ) -> LaserLabel:
     return LaserLabel(
         id=None,
@@ -69,6 +73,7 @@ def laser_label(
         label_studio_json={},
         user_id=None,
         superseded=False,
+        needs_reprocess=needs_reprocess,
         x=None,
         y=None,
         label=None,

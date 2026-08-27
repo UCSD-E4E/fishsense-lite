@@ -236,8 +236,9 @@ SLATE_CONTENT_MARKER = taxonomy.SLATE_CONTENT_MARKER
 async def select_next_for_laser_preprocessing(
     session: AsyncSession = Depends(get_async_session),
 ) -> int | None:
-    """Stage 0.1: HIGH-priority + at least one image without a
-    non-sentinel LaserLabel row (in any real project).
+    """Stage 0.1: HIGH-priority + at least one canonical image that either
+    has no non-sentinel LaserLabel row (in any real project) or carries one
+    flagged `needs_reprocess`.
 
     "Non-sentinel" means `label_studio_project_id IS NOT NULL` —
     NULL-project rows are legacy sentinels (prod has ~2000 of them, one
@@ -254,6 +255,19 @@ async def select_next_for_laser_preprocessing(
     re-rectify, and re-archive (the data-worker child workflow's
     ALLOW_DUPLICATE_FAILED_ONLY policy makes that a no-op, but the NAS
     staging activity runs unconditionally on every parent firing).
+
+    `needs_reprocess` is the deliberate second way in, and the only way an
+    overlay change reaches an image that has already been preprocessed --
+    the JPEG is written once and then frozen, because the predicate above
+    goes false as soon as a row exists. The flag is raised per dive by
+    `set_laser_labels_needs_reprocess` and lowered by the stage-0.1 parent
+    once its data-worker child has completed, which is what keeps this
+    drainable; see `clear_laser_labels_needs_reprocess`.
+
+    Canonical images only, on both halves: duplicates of the same physical
+    frame live under other dive rows and are never preprocessed, so a flag
+    on one would select a dive the resolver finds no work for and re-fire
+    forever.
     """
     has_image_without_real_laser_label = (
         select(Image.id)
@@ -267,10 +281,22 @@ async def select_next_for_laser_preprocessing(
         )
         .exists()
     )
+    has_image_flagged_for_reprocess = (
+        select(Image.id)
+        .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
+        .where(
+            select(LaserLabel.id)
+            .where(LaserLabel.image_id == Image.id)
+            .where(LaserLabel.needs_reprocess == True)
+            .exists()
+        )
+        .exists()
+    )
     query = (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
-        .where(has_image_without_real_laser_label)
+        .where(or_(has_image_without_real_laser_label, has_image_flagged_for_reprocess))
         .order_by(Dive.id)
         .limit(1)
     )

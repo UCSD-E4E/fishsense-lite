@@ -18,7 +18,7 @@ from fishsense_core.image.raw_image import RawImage
 from fishsense_core.image.rectified_image import RectifiedImage
 
 from fishsense_data_processing_workflow_worker.activities.preprocess_laser_image import (
-    _rectify_overlay_bbox_encode,
+    _rectify_overlay_encode,
 )
 
 
@@ -69,7 +69,7 @@ def test_worker_transform_matches_notebook_byte_for_byte(orf_path: Path):
     )
 
     nb = _notebook_transform(orf_path, intrinsics, _BBOX)
-    wk = _rectify_overlay_bbox_encode(
+    wk = _rectify_overlay_encode(
         orf_path.read_bytes(),
         camera_matrix=_K,
         distortion_coefficients=_D,

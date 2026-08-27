@@ -129,6 +129,7 @@ class DiveSlateLabel(BaseModel):
     updated_at: AwareDatetime | None = Field(None, title='Updated At')
     completed: bool | None = Field(False, title='Completed')
     superseded: bool | None = Field(False, title='Superseded')
+    needs_reprocess: bool | None = Field(False, title='Needs Reprocess')
     label_studio_json: dict[str, Any] | None = Field(None, title='Label Studio Json')
     image_id: int | None = Field(None, title='Image Id')
     user_id: int | None = Field(None, title='User Id')
@@ -159,6 +160,7 @@ class HeadTailLabel(BaseModel):
     updated_at: AwareDatetime | None = Field(None, title='Updated At')
     superseded: bool | None = Field(False, title='Superseded')
     completed: bool | None = Field(False, title='Completed')
+    needs_reprocess: bool | None = Field(False, title='Needs Reprocess')
     label_studio_json: dict[str, Any] | None = Field(None, title='Label Studio Json')
     image_id: int | None = Field(None, title='Image Id')
     user_id: int | None = Field(None, title='User Id')
@@ -239,6 +241,7 @@ class LaserLabel(BaseModel):
     updated_at: AwareDatetime | None = Field(None, title='Updated At')
     superseded: bool | None = Field(False, title='Superseded')
     completed: bool | None = Field(False, title='Completed')
+    needs_reprocess: bool | None = Field(False, title='Needs Reprocess')
     label_studio_json: dict[str, Any] | None = Field(None, title='Label Studio Json')
     image_id: int | None = Field(None, title='Image Id')
     user_id: int | None = Field(None, title='User Id')
@@ -327,6 +330,7 @@ class SpeciesLabel(BaseModel):
     updated_at: AwareDatetime | None = Field(None, title='Updated At')
     completed: bool | None = Field(False, title='Completed')
     superseded: bool | None = Field(False, title='Superseded')
+    needs_reprocess: bool | None = Field(False, title='Needs Reprocess')
     grouping: str | None = Field(None, title='Grouping')
     top_three_photos_of_group: bool | None = Field(
         None, title='Top Three Photos Of Group'

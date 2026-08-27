@@ -462,6 +462,72 @@ async def get_laser_labels_for_dive(
     return labels
 
 
+@app.put("/api/v1/dives/{dive_id}/labels/laser/needs-reprocess")
+async def set_laser_labels_needs_reprocess(
+    dive_id: int, session: AsyncSession = Depends(get_async_session)
+) -> int:
+    """Flag every canonical image in the dive for a stage-0.1 redraw.
+
+    Raises the flag that `select_next_for_laser_preprocessing` selects on, so
+    an already-preprocessed dive re-enters the cohort and its overlay JPEGs
+    are regenerated at the same object-store keys. Label Studio presigns
+    those keys at serve time, so existing tasks pick the new image up with no
+    re-import and no loss of the labels already on them.
+
+    Returns the number of rows flagged. Canonical images only: the same
+    physical frame lives under several dive rows and only the canonical copy
+    is ever preprocessed, so flagging the rest would raise a flag that no
+    cohort can lower.
+    """
+    return await _set_laser_needs_reprocess(session, dive_id, True)
+
+
+@app.delete("/api/v1/dives/{dive_id}/labels/laser/needs-reprocess")
+async def clear_laser_labels_needs_reprocess(
+    dive_id: int, session: AsyncSession = Depends(get_async_session)
+) -> int:
+    """Lower the flag once the dive's JPEGs have been redrawn.
+
+    Called by `PreprocessLaserImagesParentWorkflow` after its data-worker
+    child completes. This is the half that keeps the cohort drainable -- a
+    flag nothing clears holds its dive in the cohort forever, re-staging raw
+    `.ORF`s from the NAS every hour and starving every higher-id dive behind
+    it (prod dive 60 did exactly that to dives 84/465/471 until 2026-08-04).
+
+    A dive with no laser labels returns 0 rather than 404: the parent calls
+    this unconditionally, and a 404 would fail the workflow.
+    """
+    return await _set_laser_needs_reprocess(session, dive_id, False)
+
+
+async def _set_laser_needs_reprocess(
+    session: AsyncSession, dive_id: int, value: bool
+) -> int:
+    """Set `needs_reprocess` on every canonical image's laser label in a dive.
+
+    Returns the number of matching rows. Deliberately not conditioned on the
+    current value, so both directions are idempotent.
+    """
+    query = (
+        select(LaserLabel)
+        .join_from(LaserLabel, Image, LaserLabel.image_id == Image.id)
+        .where(Image.dive_id == dive_id)
+        .where(Image.is_canonical == True)
+    )
+    labels = (await session.exec(query)).all()
+    for label in labels:
+        label.needs_reprocess = value
+        session.add(label)
+    await session.flush()
+    logger.info(
+        "set needs_reprocess=%s on %d laser labels for dive_id=%d",
+        value,
+        len(labels),
+        dive_id,
+    )
+    return len(labels)
+
+
 @app.put("/api/v1/labels/laser/{image_id}", status_code=201)
 async def put_laser_label(
     image_id: int,

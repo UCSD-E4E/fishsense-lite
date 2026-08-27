@@ -43,6 +43,8 @@ from fishsense_shared import PreprocessLaserImagesInput
 
 _K = [[1000.0, 0.0, 960.0], [0.0, 1000.0, 540.0], [0.0, 0.0, 1.0]]
 _D = [-0.1, 0.05, 0.0, 0.0, 0.0]
+# Stub payload, like _K above — this test pins pass-through, not the box's
+# value. The real one is DEFAULT_LASER_BBOX (test_default_laser_bbox.py).
 _BBOX = [1800, 700, 2400, 1600]
 
 
@@ -112,6 +114,7 @@ def _make_stub_activities(
     selector_calls: List[None] = []
     resolver_calls: List[int] = []
     stage_calls: List[int] = []
+    clear_calls: List[int] = []
 
     @activity.defn(name="select_next_high_priority_dive_for_laser_preprocessing_activity")
     async def stub_select() -> Optional[int]:
@@ -136,11 +139,24 @@ def _make_stub_activities(
     async def stub_ensure_running() -> int:
         return 0
 
+    @activity.defn(name="clear_laser_reprocess_flags_activity")
+    async def stub_clear(dive_id: int) -> int:
+        clear_calls.append(dive_id)
+        return 0
+
     return (
-        [stub_select, stub_resolve, stub_stage, stub_cleanup, stub_ensure_running],
+        [
+            stub_select,
+            stub_resolve,
+            stub_stage,
+            stub_cleanup,
+            stub_ensure_running,
+            stub_clear,
+        ],
         selector_calls,
         resolver_calls,
         stage_calls,
+        clear_calls,
     )
 
 
@@ -153,7 +169,7 @@ async def test_dispatches_child_with_deterministic_id_and_correct_payload():
         distortion_coefficients=_D,
         bbox=_BBOX,
     )
-    activities, selector_calls, resolver_calls, stage_calls = (
+    activities, selector_calls, resolver_calls, stage_calls, clear_calls = (
         _make_stub_activities(selector_result=440, resolver_result=inputs)
     )
     child_runs: List[tuple] = []
@@ -195,11 +211,15 @@ async def test_dispatches_child_with_deterministic_id_and_correct_payload():
     # chains into it — the scheduled PopulateLaserLabelStudioProjectParentWorkflow
     # (+12, after the +10 predict parent) owns laser task import now.
     assert not populate_runs
+    # The redraw flags come down only after the child has actually run. This
+    # is the half that keeps the `needs_reprocess` cohort drainable — without
+    # it a flagged dive is re-selected every hour forever.
+    assert clear_calls == [440]
 
 
 @pytest.mark.asyncio
 async def test_returns_none_when_selector_finds_no_dive():
-    activities, selector_calls, resolver_calls, stage_calls = (
+    activities, selector_calls, resolver_calls, stage_calls, _ = (
         _make_stub_activities(selector_result=None, resolver_result=None)
     )
     child_runs: List[tuple] = []
@@ -245,7 +265,7 @@ async def test_skips_child_dispatch_when_no_incomplete_images():
         distortion_coefficients=_D,
         bbox=_BBOX,
     )
-    activities, _, resolver_calls, stage_calls = _make_stub_activities(
+    activities, _, resolver_calls, stage_calls, clear_calls = _make_stub_activities(
         selector_result=440, resolver_result=inputs
     )
     child_runs: List[tuple] = []
@@ -279,3 +299,6 @@ async def test_skips_child_dispatch_when_no_incomplete_images():
     assert not stage_calls
     assert not child_runs
     assert not populate_runs
+    # Nothing was redrawn, so nothing may be marked as redrawn: clearing here
+    # would silently drop a flag raised between the selector and the resolver.
+    assert not clear_calls
