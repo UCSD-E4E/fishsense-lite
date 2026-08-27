@@ -10,7 +10,7 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
     "boto3>=1.35.0",
     "dynaconf>=3.2.11",
-    "fishsense-api-sdk>=1.47.0",
+    "fishsense-api-sdk>=1.47.1",
     "fishsense-core[laser-detector,slate]",
     "fishsense-shared",
     "httpx>=0.28.1",
