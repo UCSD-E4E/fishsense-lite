@@ -48,6 +48,17 @@ class LaserPrediction(ModelBase, table=True):
     # nothing): without this the two are indistinguishable, and a mis-sized
     # region would read as a model that had stopped working.
     rejected_out_of_region: bool = Field(default=False)
+    # Which version of the laser-detector stage produced this row. The
+    # stage-level cohort selects on a *mismatch* with the current version, so
+    # improving the detector makes re-prediction an ordinary drainable cohort
+    # instead of a hand-run backfill. NULL means "predates versioning", which
+    # reads as stale exactly once. See `fishsense_shared.laser_predictor`.
+    predictor_version: int | None = Field(default=None, index=True)
+    # Recorded, never gated on — the same role `LaserDepth.residual_m` plays.
+    # These are what answer "why did this frame come out that way" later;
+    # `predictor_version` is the one thing anything decides on.
+    checkpoint: str | None = Field(default=None)
+    core_version: str | None = Field(default=None)
     created_at: datetime | None = Field(sa_type=DateTime(timezone=True), default=None)
 
     image_id: int | None = Field(default=None, foreign_key="image.id")

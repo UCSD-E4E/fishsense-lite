@@ -181,6 +181,13 @@ class LaserPredictionResult(BaseModel):
     # the two are indistinguishable downstream and a mis-sized region would
     # look like a model that stopped working.
     rejected_out_of_region: bool = False
+    # Stage version that produced this result, and the provenance recorded
+    # beside it. Stamped by the data-worker (which runs the detector) from the
+    # shared constant both workers import, so a rolling deploy where the two
+    # disagree costs at most one extra round of re-prediction.
+    predictor_version: int | None = None
+    checkpoint: str | None = None
+    core_version: str | None = None
 
 
 class PredictSlateImage(BaseModel):

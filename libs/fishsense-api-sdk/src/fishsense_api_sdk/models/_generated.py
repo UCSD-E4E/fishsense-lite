@@ -263,6 +263,9 @@ class LaserPrediction(BaseModel):
     color: str | None = Field(None, title='Color')
     color_margin: float | None = Field(None, title='Color Margin')
     rejected_out_of_region: bool | None = Field(False, title='Rejected Out Of Region')
+    predictor_version: int | None = Field(None, title='Predictor Version')
+    checkpoint: str | None = Field(None, title='Checkpoint')
+    core_version: str | None = Field(None, title='Core Version')
     created_at: AwareDatetime | None = Field(None, title='Created At')
     image_id: int | None = Field(None, title='Image Id')
 

@@ -248,6 +248,9 @@ from fishsense_api_workflow_worker.workflows.predict_laser_images_parent_workflo
 from fishsense_api_workflow_worker.workflows.predict_slate_images_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PredictSlateImagesParentWorkflow,
 )
+from fishsense_api_workflow_worker.workflows.backfill_laser_predictions_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    BackfillLaserPredictionsWorkflow,
+)
 from fishsense_api_workflow_worker.workflows.backfill_slate_predictions_workflow import (  # noqa: E501  pylint: disable=line-too-long
     BackfillSlatePredictionsWorkflow,
 )
@@ -694,6 +697,7 @@ async def main():
                 ClusterDiveFramesParentWorkflow,
                 PredictLaserImagesParentWorkflow,
                 PredictSlateImagesParentWorkflow,
+                BackfillLaserPredictionsWorkflow,
                 BackfillSlatePredictionsWorkflow,
                 PreprocessLaserImagesParentWorkflow,
                 PreprocessSpeciesImagesParentWorkflow,

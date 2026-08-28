@@ -18,7 +18,7 @@ import os
 import threading
 from typing import Any
 
-from fishsense_shared import point_in_laser_region
+from fishsense_shared import LASER_PREDICTOR_VERSION, point_in_laser_region
 from temporalio import activity
 
 from fishsense_data_processing_workflow_worker.laser_color import (
@@ -135,6 +135,21 @@ def _predict_from_raw(
     return prediction, int(width), int(height), color, margin
 
 
+def _core_version() -> str | None:
+    """Installed fishsense-core version, recorded on each prediction.
+
+    Provenance only — nothing decides on it. Imported here rather than at
+    module scope because the whole point of this module's lazy imports is that
+    it stays importable without the torch extra installed.
+    """
+    try:
+        from importlib.metadata import version
+
+        return version("fishsense-core")
+    except Exception:  # pylint: disable=broad-except
+        return None
+
+
 def _models():
     from fishsense_data_processing_workflow_worker.workflows.predict_laser_images_workflow import (
         LaserPredictionResult,
@@ -207,4 +222,7 @@ async def predict_laser_image(payload):  # type: ignore[no-untyped-def]
         color=color,
         color_margin=margin,
         rejected_out_of_region=rejected,
+        predictor_version=LASER_PREDICTOR_VERSION,
+        checkpoint=os.path.basename(DEFAULT_CHECKPOINT_PATH),
+        core_version=_core_version(),
     )

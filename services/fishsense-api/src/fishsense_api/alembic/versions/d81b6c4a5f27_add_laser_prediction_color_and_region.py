@@ -1,4 +1,4 @@
-"""add colour + out-of-region fields to laserprediction
+"""add colour, out-of-region and stage-version fields to laserprediction
 
 Revision ID: d81b6c4a5f27
 Revises: c7e4a91f2d38
@@ -17,6 +17,17 @@ it fell outside the expected-laser region and was dropped. It exists to keep
 that distinguishable from an ordinary non-detection: without it, a region that
 was cut too tight would look exactly like a model that had stopped finding
 lasers, and there would be nothing in the data to tell the two apart.
+
+`predictor_version` is what makes improving the detector a drainable cohort
+rather than a hand-run backfill: the stage selects on a *mismatch* with the
+current version, the same way the laser-depth and measurement cohorts select
+on a mismatch with the calibration that produced them. It is deliberately
+nullable — the 1,555 rows already in prod predate versioning, and NULL is
+exactly "unknown, therefore stale", which drains on the first pass. Backfilling
+them to 1 would be a guess about behaviour nobody recorded.
+
+`checkpoint` / `core_version` are recorded and never gated on, for answering
+"why did this frame come out that way" after the fact.
 
 `server_default=false` + NOT NULL on the boolean for the same reason as
 `needs_reprocess` in c7e4a91f2d38 — a NULL backfill makes
@@ -45,6 +56,12 @@ TABLE = "laserprediction"
 def upgrade() -> None:
     """Upgrade schema."""
     op.add_column(TABLE, sa.Column("color", sa.String(), nullable=True))
+    op.add_column(TABLE, sa.Column("predictor_version", sa.Integer(), nullable=True))
+    op.add_column(TABLE, sa.Column("checkpoint", sa.String(), nullable=True))
+    op.add_column(TABLE, sa.Column("core_version", sa.String(), nullable=True))
+    op.create_index(
+        "ix_laserprediction_predictor_version", TABLE, ["predictor_version"]
+    )
     op.add_column(TABLE, sa.Column("color_margin", sa.Float(), nullable=True))
     op.add_column(
         TABLE,
@@ -59,6 +76,10 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
+    op.drop_index("ix_laserprediction_predictor_version", table_name=TABLE)
+    op.drop_column(TABLE, "core_version")
+    op.drop_column(TABLE, "checkpoint")
+    op.drop_column(TABLE, "predictor_version")
     op.drop_column(TABLE, "rejected_out_of_region")
     op.drop_column(TABLE, "color_margin")
     op.drop_column(TABLE, "color")

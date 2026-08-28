@@ -12,6 +12,7 @@ from typing import List
 
 from fishsense_api_sdk.models.image import Image
 from fishsense_api_sdk.models.laser_label import LaserLabel
+from fishsense_shared import laser_model_version_tag
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.populate_utils import (
@@ -90,7 +91,7 @@ def _prediction_annotations(
         return []
     return [
         {
-            "model_version": "laser-detector",
+            "model_version": laser_model_version_tag(),
             "result": [
                 {
                     "from_name": _KEYPOINT_FROM_NAME,

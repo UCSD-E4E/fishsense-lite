@@ -28,5 +28,10 @@ class LaserPrediction(ModelBase):
     color: str | None = None
     color_margin: float | None = None
     rejected_out_of_region: bool = False
+    # Stage version that produced this row (the cohort selects on a mismatch),
+    # plus the provenance recorded beside it. See the API SQLModel.
+    predictor_version: int | None = None
+    checkpoint: str | None = None
+    core_version: str | None = None
     created_at: datetime | None = None
     image_id: int | None = None

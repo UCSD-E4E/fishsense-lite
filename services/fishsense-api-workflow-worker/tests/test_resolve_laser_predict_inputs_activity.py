@@ -42,13 +42,53 @@ def _make_fs(*, camera_id=1, images=None, predictions=None, labels=None, intrins
     return fs
 
 
+def _prediction(image_id, version="current"):
+    """A LaserPrediction stub. Defaults to the *current* stage version, which
+    is what "already predicted" now means."""
+    if version == "current":
+        version = sut.LASER_PREDICTOR_VERSION
+    return SimpleNamespace(image_id=image_id, predictor_version=version)
+
+
 def test_select_filters_predicted_and_completed():
     images = [_image(1, "a"), _image(2, "b"), _image(3, "c")]
-    predictions = [SimpleNamespace(image_id=1)]
+    # image 1 is predicted *at the current version* -> excluded.
+    predictions = [_prediction(1)]
     # image 2 has a completed (live) laser label -> excluded.
     labels = [SimpleNamespace(image_id=2, label_studio_project_id=73, completed=True)]
     needing = sut._select_images_needing_prediction(images, predictions, labels)
     assert [i.id for i in needing] == [3]
+
+
+def test_a_stale_prediction_does_not_exclude():
+    """The point of versioning: an old prediction is work, not a reason to
+    skip. `put_laser_prediction` upserts on image_id, so re-running overwrites
+    rather than duplicating."""
+    images = [_image(1, "a"), _image(2, "b")]
+    predictions = [_prediction(1, version=sut.LASER_PREDICTOR_VERSION - 1)]
+    needing = sut._select_images_needing_prediction(images, predictions, [])
+    assert [i.id for i in needing] == [1, 2]
+
+
+def test_a_prediction_predating_versioning_does_not_exclude():
+    """The 1,555 rows already in prod carry NULL, which is 'unknown, therefore
+    stale'."""
+    images = [_image(1, "a")]
+    needing = sut._select_images_needing_prediction(
+        images, [_prediction(1, version=None)], []
+    )
+    assert [i.id for i in needing] == [1]
+
+
+def test_a_completed_label_still_wins_over_a_stale_prediction():
+    """Re-prediction must never overwrite finished human work, whatever the
+    version says."""
+    images = [_image(1, "a")]
+    labels = [SimpleNamespace(image_id=1, label_studio_project_id=73, completed=True)]
+    needing = sut._select_images_needing_prediction(
+        images, [_prediction(1, version=None)], labels
+    )
+    assert needing == []
 
 
 def test_seeded_placeholder_does_not_exclude():
@@ -75,7 +115,7 @@ def test_sentinel_label_does_not_exclude():
 async def test_activity_builds_input_dto(monkeypatch):
     fs = _make_fs(
         images=[_image(1, "a"), _image(2, "b")],
-        predictions=[SimpleNamespace(image_id=1)],
+        predictions=[_prediction(1)],
     )
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
 

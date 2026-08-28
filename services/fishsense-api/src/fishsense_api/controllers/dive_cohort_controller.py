@@ -32,7 +32,7 @@ from sqlalchemy.orm import aliased
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from fishsense_shared import taxonomy
+from fishsense_shared import LASER_PREDICTOR_VERSION, taxonomy
 
 from fishsense_api.database import get_async_session
 from fishsense_api.models.data_source import DataSource
@@ -312,8 +312,12 @@ async def select_next_for_laser_prediction(
 
     An image needs a prediction only if it has neither been predicted nor
     *labeled by a human* yet — so a dive drops out of the cohort once every
-    image is predicted (one-shot per image; re-prediction is a manual
-    affair), and images a human already labeled are never predicted over.
+    image is predicted, and images a human already labeled are never predicted
+    over.
+
+    Re-prediction is no longer "a manual affair": a dive is also selected while
+    it is still being labeled and carries a prediction from an older
+    `LASER_PREDICTOR_VERSION`.
 
     "Labeled" here means `completed IS TRUE`, NOT merely
     `project_id IS NOT NULL`: the laser populate step seeds placeholder
@@ -347,10 +351,55 @@ async def select_next_for_laser_prediction(
         )
         .exists()
     )
+    # Second way in: a stale-version prediction on a dive still being labeled.
+    # Why mismatch rather than absence, and why only actively-labeled dives:
+    # `fishsense_shared.laser_predictor`. `IS DISTINCT FROM`, not `!=` — every
+    # pre-versioning row is NULL, and `!=` would answer NULL and select nothing.
+    version = LASER_PREDICTOR_VERSION
+    dive_is_still_being_labeled = (
+        select(Image.id)
+        .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
+        .where(
+            select(LaserLabel.id)
+            .where(LaserLabel.image_id == Image.id)
+            .where(LaserLabel.completed == False)
+            .where(LaserLabel.superseded == False)
+            .where(LaserLabel.label_studio_project_id != None)
+            .exists()
+        )
+        .exists()
+    )
+    has_image_with_a_stale_prediction = (
+        select(Image.id)
+        .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
+        .where(
+            select(LaserPrediction.id)
+            .where(LaserPrediction.image_id == Image.id)
+            # pylint: disable-next=no-member
+            .where(LaserPrediction.predictor_version.is_distinct_from(version))
+            .exists()
+        )
+        # Never re-predict over finished human work (the guard, not a fallout).
+        .where(
+            ~select(LaserLabel.id)
+            .where(LaserLabel.image_id == Image.id)
+            .where(LaserLabel.completed == True)
+            .where(LaserLabel.superseded == False)
+            .exists()
+        )
+        .exists()
+    )
     query = (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
-        .where(has_image_needing_prediction)
+        .where(
+            or_(
+                has_image_needing_prediction,
+                and_(dive_is_still_being_labeled, has_image_with_a_stale_prediction),
+            )
+        )
         .order_by(Dive.id)
         .limit(1)
     )
