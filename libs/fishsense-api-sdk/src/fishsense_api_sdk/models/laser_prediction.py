@@ -22,5 +22,11 @@ class LaserPrediction(ModelBase):
     # Label Studio keypoint-percentage conversion in laser populate).
     width: int | None = None
     height: int | None = None
+    # Laser colour read off the dot's pixels ("red" / "green"), signed R-G at
+    # the dot in 8-bit levels, and whether a detected dot was dropped for
+    # falling outside the expected-laser region. See the API SQLModel.
+    color: str | None = None
+    color_margin: float | None = None
+    rejected_out_of_region: bool = False
     created_at: datetime | None = None
     image_id: int | None = None

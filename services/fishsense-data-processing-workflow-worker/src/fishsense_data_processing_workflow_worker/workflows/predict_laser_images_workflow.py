@@ -39,6 +39,10 @@ class PredictLaserImageInput(BaseModel):
     # Laser wavelength ("red" / "green"), or None when unknown — the model
     # takes an "unknown" wavelength channel in that case.
     wavelength: str | None = None
+    # Convex polygon of [x, y] rectified pixels; a predicted dot outside it is
+    # not believed. None disables the gate, which is what an api-worker that
+    # predates it sends.
+    laser_region: List[List[int]] | None = None
 
 
 @workflow.defn
@@ -64,6 +68,7 @@ class PredictLaserImagesWorkflow:
                         camera_matrix=payload.camera_matrix,
                         distortion_coefficients=payload.distortion_coefficients,
                         wavelength=payload.wavelength,
+                        laser_region=payload.laser_region,
                     ),
                     start_to_close_timeout=timedelta(minutes=10),
                     result_type=LaserPredictionResult,

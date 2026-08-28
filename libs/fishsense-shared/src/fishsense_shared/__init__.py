@@ -8,6 +8,12 @@ from fishsense_shared.config import (
     url_condition,
 )
 from fishsense_shared.exception_group import ExceptionGroupErrorLogging
+from fishsense_shared.laser_region import (
+    DEFAULT_LASER_BBOX,
+    LASER_REGION_POLYGON,
+    WORKING_DEPTH_RANGE_M,
+    point_in_laser_region,
+)
 from fishsense_shared.logging import configure_log_handler, configure_logging
 from fishsense_shared.ingest_contracts import (
     DuplicateOverlap,
@@ -45,6 +51,10 @@ from fishsense_shared.temporal import (
 
 __all__ = [
     "IS_DOCKER",
+    "DEFAULT_LASER_BBOX",
+    "LASER_REGION_POLYGON",
+    "WORKING_DEPTH_RANGE_M",
+    "point_in_laser_region",
     "DuplicateOverlap",
     "IngestDiveRequest",
     "IngestPreflight",

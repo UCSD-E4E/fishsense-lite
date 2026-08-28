@@ -14,6 +14,8 @@ from __future__ import annotations
 from typing import List
 from unittest.mock import AsyncMock, MagicMock
 
+from types import SimpleNamespace
+
 import pytest
 from temporalio.testing import ActivityEnvironment
 
@@ -364,3 +366,85 @@ async def test_does_not_publish_empty_project(monkeypatch):
 
     assert n == 0
     ls.projects.update.assert_not_called()
+
+
+# ------------------------- dive-level laser colour ---------------------------
+#
+# The pre-annotation hardcoded "Red Laser" until 2026-08-28, which is wrong for
+# ~a quarter of prod (143 dives entirely red, 88 entirely green). Colour is a
+# rig property for a whole dive: the 31 "mixed" dives carry a 1.2% minority,
+# which is labeler slips rather than a laser changing colour mid-dive. So the
+# per-frame reads are votes and the dive's majority is applied to every task.
+
+
+def _pred(color):
+    return SimpleNamespace(image_id=1, color=color)
+
+
+def test_unanimous_green_dive_is_labelled_green():
+    from fishsense_api_workflow_worker.activities.populate_laser_label_studio_project_activity import (  # pylint: disable=line-too-long
+        dive_laser_label,
+    )
+
+    assert dive_laser_label([_pred("green")] * 5) == "Green Laser"
+
+
+def test_a_single_misread_frame_does_not_split_the_dive():
+    """The case the corpus actually showed: 10% of one dive's frames read the
+    wrong colour. Every task in the dive must still get the same label -- a
+    labeler seeing both colours inside one dive cannot tell which to trust."""
+    from fishsense_api_workflow_worker.activities.populate_laser_label_studio_project_activity import (  # pylint: disable=line-too-long
+        dive_laser_label,
+    )
+
+    votes = [_pred("red")] * 47 + [_pred("green")] * 6
+    assert dive_laser_label(votes) == "Red Laser"
+
+
+def test_abstentions_do_not_count_as_votes():
+    """`color is None` means the classifier declined (no dot, or channels too
+    close to call). Counting those as red would let a dive with two real green
+    reads and fifty abstentions come out red."""
+    from fishsense_api_workflow_worker.activities.populate_laser_label_studio_project_activity import (  # pylint: disable=line-too-long
+        dive_laser_label,
+    )
+
+    assert dive_laser_label([_pred(None)] * 50 + [_pred("green")] * 2) == "Green Laser"
+
+
+def test_no_votes_falls_back_to_the_more_common_colour():
+    from fishsense_api_workflow_worker.activities.populate_laser_label_studio_project_activity import (  # pylint: disable=line-too-long
+        dive_laser_label,
+    )
+
+    assert dive_laser_label([]) == "Red Laser"
+    assert dive_laser_label([_pred(None), _pred("blue")]) == "Red Laser"
+
+
+def test_a_tie_falls_back_rather_than_picking_arbitrarily():
+    from fishsense_api_workflow_worker.activities.populate_laser_label_studio_project_activity import (  # pylint: disable=line-too-long
+        dive_laser_label,
+    )
+
+    assert dive_laser_label([_pred("red"), _pred("green")]) == "Red Laser"
+
+
+def test_predictions_without_a_colour_attribute_are_tolerated():
+    """Rows written before the colour columns existed come back without one;
+    they must not break populate for the dive."""
+    from fishsense_api_workflow_worker.activities.populate_laser_label_studio_project_activity import (  # pylint: disable=line-too-long
+        dive_laser_label,
+    )
+
+    legacy = SimpleNamespace(image_id=2)
+    assert dive_laser_label([legacy, _pred("green"), _pred("green")]) == "Green Laser"
+
+
+def test_the_chosen_label_reaches_the_keypoint_annotation():
+    from fishsense_api_workflow_worker.activities.populate_laser_label_studio_project_activity import (  # pylint: disable=line-too-long
+        _prediction_annotations,
+    )
+
+    prediction = SimpleNamespace(x=2000.0, y=1200.0, width=4014, height=3016)
+    annotations = _prediction_annotations(prediction, "Green Laser")
+    assert annotations[0]["result"][0]["value"]["keypointlabels"] == ["Green Laser"]

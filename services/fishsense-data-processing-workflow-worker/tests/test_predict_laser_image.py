@@ -23,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import numpy as np
 import pytest
 from temporalio.testing import ActivityEnvironment
 
@@ -52,8 +53,11 @@ def _install_fake_linear_raw_image(monkeypatch, captured):
         def __init__(self, source, *, bayer_upsample="repeat"):
             captured["source"] = source
             captured["bayer_upsample"] = bayer_upsample
-            # (H, W, C) — the activity reads dims from image.data.shape.
-            self.data = SimpleNamespace(shape=(3000, 4000, 3))
+            # (H, W, C) — the activity reads dims from image.data.shape and
+            # now also *samples* it for the laser's colour, so this has to be
+            # a real array rather than a shape-shaped stand-in. Kept small:
+            # a true 4000x3000x3 uint16 frame is 72 MB per test.
+            self.data = np.full((300, 400, 3), 100, dtype=np.uint16)
 
     mod.LinearRawImage = _LinearRawImage
     monkeypatch.setitem(
@@ -78,7 +82,7 @@ def test_predict_from_raw_calls_detector_with_rectified_output(monkeypatch):
 
     monkeypatch.setattr(sut, "_get_detector", lambda checkpoint_path: _FakeDetector())
 
-    pred, width, height = sut._predict_from_raw(
+    pred, width, height, color, margin = sut._predict_from_raw(
         b"rawbytes",
         camera_matrix=[[1000.0, 0.0, 960.0], [0.0, 1000.0, 540.0], [0.0, 0.0, 1.0]],
         distortion_coefficients=[0.1, -0.2, 0.0, 0.0, 0.0],
@@ -87,7 +91,9 @@ def test_predict_from_raw_calls_detector_with_rectified_output(monkeypatch):
     )
 
     assert (pred.x, pred.y, pred.confidence) == (12.5, 34.0, 0.9)
-    assert (width, height) == (4000, 3000)  # from image.data.shape (H, W)
+    assert (width, height) == (400, 300)  # from image.data.shape (H, W)
+    # The fake image is a flat array, so there is no dot to read a colour from.
+    assert (color, margin) in ((None, None), (None, 0.0))
     # Built a LinearRawImage straight from the raw bytes.
     assert captured["source"] == b"rawbytes"
     # Rectified output in labeling space, with the dive's intrinsics + wavelength.
@@ -180,7 +186,13 @@ async def test_activity_returns_mapped_prediction(monkeypatch):
 
     def _fake_predict(raw_bytes, *_args):
         assert raw_bytes == b"ORFBYTES"
-        return SimpleNamespace(x=100.0, y=200.0, confidence=0.77), 4000, 3000
+        return (
+            SimpleNamespace(x=100.0, y=200.0, confidence=0.77),
+            4000,
+            3000,
+            "green",
+            -42.0,
+        )
 
     monkeypatch.setattr(sut, "_predict_from_raw", _fake_predict)
 
@@ -192,6 +204,8 @@ async def test_activity_returns_mapped_prediction(monkeypatch):
     assert result.image_id == 7
     assert (result.x, result.y, result.confidence) == (100.0, 200.0, 0.77)
     assert (result.width, result.height) == (4000, 3000)
+    assert (result.color, result.color_margin) == ("green", -42.0)
+    assert result.rejected_out_of_region is False
     client.download_raw.assert_awaited_once_with("abc123")
 
 
@@ -201,7 +215,13 @@ async def test_activity_handles_non_detection(monkeypatch):
     monkeypatch.setattr(
         sut,
         "_predict_from_raw",
-        lambda *a, **k: (SimpleNamespace(x=None, y=None, confidence=0.05), 4000, 3000),
+        lambda *a, **k: (
+            SimpleNamespace(x=None, y=None, confidence=0.05),
+            4000,
+            3000,
+            None,
+            None,
+        ),
     )
 
     result = await ActivityEnvironment().run(
@@ -220,7 +240,13 @@ async def test_activity_validates_dict_payload(monkeypatch):
     monkeypatch.setattr(
         sut,
         "_predict_from_raw",
-        lambda *a, **k: (SimpleNamespace(x=1.0, y=2.0, confidence=0.5), 4000, 3000),
+        lambda *a, **k: (
+            SimpleNamespace(x=1.0, y=2.0, confidence=0.5),
+            4000,
+            3000,
+            "red",
+            10.0,
+        ),
     )
 
     result = await ActivityEnvironment().run(
@@ -229,3 +255,94 @@ async def test_activity_validates_dict_payload(monkeypatch):
 
     assert result.image_id == 11
     assert (result.x, result.y) == (1.0, 2.0)
+
+
+# --------------------------- expected-region gate ----------------------------
+#
+# The detector always answers. Its own `rig_prior_bbox` is a much looser
+# constraint in a different (sensor) frame, so a dot found on a reflection or a
+# diver's fin comes back looking like any other detection. Seeding that as a
+# pre-annotation is worse than seeding nothing, because it puts the labeler's
+# eye in the wrong place.
+
+_IN_REGION = (2000.0, 1200.0)  # comfortably inside LASER_REGION_POLYGON
+_OUT_OF_REGION = (1600.0, 1800.0)  # inside the bbox, in a corner the polygon cuts
+
+
+def _fixed_prediction(x, y, confidence=0.9):
+    return lambda *a, **k: (
+        SimpleNamespace(x=x, y=y, confidence=confidence),
+        4000,
+        3000,
+        "red",
+        30.0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_prediction_inside_the_region_is_kept(monkeypatch):
+    from fishsense_shared import LASER_REGION_POLYGON
+
+    _mock_object_store(monkeypatch)
+    monkeypatch.setattr(sut, "_predict_from_raw", _fixed_prediction(*_IN_REGION))
+    payload = _make_payload(image_id=1)
+    payload.laser_region = [list(v) for v in LASER_REGION_POLYGON]
+
+    result = await ActivityEnvironment().run(sut.predict_laser_image, payload)
+    assert (result.x, result.y) == _IN_REGION
+    assert result.rejected_out_of_region is False
+
+
+@pytest.mark.asyncio
+async def test_prediction_outside_the_region_is_dropped(monkeypatch):
+    from fishsense_shared import LASER_REGION_POLYGON
+
+    _mock_object_store(monkeypatch)
+    monkeypatch.setattr(sut, "_predict_from_raw", _fixed_prediction(*_OUT_OF_REGION))
+    payload = _make_payload(image_id=2)
+    payload.laser_region = [list(v) for v in LASER_REGION_POLYGON]
+
+    result = await ActivityEnvironment().run(sut.predict_laser_image, payload)
+    assert result.x is None and result.y is None
+    assert result.rejected_out_of_region is True
+    # Confidence is still reported: the model *was* confident, about a point we
+    # do not believe. Zeroing it would hide that from any later audit.
+    assert result.confidence == 0.9
+
+
+@pytest.mark.asyncio
+async def test_rejection_is_distinguishable_from_a_non_detection(monkeypatch):
+    """Both come back with x/y None. If they were not told apart, a region cut
+    too tight would look exactly like a detector that had stopped working."""
+    _mock_object_store(monkeypatch)
+    monkeypatch.setattr(
+        sut,
+        "_predict_from_raw",
+        lambda *a, **k: (
+            SimpleNamespace(x=None, y=None, confidence=0.02),
+            4000,
+            3000,
+            None,
+            None,
+        ),
+    )
+    payload = _make_payload(image_id=3)
+    payload.laser_region = [[0, 0], [10, 0], [10, 10], [0, 10]]
+
+    result = await ActivityEnvironment().run(sut.predict_laser_image, payload)
+    assert result.x is None and result.rejected_out_of_region is False
+
+
+@pytest.mark.asyncio
+async def test_no_region_disables_the_gate(monkeypatch):
+    """An api-worker that predates the gate sends no region. The data-worker
+    must then behave exactly as before rather than rejecting everything --
+    the two deploy independently and days apart."""
+    _mock_object_store(monkeypatch)
+    monkeypatch.setattr(sut, "_predict_from_raw", _fixed_prediction(*_OUT_OF_REGION))
+    payload = _make_payload(image_id=4)
+    payload.laser_region = None
+
+    result = await ActivityEnvironment().run(sut.predict_laser_image, payload)
+    assert (result.x, result.y) == _OUT_OF_REGION
+    assert result.rejected_out_of_region is False

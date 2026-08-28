@@ -14,7 +14,11 @@ from typing import List
 from fishsense_api_sdk.models.image import Image
 from fishsense_api_sdk.models.laser_label import LaserLabel
 from fishsense_api_sdk.models.laser_prediction import LaserPrediction
-from fishsense_shared import PredictLaserImage, PredictLaserImagesInput
+from fishsense_shared import (
+    LASER_REGION_POLYGON,
+    PredictLaserImage,
+    PredictLaserImagesInput,
+)
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
@@ -99,4 +103,7 @@ async def resolve_laser_predict_inputs_activity(
             # "unknown wavelength" channel. Wire a real value here if/when a
             # per-dive laser color lands.
             wavelength=None,
+            # Predictions outside this are dropped by the data-worker. See
+            # `fishsense_shared.laser_region` for how it was measured.
+            laser_region=[list(vertex) for vertex in LASER_REGION_POLYGON],
         )
