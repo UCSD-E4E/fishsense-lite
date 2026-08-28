@@ -27,10 +27,11 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from fishsense_api_workflow_worker.activities.resolve_laser_preprocess_inputs_activity import (  # pylint: disable=line-too-long
+from fishsense_shared.laser_region import (
     DEFAULT_LASER_BBOX,
     LASER_REGION_POLYGON,
     WORKING_DEPTH_RANGE_M,
+    point_in_laser_region,
 )
 
 # (laser_origin_xy, laser_axis, fx, fy, cx, cy) for all 13 prod calibrations.
@@ -98,19 +99,15 @@ def _project_ray(calibration, depths: np.ndarray) -> np.ndarray:
     )
 
 
-def _contains(xs, ys, polygon=None) -> bool:
-    """Every (x, y) inside the convex `polygon` (default: the real region).
+def _contains(xs, ys) -> bool:
+    """Every (x, y) inside the region, via the predicate we actually ship.
 
-    Convex, so a point is inside iff it is on the same side of every directed
-    edge. Cheaper and exact where a winding-number test would need care about
-    points sitting exactly on an edge -- which the corner fixtures below do.
+    Deliberately not a second implementation: a test-local copy would let the
+    shipped one drift while the corpus below kept passing.
     """
-    poly = np.asarray(LASER_REGION_POLYGON if polygon is None else polygon, float)
-    pts = np.column_stack([np.asarray(xs, float).ravel(), np.asarray(ys, float).ravel()])
-    edge = np.roll(poly, -1, axis=0) - poly
-    rel = pts[:, None, :] - poly[None, :, :]
-    cross = edge[None, :, 0] * rel[:, :, 1] - edge[None, :, 1] * rel[:, :, 0]
-    return bool(np.all(cross >= -1e-9) or np.all(cross <= 1e-9))
+    xs = np.asarray(xs, float).ravel()
+    ys = np.asarray(ys, float).ravel()
+    return all(point_in_laser_region(float(x), float(y)) for x, y in zip(xs, ys))
 
 
 @pytest.mark.parametrize("calibration", PROD_CALIBRATIONS)
@@ -191,3 +188,84 @@ def test_bbox_is_the_regions_bounding_box():
         int(poly[:, 0].max()),
         int(poly[:, 1].max()),
     ]
+
+
+# --- the predicate itself ---------------------------------------------------
+#
+# `point_in_laser_region` is what the laser detector gates on, so a bug here
+# either silently disables the gate (everything accepted) or throws away every
+# prediction. Neither shows up as an error anywhere downstream: a rejected
+# prediction is indistinguishable from "the model found no laser".
+
+
+def test_centre_of_the_region_is_inside():
+    cx = sum(v[0] for v in LASER_REGION_POLYGON) / len(LASER_REGION_POLYGON)
+    cy = sum(v[1] for v in LASER_REGION_POLYGON) / len(LASER_REGION_POLYGON)
+    assert point_in_laser_region(cx, cy)
+
+
+@pytest.mark.parametrize("vertex", LASER_REGION_POLYGON)
+def test_vertices_are_inside(vertex):
+    """Edges and corners count as inside. The region is a decision boundary
+    fitted with 150 px of margin, so half-open semantics would be arbitrary --
+    and a point exactly on an edge is where a ray-casting test gets it wrong."""
+    assert point_in_laser_region(float(vertex[0]), float(vertex[1]))
+
+
+def test_edge_midpoints_are_inside():
+    for i, start in enumerate(LASER_REGION_POLYGON):
+        end = LASER_REGION_POLYGON[(i + 1) % len(LASER_REGION_POLYGON)]
+        assert point_in_laser_region(
+            (start[0] + end[0]) / 2, (start[1] + end[1]) / 2
+        ), f"edge {i} midpoint rejected"
+
+
+@pytest.mark.parametrize(
+    "x,y,why",
+    [
+        (0, 0, "frame origin"),
+        (4013, 3015, "opposite frame corner"),
+        (1600, 1800, "inside the bbox, but in the corner the polygon cuts"),
+        (2450, 1750, "ditto, bottom-right"),
+        (1590, 1300, "just left of the region's left edge"),
+        (1580, 1905, "bbox corner the polygon cuts off (bottom-left)"),
+        (2470, 395, "bbox corner the polygon cuts off (top-right)"),
+        (2217, 2088, "the recurring specular-reflection artifact"),
+    ],
+)
+def test_points_outside_are_rejected(x, y, why):
+    assert not point_in_laser_region(float(x), float(y)), why
+
+
+def test_the_cut_corners_are_what_a_rectangle_would_have_wrongly_accepted():
+    """The whole reason this is a polygon: all four bbox corners are outside
+    it, so a bbox gate would accept predictions the geometry rules out."""
+    x1, y1, x2, y2 = DEFAULT_LASER_BBOX
+    corners = [(x1, y1), (x1, y2), (x2, y1), (x2, y2)]
+    assert not any(point_in_laser_region(float(x), float(y)) for x, y in corners)
+
+
+def test_explicit_region_argument_overrides_the_default():
+    """The region crosses the wire, so the caller's copy wins -- a data-worker
+    must gate on the polygon the api-worker sent, not one baked into its own
+    build."""
+    square = [[0, 0], [10, 0], [10, 10], [0, 10]]
+    assert point_in_laser_region(5, 5, square)
+    assert not point_in_laser_region(50, 50, square)
+
+
+@pytest.mark.parametrize("degenerate", [[], [[0, 0]], [[0, 0], [1, 1]]])
+def test_a_degenerate_region_admits_nothing(degenerate):
+    """Fails closed. An empty region reaching here means the contract lost the
+    polygon; accepting everything would disable the gate with no signal."""
+    assert not point_in_laser_region(5, 5, degenerate)
+
+
+def test_winding_order_does_not_matter():
+    """The constant is authored clockwise today; reversing it must not invert
+    the test."""
+    reversed_poly = list(reversed(LASER_REGION_POLYGON))
+    cx = sum(v[0] for v in LASER_REGION_POLYGON) / len(LASER_REGION_POLYGON)
+    cy = sum(v[1] for v in LASER_REGION_POLYGON) / len(LASER_REGION_POLYGON)
+    assert point_in_laser_region(cx, cy, reversed_poly)
+    assert not point_in_laser_region(0, 0, reversed_poly)

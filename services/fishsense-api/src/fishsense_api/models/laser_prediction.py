@@ -33,6 +33,32 @@ class LaserPrediction(ModelBase, table=True):
     # step needs them to convert pixels to Label Studio keypoint percentages.
     width: int | None = Field(default=None)
     height: int | None = Field(default=None)
+    # Laser colour read off the dot's own pixels: "red" / "green", or NULL
+    # when there was no dot to sample or the channels were too close to call.
+    # Advisory per row — populate takes the dive-level majority, because
+    # colour is a property of the rig for the whole dive (143 prod dives are
+    # entirely red, 88 entirely green) and a single frame is ~98% reliable.
+    color: str | None = Field(default=None)
+    # Signed R-G at the dot in 8-bit levels, positive for red. Recorded, not
+    # gated on: it is what makes a close call auditable after the fact, the
+    # same role `LaserDepth.residual_m` plays for the depth stage.
+    color_margin: float | None = Field(default=None)
+    # The detector found a dot, but outside the expected-laser region, so x/y
+    # were dropped. Distinct from an ordinary non-detection (the model found
+    # nothing): without this the two are indistinguishable, and a mis-sized
+    # region would read as a model that had stopped working.
+    rejected_out_of_region: bool = Field(default=False)
+    # Which version of the laser-detector stage produced this row. The
+    # stage-level cohort selects on a *mismatch* with the current version, so
+    # improving the detector makes re-prediction an ordinary drainable cohort
+    # instead of a hand-run backfill. NULL means "predates versioning", which
+    # reads as stale exactly once. See `fishsense_shared.laser_predictor`.
+    predictor_version: int | None = Field(default=None, index=True)
+    # Recorded, never gated on — the same role `LaserDepth.residual_m` plays.
+    # These are what answer "why did this frame come out that way" later;
+    # `predictor_version` is the one thing anything decides on.
+    checkpoint: str | None = Field(default=None)
+    core_version: str | None = Field(default=None)
     created_at: datetime | None = Field(sa_type=DateTime(timezone=True), default=None)
 
     image_id: int | None = Field(default=None, foreign_key="image.id")

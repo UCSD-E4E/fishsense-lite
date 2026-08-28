@@ -41,6 +41,12 @@ async def persist_laser_predictions_activity(results: List[Any]) -> int:
                     confidence=result.confidence,
                     width=result.width,
                     height=result.height,
+                    color=result.color,
+                    color_margin=result.color_margin,
+                    rejected_out_of_region=result.rejected_out_of_region,
+                    predictor_version=result.predictor_version,
+                    checkpoint=result.checkpoint,
+                    core_version=result.core_version,
                 ),
             )
     return len(parsed)

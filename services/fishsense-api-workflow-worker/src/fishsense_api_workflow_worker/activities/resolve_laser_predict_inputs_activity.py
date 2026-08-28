@@ -14,7 +14,12 @@ from typing import List
 from fishsense_api_sdk.models.image import Image
 from fishsense_api_sdk.models.laser_label import LaserLabel
 from fishsense_api_sdk.models.laser_prediction import LaserPrediction
-from fishsense_shared import PredictLaserImage, PredictLaserImagesInput
+from fishsense_shared import (
+    LASER_PREDICTOR_VERSION,
+    LASER_REGION_POLYGON,
+    PredictLaserImage,
+    PredictLaserImagesInput,
+)
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
@@ -25,7 +30,15 @@ def _select_images_needing_prediction(
     predictions: List[LaserPrediction],
     labels: List[LaserLabel],
 ) -> List[Image]:
-    """Images with no prediction and no *completed* laser label.
+    """Images whose prediction is missing or stale, and that no human has
+    finished labeling.
+
+    "Stale" means a `predictor_version` other than the current one, NULL
+    included -- every row written before versioning carries NULL, and those are
+    exactly the rows a bump exists to revisit. Collapsing "no prediction" and
+    "old prediction" into one set is deliberate: both need the detector run
+    against them, and `put_laser_prediction` upserts on `image_id`, so a re-run
+    overwrites rather than duplicating.
 
     Keys off `completed`, NOT `label_studio_project_id`: the laser populate
     step seeds placeholder rows (`completed=False`) that carry a project_id,
@@ -34,13 +47,23 @@ def _select_images_needing_prediction(
     case). `labels` is already superseded-filtered by `get_laser_labels`, so a
     completed row here is a live human label. Mirrors the API selector
     (`select_next_for_laser_prediction`) and populate's own definition.
+
+    The selector's dive-level "still being labeled" gate is deliberately *not*
+    mirrored here. That gate decides which dives are worth spending GPU time
+    on; once a dive is selected, every stale image in it is work. Re-checking
+    it per image could only produce disagreement with the selector, which is
+    the failure this file's neighbours keep warning about.
     """
-    predicted_ids = {p.image_id for p in predictions}
     labeled_ids = {label.image_id for label in labels if label.completed}
+    current_ids = {
+        prediction.image_id
+        for prediction in predictions
+        if getattr(prediction, "predictor_version", None) == LASER_PREDICTOR_VERSION
+    }
     return [
         image
         for image in images
-        if image.id not in predicted_ids and image.id not in labeled_ids
+        if image.id not in current_ids and image.id not in labeled_ids
     ]
 
 
@@ -99,4 +122,7 @@ async def resolve_laser_predict_inputs_activity(
             # "unknown wavelength" channel. Wire a real value here if/when a
             # per-dive laser color lands.
             wavelength=None,
+            # Predictions outside this are dropped by the data-worker. See
+            # `fishsense_shared.laser_region` for how it was measured.
+            laser_region=[list(vertex) for vertex in LASER_REGION_POLYGON],
         )

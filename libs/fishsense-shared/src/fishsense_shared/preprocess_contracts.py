@@ -137,6 +137,13 @@ class PredictLaserImagesInput(BaseModel):
     # Laser wavelength ("red" / "green"); None when the dive's laser color
     # isn't known — the model uses an "unknown" wavelength channel then.
     wavelength: str | None = None
+    # Convex polygon of [x, y] rectified pixels outside which a predicted dot
+    # is not believed. Optional so an api-worker that predates the gate still
+    # produces a valid payload for a newer data-worker, which then does not
+    # gate — the same rolling-deploy reasoning as
+    # `PreprocessLaserImagesInput.laser_region`. See
+    # `fishsense_shared.laser_region`.
+    laser_region: Optional[List[List[int]]] = None
 
 
 class LaserPredictionResult(BaseModel):
@@ -157,6 +164,30 @@ class LaserPredictionResult(BaseModel):
     confidence: float
     width: int | None = None
     height: int | None = None
+    # "red" / "green" sampled from the dot's own pixels, or None when there is
+    # no dot to sample. Advisory per image: laser color is a per-dive constant
+    # in practice (143 prod dives all-red, 88 all-green, and the 31 "mixed"
+    # ones carry a 1.2% minority that is labeler slips), so populate takes the
+    # dive-level majority rather than trusting any single frame.
+    color: str | None = None
+    # Signed strength of that call, in 8-bit levels: positive is redder, and
+    # the magnitude is how far apart the channels were. Carried so a close
+    # call can be recognised as one rather than silently counting as a full
+    # vote.
+    color_margin: float | None = None
+    # True when the detector *did* find a dot but it fell outside
+    # `laser_region`, so x/y were dropped. Distinct from an ordinary
+    # non-detection, which is the model finding nothing at all — without this
+    # the two are indistinguishable downstream and a mis-sized region would
+    # look like a model that stopped working.
+    rejected_out_of_region: bool = False
+    # Stage version that produced this result, and the provenance recorded
+    # beside it. Stamped by the data-worker (which runs the detector) from the
+    # shared constant both workers import, so a rolling deploy where the two
+    # disagree costs at most one extra round of re-prediction.
+    predictor_version: int | None = None
+    checkpoint: str | None = None
+    core_version: str | None = None
 
 
 class PredictSlateImage(BaseModel):

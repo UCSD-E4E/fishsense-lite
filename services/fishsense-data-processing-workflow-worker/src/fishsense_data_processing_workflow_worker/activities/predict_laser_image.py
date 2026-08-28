@@ -18,8 +18,13 @@ import os
 import threading
 from typing import Any
 
+from fishsense_shared import LASER_PREDICTOR_VERSION, point_in_laser_region
 from temporalio import activity
 
+from fishsense_data_processing_workflow_worker.laser_color import (
+    classify_laser_color,
+    rectified_to_sensor_point,
+)
 from fishsense_data_processing_workflow_worker.object_store import (
     open_object_store_client,
 )
@@ -85,11 +90,12 @@ def _predict_from_raw(
     (linear + Bayer-excess, which the 6-channel model needs) and run the
     detector with rectified output so the point lands in labeling space.
 
-    Returns `(prediction, width, height)` — the fishsense-core
-    `LaserPrediction` (`.x`, `.y`, `.confidence`) plus the rectified frame
-    dimensions the x/y are relative to (needed to convert to Label Studio
-    keypoint percentages downstream). `cv2.undistort` preserves the image
-    size, so the rectified dims equal the decoded raw dims.
+    Returns `(prediction, width, height, color, color_margin)` — the
+    fishsense-core `LaserPrediction` (`.x`, `.y`, `.confidence`), the rectified
+    frame dimensions the x/y are relative to (needed to convert to Label Studio
+    keypoint percentages downstream), and the laser colour read off the dot.
+    `cv2.undistort` preserves the image size, so the rectified dims equal the
+    decoded raw dims.
     """
     import numpy as np
 
@@ -109,7 +115,39 @@ def _predict_from_raw(
         camera_matrix=np.array(camera_matrix, dtype=float),
         distortion=np.array(distortion_coefficients, dtype=float),
     )
-    return prediction, int(width), int(height)
+
+    # Read the laser's colour off the dot while the decoded frame is still in
+    # hand — re-decoding a raw later just to sample a dozen pixels would cost
+    # more than the inference did.
+    #
+    # The coordinate step is the one that fails silently. `prediction` is in
+    # rectified pixels (rectify_output=True) but `LinearRawImage` is in sensor
+    # coordinates, and the gap between them reaches ~48 px at the top-left of
+    # the laser region. Sampling at the rectified point would read whatever
+    # happens to be there and report a confident colour for it.
+    color = margin = None
+    if prediction.x is not None and prediction.y is not None:
+        sensor_x, sensor_y = rectified_to_sensor_point(
+            prediction.x, prediction.y, camera_matrix, distortion_coefficients
+        )
+        color, margin = classify_laser_color(image.data, sensor_x, sensor_y)
+
+    return prediction, int(width), int(height), color, margin
+
+
+def _core_version() -> str | None:
+    """Installed fishsense-core version, recorded on each prediction.
+
+    Provenance only — nothing decides on it. Imported here rather than at
+    module scope because the whole point of this module's lazy imports is that
+    it stays importable without the torch extra installed.
+    """
+    try:
+        from importlib.metadata import version
+
+        return version("fishsense-core")
+    except Exception:  # pylint: disable=broad-except
+        return None
 
 
 def _models():
@@ -138,7 +176,7 @@ async def predict_laser_image(payload):  # type: ignore[no-untyped-def]
     client = open_object_store_client()
     raw_bytes = await client.download_raw(payload.checksum)
 
-    prediction, width, height = await asyncio.to_thread(
+    prediction, width, height, color, margin = await asyncio.to_thread(
         _predict_from_raw,
         raw_bytes,
         payload.camera_matrix,
@@ -147,20 +185,44 @@ async def predict_laser_image(payload):  # type: ignore[no-untyped-def]
         DEFAULT_CHECKPOINT_PATH,
     )
 
+    # Gate on the expected-laser region. The detector always answers, and its
+    # own `rig_prior_bbox` is a much looser constraint in a different (sensor)
+    # frame, so a dot on a reflection or a diver's fin comes back looking like
+    # any other detection. A prediction outside the region cannot be a laser
+    # for any rig we have ever calibrated, and seeding it as a pre-annotation
+    # is worse than seeding nothing: it moves the labeler's eye to the wrong
+    # place. Dropping x/y reuses the existing non-detection path end to end.
+    x, y = prediction.x, prediction.y
+    rejected = False
+    if x is not None and y is not None and payload.laser_region:
+        if not point_in_laser_region(x, y, payload.laser_region):
+            rejected = True
+            x = y = None
+
     activity.logger.info(
-        "predicted laser image_id=%d x=%s y=%s confidence=%.3f dims=%dx%d",
+        "predicted laser image_id=%d x=%s y=%s confidence=%.3f dims=%dx%d "
+        "color=%s margin=%s%s",
         payload.image_id,
-        prediction.x,
-        prediction.y,
+        x,
+        y,
         prediction.confidence,
         width,
         height,
+        color,
+        None if margin is None else round(margin, 1),
+        " REJECTED_OUT_OF_REGION" if rejected else "",
     )
     return result_cls(
         image_id=payload.image_id,
-        x=prediction.x,
-        y=prediction.y,
+        x=x,
+        y=y,
         confidence=prediction.confidence,
         width=width,
         height=height,
+        color=color,
+        color_margin=margin,
+        rejected_out_of_region=rejected,
+        predictor_version=LASER_PREDICTOR_VERSION,
+        checkpoint=os.path.basename(DEFAULT_CHECKPOINT_PATH),
+        core_version=_core_version(),
     )

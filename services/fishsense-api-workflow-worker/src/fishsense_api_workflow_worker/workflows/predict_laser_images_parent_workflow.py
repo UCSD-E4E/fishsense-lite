@@ -103,6 +103,15 @@ class PredictLaserImagesParentWorkflow:
             await _dispatch.run_sdk_activity(
                 "persist_laser_predictions_activity", results
             )
+            # Populate seeds a task's pre-annotation once, at import time, and
+            # dedupes by URL — so for a dive whose tasks already exist (which
+            # is every dive the re-prediction cohort selects, since it only
+            # picks dives still being labeled) persisting alone changes the
+            # database and nothing the labeler sees. Attaching to the existing
+            # tasks is what makes a new prediction visible.
+            await _dispatch.run_sdk_activity(
+                "backfill_laser_predictions_for_dive_activity", dive_id
+            )
 
         await _dispatch.cleanup_raw(dive_id)
 

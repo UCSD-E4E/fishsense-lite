@@ -7,10 +7,12 @@ the existing sync workflow (`SyncLabelStudioLaserLabelsWorkflow`) can
 pull annotated values back into SQL once a labeler completes them.
 """
 
+from collections import Counter
 from typing import List
 
 from fishsense_api_sdk.models.image import Image
 from fishsense_api_sdk.models.laser_label import LaserLabel
+from fishsense_shared import laser_model_version_tag
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.populate_utils import (
@@ -27,13 +29,49 @@ PREPROCESS_FOLDER = "preprocess_jpeg"
 # <KeyPointLabels name="laser" toName="img"> with Red/Green Laser labels.
 _KEYPOINT_FROM_NAME = "laser"
 _KEYPOINT_TO_NAME = "img"
-# The model doesn't know the laser color (wavelength unknown), so pre-fill the
-# more common one; the labeler flips it to Green when needed. A keypointlabels
-# result must name a label to be valid.
+# A keypointlabels result must name a label to be valid, and until 2026-08-28
+# that name was always "Red Laser". That is wrong for roughly a quarter of
+# prod: of the dives with completed laser labels, 143 are entirely red and 88
+# entirely green.
+#
+# Colour is a property of the rig for a whole dive, not of a frame -- the 31
+# dives whose labels are "mixed" carry a 1.2% minority, which is labeler slips
+# rather than a laser changing colour mid-dive. So the per-frame colours the
+# detector reads off each dot are treated as votes and the dive's majority is
+# applied to all of its pre-annotations. Measured over 332 human-labelled
+# dots: the per-frame read is 98.48% accurate and the majority got 4 dives of
+# 4 right, including one where 10% of frames read the wrong colour.
+#
+# "Red Laser" remains the fallback when a dive has no colour votes at all --
+# it is the more common one, and it is what a labeler saw before this.
 _DEFAULT_LASER_LABEL = "Red Laser"
+_LASER_LABEL_BY_COLOR = {"red": "Red Laser", "green": "Green Laser"}
 
 
-def _prediction_annotations(prediction) -> list:
+def dive_laser_label(predictions) -> str:
+    """The LS keypoint label for every pre-annotation in this dive.
+
+    Majority vote over the per-frame colours, so one misread frame cannot
+    label its own task differently from the rest of the dive -- a labeler
+    seeing both colours inside one dive has no way to tell which to trust.
+    Ties and no-votes fall back to the more common colour.
+    """
+    votes = Counter(
+        prediction.color
+        for prediction in predictions
+        if getattr(prediction, "color", None) in _LASER_LABEL_BY_COLOR
+    )
+    if not votes:
+        return _DEFAULT_LASER_LABEL
+    if votes.get("red", 0) == votes.get("green", 0):
+        return _DEFAULT_LASER_LABEL
+    winner, _ = votes.most_common(1)[0]
+    return _LASER_LABEL_BY_COLOR[winner]
+
+
+def _prediction_annotations(
+    prediction, laser_label: str = _DEFAULT_LASER_LABEL
+) -> list:
     """Build the LS `predictions` list (one keypoint pre-annotation) from a
     model `LaserPrediction`, or [] when there's nothing placeable.
 
@@ -53,7 +91,7 @@ def _prediction_annotations(prediction) -> list:
         return []
     return [
         {
-            "model_version": "laser-detector",
+            "model_version": laser_model_version_tag(),
             "result": [
                 {
                     "from_name": _KEYPOINT_FROM_NAME,
@@ -66,7 +104,7 @@ def _prediction_annotations(prediction) -> list:
                         "x": x / width * 100,
                         "y": y / height * 100,
                         "width": 0.5,
-                        "keypointlabels": [_DEFAULT_LASER_LABEL],
+                        "keypointlabels": [laser_label],
                     },
                 }
             ],
@@ -132,7 +170,9 @@ async def _gate_on_jpeg_presence(images: List[Image]) -> List[Image]:
     return present
 
 
-def _build_task(image: Image, prediction=None) -> dict:
+def _build_task(
+    image: Image, prediction=None, laser_label: str = _DEFAULT_LASER_LABEL
+) -> dict:
     """Build an LS task referencing the preprocessed JPEG.
 
     Emits BOTH `image` and `img` keys in `data` because legacy prod
@@ -151,7 +191,7 @@ def _build_task(image: Image, prediction=None) -> dict:
         # Model-assisted labeling: seed the laser-detector's predicted dot as
         # a pre-annotation the labeler confirms/nudges. Empty when there's no
         # prediction for this image yet.
-        "predictions": _prediction_annotations(prediction),
+        "predictions": _prediction_annotations(prediction, laser_label),
     }
 
 
@@ -176,6 +216,17 @@ async def populate_laser_label_studio_project_activity(
         existing_labels = await fs.labels.get_laser_labels(dive_id) or []
         predictions = await fs.labels.get_laser_predictions(dive_id) or []
         predictions_by_image = {p.image_id: p for p in predictions}
+        # One colour for the whole dive — see `dive_laser_label`. Computed over
+        # every prediction the dive has, not just the images being seeded now,
+        # so a later top-up run agrees with the first.
+        laser_label = dive_laser_label(predictions)
+        activity.logger.info(
+            "dive_id=%d laser colour %s from %d/%d predictions with a reading",
+            dive_id,
+            laser_label,
+            sum(1 for p in predictions if getattr(p, "color", None)),
+            len(predictions),
+        )
 
         unlabeled = _select_unlabeled_images(
             images, existing_labels, set(predictions_by_image)
@@ -200,7 +251,7 @@ async def populate_laser_label_studio_project_activity(
             return 0
 
         tasks = [
-            _build_task(image, predictions_by_image.get(image.id))
+            _build_task(image, predictions_by_image.get(image.id), laser_label)
             for image in unlabeled
         ]
 

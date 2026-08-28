@@ -69,7 +69,9 @@ class _StubChild:
         ]
 
 
-def _stubs(dive_id, images, child_ids, persisted, staged=None, mode=MODE_GPU):
+def _stubs(
+    dive_id, images, child_ids, persisted, staged=None, mode=MODE_GPU, backfilled=None
+):
     @activity.defn(name="select_next_high_priority_dive_for_laser_prediction_activity")
     async def selector() -> int | None:
         return dive_id
@@ -102,15 +104,36 @@ def _stubs(dive_id, images, child_ids, persisted, staged=None, mode=MODE_GPU):
         persisted.extend(results)
         return len(results)
 
+    sink = backfilled if backfilled is not None else []
+
+    @activity.defn(name="backfill_laser_predictions_for_dive_activity")
+    async def backfill(d: int) -> int:
+        sink.append(d)
+        return 0
+
     @activity.defn(name="_record_child_dispatch")
     async def record(workflow_id: str, d: int) -> None:
         child_ids.append(workflow_id)
 
-    return [selector, resolver, ensure_gpu, stage, cleanup, persist, record]
+    return [
+        selector,
+        resolver,
+        ensure_gpu,
+        stage,
+        cleanup,
+        persist,
+        backfill,
+        record,
+    ]
 
 
-async def _run(env, dive_id, images, child_ids, persisted, staged=None, mode=MODE_GPU):
-    activities = _stubs(dive_id, images, child_ids, persisted, staged, mode)
+async def _run(
+    env, dive_id, images, child_ids, persisted, staged=None, mode=MODE_GPU,
+    backfilled=None,
+):
+    activities = _stubs(
+        dive_id, images, child_ids, persisted, staged, mode, backfilled
+    )
     # Two workers: the parent (+ its activities) on the parent queue, and the
     # stub child on the data-processing GPU queue the parent dispatches to —
     # the activities are registered on both so the child's
@@ -202,3 +225,47 @@ async def test_unavailable_capacity_bails_before_staging_anything():
     assert not staged
     assert not child_ids
     assert not persisted
+
+
+@pytest.mark.asyncio
+async def test_backfill_runs_after_persist_so_predictions_reach_labelers():
+    """Persisting alone is invisible.
+
+    Populate seeds a task's pre-annotation once, at import time, and dedupes by
+    URL — so for a dive whose tasks already exist, a new `LaserPrediction`
+    changes the database and nothing a labeler sees. That is every dive the
+    re-prediction cohort selects, since it only picks dives still being
+    labeled. Without this call the whole re-prediction path is busywork.
+    """
+    persisted: List = []
+    backfilled: List = []
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        result = await _run(
+            env,
+            dive_id=440,
+            images=[(1, "a"), (2, "b")],
+            child_ids=[],
+            persisted=persisted,
+            backfilled=backfilled,
+        )
+    assert result == 440
+    assert persisted, "nothing persisted, so the backfill assertion is vacuous"
+    assert backfilled == [440]
+
+
+@pytest.mark.asyncio
+async def test_backfill_is_skipped_when_the_child_returned_nothing():
+    """No results means no prediction changed, so there is nothing to attach
+    and no reason to spend Label Studio calls listing every project."""
+    persisted: List = []
+    backfilled: List = []
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        await _run(
+            env,
+            dive_id=441,
+            images=[],
+            child_ids=[],
+            persisted=persisted,
+            backfilled=backfilled,
+        )
+    assert not backfilled
