@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.48.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.47.1...fishsense-api-sdk-v1.48.0) (2026-08-28)
+
+
+### Features
+
+* **laser-detector:** region gate, laser colour, and stage versioning ([#654](https://github.com/UCSD-E4E/fishsense-lite/issues/654)) ([4d8cda2](https://github.com/UCSD-E4E/fishsense-lite/commit/4d8cda2c5e18271ac34264e16d8aa2e22a2c8252))
+
 ## [1.47.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.47.0...fishsense-api-sdk-v1.47.1) (2026-08-27)
 
 
