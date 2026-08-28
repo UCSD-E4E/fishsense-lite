@@ -28,6 +28,15 @@ from temporalio.worker import Worker
 from fishsense_api_workflow_worker.activities.reconcile_labeling_configs_activity import (  # pylint: disable=line-too-long
     reconcile_labeling_configs_activity,
 )
+from fishsense_api_workflow_worker.activities.list_dive_folder_activity import (
+    list_dive_folder_activity,
+)
+from fishsense_api_workflow_worker.activities.preflight_ingest_activity import (
+    preflight_ingest_activity,
+)
+from fishsense_api_workflow_worker.activities.backfill_laser_predictions_activity import (  # pylint: disable=line-too-long
+    backfill_laser_predictions_for_dive_activity,
+)
 from fishsense_api_workflow_worker.activities.backfill_slate_predictions_activity import (  # pylint: disable=line-too-long
     backfill_slate_predictions_for_dive_activity,
 )
@@ -732,6 +741,8 @@ async def main():
                 update_dive_image_groups_activity,
                 verify_dive_checksums_activity,
                 select_canonical_dive_ids_activity,
+                list_dive_folder_activity,
+                preflight_ingest_activity,
                 scan_and_register_images_activity,
                 create_dive_activity,
                 finalize_dive_activity,
@@ -742,6 +753,7 @@ async def main():
                 persist_laser_predictions_activity,
                 resolve_slate_predict_inputs_activity,
                 persist_slate_predictions_activity,
+                backfill_laser_predictions_for_dive_activity,
                 backfill_slate_predictions_for_dive_activity,
                 resolve_species_preprocess_inputs_activity,
                 resolve_headtail_preprocess_inputs_activity,
