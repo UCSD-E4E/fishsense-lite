@@ -30,6 +30,13 @@ class ImageClient(ClientBase):
         """
         if dive_id is not None:
             response = await self._get(f"/api/v1/dives/{dive_id}/images/")
+            if response.status_code == 404:
+                # The endpoint 404s an *empty* dive rather than returning [],
+                # and that is the normal state of a dive ingest has just
+                # created. Raising here killed the first scan of every new
+                # dive before it wrote a single row.
+                self.logger.debug("No images found for dive ID %s", dive_id)
+                return None
             response.raise_for_status()
 
             json = response.json()
