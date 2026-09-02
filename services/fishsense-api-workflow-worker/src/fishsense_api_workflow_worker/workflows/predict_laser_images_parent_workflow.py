@@ -103,16 +103,27 @@ class PredictLaserImagesParentWorkflow:
             await _dispatch.run_sdk_activity(
                 "persist_laser_predictions_activity", results
             )
+
+        # Before the backfill, deliberately. The scratch exists for the child,
+        # which is done; holding it until a *Label Studio* step succeeds means
+        # an LS outage leaks a dive's raw `.ORF`s into Garage. That is not
+        # hypothetical — the first production run of the backfill failed on an
+        # unregistered activity and left 1,094 staged objects behind.
+        await _dispatch.cleanup_raw(dive_id)
+
+        if results:
             # Populate seeds a task's pre-annotation once, at import time, and
             # dedupes by URL — so for a dive whose tasks already exist (which
             # is every dive the re-prediction cohort selects, since it only
             # picks dives still being labeled) persisting alone changes the
             # database and nothing the labeler sees. Attaching to the existing
             # tasks is what makes a new prediction visible.
+            #
+            # Last on purpose: it is the only step whose failure leaves nothing
+            # to clean up, and `BackfillLaserPredictionsWorkflow` can repair a
+            # dive on its own afterwards.
             await _dispatch.run_sdk_activity(
                 "backfill_laser_predictions_for_dive_activity", dive_id
             )
-
-        await _dispatch.cleanup_raw(dive_id)
 
         return inputs.dive_id
