@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.56.6](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.56.5...fishsense-api-workflow-worker-v1.56.6) (2026-09-02)
+
+
+### Bug Fixes
+
+* **ingest:** let finalize keep the camera it never sees ([#686](https://github.com/UCSD-E4E/fishsense-lite/issues/686)) ([e09d05d](https://github.com/UCSD-E4E/fishsense-lite/commit/e09d05d4990bf729b0c99e4b009f41308c836638))
+
 ## [1.56.5](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.56.4...fishsense-api-workflow-worker-v1.56.5) (2026-09-02)
 
 
