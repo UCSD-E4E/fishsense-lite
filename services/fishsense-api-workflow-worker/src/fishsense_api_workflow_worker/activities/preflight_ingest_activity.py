@@ -93,11 +93,20 @@ def _relative_path(absolute_path: str) -> str:
     Every existing `Image.path` is share-relative, and the staging activity
     re-prepends the root. Storing an absolute path would work until someone
     moved the share.
+
+    A path **outside** the root keeps its leading slash, because that is the
+    only form that survives the round trip. `resolve_nas_path` does exactly two
+    things — prepend the root, or pass an absolute path through — so a relative
+    path that is not under the root resolves to root + itself, a place that
+    does not exist. FileStation reports that as a 502, which reads as a
+    transient NAS problem rather than a malformed path, on every frame of the
+    dive, forever. The 2025-01-17 pool test is the live case: same share,
+    outside `REEF/data`.
     """
     root = settings.e4e_nas.raw_root_path.rstrip("/") + "/"
     if absolute_path.startswith(root):
         return absolute_path[len(root) :]
-    return absolute_path.lstrip("/")
+    return absolute_path
 
 
 def _parse_taken_datetime(raw: str | None) -> datetime | None:
