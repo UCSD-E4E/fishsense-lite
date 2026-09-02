@@ -41,7 +41,13 @@ TAG_MAKER_NOTE = 0x927C
 TAG_OLYMPUS_EQUIPMENT = 0x2010
 TAG_OLYMPUS_SERIAL = 0x0101
 
-OLYMPUS_MAKER_NOTE_HEADER = b"OLYMPUS\x00II\x03\x00"
+# Signature, then a 2-byte order marker and a 2-byte version — so the block's
+# IFD starts at len(signature) + 4. Olympus TG-6 writes the first; the TG-7,
+# built by OM Digital Solutions after the Olympus imaging sale, writes the
+# second, and its signature is FOUR BYTES LONGER. That difference is the whole
+# reason a TG-7 frame reads as having no serial.
+OLYMPUS_SIGNATURE = b"OLYMPUS\x00"
+OM_SYSTEM_SIGNATURE = b"OM SYSTEM\x00\x00\x00"
 
 
 def _entry(endian: str, tag: int, typ: int, count: int, payload: bytes | int) -> bytes:
@@ -62,7 +68,7 @@ def _ifd(endian: str, entries: list[bytes], next_ifd: int = 0) -> bytes:
     )
 
 
-def _maker_note(endian: str, serial_number: str) -> bytes:
+def _maker_note(endian: str, serial_number: str, signature: bytes) -> bytes:
     """An Olympus2 MakerNote whose inner offsets are **base-relative**.
 
     That is the property worth encoding: the Equipment sub-IFD pointer and the
@@ -71,12 +77,13 @@ def _maker_note(endian: str, serial_number: str) -> bytes:
     garbage — which is exactly the bug that made MakerNote parsing look
     infeasible the first time round.
     """
+    header = signature + (b"II" if endian == "<" else b"MM") + b"\x03\x00"
     serial_raw = serial_number.encode("ascii") + b"\x00"
     # Sizes are fixed for a single-entry IFD, so one probe pass is enough.
     probe_equipment = _ifd(endian, [_entry(endian, TAG_OLYMPUS_SERIAL, ASCII, 1, 0)])
     probe_mn = _ifd(endian, [_entry(endian, TAG_OLYMPUS_EQUIPMENT, IFD, 1, 0)])
 
-    equipment_rel = len(OLYMPUS_MAKER_NOTE_HEADER) + len(probe_mn)
+    equipment_rel = len(header) + len(probe_mn)
     serial_rel = equipment_rel + len(probe_equipment)
 
     equipment_ifd = _ifd(
@@ -86,7 +93,7 @@ def _maker_note(endian: str, serial_number: str) -> bytes:
     mn_ifd = _ifd(
         endian, [_entry(endian, TAG_OLYMPUS_EQUIPMENT, IFD, 1, equipment_rel)]
     )
-    return OLYMPUS_MAKER_NOTE_HEADER + mn_ifd + equipment_ifd + serial_raw
+    return header + mn_ifd + equipment_ifd + serial_raw
 
 
 def _body(value_base: int, endian: str, fields: dict) -> tuple[bytes, bytes]:
@@ -112,7 +119,11 @@ def _body(value_base: int, endian: str, fields: dict) -> tuple[bytes, bytes]:
         return _entry(endian, tag, ASCII, len(raw), payload)
 
     maker_note_offset = (
-        place(_maker_note(endian, fields["serial_number"]))
+        place(
+            _maker_note(
+                endian, fields["serial_number"], fields["maker_note_signature"]
+            )
+        )
         if fields["serial_number"] is not None
         else None
     )
@@ -157,6 +168,7 @@ def build_orf(  # pylint: disable=too-many-arguments
     artist: str | None = "FSL-07                         ",
     serial_number: str | None = "BJ6C67989",
     offset_time: str | None = "-08:00",
+    maker_note_signature: bytes = OLYMPUS_SIGNATURE,
 ) -> bytes:
     """A minimal but structurally faithful ORF.
 
@@ -171,6 +183,7 @@ def build_orf(  # pylint: disable=too-many-arguments
         "artist": artist,
         "serial_number": serial_number,
         "offset_time": offset_time,
+        "maker_note_signature": maker_note_signature,
     }
     header = struct.pack(
         endian + "2sHI", b"II" if endian == "<" else b"MM", magic, 8
