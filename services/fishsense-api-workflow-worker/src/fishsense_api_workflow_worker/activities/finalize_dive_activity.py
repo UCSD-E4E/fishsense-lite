@@ -132,7 +132,25 @@ async def finalize_dive_activity(
 
         await fs.dives.post(
             Dive(
-                id=dive_id,
+                # NO `id`, and NO `camera_id` — both are load-bearing omissions.
+                #
+                # `POST /api/v1/dives/` resolves the natural key on `path`, and
+                # applies its *partial* overlay, only when the body carries no
+                # `id`. Supplying one goes straight to `session.merge`, which
+                # replaces every column, so the body would have to restate
+                # every field it wants to keep. `camera_id` is the one this
+                # activity cannot restate: it is resolved from the MakerNote
+                # serial during preflight, which finalize never sees. Sending
+                # it as None is what the endpoint rejects with 422
+                # `camera_id is required`, and the dive then stays at LOW with
+                # its images already registered — the one state no pipeline
+                # stage will ever pick up, and which reads as a NAS error
+                # rather than a rejected field.
+                #
+                # The SDK dumps `exclude_unset`, so an unset field really is
+                # absent from the wire rather than null, and the overlay
+                # supplies the value `create_dive_activity` wrote.
+                id=None,
                 name=request.dive_name or leaf_name(request.dive_path),
                 path=request.dive_path,
                 # The scan read every frame in full; preflight only saw a 1 MB
@@ -142,7 +160,6 @@ async def finalize_dive_activity(
                 # THE COMMIT FLAG.
                 priority=Priority(request.priority),
                 flip_dive_slate=request.flip_dive_slate,
-                camera_id=None,
                 dive_slate_id=request.dive_slate_id,
                 calibration_dive_id=request.calibration_dive_id,
             )

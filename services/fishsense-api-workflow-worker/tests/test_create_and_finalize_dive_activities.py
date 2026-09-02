@@ -192,6 +192,39 @@ async def test_promotes_to_the_requested_priority_when_everything_landed(
     assert report.dive_id == 412
 
 
+async def test_finalize_goes_through_the_natural_key_upsert_and_keeps_the_camera(
+    monkeypatch,
+):
+    """The promote POST must be resolvable by `path`, and must not mention
+    `camera_id`. Both halves are what make it an UPDATE of the row `create`
+    made rather than a rejected insert.
+
+    `POST /api/v1/dives/` only resolves the natural key — and only applies its
+    *partial* overlay — when the body has no `id`. Sending one skips straight
+    to `session.merge`, which replaces every column, so the post must then
+    carry every field it wants to keep. It carried `camera_id=None`, and the
+    endpoint rejects that with 422 `camera_id is required` — the dive stays at
+    LOW with its images already registered, which is the one state no stage
+    will ever pick up.
+
+    Omitting `camera_id` (the SDK dumps `exclude_unset`, so an unset field is
+    genuinely absent from the wire) lets the overlay inherit the value
+    `create_dive_activity` resolved from the MakerNote serial. Nothing else
+    knows it: finalize never sees the preflight.
+    """
+    fs = _fs()
+
+    await _finalize(412, _request(priority="HIGH"), _totals(), fs, monkeypatch)
+
+    (dive,), _ = fs.dives.post.call_args
+    assert dive.id is None, "an explicit id skips the natural-key overlay"
+    assert "camera_id" not in dive.model_fields_set, (
+        "camera_id must be absent from the wire, not null — the endpoint "
+        "rejects an explicit None and the overlay is what supplies it"
+    )
+    assert dive.path == _request().dive_path
+
+
 async def test_refuses_when_a_frame_was_rejected(monkeypatch):
     """A partially-ingested dive must never enter the pipeline. Non-retryable:
     a rejected frame is a data problem, and retrying re-reads the same bytes to
