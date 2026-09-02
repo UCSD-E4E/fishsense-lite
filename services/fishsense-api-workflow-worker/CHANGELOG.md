@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.56.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.56.3...fishsense-api-workflow-worker-v1.56.4) (2026-09-02)
+
+
+### Bug Fixes
+
+* **api-worker:** emit unclustered frames so species projects can publish ([#673](https://github.com/UCSD-E4E/fishsense-lite/issues/673)) ([99922a5](https://github.com/UCSD-E4E/fishsense-lite/commit/99922a5c6e087bb21244bbaaf59dc458ee63abc7))
+
 ## [1.56.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.56.2...fishsense-api-workflow-worker-v1.56.3) (2026-09-02)
 
 

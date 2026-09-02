@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.48.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.48.0...fishsense-api-sdk-v1.48.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **sdk:** return None instead of raising when a dive has no images yet ([#677](https://github.com/UCSD-E4E/fishsense-lite/issues/677)) ([49a5458](https://github.com/UCSD-E4E/fishsense-lite/commit/49a5458453b9c7b2bb48f8aab5e0135ed0483f26))
+
 ## [1.48.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.47.1...fishsense-api-sdk-v1.48.0) (2026-08-28)
 
 
