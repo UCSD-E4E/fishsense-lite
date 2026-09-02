@@ -421,3 +421,89 @@ async def test_a_leaf_name_collision_with_an_existing_dive_warns(monkeypatch):
 
     assert preflight.errors == []
     assert any("64" in w for w in preflight.warnings)
+
+
+# ── the stored path has to survive the round trip ─────────────────────
+
+
+def _reload_with_root(monkeypatch, root: str):
+    monkeypatch.setenv("E4EFS_E4E_NAS__RAW_ROOT_PATH", root)
+    from fishsense_api_workflow_worker import config as cfg
+
+    cfg.settings.reload()
+
+
+def test_stored_path_round_trips_back_to_the_nas_path_it_came_from(
+    monkeypatch,
+):
+    """The invariant that makes `Image.path` usable: whatever preflight stores,
+    `resolve_nas_path` must turn back into the absolute path the frame was read
+    from. Every later stage — staging, verification, slate PDFs — reaches the
+    file only through that round trip.
+
+    Both directions matter. Under the root the stored form is share-relative,
+    which is the convention ~131k existing rows follow. **Outside** the root it
+    has to stay absolute, because the resolver's only two behaviours are
+    "prepend the root" and "pass an absolute path through" — a relative path
+    that isn't under the root resolves to a place that does not exist.
+    """
+    from fishsense_api_workflow_worker.activities.nas_frames import (
+        resolve_nas_path,
+    )
+    from fishsense_api_workflow_worker.activities.preflight_ingest_activity import (  # pylint: disable=line-too-long
+        _relative_path,
+    )
+
+    _reload_with_root(monkeypatch, ROOT)
+
+    under_root = f"{ROOT}/2024.06.20.REEF/082929_FishModels_FSL07/PA010001.ORF"
+    assert _relative_path(under_root) == (
+        "2024.06.20.REEF/082929_FishModels_FSL07/PA010001.ORF"
+    )
+    assert resolve_nas_path(_relative_path(under_root)) == under_root
+
+    # Real case: the 2025-01-17 pool test sits on the same share but outside
+    # `REEF/data`. Stripping the leading slash here produced
+    # `/fishsense_data/REEF/data/fishsense_data/...` on every later resolve —
+    # a FileStation 502 per frame, and a dive that ingests and can never be
+    # processed.
+    outside_root = (
+        "/fishsense_data/2025.01.17.FishSense.San Diego/ED-00/FSL-10D"
+        "/Ginny/P1170188.ORF"
+    )
+    assert _relative_path(outside_root) == outside_root
+    assert resolve_nas_path(_relative_path(outside_root)) == outside_root
+
+
+async def test_a_folder_outside_the_root_keeps_absolute_frame_paths(
+    monkeypatch,
+):
+    """The activity-level view of the same thing: an operator pasting a full
+    NAS path (the documented way to reach a folder outside `raw_root_path`)
+    gets frame paths that still point at the frames."""
+    from fishsense_api_workflow_worker.activities.list_dive_folder_activity import (  # pylint: disable=line-too-long
+        DiveFolderListing,
+    )
+    from fishsense_api_workflow_worker.nas import (
+        NasEntry,
+    )
+
+    _reload_with_root(monkeypatch, ROOT)
+
+    folder = "/fishsense_data/2025.01.17.FishSense.San Diego/ED-00/FSL-10D/Ginny"
+    listing = DiveFolderListing(
+        folder_path=folder,
+        files=[
+            NasEntry(
+                path=f"{folder}/P1170188.ORF",
+                name="P1170188.ORF",
+                is_dir=False,
+                size=15_000_000,
+            )
+        ],
+    )
+
+    preflight = await _run(_request(dive_path=folder), listing, monkeypatch)
+
+    assert preflight.errors == []
+    assert preflight.images[0].path == f"{folder}/P1170188.ORF"
