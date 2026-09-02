@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.56.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.56.2...fishsense-api-workflow-worker-v1.56.3) (2026-09-02)
+
+
+### Bug Fixes
+
+* **exif:** read the OM System MakerNote, so TG-7 frames have a serial ([#674](https://github.com/UCSD-E4E/fishsense-lite/issues/674)) ([addf9d4](https://github.com/UCSD-E4E/fishsense-lite/commit/addf9d491c822e8fec6df0628a0e4b64e5c0699f))
+
 ## [1.56.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.56.1...fishsense-api-workflow-worker-v1.56.2) (2026-09-02)
 
 
