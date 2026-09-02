@@ -1,10 +1,17 @@
 """Activity to compute laser extrinsics for a dive (stage 13).
 
 Ports `scripts/stage13_perform_laser_calibration.ipynb`. The Atanasov
-fit delegates to `fishsense_core.laser.calibrate_laser` and the laser
-ray projection delegates to `fishsense_core.world_point.WorldPointHandler`
-— both validated against pre-refactor prod values within 0.011 deg /
-0.39 mm by `scripts/validate_stage13_refactor.py`.
+fit delegates to `fishsense_core.laser.calibrate_laser`, and the pose +
+ray-plane intersection to `calibration_geometry` (which in turn uses
+`fishsense_core.world_point.WorldPointHandler`) — both validated against
+pre-refactor prod values within 0.011 deg / 0.39 mm by
+`scripts/validate_stage13_refactor.py`.
+
+What remains slate-specific here is only how the correspondences are
+obtained: template points scaled by the slate's DPI, paired against
+hand-placed `DiveSlateLabel.reference_points`. The geometry from there on
+is shared with the checkerboard producer described in
+`docs/plans/checkerboard-laser-calibration.md`.
 
 Lives on the data-processing worker (not api-worker) because it pulls
 in opencv + fishsense-core for the PnP + laser-fit math; the api-worker
@@ -13,7 +20,6 @@ is intentionally kept thin (SDK + Label Studio + scheduling).
 
 from __future__ import annotations
 
-import cv2
 import numpy as np
 from fishsense_api_sdk.client import Client
 from fishsense_api_sdk.models.camera_intrinsics import CameraIntrinsics
@@ -22,12 +28,15 @@ from fishsense_api_sdk.models.dive_slate_label import DiveSlateLabel
 from fishsense_api_sdk.models.laser_extrinsics import LaserExtrinsics
 from fishsense_api_sdk.models.laser_label import LaserLabel
 from fishsense_core.laser import calibrate_laser as _calibrate_laser
-from fishsense_core.world_point import WorldPointHandler
 from temporalio import activity
 
 from fishsense_data_processing_workflow_worker.activities.utils import get_fs_client
 from fishsense_data_processing_workflow_worker.calibration_consistency import (
     check_fit_self_consistency,
+)
+from fishsense_data_processing_workflow_worker.calibration_geometry import (
+    laser_point_on_plane,
+    plane_from_correspondences,
 )
 
 INCH_TO_M = 0.0254
@@ -83,30 +92,24 @@ def _laser_point_in_camera_space(
             f"{len(set(int(i) for i in (label.skipped_points or [])))} skipped "
             f"= {len(source_points)}; refusing to mis-pair solvePnP correspondences"
         )
-    body_points = np.zeros((len(source_points), 3), dtype=np.float32)
-    body_points[:, :2] = (np.array(source_points) / float(slate.dpi)) * INCH_TO_M
-    image_space = np.array(image_points)
+    # The slate's whole contribution: template points in metres. Everything
+    # after `plane_from_correspondences` is target-agnostic and shared with the
+    # coming checkerboard producer — see `calibration_geometry`.
+    body_points = (np.array(source_points) / float(slate.dpi)) * INCH_TO_M
 
-    ret, rvec, tvec = cv2.solvePnP(
+    plane = plane_from_correspondences(
         body_points,
-        image_space,
+        np.array(image_points),
         camera_intrinsics.camera_matrix,
-        np.zeros((5,)),
     )
-    if not ret:
-        return None
-    rotation, _ = cv2.Rodrigues(rvec)
-    camera_space_points = (rotation @ body_points.T + tvec).T
-    slate_normal = rotation[:, 2]
-
-    k_inv = np.linalg.inv(camera_intrinsics.camera_matrix)
-    laser_image_point = np.array([laser_label.x, laser_label.y])
-    ray = WorldPointHandler(k_inv).project_image_point(laser_image_point) * -1
-    if np.any(np.isnan(ray)):
+    if plane is None:
         return None
 
-    scale = (slate_normal.T @ camera_space_points[0, :]) / (slate_normal.T @ ray)
-    return ray * scale
+    return laser_point_on_plane(
+        plane,
+        np.array([laser_label.x, laser_label.y]),
+        camera_intrinsics.camera_matrix,
+    )
 
 
 async def _gather_laser_points(
