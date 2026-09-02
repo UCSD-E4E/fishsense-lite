@@ -47,12 +47,33 @@ the species taxonomy already offers `Calibration Targets → E4E Checkerboard`
 (added in #371, alongside `Ruler`). So the corpus can already be *marked*; it
 just cannot be *used*.
 
-### 0.3 RESOLVED — there are two different boards, measured
+### 0.3 RESOLVED — two boards, and only the E4E one is usable
 
 The 2023 board is **14 x 10** interior corners; the 2025 board is **24 x 17**.
-Consistent across every folder of each era. So the target must be identified
-per dive: applying one era's grid to the other's frames is a wrong pitch, and a
-wrong pitch is a wrong scale.
+
+**Scope this to the E4E board (14 x 10) only.** Per the user, that is the one
+they can use consistently, and OpenCV corner detection does not handle the other
+board correctly. The survey agrees once you look past the detect/no-detect
+count:
+
+| Folder | Grids returned across 6 frames |
+|---|---|
+| 2025 FSL-10D | `(17,24)` — stable |
+| 2025 FSL-11D | `(10,10) (15,24) (17,10) (17,24) (19,8)` — **five different grids in six frames** |
+| every E4E folder | `(10,14)` / `(14,10)` — the same board, transposed |
+
+A *wrong* grid is worse than a failed detection: it mis-pairs correspondences
+and `solvePnP` accepts it silently (§4.6). An earlier revision of this section
+reported the 2025 board as "12/12 detected", which counted those five
+disagreeing results as successes. It is not usable.
+
+The likely reason is resolution, not a defect in the board: 24 x 17 packs 408
+corners into the same frame the E4E board fills with 140, so each square is far
+smaller in pixels, and underwater blur and backscatter hit the fine grid hardest.
+
+**Consequence: only one square size needs measuring** — the E4E board's — and
+the 2025 pool-test dives (480-487) cannot be calibrated by this route at all.
+480 and its borrowers are already parked (§0.5).
 
 ### 0.4 NOT VERIFIED — the square size, and this is the one that matters
 
@@ -230,11 +251,11 @@ error by the grid count. Record it per physical board, and treat a board that
 cannot be re-measured the way `V-Slate 7` is treated: refuse to calibrate rather
 than guess.
 
-### 4.2 There are two boards, so there are two square sizes
+### 4.2 Only the E4E board is in scope
 
-Measured (§0.3): 14 x 10 for 2023, 24 x 17 for 2025. Identify the target per
-dive; a hard-coded grid silently mis-scales one era, and §2 is the argument for
-why that would not announce itself.
+See §0.3. One board, one square size to measure. If the 2025 board is ever
+wanted, it needs a detector that copes with its pitch — ChArUco, or a
+fine-grid-tuned `findChessboardCornersSB` — not the current one.
 
 ### 4.3 Refraction and the depth regime
 
@@ -297,6 +318,18 @@ added on 2026-08-18 for exactly this situation.
 
 ---
 
+## 5.1 What this actually covers
+
+E4E-board calibration dives, all on the 2023 sets:
+
+* **2023.08.14** — 488, 489, 490 (FSL-02D x3), 493, 496, 499, 502, 505
+* **2023.08.18** — 512, 515, 518 (rigs 05/06/07)
+
+Eleven calibration dives, and through `calibration_dive_id` they carry the
+`Box` / `George` dives of those same rigs. Rig 04 of 2023.08.18 (508, 510) is a
+real dive slate and uses the existing path. The 2025 dives (480-487) are out of
+scope.
+
 ## 6. Suggested order
 
 1. **Pure refactor.** Extract `plane_from_correspondences` +
@@ -317,12 +350,15 @@ added on 2026-08-18 for exactly this situation.
 
 ## 7. Open questions
 
-* Square size, per board (§4.1). **Blocking.**
+* Square size of the **E4E board** — 14 x 10 interior corners, 15 x 11
+  squares (§4.1). One measurement now, not two. **Blocking.**
 * ~~Are all `LaserCalibration` folders checkerboards?~~ **Answered** (§0.1):
   13 of 15 are; rig 04 of 2023.08.18 used a real dive slate.
 * ~~Is the 2025 board a different geometry?~~ **Answered** (§0.3): 24 x 17
-  versus the 2023 board's 14 x 10.
+  versus the E4E board's 14 x 10 — and it is out of scope, because OpenCV does
+  not detect it reliably.
 * Should `Calibration Targets → E4E Checkerboard` in the species taxonomy become
   the identification hook, the way `'Slate, Laser on slate'` gates stage 9? It
-  already exists and is already labelable — but it would put a human back in a
-  loop this design can otherwise run without.
+  already exists, is already labelable, and now names exactly the one board in
+  scope — but it would put a human back in a loop this design can otherwise run
+  without.
