@@ -376,3 +376,181 @@ async def test_selector_picks_dive__resolver_only_emits_unlabeled_subset(monkeyp
     )
 
     assert result.clusters == [["aaa"]]
+
+
+def _noncanonical_image(image_id: int, checksum: str) -> Image:
+    """A duplicate-content image row.
+
+    The shared `image` builder hardcodes `is_canonical=True`, which is the
+    right default for every other test in this module; only the orphan
+    canonical gate needs the other case.
+    """
+    from datetime import datetime, timezone
+
+    return Image(
+        id=image_id,
+        path=f"/dev/null/{image_id}",
+        taken_datetime=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        checksum=checksum,
+        is_canonical=False,
+        dive_id=42,
+        camera_id=1,
+    )
+
+
+# --- orphan frames (no PREDICTION cluster) ---------------------------------
+#
+# Stage 1 clustering is ONE-SHOT per dive: its cohort excludes any dive that
+# already has a PREDICTION cluster. So a laser-valid frame that clustering
+# missed -- because its laser was validated afterwards, or it fell outside
+# every temporal group -- can never be clustered later.
+#
+# Before this, the resolver reached images only by iterating clusters, so such
+# a frame was never emitted, never got a stage-2 JPEG, and species populate
+# deferred it forever. That is not merely "one image missing": populate
+# publishes the LS project only when `deferred == 0`, so a single orphan keeps
+# the ENTIRE project an unpublished draft, invisible to labelers.
+#
+# Measured in prod 2026-08-28: dive 442 had 6 orphans holding back 352 tasks;
+# dive 87 had 18 of 405; dive 94 had 8 of 356. Never zero.
+
+
+@pytest.mark.asyncio
+async def test_emits_orphan_laser_valid_image_as_its_own_cluster(monkeypatch):
+    """Image 3 is laser-valid and unlabeled but in no cluster."""
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_intrinsics(),
+        images=[_image(1, "aaa"), _image(2, "bbb"), _image(3, "ccc")],
+        clusters=[_cluster(10, [1, 2])],
+        laser_labels=[_laser(1), _laser(2), _laser(3)],
+        species_labels=[],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(
+        sut.resolve_species_preprocess_inputs_activity, 42
+    )
+
+    assert result.clusters == [["aaa", "bbb"], ["ccc"]]
+
+
+@pytest.mark.asyncio
+async def test_orphans_are_appended_after_real_clusters(monkeypatch):
+    """Real clusters keep their order and position; orphans follow.
+
+    The per-image overlay renders "image i of N" from the cluster it arrives
+    in, so a real cluster must not be reordered or merged by this change.
+    """
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_intrinsics(),
+        images=[
+            _image(1, "aaa"),
+            _image(2, "bbb"),
+            _image(3, "ccc"),
+            _image(4, "ddd"),
+        ],
+        clusters=[_cluster(10, [1]), _cluster(11, [2])],
+        laser_labels=[_laser(1), _laser(2), _laser(3), _laser(4)],
+        species_labels=[],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(
+        sut.resolve_species_preprocess_inputs_activity, 42
+    )
+
+    assert result.clusters[:2] == [["aaa"], ["bbb"]]
+    # Each orphan is its own singleton -- never merged into one fake cluster,
+    # which would render "image 1 of 2" for unrelated frames.
+    assert sorted(result.clusters[2:]) == [["ccc"], ["ddd"]]
+
+
+@pytest.mark.asyncio
+async def test_orphans_respect_the_laser_valid_gate(monkeypatch):
+    """An unclustered image with no valid laser is still dropped."""
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_intrinsics(),
+        images=[_image(1, "aaa"), _image(2, "bbb")],
+        clusters=[_cluster(10, [1])],
+        laser_labels=[_laser(1), _laser(2, completed=False)],
+        species_labels=[],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(
+        sut.resolve_species_preprocess_inputs_activity, 42
+    )
+
+    assert result.clusters == [["aaa"]]
+
+
+@pytest.mark.asyncio
+async def test_orphans_respect_the_already_labeled_gate(monkeypatch):
+    """An unclustered image that already has a real species row is dropped.
+
+    Without this the resolver would re-emit every already-populated orphan on
+    each firing, re-importing LS tasks for images that already have rows.
+    """
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_intrinsics(),
+        images=[_image(1, "aaa"), _image(2, "bbb")],
+        clusters=[_cluster(10, [1])],
+        laser_labels=[_laser(1), _laser(2)],
+        species_labels=[_species(2, project_id=70)],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(
+        sut.resolve_species_preprocess_inputs_activity, 42
+    )
+
+    assert result.clusters == [["aaa"]]
+
+
+@pytest.mark.asyncio
+async def test_orphans_respect_the_canonical_gate(monkeypatch):
+    """A non-canonical unclustered image is dropped.
+
+    Half of prod's image table is duplicate content; the resolver must mirror
+    the cohort selector's `is_canonical` predicate or it would dispatch work
+    the cohort never promised.
+    """
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_intrinsics(),
+        images=[_image(1, "aaa"), _noncanonical_image(2, "bbb")],
+        clusters=[_cluster(10, [1])],
+        laser_labels=[_laser(1), _laser(2)],
+        species_labels=[],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(
+        sut.resolve_species_preprocess_inputs_activity, 42
+    )
+
+    assert result.clusters == [["aaa"]]
+
+
+@pytest.mark.asyncio
+async def test_no_orphans_leaves_output_unchanged(monkeypatch):
+    """The common case must be byte-identical to the previous behavior."""
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_intrinsics(),
+        images=[_image(1, "aaa"), _image(2, "bbb")],
+        clusters=[_cluster(10, [1, 2])],
+        laser_labels=[_laser(1), _laser(2)],
+        species_labels=[],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(
+        sut.resolve_species_preprocess_inputs_activity, 42
+    )
+
+    assert result.clusters == [["aaa", "bbb"]]
