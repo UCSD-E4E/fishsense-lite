@@ -11,19 +11,33 @@ consumer.
 
 ## 0. What is verified, and what is not
 
-### 0.1 VERIFIED — the `LaserCalibration` folders are checkerboards, in both eras
+### 0.1 VERIFIED — MOST calibration folders are checkerboards, but the corpus is MIXED
 
-Sampled one frame from each of two datasets:
+Surveyed all 15 laser-calibration folders across the three pool-test datasets
+with `cv2.findChessboardCornersSBWithMeta` (+ `CALIB_CB_LARGER`, which reports
+the grid it actually found), 6 sampled frames each:
 
-* `2025.01.17.../ED-00/FSL-10D/LaserCalibration` — a fine-grid board with solid
-  black triangles in the corners, green laser dot landing on a white square,
-  board fully in frame.
-* `__unsorted-data/2023.08.14.../ED-00/FSL-05D/LaserCalibration` — a board
-  captioned **`15x11 checkerboard`** and branded `UCSD ENGINEERS FOR
-  EXPLORATION`, red laser dot near a black/white boundary.
+| Folders | Detected | Board |
+|---|---|---|
+| 2025.01.17 ED-00, both rigs | 12/12 | **24 x 17 interior corners** (25 x 18 squares) |
+| 2023.08.14 ED-00, all 8 | 46/48 | **14 x 10 interior corners** (15 x 11 squares) |
+| 2023.08.18 rigs 05/06/07 | 18/18 | 14 x 10, same board |
+| 2023.08.18 `04-slate`, `04-box-slate` | **0/12** | **not a checkerboard** |
 
-No dive slate appears in either. The laser dot is on the board, which is the
-whole point: the board supplies the plane, the dot supplies the ray.
+**Rig 04 of 2023.08.18 used an actual dive slate** — a white cutting board with
+a black hash pattern taped to it, hand-held, laser dot on it. That is one of the
+`Tic-Tac-Toe` `DiveSlate` templates, so `04-slate` (dive 508) and
+`04-box-slate` (510) can calibrate through the **existing** stage-13 path; they
+only need `dive_slate_id` set by species labelling. They are not part of this
+plan's problem.
+
+An earlier revision of this section claimed all the folders were checkerboards.
+That was an inference from two sampled frames, and it was wrong for 2 of 15
+folders. The table above is measured.
+
+The 2023 result independently confirms itself: the board is captioned
+`15x11 checkerboard`, and detection returns 14 x 10 interior corners, which is
+exactly what a 15 x 11 grid of squares has.
 
 ### 0.2 VERIFIED — nothing in the repo detects a checkerboard
 
@@ -33,12 +47,12 @@ the species taxonomy already offers `Calibration Targets → E4E Checkerboard`
 (added in #371, alongside `Ruler`). So the corpus can already be *marked*; it
 just cannot be *used*.
 
-### 0.3 NOT VERIFIED — the boards are probably not the same board
+### 0.3 RESOLVED — there are two different boards, measured
 
-The 2023 board is captioned `15x11`. The 2025 board looks visibly finer-grid
-and carries corner fiducial triangles the 2023 one does not. **Do not assume one
-geometry.** Whatever this ships as must identify the target per dive rather than
-hard-code a grid — which is the same lesson as the 11 `DiveSlate` templates.
+The 2023 board is **14 x 10** interior corners; the 2025 board is **24 x 17**.
+Consistent across every folder of each era. So the target must be identified
+per dive: applying one era's grid to the other's frames is a wrong pitch, and a
+wrong pitch is a wrong scale.
 
 ### 0.4 NOT VERIFIED — the square size, and this is the one that matters
 
@@ -65,6 +79,13 @@ no dive_slate_id -> stage 9 never fires -> no DiveSlateLabel rows
 
 This is the *correct* failure direction — no wrong numbers are produced — but it
 is invisible. The 2025 ED-00 dives (480-487) and the 2023 sets are all in it.
+
+**Dive 480 and its borrowers 482 / 483 / 486 were parked at `Priority.NONE` on
+2026-09-02** with notes recording why, its 28 laser labels superseded and its
+Label Studio project deleted (the 4 annotations in it were synced to the DB
+first — they are laser-dot positions on checkerboard frames, which is exactly
+what this plan needs). Dive 481 and its borrowers 484 / 485 / 487 are in the
+same position and have not been parked.
 
 **The ingest intent is already right and needs no rework.** `self_calibrates:
 true` means only "resolve from my own `LaserExtrinsics`"; under this plan dive
@@ -209,10 +230,11 @@ error by the grid count. Record it per physical board, and treat a board that
 cannot be re-measured the way `V-Slate 7` is treated: refuse to calibrate rather
 than guess.
 
-### 4.2 The two boards are probably different
+### 4.2 There are two boards, so there are two square sizes
 
-See §0.3. Identify the target per dive. A wrong grid pitch is a wrong scale, and
-§2's whole argument is that scale error will not announce itself.
+Measured (§0.3): 14 x 10 for 2023, 24 x 17 for 2025. Identify the target per
+dive; a hard-coded grid silently mis-scales one era, and §2 is the argument for
+why that would not announce itself.
 
 ### 4.3 Refraction and the depth regime
 
@@ -229,12 +251,38 @@ red dot straddles a black/white boundary. Contrast against a black square is a
 different detection problem, and the existing `LaserDetector` was trained on
 reef/pool scenes, not on a checkerboard. Expect to validate or fine-tune it.
 
-### 4.5 Whole-board visibility
+### 4.5 Partial detection is common — and is fine, if handled
 
-`cv2.findChessboardCorners` requires the entire board. Prefer
-`findChessboardCornersSB` (more robust, subpixel built in); ChArUco would allow
-partial views and is the natural upgrade if occlusion turns out common. The 2025
-sample has the board fully in frame.
+`CALIB_CB_LARGER` returned a **sub-grid** on many frames (6 x 14, 14 x 8,
+17 x 10, 19 x 8 ...), where occlusion, glare or the frame edge cut the board
+down. Detection rate is nonetheless ~96% overall, and `MIN_LASER_POINTS = 2`
+against folders of 28-133 frames means the fit is heavily over-determined
+either way.
+
+A partial detection is **usable**, and for a reason worth stating: a sub-grid of
+a regular grid has the same pitch, and by §2.1 only the plane matters — so the
+unknown offset of the sub-board into the full board never reaches the answer.
+
+The consequence for the producer is concrete: build `body_points` to match the
+**detected** grid shape, not the nominal board. Generating a full 24 x 17 body
+grid against a 17 x 10 detection would mis-pair the correspondences, which
+`solvePnP` accepts silently (§4.6).
+
+Prefer `findChessboardCornersSB` (robust, subpixel built in). ChArUco would make
+partial views unambiguous and is the natural upgrade if this proves fiddly.
+
+### 4.6 Detection must run on rectified, full-resolution frames
+
+Two separate constraints:
+
+* **Rectified**, because `solvePnP` is given zero distortion (§1).
+* **Full resolution** — at half scale the 2023 board dropped from 14 to 13
+  detected columns. A silently smaller grid is a mis-pairing risk, not just
+  fewer points.
+
+The survey above ran on camera JPEG siblings rather than rectified frames, so
+its corner *positions* are distorted and unusable for a pose. Grid size and
+detect/no-detect are unaffected, which is all it was for.
 
 ---
 
@@ -270,9 +318,10 @@ added on 2026-08-18 for exactly this situation.
 ## 7. Open questions
 
 * Square size, per board (§4.1). **Blocking.**
-* Are all `LaserCalibration` folders checkerboards? Two of ~10 were sampled.
-* Is the 2025 board a different geometry from the 2023 `15x11`? Almost certainly
-  (§0.3), but nobody has counted.
+* ~~Are all `LaserCalibration` folders checkerboards?~~ **Answered** (§0.1):
+  13 of 15 are; rig 04 of 2023.08.18 used a real dive slate.
+* ~~Is the 2025 board a different geometry?~~ **Answered** (§0.3): 24 x 17
+  versus the 2023 board's 14 x 10.
 * Should `Calibration Targets → E4E Checkerboard` in the species taxonomy become
   the identification hook, the way `'Slate, Laser on slate'` gates stage 9? It
   already exists and is already labelable — but it would put a human back in a
