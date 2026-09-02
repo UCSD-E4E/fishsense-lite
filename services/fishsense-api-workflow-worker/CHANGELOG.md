@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [1.56.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.56.1...fishsense-api-workflow-worker-v1.56.2) (2026-09-02)
+
+
+### Bug Fixes
+
+* **ingest:** keep frame paths absolute when the folder is outside the NAS root ([#669](https://github.com/UCSD-E4E/fishsense-lite/issues/669)) ([2e94860](https://github.com/UCSD-E4E/fishsense-lite/commit/2e94860f6ba8204704c6702c2ef28636c9e1cb50))
+* **worker:** register the activities three workflows dispatch by name ([#665](https://github.com/UCSD-E4E/fishsense-lite/issues/665)) ([773525f](https://github.com/UCSD-E4E/fishsense-lite/commit/773525f65fe26402b2f4e820a733f5624ec7be0b))
+
 ## [1.56.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.56.0...fishsense-api-workflow-worker-v1.56.1) (2026-08-28)
 
 
