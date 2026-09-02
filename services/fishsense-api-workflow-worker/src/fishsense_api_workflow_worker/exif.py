@@ -50,7 +50,26 @@ _TAG_MAKER_NOTE = 0x927C
 _TAG_OLYMPUS_EQUIPMENT = 0x2010
 _TAG_OLYMPUS_SERIAL = 0x0101
 
-_OLYMPUS_SIGNATURE = b"OLYMPUS\x00"
+# A MakerNote block is `<signature><2-byte order><2-byte version><IFD>`, so its
+# IFD starts at `len(signature) + 4`. Two signatures are in the fleet: Olympus
+# wrote the first, and the TG-7 — built by OM Digital Solutions after the
+# imaging arm was sold — writes the second, which is FOUR BYTES LONGER.
+#
+# Recognising only `OLYMPUS\0` did not read a TG-7 wrongly; it read nothing, so
+# every TG-7 frame reported no serial and `preflight_ingest_activity` refused
+# the dive with "No camera serial found in any frame's Olympus MakerNote" —
+# true as stated, and impossible for an operator to act on, because the serial
+# is right there in the file. Prod has had TG-7 `Camera` rows (FSL-09/10/11,
+# `BJPA7562x`) the whole time.
+#
+# This stays an explicit list rather than "any signature then an IFD". A
+# mis-parse would bind a frame to the wrong `Camera` and hand stage 14 the
+# wrong intrinsics, which is the same failure the no-`Artist`-fallback rule
+# refuses; an unknown body must read as None so preflight can say so.
+_MAKER_NOTE_SIGNATURES = (
+    b"OLYMPUS\x00",  # Olympus, through the TG-6
+    b"OM SYSTEM\x00\x00\x00",  # OM Digital Solutions, TG-7 onwards
+)
 
 
 @dataclass(frozen=True)
@@ -114,8 +133,22 @@ def _long(raw: bytes, endian: str) -> int | None:
     return struct.unpack_from(endian + "I", raw, 0)[0]
 
 
-def _olympus_serial(buf: bytes, maker_note_offset: int) -> str | None:
-    """Walk the Olympus MakerNote to the Equipment sub-IFD's SerialNumber.
+def _maker_note_ifd_offset(buf: bytes, maker_note_offset: int) -> int | None:
+    """Bytes from the block's start to its IFD, or None if unrecognised.
+
+    Keyed off the signature's own length rather than a constant, because that
+    length is exactly what differs between the two bodies.
+    """
+    for signature in _MAKER_NOTE_SIGNATURES:
+        end = maker_note_offset + len(signature)
+        if buf[maker_note_offset:end] == signature:
+            return len(signature) + 4  # + 2-byte order + 2-byte version
+    return None
+
+
+def _maker_note_serial(buf: bytes, maker_note_offset: int) -> str | None:
+    """Walk an Olympus / OM System MakerNote to the Equipment sub-IFD's
+    SerialNumber.
 
     Offsets inside are relative to `maker_note_offset`, NOT to the file. That
     single fact is the difference between reading `BJ6C67989` and reading
@@ -124,13 +157,13 @@ def _olympus_serial(buf: bytes, maker_note_offset: int) -> str | None:
     The block declares its own byte order, so the file's is deliberately not
     passed in — a MakerNote may disagree with its container.
     """
-    if buf[maker_note_offset : maker_note_offset + 8] != _OLYMPUS_SIGNATURE:
-        return None  # not the Olympus2 layout we understand
-    mn_endian = (
-        "<" if buf[maker_note_offset + 8 : maker_note_offset + 10] == b"II" else ">"
-    )
+    header_length = _maker_note_ifd_offset(buf, maker_note_offset)
+    if header_length is None:
+        return None  # not a layout we understand
+    order_at = maker_note_offset + header_length - 4
+    mn_endian = "<" if buf[order_at : order_at + 2] == b"II" else ">"
     base = maker_note_offset
-    ifd = maker_note_offset + 12  # 8-byte signature + 2-byte order + 2-byte version
+    ifd = maker_note_offset + header_length
 
     for tag, _typ, _n, raw in _entries(buf, ifd, mn_endian, base):
         if tag != _TAG_OLYMPUS_EQUIPMENT:
@@ -193,7 +226,7 @@ def read_exif(data: bytes) -> ExifData:
             # Only its *offset* is needed; the walk reads from there.
             maker_note_offset = _maker_note_offset(data, exif_offset, endian)
             if maker_note_offset is not None:
-                serial_number = _olympus_serial(data, maker_note_offset)
+                serial_number = _maker_note_serial(data, maker_note_offset)
     except struct.error:
         # Truncated mid-structure. Whatever was read before the tear is not
         # trustworthy, so report nothing.

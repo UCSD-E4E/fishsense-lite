@@ -38,7 +38,7 @@ import pytest
 # `git diff --name-only` output, which is alphabetical, so a changed
 # libs/*/tests file wins and this relative import stops resolving. The
 # import itself is correct — pytest resolves it fine.
-from ._tiff_builder import build_orf
+from ._tiff_builder import OM_SYSTEM_SIGNATURE, build_orf
 
 _REAL_ORF = (
     Path(__file__).resolve().parents[3]
@@ -114,6 +114,39 @@ def test_reads_the_olympus_makernote_serial():
     data = build_orf(serial_number="BJ6C67989")
 
     assert _read(data).serial_number == "BJ6C67989"
+
+
+def test_reads_the_om_system_makernote_serial():
+    """The TG-7 writes the same Equipment sub-IFD under a different signature.
+
+    Olympus sold its imaging arm, so the current bodies identify as
+    `OM SYSTEM\\0\\0\\0` rather than `OLYMPUS\\0` — a signature four bytes
+    longer, which moves the block's IFD from +12 to +16. A reader that knows
+    only the old one finds no serial at all, and `preflight_ingest_activity`
+    then refuses the dive with "No camera serial found in any frame's Olympus
+    MakerNote" — correct behaviour, wrong premise, and unfixable from the
+    operator's side because the serial *is* in the file.
+
+    Prod already has TG-7 `Camera` rows (FSL-09/10/11, serials `BJPA7562x`),
+    so before this every TG-7 dive was un-ingestable.
+    """
+    data = build_orf(
+        serial_number="BJPA75627", maker_note_signature=OM_SYSTEM_SIGNATURE
+    )
+
+    assert _read(data).serial_number == "BJPA75627"
+
+
+def test_an_unrecognised_makernote_signature_yields_no_serial():
+    """The guard that keeps the two known layouts from becoming "any twelve
+    bytes then an IFD". Guessing here would bind a frame to the wrong `Camera`
+    and hand stage 14 the wrong intrinsics, which is exactly the failure the
+    no-`Artist`-fallback rule exists to avoid."""
+    data = build_orf(
+        serial_number="BJPA75627", maker_note_signature=b"NIKON\x00\x00\x00"
+    )
+
+    assert _read(data).serial_number is None
 
 
 def test_serial_is_none_when_there_is_no_makernote():
