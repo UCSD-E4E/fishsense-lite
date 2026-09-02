@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.48.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.48.1...fishsense-api-sdk-v1.48.2) (2026-09-02)
+
+
+### Bug Fixes
+
+* **ingest:** let finalize keep the camera it never sees ([#686](https://github.com/UCSD-E4E/fishsense-lite/issues/686)) ([e09d05d](https://github.com/UCSD-E4E/fishsense-lite/commit/e09d05d4990bf729b0c99e4b009f41308c836638))
+
 ## [1.48.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.48.0...fishsense-api-sdk-v1.48.1) (2026-09-02)
 
 
