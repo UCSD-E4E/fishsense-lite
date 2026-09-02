@@ -39,6 +39,26 @@ class TestImageClient:
             async with client:
                 assert await client.get(image_id=999) is None
 
+    async def test_get_by_dive_id_returns_none_on_404(self):
+        """A dive with no images yet 404s, and that is the normal state of every
+        dive ingest has just created.
+
+        `GET /api/v1/dives/{id}/images/` raises rather than returning `[]` when
+        the dive is empty, and `scan_and_register_images_activity` opens by
+        asking exactly that question to learn which frames are already
+        registered. With this branch raising, the first scan of any new dive
+        died before writing a single `Image` row — leaving a dive stuck at LOW
+        with nothing in it, which is what ingest looks like when it has never
+        actually run. The other two lookup modes have always guarded the 404;
+        this one was simply missed, though the method's own docstring claims
+        all three do it.
+        """
+        client = _make_client()
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = _mock_404()
+            async with client:
+                assert await client.get(dive_id=480) is None
+
     async def test_get_by_checksum_returns_none_on_404(self):
         client = _make_client()
         with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
