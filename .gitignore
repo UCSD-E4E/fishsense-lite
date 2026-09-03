@@ -67,5 +67,12 @@ services/fishsense-data-processing-workflow-worker/scripts/dry_run_stage13_*.jso
 # repo content; committing it churns diffs across sessions)
 .claude/scheduled_tasks.lock
 
+# Claude Code git worktrees. `EnterWorktree` creates these in-repo, and each
+# holds a full checkout with its own `.git` file — so git reports the whole
+# tree as one untracked entry and a blanket `git add -A` commits it as a bogus
+# gitlink. They are throwaway working copies; the branch is what carries the
+# work, and it lives in the repo already.
+.claude/worktrees/
+
 # direnv (nix-direnv cache)
 .direnv/
