@@ -294,10 +294,6 @@ class LaserPrediction(BaseModel):
     predictor_version: int | None = Field(None, title='Predictor Version')
     checkpoint: str | None = Field(None, title='Checkpoint')
     core_version: str | None = Field(None, title='Core Version')
-    auto_accept: bool | None = Field(False, title='Auto Accept')
-    gate_verdict: str | None = Field(None, title='Gate Verdict')
-    line_offset_px: float | None = Field(None, title='Line Offset Px')
-    line_position_z: float | None = Field(None, title='Line Position Z')
     created_at: AwareDatetime | None = Field(None, title='Created At')
     image_id: int | None = Field(None, title='Image Id')
 

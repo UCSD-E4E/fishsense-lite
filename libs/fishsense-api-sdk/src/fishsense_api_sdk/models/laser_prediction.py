@@ -33,13 +33,5 @@ class LaserPrediction(ModelBase):
     predictor_version: int | None = None
     checkpoint: str | None = None
     core_version: str | None = None
-    # Auto-accept gate verdict: whether this prediction may skip human
-    # review, why not when it may not, and the two margins it was judged on.
-    # Decided per dive by the data-worker gate; read by laser populate. See
-    # the API SQLModel for why False is the load-bearing default.
-    auto_accept: bool = False
-    gate_verdict: str | None = None
-    line_offset_px: float | None = None
-    line_position_z: float | None = None
     created_at: datetime | None = None
     image_id: int | None = None
