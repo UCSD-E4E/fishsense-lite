@@ -32,6 +32,34 @@ Consequences that shape the code:
   It stays out of the gate deliberately.
 
 Thresholds are measured, not chosen; see `AutoAcceptConfig`.
+
+**Fail-closed is verified out of distribution, on reef.** Every threshold above
+was calibrated on pool dives, which is exactly how the slate detector died — so
+the gate was replayed against dive 442 (`101624_Alligator0_FSL02`, Alligator
+Reef), the one reef dive carrying v2 predictions. It refused the dive:
+inlier_fraction 0.404 against the 0.75 bar, `weak_consensus`, 0 of 203 frames
+auto-accepted. The refusal is correct, not conservative — only 56.7% of those
+predictions land within 10 px of the line the dive's own 358 human labels
+define, with p90 at 245 px. The humans are collinear to 2.9 px max; the
+detector is what is scattered.
+
+Two things follow, and they are separate. First, the safety property holds on
+real out-of-distribution data: the automation declines to engage rather than
+producing bad labels, which is the property the ECC gate lacked. Second, the
+laser detector itself has a reef problem that has nothing to do with this
+module — 56.7% on-line here against ~93% byte-exact agreement with labelers on
+pool — so until that improves, auto-accept saves labour in pool-like conditions
+and correctly does nothing elsewhere.
+
+Confidence cannot triage it, which is worth knowing before anyone tries: 49% of
+the OFF-line predictions on that dive score >= 0.99 (against 66% of the on-line
+ones), and a prefilter at any cut from 0.5 to 0.9999 leaves the inlier fraction
+between 0.40 and 0.48 — still refused. The detector is confidently wrong about
+half the time it is wrong.
+
+Caveat on n: one reef dive is not "reef", and its predicted images are ones
+that never received a Label Studio task, a different population from the
+labelled ones it is being compared against.
 """
 
 from __future__ import annotations
