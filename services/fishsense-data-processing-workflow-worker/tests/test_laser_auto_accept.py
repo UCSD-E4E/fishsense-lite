@@ -13,6 +13,8 @@ case out of the auto-accept set.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
@@ -217,3 +219,53 @@ def test_defaults_match_the_measured_calibration():
 def test_config_rejects_a_floor_below_the_line_fits_own_minimum():
     with pytest.raises(ValueError):
         AutoAcceptConfig(min_predictions=3)
+
+
+# --- the kill switch ---------------------------------------------------------
+
+
+def test_enabled_defaults_to_true():
+    assert DEFAULT_CONFIG.enabled is True
+
+
+def test_a_disabled_gate_accepts_nothing():
+    """`enabled=False` is the kill switch AND the dark run. Nothing may skip
+    review while it is off."""
+    xy = _collinear(40, jitter=0.4, seed=31)
+    config = replace(DEFAULT_CONFIG, enabled=False, audit_sample_rate=0.0)
+    gate, verdicts = evaluate_dive(1, _ids(40), xy, config=config)
+    assert gate.eligible
+    assert not any(v.auto_accept for v in verdicts)
+
+
+def test_a_disabled_gate_still_records_what_it_would_have_done():
+    """This is what makes it a dark run rather than an off switch. The verdict
+    and both margins are still computed and recorded, so a week of running
+    disabled answers "what would this have done to our corpus" exactly, on
+    current data, without a single frame skipping a human.
+
+    The consequence is a row reading `auto_accept=False` beside
+    `gate_verdict='auto_accepted'`. That pair is not a contradiction — it says
+    the gate would have cleared this frame and the switch overruled it — and
+    populate keys on `auto_accept` alone, so the disabled state is what
+    governs behaviour.
+    """
+    xy = _collinear(40, jitter=0.4, seed=33)
+    config = replace(DEFAULT_CONFIG, enabled=False, audit_sample_rate=0.0)
+    _, verdicts = evaluate_dive(1, _ids(40), xy, config=config)
+    assert all(v.reason is FrameVerdict.AUTO_ACCEPTED for v in verdicts)
+    assert all(v.perpendicular_px is not None for v in verdicts)
+    assert all(v.along_line_z is not None for v in verdicts)
+
+
+def test_a_disabled_gate_still_distinguishes_its_rejections():
+    """Turning the gate off must not flatten the verdict histogram — that
+    histogram is the monitoring signal, and it is the only thing a dark run
+    produces."""
+    xy = _collinear(40, jitter=0.4, seed=35)
+    normal = np.array([-0.4, 1.0]) / np.hypot(0.4, 1.0)
+    xy[9] = xy[9] + normal * 80.0
+    config = replace(DEFAULT_CONFIG, enabled=False, audit_sample_rate=0.0)
+    _, verdicts = evaluate_dive(1, _ids(40), xy, config=config)
+    assert verdicts[9].reason is FrameVerdict.OFF_LINE
+    assert sum(v.reason is FrameVerdict.AUTO_ACCEPTED for v in verdicts) == 39

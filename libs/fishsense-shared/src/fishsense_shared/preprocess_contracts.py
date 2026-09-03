@@ -276,6 +276,13 @@ class LaserAutoAcceptSummary(BaseModel):
     """
 
     dive_id: int
+    # Whether the gate was switched on. False is both the kill switch and the
+    # dark run: everything below is still computed and recorded, but
+    # `auto_accepted` is 0 and no frame skips a human. Read it alongside
+    # `verdicts` — with the gate off those two disagree on purpose, the
+    # histogram saying what the fit would have cleared and `auto_accepted`
+    # what actually may.
+    enabled: bool = True
     # False when the dive's predictions did not agree well enough to
     # auto-accept any of them; `reason` says which bar it failed.
     eligible: bool

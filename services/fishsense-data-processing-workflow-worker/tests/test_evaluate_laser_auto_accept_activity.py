@@ -8,6 +8,8 @@ row it judged, and it never leaves a stale `auto_accept=True` standing.
 
 from __future__ import annotations
 
+from dataclasses import replace
+from types import SimpleNamespace
 from typing import List
 from unittest.mock import AsyncMock, MagicMock
 
@@ -18,6 +20,9 @@ from temporalio.testing import ActivityEnvironment
 from fishsense_api_sdk.models.laser_prediction import LaserPrediction
 from fishsense_data_processing_workflow_worker.activities import (
     evaluate_laser_auto_accept_activity as sut,
+)
+from fishsense_data_processing_workflow_worker.laser_label_validation.auto_accept import (  # noqa: E501  pylint: disable=line-too-long
+    DEFAULT_CONFIG,
 )
 
 
@@ -71,9 +76,17 @@ def _make_fs(predictions: List[LaserPrediction]):
     return fs
 
 
-async def _run(monkeypatch, predictions):
+async def _run(monkeypatch, predictions, config=DEFAULT_CONFIG):
+    """Run the activity with an explicit gate config.
+
+    Config is injected rather than read from settings: Dynaconf validates every
+    validator on first attribute access, so touching the real settings here
+    would mean plumbing placeholders for the whole worker into a test about
+    line fitting. `_config_from_settings` is covered directly instead.
+    """
     fs = _make_fs(predictions)
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut, "_resolve_config", lambda: config)
     env = ActivityEnvironment()
     summary = await env.run(sut.evaluate_laser_auto_accept_activity, 7)
     return summary, fs
@@ -180,3 +193,76 @@ async def test_summary_verdict_counts_cover_every_prediction(monkeypatch):
     predictions = _collinear(40) + [_prediction(9999, None, None)]
     summary, _ = await _run(monkeypatch, predictions)
     assert sum(summary.verdicts.values()) == len(predictions)
+
+
+# --- the kill switch ---------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_disabled_gate_records_verdicts_but_accepts_nothing(monkeypatch):
+    """The dark run. Every verdict and margin is still written — that is the
+    whole point, it is how you measure what the gate would do to real dives —
+    but nothing is marked auto-acceptable, so no frame skips a human."""
+    disabled = replace(DEFAULT_CONFIG, enabled=False, audit_sample_rate=0.0)
+    summary, fs = await _run(monkeypatch, _collinear(40), config=disabled)
+
+    assert summary.enabled is False
+    assert summary.eligible  # the dive itself was fine
+    assert summary.auto_accepted == 0
+    written = _written(fs)
+    assert len(written) == 40
+    assert all(not p.auto_accept for p in written.values())
+    # ...and the histogram still says what it would have done.
+    assert summary.verdicts["auto_accepted"] == 40
+    assert all(p.line_offset_px is not None for p in written.values())
+
+
+@pytest.mark.asyncio
+async def test_summary_auto_accepted_counts_the_flag_not_the_verdict(monkeypatch):
+    """These two disagree exactly when the gate is off, and callers want the
+    flag: the parent uses it to decide whether to walk the dive's Label Studio
+    tasks, and with the gate disabled there is nothing there to do."""
+    disabled = replace(DEFAULT_CONFIG, enabled=False, audit_sample_rate=0.0)
+    summary, _ = await _run(monkeypatch, _collinear(40), config=disabled)
+    assert summary.verdicts["auto_accepted"] == 40
+    assert summary.auto_accepted == 0
+
+
+# --- settings mapping --------------------------------------------------------
+
+
+def _settings(**overrides):
+    values = {
+        "enabled": True,
+        "min_predictions": 20,
+        "min_inlier_fraction": 0.75,
+        "max_perpendicular_px": 10.0,
+        "max_along_line_z": 4.0,
+        "audit_sample_rate": 0.10,
+    }
+    values.update(overrides)
+    return SimpleNamespace(laser_auto_accept=SimpleNamespace(**values))
+
+
+def test_config_is_read_from_settings():
+    assert sut._config_from_settings(_settings()) == DEFAULT_CONFIG
+
+
+def test_the_switch_is_settable_without_a_deploy():
+    """The reason every knob lives in settings: turning the gate off, and
+    starting a dark run, must not require shipping an image."""
+    assert sut._config_from_settings(_settings(enabled=False)).enabled is False
+
+
+def test_thresholds_are_settable_and_still_validated():
+    config = sut._config_from_settings(_settings(min_inlier_fraction=0.9))
+    assert config.min_inlier_fraction == 0.9
+    with pytest.raises(ValueError):
+        sut._config_from_settings(_settings(min_predictions=2))
+
+
+def test_settings_values_are_coerced():
+    """Dynaconf hands back whatever the TOML or the environment override held,
+    and an integer audit rate must not turn the sampling into integer maths."""
+    config = sut._config_from_settings(_settings(audit_sample_rate=1))
+    assert config.audit_sample_rate == 1.0

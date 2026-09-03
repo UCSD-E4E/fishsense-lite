@@ -33,6 +33,7 @@ from fishsense_data_processing_workflow_worker.activities.heartbeat import (
 )
 from fishsense_data_processing_workflow_worker.activities.utils import get_fs_client
 from fishsense_data_processing_workflow_worker.laser_label_validation.auto_accept import (  # noqa: E501  pylint: disable=line-too-long
+    AutoAcceptConfig,
     evaluate_dive,
 )
 
@@ -43,6 +44,36 @@ from fishsense_data_processing_workflow_worker.laser_label_validation.auto_accep
 WRITE_CONCURRENCY = 8
 
 __all__ = ["evaluate_laser_auto_accept_activity", "WRITE_CONCURRENCY"]
+
+
+def _config_from_settings(source) -> AutoAcceptConfig:
+    """Build the gate config from a settings object.
+
+    Takes the source rather than reading the global so it can be exercised
+    against a plain namespace — Dynaconf validates *every* validator on first
+    attribute access, so a unit test that touched the real settings would have
+    to plumb placeholders for the whole worker.
+    """
+    section = source.laser_auto_accept
+    return AutoAcceptConfig(
+        enabled=bool(section.enabled),
+        min_predictions=int(section.min_predictions),
+        min_inlier_fraction=float(section.min_inlier_fraction),
+        max_perpendicular_px=float(section.max_perpendicular_px),
+        max_along_line_z=float(section.max_along_line_z),
+        audit_sample_rate=float(section.audit_sample_rate),
+    )
+
+
+def _resolve_config() -> AutoAcceptConfig:
+    """The live gate config. Function-local import so importing this module
+    does not trip Dynaconf's eager validation — same reason
+    `object_store.open_client` keeps its `config` import local.
+    """
+    # pylint: disable=import-outside-toplevel
+    from fishsense_data_processing_workflow_worker.config import settings
+
+    return _config_from_settings(settings)
 
 
 def _points(predictions: List[LaserPrediction]) -> np.ndarray:
@@ -105,14 +136,19 @@ async def evaluate_laser_auto_accept_activity(dive_id: int) -> LaserAutoAcceptSu
             activity.logger.info("dive_id=%d has no laser predictions", dive_id)
             return LaserAutoAcceptSummary(dive_id=dive_id, eligible=False)
 
+        config = _resolve_config()
         gate, decisions = evaluate_dive(
-            dive_id, [p.image_id for p in predictions], _points(predictions)
+            dive_id,
+            [p.image_id for p in predictions],
+            _points(predictions),
+            config=config,
         )
         counts = Counter(d.reason.value for d in decisions)
         activity.logger.info(
-            "dive_id=%d gate eligible=%s reason=%s n=%d inliers=%d (%.0f%%) "
-            "line_confidence=%.1f verdicts=%s",
+            "dive_id=%d gate enabled=%s eligible=%s reason=%s n=%d "
+            "inliers=%d (%.0f%%) line_confidence=%.1f verdicts=%s",
             dive_id,
+            config.enabled,
             gate.eligible,
             gate.reason.value if gate.reason else None,
             gate.n_points,
@@ -141,22 +177,32 @@ async def evaluate_laser_auto_accept_activity(dive_id: int) -> LaserAutoAcceptSu
 
         await asyncio.gather(*(_write(p, d) for p, d in pending))
 
+        # Counted off the flag, not off the verdict histogram. With the gate
+        # disabled those two disagree on purpose — the histogram says what the
+        # fit would have cleared, the flag says what actually may skip a human
+        # — and every caller wants the second. In particular the parent uses it
+        # to decide whether to walk the dive's Label Studio tasks at all.
+        accepted = sum(1 for decision in decisions if decision.auto_accept)
         activity.logger.info(
-            "dive_id=%d auto-accept gate wrote %d/%d rows; %d frames may skip review",
+            "dive_id=%d auto-accept gate wrote %d/%d rows; %d frames may skip "
+            "review (%d would have, gate enabled=%s)",
             dive_id,
             len(pending),
             len(predictions),
+            accepted,
             counts.get("auto_accepted", 0),
+            config.enabled,
         )
         return LaserAutoAcceptSummary(
             dive_id=dive_id,
+            enabled=config.enabled,
             eligible=gate.eligible,
             reason=gate.reason.value if gate.reason else None,
             n_points=gate.n_points,
             inlier_count=gate.inlier_count,
             inlier_fraction=gate.inlier_fraction,
             line_confidence=gate.line_confidence,
-            auto_accepted=counts.get("auto_accepted", 0),
+            auto_accepted=accepted,
             verdicts=dict(counts),
             written=len(pending),
         )

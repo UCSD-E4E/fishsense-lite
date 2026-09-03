@@ -75,6 +75,14 @@ class FrameVerdict(Enum):
 class AutoAcceptConfig:
     """Gate thresholds. Every default was measured against prod.
 
+    `enabled` is the kill switch, and it is also the dark run. Turned off, the
+    gate still fits, still judges, and still records every verdict and margin —
+    it just clears nothing, so no frame skips a human. A week disabled
+    therefore answers "what would this do to our corpus" exactly, on current
+    data, at zero risk; and if something goes wrong later, flipping it off
+    stops the behaviour without unwinding a single row. The whole config is
+    read from settings on the data-worker, so neither move needs a deploy.
+
     `min_predictions` / `min_inlier_fraction` are a floor-and-percentage pair
     because each covers the other's blind spot: a floor alone passes a
     1698-frame dive on 40 agreeing points, and a percentage alone passes 5 of
@@ -103,6 +111,7 @@ class AutoAcceptConfig:
     here — see `_along_line_z` for what it cannot see.
     """
 
+    enabled: bool = True
     min_predictions: int = 20
     min_inlier_fraction: float = 0.75
     min_line_confidence: float = LINE_CONFIDENCE_THRESHOLD
@@ -314,7 +323,13 @@ def _decide_frames(
         decisions.append(
             FrameDecision(
                 image_id=image_id,
-                auto_accept=verdict is FrameVerdict.AUTO_ACCEPTED,
+                # `enabled` gates only this flag, never the verdict. A
+                # disabled gate still says what it would have done, which is
+                # the entire value of a dark run; the row then reads
+                # `auto_accept=False` beside `gate_verdict='auto_accepted'`,
+                # which is not a contradiction but the switch overruling the
+                # fit. Everything downstream keys on the flag.
+                auto_accept=(config.enabled and verdict is FrameVerdict.AUTO_ACCEPTED),
                 reason=verdict,
                 perpendicular_px=perp,
                 along_line_z=z_score,
