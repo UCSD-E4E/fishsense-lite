@@ -2,6 +2,18 @@
 
 <!-- version list -->
 
+## [1.51.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.50.0...fishsense-api-v1.51.0) (2026-09-03)
+
+
+### Features
+
+* **laser:** skip human review of laser predictions the dive's own line agrees with ([#693](https://github.com/UCSD-E4E/fishsense-lite/issues/693)) ([c388e21](https://github.com/UCSD-E4E/fishsense-lite/commit/c388e21444c39b696ccd209c515f24f42ce4e1da))
+
+
+### Bug Fixes
+
+* **api:** chain the auto-accept migration onto main's head ([#696](https://github.com/UCSD-E4E/fishsense-lite/issues/696)) ([00a684c](https://github.com/UCSD-E4E/fishsense-lite/commit/00a684ca9115da84c72785ff5b2fa1fe552ecfa1))
+
 ## [1.50.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.49.1...fishsense-api-v1.50.0) (2026-08-28)
 
 

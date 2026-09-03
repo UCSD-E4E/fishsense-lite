@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.13.0...fishsense-shared-v0.14.0) (2026-09-03)
+
+
+### Features
+
+* **laser:** skip human review of laser predictions the dive's own line agrees with ([#693](https://github.com/UCSD-E4E/fishsense-lite/issues/693)) ([c388e21](https://github.com/UCSD-E4E/fishsense-lite/commit/c388e21444c39b696ccd209c515f24f42ce4e1da))
+
 ## [0.13.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.12.1...fishsense-shared-v0.13.0) (2026-08-28)
 
 
