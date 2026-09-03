@@ -31,6 +31,7 @@ from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
 from fishsense_shared import (
+    LaserAutoAcceptSummary,
     LaserPredictionResult,
     PredictLaserImage,
     PredictLaserImagesInput,
@@ -42,6 +43,7 @@ from fishsense_api_workflow_worker.activities.gpu_fallback import (
 )
 from fishsense_api_workflow_worker.workflows._dispatch import (
     DATA_PROCESSING_GPU_TASK_QUEUE,
+    DATA_PROCESSING_TASK_QUEUE,
 )
 from fishsense_api_workflow_worker.workflows.predict_laser_images_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PredictLaserImagesParentWorkflow,
@@ -69,8 +71,32 @@ class _StubChild:
         ]
 
 
+@workflow.defn(name="EvaluateLaserAutoAcceptWorkflow")
+class _StubGate:
+    # pylint: disable=too-few-public-methods
+    """Stands in for the data-worker gate. Registered on the CPU queue only,
+    so a regression that dispatched it to the GPU queue would hang rather
+    than pass — the mirror of what `_StubChild` pins for the predict child."""
+
+    @workflow.run
+    async def run(self, dive_id: int) -> LaserAutoAcceptSummary:
+        await workflow.execute_activity(
+            "_record_gate_dispatch",
+            args=(workflow.info().workflow_id, dive_id),
+            schedule_to_close_timeout=timedelta(seconds=5),
+        )
+        return LaserAutoAcceptSummary(
+            dive_id=dive_id,
+            eligible=True,
+            n_points=2,
+            auto_accepted=1,
+            verdicts={"auto_accepted": 1, "off_line": 1},
+        )
+
+
 def _stubs(
-    dive_id, images, child_ids, persisted, staged=None, mode=MODE_GPU, backfilled=None
+    dive_id, images, child_ids, persisted, staged=None, mode=MODE_GPU,
+    backfilled=None, gate_ids=None,
 ):
     @activity.defn(name="select_next_high_priority_dive_for_laser_prediction_activity")
     async def selector() -> int | None:
@@ -115,6 +141,16 @@ def _stubs(
     async def record(workflow_id: str, d: int) -> None:
         child_ids.append(workflow_id)
 
+    @activity.defn(name="ensure_data_worker_running_activity")
+    async def ensure_cpu() -> None:
+        return None
+
+    gate_sink = gate_ids if gate_ids is not None else []
+
+    @activity.defn(name="_record_gate_dispatch")
+    async def record_gate(workflow_id: str, d: int) -> None:
+        gate_sink.append(workflow_id)
+
     return [
         selector,
         resolver,
@@ -124,15 +160,17 @@ def _stubs(
         persist,
         backfill,
         record,
+        ensure_cpu,
+        record_gate,
     ]
 
 
 async def _run(
     env, dive_id, images, child_ids, persisted, staged=None, mode=MODE_GPU,
-    backfilled=None,
+    backfilled=None, gate_ids=None,
 ):
     activities = _stubs(
-        dive_id, images, child_ids, persisted, staged, mode, backfilled
+        dive_id, images, child_ids, persisted, staged, mode, backfilled, gate_ids
     )
     # Two workers: the parent (+ its activities) on the parent queue, and the
     # stub child on the data-processing GPU queue the parent dispatches to —
@@ -147,6 +185,11 @@ async def _run(
         env.client,
         task_queue=DATA_PROCESSING_GPU_TASK_QUEUE,
         workflows=[_StubChild],
+        activities=activities,
+    ), Worker(
+        env.client,
+        task_queue=DATA_PROCESSING_TASK_QUEUE,
+        workflows=[_StubGate],
         activities=activities,
     ):
         return await env.client.execute_workflow(
@@ -269,3 +312,40 @@ async def test_backfill_is_skipped_when_the_child_returned_nothing():
             backfilled=backfilled,
         )
     assert not backfilled
+
+
+@pytest.mark.asyncio
+async def test_gate_runs_on_the_cpu_queue_with_a_deterministic_id():
+    """The auto-accept gate is dispatched after the predictions are persisted,
+    on the CPU queue.
+
+    Queue matters and the failure is silent: `_StubGate` is registered ONLY on
+    `DATA_PROCESSING_TASK_QUEUE`, so a regression sending it to the GPU queue
+    would hang until the execution timeout rather than fail a assertion. The
+    gate is a line fit — holding a contended NRP card through it is waste, and
+    the CPU Deployment is what every other math stage uses.
+    """
+    child_ids: List[str] = []
+    persisted: List = []
+    gate_ids: List[str] = []
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        result = await _run(
+            env, 77, [(1, "c1"), (2, "c2")], child_ids, persisted,
+            gate_ids=gate_ids,
+        )
+    assert result == 77
+    assert gate_ids == ["auto-accept-laser-77"]
+
+
+@pytest.mark.asyncio
+async def test_gate_is_skipped_when_the_dive_had_nothing_to_predict():
+    """No predictions means no new dots, so there is nothing to re-judge and
+    the dive's existing verdicts still stand. Skipping also avoids waking the
+    CPU Deployment for a no-op."""
+    child_ids: List[str] = []
+    persisted: List = []
+    gate_ids: List[str] = []
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        result = await _run(env, 78, [], child_ids, persisted, gate_ids=gate_ids)
+    assert result == 78
+    assert not gate_ids

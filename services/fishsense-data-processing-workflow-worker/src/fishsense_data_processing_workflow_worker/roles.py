@@ -63,6 +63,9 @@ from fishsense_data_processing_workflow_worker.activities.cluster_dive_frames im
 from fishsense_data_processing_workflow_worker.activities.compute_laser_depths_activity import (  # noqa: E501  pylint: disable=line-too-long
     compute_laser_depths_activity,
 )
+from fishsense_data_processing_workflow_worker.activities.evaluate_laser_auto_accept_activity import (  # noqa: E501  pylint: disable=line-too-long
+    evaluate_laser_auto_accept_activity,
+)
 from fishsense_data_processing_workflow_worker.activities.measure_fish_activity import (
     measure_fish_activity,
 )
@@ -108,6 +111,9 @@ from fishsense_data_processing_workflow_worker.workflows.predict_laser_images_wo
 from fishsense_data_processing_workflow_worker.workflows.predict_slate_images_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PredictSlateImagesWorkflow,
 )
+from fishsense_data_processing_workflow_worker.workflows.evaluate_laser_auto_accept_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    EvaluateLaserAutoAcceptWorkflow,
+)
 from fishsense_data_processing_workflow_worker.workflows.preprocess_headtail_images_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PreprocessHeadtailImagesWorkflow,
 )
@@ -127,6 +133,7 @@ from fishsense_data_processing_workflow_worker.workflows.validate_laser_labels_f
 CPU_WORKFLOWS: Final[Sequence[type]] = (
     ComputeLaserDepthsWorkflow,
     DiveFrameClusteringWorkflow,
+    EvaluateLaserAutoAcceptWorkflow,
     MeasureFishWorkflow,
     PerformLaserCalibrationWorkflow,
     PreprocessHeadtailImagesWorkflow,
@@ -139,6 +146,7 @@ CPU_WORKFLOWS: Final[Sequence[type]] = (
 CPU_ACTIVITIES: Final[Sequence[Callable[..., Any]]] = (
     cluster_dive_frames,
     compute_laser_depths_activity,
+    evaluate_laser_auto_accept_activity,
     measure_fish_activity,
     perform_laser_calibration_activity,
     preprocess_headtail_image,

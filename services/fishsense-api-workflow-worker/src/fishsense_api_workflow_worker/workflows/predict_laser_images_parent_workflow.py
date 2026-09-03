@@ -32,7 +32,11 @@ the NAS and then hanging a child on an unserved queue for two hours.
 from datetime import timedelta
 from typing import List
 
-from fishsense_shared import LaserPredictionResult, PredictLaserImagesInput
+from fishsense_shared import (
+    LaserAutoAcceptSummary,
+    LaserPredictionResult,
+    PredictLaserImagesInput,
+)
 from temporalio import workflow
 
 with workflow.unsafe.imports_passed_through():
@@ -124,6 +128,47 @@ class PredictLaserImagesParentWorkflow:
             # dive on its own afterwards.
             await _dispatch.run_sdk_activity(
                 "backfill_laser_predictions_for_dive_activity", dive_id
+            )
+
+        if results:
+            # Judge the dive's predictions against its own laser line and
+            # record which may skip human review. Appended at the very end
+            # deliberately: a workflow's command sequence is its replay
+            # contract, and adding commands after the existing ones leaves
+            # runs that were in flight at deploy replaying cleanly. Nothing in
+            # this run consumes the verdict — laser populate does, on the next
+            # firing of the stage-0.1 parent — so there is no reason to insert
+            # it earlier and every reason not to.
+            #
+            # CPU queue, not the GPU one that just produced the predictions:
+            # it is a line fit, and holding a contended NRP card through it
+            # would be waste. That means waking the CPU Deployment, which is
+            # cheap and idempotent, and usually already up for the preprocess
+            # stages.
+            await _dispatch.wake_data_worker()
+            summary: LaserAutoAcceptSummary = await _dispatch.dispatch_child(
+                "EvaluateLaserAutoAcceptWorkflow",
+                dive_id,
+                child_id=f"auto-accept-laser-{dive_id}",
+                execution_timeout=timedelta(minutes=30),
+                result_type=LaserAutoAcceptSummary,
+            )
+            # Logged at the parent because the per-dive verdict mix is the
+            # monitoring signal for this stage — cheaper and faster than the
+            # audit sample, and it needs no human labels. Watch BOTH tails: a
+            # dive routing far more frames to humans than usual is a detector
+            # or an environment that changed, and a suspiciously low flag rate
+            # in a new environment is the signature of the one failure
+            # consensus cannot self-detect.
+            workflow.logger.info(
+                "auto-accept gate dive_id=%d eligible=%s reason=%s "
+                "auto_accepted=%d/%d verdicts=%s",
+                dive_id,
+                summary.eligible,
+                summary.reason,
+                summary.auto_accepted,
+                sum(summary.verdicts.values()),
+                summary.verdicts,
             )
 
         return inputs.dive_id

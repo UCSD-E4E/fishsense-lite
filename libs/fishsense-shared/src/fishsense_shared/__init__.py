@@ -32,6 +32,7 @@ from fishsense_shared.ingest_contracts import (
 from fishsense_shared.preprocess_contracts import (
     ClusterDiveFrameImage,
     ClusterDiveFramesInput,
+    LaserAutoAcceptSummary,
     LaserPredictionResult,
     PredictLaserImage,
     PredictLaserImagesInput,
@@ -74,6 +75,7 @@ __all__ = [
     "ClusterDiveFrameImage",
     "ClusterDiveFramesInput",
     "ExceptionGroupErrorLogging",
+    "LaserAutoAcceptSummary",
     "LaserPredictionResult",
     "PredictLaserImage",
     "PredictLaserImagesInput",
