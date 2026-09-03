@@ -86,3 +86,77 @@ async def test_get_returns_empty_list_when_none(session):
     await session.flush()
 
     assert await get_laser_predictions_for_dive(1, session=session) == []
+
+
+# --- auto-accept verdict ------------------------------------------------------
+#
+# The gate runs on the data-worker (numpy + the RANSAC kernel live there) and
+# the laser populate step on the api-worker consumes the answer, so the verdict
+# has to survive a round trip through the store. These fields are what carries
+# it. `line_offset_px` / `line_position_z` are recorded but never re-decided on
+# — the same role `LaserDepth.residual_m` plays — so an auto-accepted frame can
+# be re-examined by margin later, not just by outcome.
+
+
+async def test_put_round_trips_the_auto_accept_verdict(session):
+    from fishsense_api.controllers.laser_prediction_controller import (
+        put_laser_prediction,
+    )
+    from fishsense_api.models.laser_prediction import LaserPrediction
+
+    session.add_all([_dive(1), _image(11, 1)])
+    await session.flush()
+
+    prediction = _prediction()
+    prediction.auto_accept = True
+    prediction.gate_verdict = "auto_accepted"
+    prediction.line_offset_px = 1.25
+    prediction.line_position_z = 0.8
+    pid = await put_laser_prediction(11, prediction, session=session)
+
+    row = await session.get(LaserPrediction, pid)
+    assert row.auto_accept is True
+    assert row.gate_verdict == "auto_accepted"
+    assert (row.line_offset_px, row.line_position_z) == (1.25, 0.8)
+
+
+async def test_auto_accept_defaults_to_false_for_an_ungated_prediction(session):
+    """A prediction the gate has not seen must never read as auto-acceptable.
+    The populate step keys on this, so the default is the safe direction."""
+    from fishsense_api.controllers.laser_prediction_controller import (
+        put_laser_prediction,
+    )
+    from fishsense_api.models.laser_prediction import LaserPrediction
+
+    session.add_all([_dive(1), _image(11, 1)])
+    await session.flush()
+
+    pid = await put_laser_prediction(11, _prediction(), session=session)
+    row = await session.get(LaserPrediction, pid)
+    assert row.auto_accept is False
+    assert row.gate_verdict is None
+
+
+async def test_re_prediction_clears_a_stale_verdict(session):
+    """Re-predicting an image invalidates the verdict that was computed from
+    the old dot — the gate has to run again over the new prediction set. The
+    upsert must not leave the previous `auto_accept=True` standing beside a
+    coordinate it was never computed from."""
+    from fishsense_api.controllers.laser_prediction_controller import (
+        put_laser_prediction,
+    )
+    from fishsense_api.models.laser_prediction import LaserPrediction
+
+    session.add_all([_dive(1), _image(11, 1)])
+    await session.flush()
+
+    gated = _prediction(x=100.0, y=200.0)
+    gated.auto_accept = True
+    gated.gate_verdict = "auto_accepted"
+    await put_laser_prediction(11, gated, session=session)
+
+    pid = await put_laser_prediction(11, _prediction(x=700.0, y=900.0), session=session)
+    row = await session.get(LaserPrediction, pid)
+    assert (row.x, row.y) == (700.0, 900.0)
+    assert row.auto_accept is False
+    assert row.gate_verdict is None
