@@ -373,17 +373,27 @@ def _cohort_selectors() -> list:
     `test_canonical_only_pipeline_work.py`: a selector added later is covered
     by this the day it lands, instead of the day someone remembers to add it.
     """
+    import importlib
     import inspect
+    import pkgutil
 
-    from fishsense_api.controllers import (
-        dive_cohort_controller,
-    )
+    import fishsense_api.controllers as controllers_pkg
 
-    return sorted(
-        (name, fn)
-        for name, fn in inspect.getmembers(dive_cohort_controller, inspect.iscoroutinefunction)
-        if name.startswith("select_next_for_") or name.startswith("select_dives_")
-    )
+    # Scan the whole controllers package, not one named module. Selectors were
+    # split across two modules the moment `dive_cohort_controller` passed 1000
+    # lines, and a discovery keyed on a single module name would have silently
+    # dropped every moved selector from Postgres coverage — the exact class of
+    # regression this file exists to prevent.
+    found = {}
+    for module_info in pkgutil.iter_modules(controllers_pkg.__path__):
+        module = importlib.import_module(
+            f"{controllers_pkg.__name__}.{module_info.name}"
+        )
+        for name, fn in inspect.getmembers(module, inspect.iscoroutinefunction):
+            if name.startswith("select_next_for_") or name.startswith("select_dives_"):
+                found[name] = fn
+    assert found, "no cohort selectors discovered — has the package layout changed?"
+    return sorted(found.items())
 
 
 async def _seed_multi_valued(session, *, derived_rows: bool = True) -> None:
@@ -535,8 +545,8 @@ def test_laser_depth_cohort_drains_with_duplicate_labels_on_postgres():
 
     async def _exercise(session):
         from fishsense_api.controllers.dive_cohort_controller import (
-            select_next_for_laser_depth,
-        )
+        select_next_for_laser_depth,
+    )
         from fishsense_api.controllers.laser_depth_controller import (
             put_laser_depth,
         )

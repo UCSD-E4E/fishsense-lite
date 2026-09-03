@@ -9,6 +9,19 @@ import fishsense_api.controllers.camera_controller
 # and every selector request tries to coerce "select-next" into an int path
 # param and 422s. Guarded by test_dive_route_disambiguation.py.
 import fishsense_api.controllers.dive_cohort_controller
+
+# NOT alphabetical, deliberately: placed with `dive_cohort_controller`, before
+# `dive_controller`, because that is the convention for every module holding
+# `/dives/...` collection routes.
+#
+# Measured, so the comment does not overstate it: the catch-all compiles to
+# `^/api/v1/dives/(?P<dive_id>[^/]+)$` — anchored, one segment, no trailing
+# slash — so it cannot shadow these routes, which have two segments and a
+# trailing slash. Reordering this import does *not* break them today, and
+# `test_dive_route_disambiguation` passes either way. The ordering is kept so
+# that a selector added here later as a bare single segment (the shape
+# `/dives/needing-*-population/` nearly is) stays safe by construction.
+import fishsense_api.controllers.dive_prediction_cohort_controller
 import fishsense_api.controllers.dive_controller
 import fishsense_api.controllers.dive_slate_controller
 import fishsense_api.controllers.fish_controller

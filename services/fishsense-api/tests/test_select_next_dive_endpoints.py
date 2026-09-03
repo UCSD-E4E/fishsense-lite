@@ -1333,6 +1333,8 @@ async def test_slate_preprocessing_excludes_dive_when_sentinel_coexists_with_rea
 async def test_slate_prediction_requires_marker_and_no_prediction_or_label(session):
     from fishsense_api.controllers.dive_cohort_controller import (
         SLATE_CONTENT_MARKER,
+    )
+    from fishsense_api.controllers.dive_prediction_cohort_controller import (
         select_next_for_slate_prediction,
     )
     from fishsense_api.models.slate_prediction import (
@@ -1370,6 +1372,8 @@ async def test_slate_prediction_placeholder_label_still_needs_prediction(session
     prediction cohort keys on `completed`, not on project_id."""
     from fishsense_api.controllers.dive_cohort_controller import (
         SLATE_CONTENT_MARKER,
+    )
+    from fishsense_api.controllers.dive_prediction_cohort_controller import (
         select_next_for_slate_prediction,
     )
     from fishsense_api.models.dive_slate_label import (
@@ -1394,6 +1398,8 @@ async def test_slate_prediction_placeholder_label_still_needs_prediction(session
 async def test_slate_prediction_excludes_completed_but_reenters_when_superseded(session):
     from fishsense_api.controllers.dive_cohort_controller import (
         SLATE_CONTENT_MARKER,
+    )
+    from fishsense_api.controllers.dive_prediction_cohort_controller import (
         select_next_for_slate_prediction,
     )
     from fishsense_api.models.dive_slate_label import (
@@ -1999,7 +2005,7 @@ def _laser_prediction(image_id: int):
 
 
 async def test_laser_prediction_selects_dive_with_unpredicted_unlabeled_image(session):
-    from fishsense_api.controllers.dive_cohort_controller import (
+    from fishsense_api.controllers.dive_prediction_cohort_controller import (
         select_next_for_laser_prediction,
     )
 
@@ -2017,7 +2023,7 @@ async def test_laser_prediction_selects_dive_with_unpredicted_unlabeled_image(se
 
 
 async def test_laser_prediction_none_when_all_predicted_or_labeled(session):
-    from fishsense_api.controllers.dive_cohort_controller import (
+    from fishsense_api.controllers.dive_prediction_cohort_controller import (
         select_next_for_laser_prediction,
     )
 
@@ -2032,7 +2038,7 @@ async def test_laser_prediction_none_when_all_predicted_or_labeled(session):
 async def test_laser_prediction_sentinel_label_does_not_exclude(session):
     """A NULL-project sentinel LaserLabel doesn't count as labeled — the
     image still needs a prediction."""
-    from fishsense_api.controllers.dive_cohort_controller import (
+    from fishsense_api.controllers.dive_prediction_cohort_controller import (
         select_next_for_laser_prediction,
     )
 
@@ -2050,7 +2056,7 @@ async def test_laser_prediction_seeded_placeholder_does_not_exclude(session):
     needs a prediction. This is the dive-84 case: a dive populated before
     the detector shipped has project-id-bearing incomplete rows that must
     not starve the predict cohort."""
-    from fishsense_api.controllers.dive_cohort_controller import (
+    from fishsense_api.controllers.dive_prediction_cohort_controller import (
         select_next_for_laser_prediction,
     )
 
@@ -2068,7 +2074,7 @@ async def test_laser_prediction_superseded_completed_label_does_not_exclude(sess
     invalidated label — the image has no live human label and still needs a
     prediction. Regression for dive 60's straggler 4747, whose only completed
     row was superseded."""
-    from fishsense_api.controllers.dive_cohort_controller import (
+    from fishsense_api.controllers.dive_prediction_cohort_controller import (
         select_next_for_laser_prediction,
     )
 
@@ -2082,7 +2088,7 @@ async def test_laser_prediction_superseded_completed_label_does_not_exclude(sess
 
 async def test_laser_prediction_live_completed_label_excludes(session):
     """A completed, non-superseded label is a live human label — excluded."""
-    from fishsense_api.controllers.dive_cohort_controller import (
+    from fishsense_api.controllers.dive_prediction_cohort_controller import (
         select_next_for_laser_prediction,
     )
 

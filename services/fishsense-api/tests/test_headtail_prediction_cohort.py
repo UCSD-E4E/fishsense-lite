@@ -60,7 +60,7 @@ def _prediction(pred_id, image_id, *, version=None, laser_label_id=None):
 
 
 async def _select(session):
-    from fishsense_api.controllers.dive_cohort_controller import (
+    from fishsense_api.controllers.dive_prediction_cohort_controller import (
         select_next_for_headtail_prediction,
     )
 
