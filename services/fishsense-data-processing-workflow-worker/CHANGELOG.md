@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.19.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.18.2...fishsense-data-processing-workflow-worker-v2.19.0) (2026-09-03)
+
+
+### Features
+
+* **laser:** skip human review of laser predictions the dive's own line agrees with ([#693](https://github.com/UCSD-E4E/fishsense-lite/issues/693)) ([c388e21](https://github.com/UCSD-E4E/fishsense-lite/commit/c388e21444c39b696ccd209c515f24f42ce4e1da))
+
 ## [2.18.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.18.1...fishsense-data-processing-workflow-worker-v2.18.2) (2026-09-02)
 
 
