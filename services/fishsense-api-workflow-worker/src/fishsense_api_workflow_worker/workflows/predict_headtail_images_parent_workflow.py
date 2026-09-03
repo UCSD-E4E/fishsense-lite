@@ -97,5 +97,18 @@ class PredictHeadtailImagesParentWorkflow:
             await _dispatch.run_sdk_activity(
                 "persist_headtail_predictions_activity", results
             )
+            # Populate seeds a task's pre-annotation once, at import time, and
+            # dedupes by URL — so for a dive whose tasks already exist,
+            # persisting alone changes the database and nothing the labeler
+            # sees. That is most of the corpus: 3,147 still-unlabelled tasks
+            # across 19 dives were imported long before any prediction existed.
+            # Attaching to the existing tasks is what makes a prediction
+            # visible. Last on purpose: it is the only step whose failure
+            # leaves nothing to clean up, and
+            # `BackfillHeadtailPredictionsWorkflow` can repair a dive
+            # afterwards on its own.
+            await _dispatch.run_sdk_activity(
+                "backfill_headtail_predictions_for_dive_activity", dive_id
+            )
 
         return inputs.dive_id

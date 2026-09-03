@@ -115,6 +115,9 @@ from fishsense_api_workflow_worker.activities.resolve_headtail_predict_inputs_ac
 from fishsense_api_workflow_worker.activities.persist_headtail_predictions_activity import (  # noqa: E501  pylint: disable=line-too-long
     persist_headtail_predictions_activity,
 )
+from fishsense_api_workflow_worker.activities.backfill_headtail_predictions_activity import (  # noqa: E501  pylint: disable=line-too-long
+    backfill_headtail_predictions_for_dive_activity,
+)
 from fishsense_api_workflow_worker.activities.select_dives_needing_headtail_population_activity import (  # noqa: E501  pylint: disable=line-too-long
     select_dives_needing_headtail_population_activity,
 )
@@ -262,6 +265,9 @@ from fishsense_api_workflow_worker.workflows.preprocess_species_images_parent_wo
 )
 from fishsense_api_workflow_worker.workflows.preprocess_headtail_images_parent_workflow import (  # pylint: disable=line-too-long
     PreprocessHeadtailImagesParentWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.backfill_headtail_predictions_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    BackfillHeadtailPredictionsWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.populate_headtail_label_studio_project_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PopulateHeadTailLabelStudioProjectParentWorkflow,
@@ -762,6 +768,7 @@ async def main():
                 PredictHeadtailImagesParentWorkflow,
                 PredictLaserImagesParentWorkflow,
                 PredictSlateImagesParentWorkflow,
+                BackfillHeadtailPredictionsWorkflow,
                 BackfillLaserPredictionsWorkflow,
                 BackfillSlatePredictionsWorkflow,
                 PreprocessLaserImagesParentWorkflow,
@@ -811,6 +818,7 @@ async def main():
                 persist_laser_predictions_activity,
                 resolve_slate_predict_inputs_activity,
                 persist_slate_predictions_activity,
+                backfill_headtail_predictions_for_dive_activity,
                 backfill_laser_predictions_for_dive_activity,
                 backfill_slate_predictions_for_dive_activity,
                 resolve_species_preprocess_inputs_activity,
