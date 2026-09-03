@@ -424,7 +424,7 @@ class LabelClient(ClientBase):
         json = response.json()
         return [LaserPrediction.model_validate(row) for row in (json or [])]
 
-    async def put_head_tail_prediction(
+    async def put_headtail_prediction(
         self, image_id: int, prediction: HeadTailPrediction
     ) -> int:
         """Upsert the model's head/tail prediction for an image.
@@ -443,7 +443,7 @@ class LabelClient(ClientBase):
         response.raise_for_status()
         return response.json()
 
-    async def get_head_tail_prediction(
+    async def get_headtail_prediction(
         self, image_id: int
     ) -> Optional[HeadTailPrediction]:
         """Get the model's head/tail prediction for one image, if any.
@@ -459,7 +459,7 @@ class LabelClient(ClientBase):
         json = response.json()
         return HeadTailPrediction.model_validate(json) if json else None
 
-    async def get_head_tail_predictions(self, dive_id: int) -> List[HeadTailPrediction]:
+    async def get_headtail_predictions(self, dive_id: int) -> List[HeadTailPrediction]:
         """Get every model head/tail prediction for a dive's images.
 
         Args:

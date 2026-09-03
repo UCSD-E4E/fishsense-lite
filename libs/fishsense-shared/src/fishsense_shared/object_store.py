@@ -38,8 +38,17 @@ from botocore.exceptions import ClientError
 RAW_PREFIX = "raw"
 SLATE_PDF_PREFIX = "slate_pdf"
 # Model weights too large to ship in a wheel or an image layer. Durable, not
-# scratch — nothing deletes from here. See .
+# scratch — nothing deletes from here. See `model_key`.
 MODEL_PREFIX = "models"
+
+# The per-stage JPEG folders, named here because they are part of the same
+# cross-worker key contract as the prefixes above: populate embeds them in
+# `s3://` task URIs and the data-worker writes (and now, for head/tail, reads)
+# them. Spelled once so a stage cannot disagree with the URI a labeler follows.
+LASER_JPEG_FOLDER = "preprocess_jpeg"
+SPECIES_JPEG_FOLDER = "preprocess_groups_jpeg"
+HEADTAIL_JPEG_FOLDER = "preprocess_headtail_jpeg"
+SLATE_JPEG_FOLDER = "preprocess_slate_images_jpeg"
 
 # botocore surfaces a missing key as one of these `Error.Code` values
 # depending on whether the call was HeadObject (404/NotFound) or
@@ -47,10 +56,14 @@ MODEL_PREFIX = "models"
 NOT_FOUND_CODES = frozenset({"404", "NoSuchKey", "NotFound"})
 
 __all__ = [
+    "HEADTAIL_JPEG_FOLDER",
+    "LASER_JPEG_FOLDER",
     "MODEL_PREFIX",
     "NOT_FOUND_CODES",
     "RAW_PREFIX",
+    "SLATE_JPEG_FOLDER",
     "SLATE_PDF_PREFIX",
+    "SPECIES_JPEG_FOLDER",
     "BaseObjectStoreClient",
     "build_s3_client",
     "jpeg_key",
