@@ -34,6 +34,9 @@ from fishsense_api_workflow_worker.activities.list_dive_folder_activity import (
 from fishsense_api_workflow_worker.activities.preflight_ingest_activity import (
     preflight_ingest_activity,
 )
+from fishsense_api_workflow_worker.activities.apply_laser_auto_accept_activity import (  # pylint: disable=line-too-long
+    apply_laser_auto_accept_for_dive_activity,
+)
 from fishsense_api_workflow_worker.activities.backfill_laser_predictions_activity import (  # pylint: disable=line-too-long
     backfill_laser_predictions_for_dive_activity,
 )
@@ -754,6 +757,7 @@ async def main():
                 resolve_slate_predict_inputs_activity,
                 persist_slate_predictions_activity,
                 backfill_laser_predictions_for_dive_activity,
+                apply_laser_auto_accept_for_dive_activity,
                 backfill_slate_predictions_for_dive_activity,
                 resolve_species_preprocess_inputs_activity,
                 resolve_headtail_preprocess_inputs_activity,

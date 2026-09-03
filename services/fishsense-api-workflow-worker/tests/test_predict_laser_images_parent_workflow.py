@@ -52,6 +52,9 @@ from fishsense_api_workflow_worker.workflows.predict_laser_images_parent_workflo
 _K = [[1000.0, 0.0, 960.0], [0.0, 1000.0, 540.0], [0.0, 0.0, 1.0]]
 _D = [-0.1, 0.05, 0.0, 0.0, 0.0]
 
+# Dive id the stub gate refuses (no consensus, nothing auto-accepted).
+_REFUSED_DIVE_ID = 99
+
 
 @workflow.defn(name="PredictLaserImagesWorkflow")
 class _StubChild:
@@ -85,18 +88,27 @@ class _StubGate:
             args=(workflow.info().workflow_id, dive_id),
             schedule_to_close_timeout=timedelta(seconds=5),
         )
+        # Dive `_REFUSED_DIVE_ID` stands for a gate that cleared nothing — a
+        # dive whose predictions did not agree. Keyed on the id rather than on
+        # module state so the stub stays deterministic under the workflow
+        # sandbox and needs no second registration under the same name.
+        refused = dive_id == _REFUSED_DIVE_ID
         return LaserAutoAcceptSummary(
             dive_id=dive_id,
-            eligible=True,
+            eligible=not refused,
+            reason="weak_consensus" if refused else None,
             n_points=2,
-            auto_accepted=1,
-            verdicts={"auto_accepted": 1, "off_line": 1},
+            auto_accepted=0 if refused else 1,
+            verdicts={"dive_ineligible": 2} if refused else {
+                "auto_accepted": 1,
+                "off_line": 1,
+            },
         )
 
 
 def _stubs(
     dive_id, images, child_ids, persisted, staged=None, mode=MODE_GPU,
-    backfilled=None, gate_ids=None,
+    backfilled=None, gate_ids=None, applied=None,
 ):
     @activity.defn(name="select_next_high_priority_dive_for_laser_prediction_activity")
     async def selector() -> int | None:
@@ -151,6 +163,13 @@ def _stubs(
     async def record_gate(workflow_id: str, d: int) -> None:
         gate_sink.append(workflow_id)
 
+    apply_sink = applied if applied is not None else []
+
+    @activity.defn(name="apply_laser_auto_accept_for_dive_activity")
+    async def apply_auto_accept(d: int) -> int:
+        apply_sink.append(d)
+        return len(apply_sink)
+
     return [
         selector,
         resolver,
@@ -162,15 +181,17 @@ def _stubs(
         record,
         ensure_cpu,
         record_gate,
+        apply_auto_accept,
     ]
 
 
 async def _run(
     env, dive_id, images, child_ids, persisted, staged=None, mode=MODE_GPU,
-    backfilled=None, gate_ids=None,
+    backfilled=None, gate_ids=None, applied=None,
 ):
     activities = _stubs(
-        dive_id, images, child_ids, persisted, staged, mode, backfilled, gate_ids
+        dive_id, images, child_ids, persisted, staged, mode, backfilled, gate_ids,
+        applied,
     )
     # Two workers: the parent (+ its activities) on the parent queue, and the
     # stub child on the data-processing GPU queue the parent dispatches to —
@@ -349,3 +370,41 @@ async def test_gate_is_skipped_when_the_dive_had_nothing_to_predict():
         result = await _run(env, 78, [], child_ids, persisted, gate_ids=gate_ids)
     assert result == 78
     assert not gate_ids
+
+
+@pytest.mark.asyncio
+async def test_cleared_verdicts_are_applied_to_tasks_that_already_exist():
+    """Populate imports a task once, so a dive still being labeled would get a
+    verdict in the database and nothing a labeler sees. This is the step that
+    closes that gap — the same one #493 closed for slate predictions."""
+    child_ids: List[str] = []
+    persisted: List = []
+    gate_ids: List[str] = []
+    applied: List[int] = []
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        result = await _run(
+            env, 77, [(1, "c1"), (2, "c2")], child_ids, persisted,
+            gate_ids=gate_ids, applied=applied,
+        )
+    assert result == 77
+    assert gate_ids == ["auto-accept-laser-77"]
+    assert applied == [77]
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_applied_when_the_gate_cleared_nothing():
+    """A refused dive has no verdicts to apply. Skipping saves a pass over
+    every task in Label Studio for a dive that, by definition, is the one whose
+    predictions could not be trusted."""
+    child_ids: List[str] = []
+    persisted: List = []
+    gate_ids: List[str] = []
+    applied: List[int] = []
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        result = await _run(
+            env, _REFUSED_DIVE_ID, [(1, "c1")], child_ids, persisted,
+            gate_ids=gate_ids, applied=applied,
+        )
+    assert result == _REFUSED_DIVE_ID
+    assert gate_ids == [f"auto-accept-laser-{_REFUSED_DIVE_ID}"]
+    assert not applied
