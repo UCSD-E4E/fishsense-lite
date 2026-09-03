@@ -2,6 +2,14 @@
 #   `== True` / `!= None` are required here, not sloppy: SQLAlchemy overloads
 #   the comparison operators to build SQL expressions, and `is True` / `is not
 #   None` would evaluate to a Python bool and silently drop the predicate.
+# pylint: disable=too-many-lines
+#   This module has now grown past 1000 lines itself — the same threshold that
+#   caused it to be split out of `dive_controller`. It is due the same
+#   treatment (the prediction-stage selectors are the natural seam), but that
+#   is a move of ~10 endpoints and belongs in its own change: any new module
+#   must be imported BEFORE `dive_controller` in `controllers/__init__.py` or
+#   every `/dives/select-next/...` poll 422s in prod while the unit tests stay
+#   green. Suppressed rather than done badly at the end of a feature.
 """Cohort selectors — which dive each pipeline stage should work on next.
 
 Split out of `dive_controller` because that module had grown past 1000 lines
@@ -32,7 +40,11 @@ from sqlalchemy.orm import aliased
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from fishsense_shared import LASER_PREDICTOR_VERSION, taxonomy
+from fishsense_shared import (
+    HEADTAIL_PREDICTOR_VERSION,
+    LASER_PREDICTOR_VERSION,
+    taxonomy,
+)
 
 from fishsense_api.database import get_async_session
 from fishsense_api.models.data_source import DataSource
@@ -43,6 +55,7 @@ from fishsense_api.models.dive_frame_cluster import (
 )
 from fishsense_api.models.dive_slate_label import DiveSlateLabel
 from fishsense_api.models.head_tail_label import HeadTailLabel
+from fishsense_api.models.head_tail_prediction import HeadTailPrediction
 from fishsense_api.models.image import Image
 from fishsense_api.models.laser_depth import LaserDepth
 from fishsense_api.models.laser_extrinsics import LaserExtrinsics
@@ -400,6 +413,110 @@ async def select_next_for_laser_prediction(
                 and_(dive_is_still_being_labeled, has_image_with_a_stale_prediction),
             )
         )
+        .order_by(Dive.id)
+        .limit(1)
+    )
+    return (await session.exec(query)).first()
+
+
+@app.get("/api/v1/dives/select-next/headtail-prediction/")
+async def select_next_for_headtail_prediction(
+    session: AsyncSession = Depends(get_async_session),
+) -> int | None:
+    """Model-assisted head/tail labeling: HIGH-priority + at least one
+    canonical image with a *valid* `LaserLabel` that still needs predicting.
+
+    The laser dot is not just a filter here, it is the crop centre — the
+    predictor looks only at a window around it rather than searching the frame
+    — so an image without a live dot has nothing for this stage to do.
+
+    An image needs a prediction when it has no live human `HeadTailLabel` and
+    either has no `HeadTailPrediction` at all, or has one that is *stale*.
+    Stale has two forms, and both are mismatch rather than absence, which is
+    what makes improving the stage or cleaning up lasers an ordinary drainable
+    cohort instead of a hand-run backfill:
+
+    * the row came from an older `HEADTAIL_PREDICTOR_VERSION`
+      (`fishsense_shared.headtail_predictor` explains why the version is a
+      hand-bumped literal and not a checkpoint hash); or
+    * the row names a `laser_label_id` that has since been superseded — the
+      dot that chose the fish was dead-lettered, so the mask may be of the
+      wrong thing entirely. Same provenance idea as `LaserDepth`.
+
+    `IS DISTINCT FROM`, not `!=`: pre-versioning rows are NULL and `!=` would
+    answer NULL, selecting nothing.
+
+    "Labelled" means `completed IS TRUE AND superseded IS FALSE`. A
+    populate-seeded sentinel row is not a label, and a completed row a later
+    pass dead-lettered leaves the image with no live human work, so it
+    re-enters.
+
+    Every subquery correlates explicitly. Auto-correlation only reaches the
+    immediately enclosing SELECT, and an uncorrelated one compiles to a
+    multi-row scalar subquery that Postgres rejects while SQLite silently
+    answers with the first row — the shape that 500'd two selectors on every
+    hourly poll on 2026-08-18.
+    """
+    version = HEADTAIL_PREDICTOR_VERSION
+
+    has_live_laser = (
+        select(LaserLabel.id)
+        .where(LaserLabel.image_id == Image.id)
+        .where(LaserLabel.completed == True)
+        .where(LaserLabel.superseded == False)
+        .where(LaserLabel.x != None)
+        .where(LaserLabel.y != None)
+        .correlate(Image)
+        .exists()
+    )
+    has_live_headtail_label = (
+        select(HeadTailLabel.id)
+        .where(HeadTailLabel.image_id == Image.id)
+        .where(HeadTailLabel.completed == True)
+        .where(HeadTailLabel.superseded == False)
+        .correlate(Image)
+        .exists()
+    )
+    has_any_prediction = (
+        select(HeadTailPrediction.id)
+        .where(HeadTailPrediction.image_id == Image.id)
+        .correlate(Image)
+        .exists()
+    )
+    laser_behind_prediction_was_superseded = (
+        select(LaserLabel.id)
+        .where(LaserLabel.id == HeadTailPrediction.laser_label_id)
+        .where(LaserLabel.superseded == True)
+        .correlate(HeadTailPrediction)
+        .exists()
+    )
+    has_stale_prediction = (
+        select(HeadTailPrediction.id)
+        .where(HeadTailPrediction.image_id == Image.id)
+        .where(
+            or_(
+                # pylint: disable-next=no-member
+                HeadTailPrediction.predictor_version.is_distinct_from(version),
+                laser_behind_prediction_was_superseded,
+            )
+        )
+        .correlate(Image)
+        .exists()
+    )
+    has_image_needing_prediction = (
+        select(Image.id)
+        .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
+        .where(has_live_laser)
+        .where(~has_live_headtail_label)
+        .where(or_(~has_any_prediction, has_stale_prediction))
+        .correlate(Dive)
+        .exists()
+    )
+    query = (
+        select(Dive.id)
+        .where(Dive.priority == Priority.HIGH)
+        .where(has_image_needing_prediction)
         .order_by(Dive.id)
         .limit(1)
     )

@@ -443,6 +443,7 @@ async def _seed_multi_valued(session, *, derived_rows: bool = True) -> None:
         return
 
     from fishsense_api.models.fish import Fish
+    from fishsense_api.models.head_tail_prediction import HeadTailPrediction
     from fishsense_api.models.laser_depth import LaserDepth
     from fishsense_api.models.measurement import Measurement
 
@@ -453,6 +454,14 @@ async def _seed_multi_valued(session, *, derived_rows: bool = True) -> None:
                    image_id=11, laser_label_id=101, laser_extrinsics_id=51),
         Measurement(id=1, length_m=0.3, image_id=11, fish_id=700,
                     laser_extrinsics_id=51),
+        # Same reason as the two rows above, for the head/tail predict cohort:
+        # its staleness clause nests a correlated EXISTS *inside* a subquery
+        # over HeadTailPrediction, so with no prediction row the inner query is
+        # never executed and a missing `.correlate()` would go unseen here.
+        # `laser_label_id` must point at one of image 11's two labels, or the
+        # nested lookup short-circuits on a NULL instead.
+        HeadTailPrediction(id=1, image_id=11, laser_label_id=101,
+                           status="predicted", predictor_version=1),
     ])
     await session.flush()
 

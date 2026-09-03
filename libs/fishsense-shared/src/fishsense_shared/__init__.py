@@ -12,6 +12,11 @@ from fishsense_shared.laser_predictor import (
     LASER_PREDICTOR_VERSION,
     laser_model_version_tag,
 )
+from fishsense_shared.headtail_predictor import (
+    HEADTAIL_CROP_HEIGHT,
+    HEADTAIL_CROP_WIDTH,
+    HEADTAIL_PREDICTOR_VERSION,
+)
 from fishsense_shared.laser_region import (
     DEFAULT_LASER_BBOX,
     LASER_REGION_POLYGON,
@@ -56,6 +61,9 @@ from fishsense_shared.temporal import (
 __all__ = [
     "IS_DOCKER",
     "DEFAULT_LASER_BBOX",
+    "HEADTAIL_CROP_HEIGHT",
+    "HEADTAIL_CROP_WIDTH",
+    "HEADTAIL_PREDICTOR_VERSION",
     "LASER_PREDICTOR_VERSION",
     "laser_model_version_tag",
     "LASER_REGION_POLYGON",
