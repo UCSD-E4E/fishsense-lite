@@ -219,7 +219,7 @@ async def dispatch_child(
         return None
 
 
-async def run_sdk_activity(activity_name: str, arg: Any) -> None:
+async def run_sdk_activity(activity_name: str, arg: Any) -> Any:
     """Run a single-argument SDK write-back step (15 min, fail-fast).
 
     Covers the predict parents' post-child work: persisting the child's
@@ -228,8 +228,12 @@ async def run_sdk_activity(activity_name: str, arg: Any) -> None:
     (`backfill_slate_predictions_for_dive_activity`, arg = dive_id).
     Both are idempotent, so the fail-fast policy is safe — a failure just
     means the next schedule firing redoes it.
+
+    Returns whatever the activity returned, for callers that want to log a
+    count. Most ignore it. This does not change the commands emitted, so it is
+    not a replay concern.
     """
-    await workflow.execute_activity(
+    return await workflow.execute_activity(
         activity_name,
         args=(arg,),
         schedule_to_close_timeout=timedelta(minutes=15),

@@ -109,6 +109,52 @@ managed, and these are written by the api-worker.
 all three but only warns if the GPU one does not converge, precisely so a GPU
 shortage on NRP cannot block shipping the CPU stages.
 
+## Laser auto-accept — the switch and the dark run
+
+The gate that decides which laser predictions skip human review is configured
+entirely from settings, so the two operations that matter most need no deploy.
+Every key has a default; none is required.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `laser_auto_accept.enabled` | `true` | Off = kill switch **and** dark run |
+| `laser_auto_accept.audit_sample_rate` | `0.10` | Share of cleared frames sent to a human anyway |
+| `laser_auto_accept.min_predictions` | `20` | Frames a dive needs before any may be cleared |
+| `laser_auto_accept.min_inlier_fraction` | `0.75` | How much of the dive must agree on one line |
+| `laser_auto_accept.max_perpendicular_px` | `10.0` | Distance from that line a cleared dot may sit |
+| `laser_auto_accept.max_along_line_z` | `4.0` | How far along the line, as a robust z |
+
+**`enabled = false` does not stop the gate — it stops it *acting*.** The fit
+still runs, and every verdict and margin is still written to
+`LaserPrediction`. So a week with it off measures exactly what the gate would
+have done to real dives, on current data, with no frame skipping a person.
+That makes it the right first move on a new environment, and the right move if
+something looks wrong later: nothing has to be unwound, because the verdict is
+advisory until populate reads `auto_accept`.
+
+Expect rows reading `auto_accept = false` beside `gate_verdict =
+'auto_accepted'` while it is off. That pair is the switch overruling the fit,
+not a bug.
+
+```bash
+# Stop it acting, keep measuring:
+kubectl -n e4e-fishsense set env deploy/fishsense-data-processing-workflow-worker \
+  E4EFS_LASER_AUTO_ACCEPT__ENABLED=false
+
+# Softer version — clears frames but sends every one to a human anyway:
+kubectl -n e4e-fishsense set env deploy/fishsense-data-processing-workflow-worker \
+  E4EFS_LASER_AUTO_ACCEPT__AUDIT_SAMPLE_RATE=1.0
+```
+
+**What to watch is the per-dive verdict mix**, logged by the predict parent on
+every firing. It is free, it is per dive, and it needs no human labels — where
+the audit sample is slow and a poor instrument for rare events. Alert on
+**both** tails. A dive routing far more frames to people than the ~13% pool
+baseline is a detector or an environment that changed. A suspiciously *low*
+flag rate in a new environment is the signature of the one failure per-dive
+consensus cannot self-detect: a majority of predictions wrong in a
+mutually-consistent way, with the true dots flagged as the minority.
+
 ## One-time bootstrap (per NRP namespace)
 
 1. Namespace: **`e4e-fishsense`** (already provisioned; pinned in
