@@ -17,7 +17,7 @@ The other three stay nullable: NULL means "the gate never ran on this row",
 which must stay distinguishable from a gate that ran and declined.
 
 Revision ID: c4f8a2e60b17
-Revises: e9c1a7b40d53
+Revises: d81b6c4a5f27
 Create Date: 2026-09-03 00:00:00.000000
 
 """
@@ -31,7 +31,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "c4f8a2e60b17"
-down_revision: Union[str, Sequence[str], None] = "e9c1a7b40d53"
+down_revision: Union[str, Sequence[str], None] = "d81b6c4a5f27"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
