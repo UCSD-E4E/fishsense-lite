@@ -88,11 +88,11 @@ against the same human labels:
 | Fishial, laser tile | 51/80 | 4.6% | 10.7% | 11.3% | 18/80 = 22.5% | 1.7 | CPU |
 | SAM3, full frame | 44/80 | 1.9% | 9.7% | 6.3% | 18/80 = 22.5% | 0.9 | GPU |
 | SAM3, tiled (~20 tiles) | 58/80 | 1.4% | 9.6% | 6.0% | 27/80 = 33.8% | 11.3 | GPU |
-| **SAM3, laser crop** | **60/80** | **1.4%** | 10.2% | 6.0% | **28/80 = 35.0%** | **0.6** | GPU |
+| **SAM3, laser crop** | **62/80** | **1.3%** | 9.2% | 6.4% | **35.0–51.4%** | **0.5** | GPU |
 
 "Usable" is the product metric — a pre-annotation within 5% of the labeler's
 own length, per *labelled image*, not per prediction. **SAM3 on a laser-centred
-2200×1650 crop wins on every axis at once**, including cost: 47% more usable
+1800×1350 crop wins on every axis at once**, including cost: 47% more usable
 predictions than the Fishial full-frame design this plan originally assumed,
 and the cheapest option measured.
 
@@ -119,6 +119,38 @@ all.
 
 **Note the landscape-only bug** (`fish-detection-labeling.md` §0.5): while it
 mattered for Fishial tiling, the chosen design crops 4:3 and is unaffected.
+
+### 0.2c Crop size: tuned, then validated on held-out frames
+
+The window was tuned against the same human labels, on the 80-frame set, and
+then the candidates were re-run on **70 frames from 63 other dives with zero
+overlap**. Both numbers are given because the difference between them is the
+point:
+
+| crop | scale | tuning (n=80) | **held-out (n=70)** |
+|---|---|---|---|
+| 1000×750 | 1.01 | 30.0% | — |
+| 1400×1050 | 0.72 | 36.2% | 47.1% |
+| **1800×1350** | 0.56 | 35.0% | **51.4%** |
+| 2200×1650 | 0.46 | 35.0% | 45.7% |
+| 3000×2250 | 0.34 | **38.8%** | 38.6% *(worst)* |
+
+**3000×2250 topped the tuning set and came last on held-out.** With ~5
+candidates at n=80 and a standard error near 5 points, the tuning "winner" was
+noise, and picking it would have shipped the worst option. That is the entire
+reason the held-out set was rectified before the sweep ran rather than after.
+
+**1800×1350** is the only size that looks good on both — best detection rate on
+the tuning set (62/80), best usable rate and best fork error on held-out — and
+it sits where the theory puts it, between two failure modes that are visible in
+the table. Too small and the crop cuts the fish: 1000×750 contains both human
+keypoints for only 90% of frames, and its fork error is the worst measured
+(13.1%). Too large and resolution is given back: 3000×2250 finds the fewest
+fish (53/70).
+
+Read the choice as "anywhere from 1400 to 2200 is fine, and 1800 is the middle
+of that plateau" rather than as a precise optimum. Snout error is flat at
+1.3–1.7% across every size — it is insensitive to this parameter entirely.
 
 ### 0.3 The laser gate is load-bearing
 
@@ -170,10 +202,8 @@ or site not represented in the 151 dives sampled.
 **Limits of the §0.2b backend comparison specifically.** It is **n=80**, so the
 usable-rate differences carry roughly ±10 points of sampling error — the
 ordering is clear and repeated across four independent measurements, but treat
-the exact percentages as indicative. Only **one crop size** (2200×1650) was
-tried, and it was chosen to match the Fishial tile rather than tuned, so the
-0.6 s/frame figure is an upper bound on cost and the 35.0% may not be the best
-available. SAM3's OOM losses were an artefact of a 6 GB laptop card and are
+the exact percentages as indicative. The crop size was tuned separately
+(§0.2c). SAM3's OOM losses were an artefact of a 6 GB laptop card and are
 excluded from the reported rates. And every number is from a *single* SAM3
 prompt, `["fish"]`; the coral-gardeners pipeline defaults to
 `["fish", "small fish"]`, which was not evaluated here.
@@ -444,7 +474,7 @@ promised. Emits each image's valid laser points **and** their label ids.
 
 ```
 download_processed_jpeg(folder, checksum)          # see §1.1
-  -> decode, then CROP 2200x1650 centred on the laser dot,
+  -> decode, then CROP 1800x1350 centred on the laser dot,
      clamped to the frame                          # §0.2b: the gate says where to look
   -> SAM3 concept prompt ["fish"] on the crop      # one inference, not a tile sweep
   -> the returned instance mask covering the dot   (else abstain)
@@ -453,9 +483,8 @@ download_processed_jpeg(folder, checksum)          # see §1.1
   -> HeadtailPredictionResult
 ```
 
-The crop window is 2200×1650 because that is what was measured; it is ~55% of
-the frame each way, so the fish arrives at roughly 2× the resolution a
-full-frame pass would give it. Clamp the origin rather than padding, so the
+The crop window is **1800×1350** (§0.2c); it is ~45% of the frame each way, so
+the fish arrives at roughly 2.2× the resolution a full-frame pass would give it. Clamp the origin rather than padding, so the
 window is always full-size and the model never sees a letterboxed edge.
 
 **Lift the keypoints back by `(ox, oy)` before returning them.** They come out
@@ -592,7 +621,7 @@ structure.
     the crop origin — so it gets its own test rather than riding on the
     integration test.
 12. Crop window clamping: a laser dot near any frame edge or corner still
-    yields a full-size 2200×1650 window inside the frame, never a padded or
+    yields a full-size 1800×1350 window inside the frame, never a padded or
     truncated one.
 13. Pure logic: laser inside instance 2 of a synthetic multi-instance mask set
     → picks 2; laser on background → `laser_off_all_fish`; nothing returned →

@@ -12,6 +12,7 @@ import fishsense_api.controllers.dive_cohort_controller
 import fishsense_api.controllers.dive_controller
 import fishsense_api.controllers.dive_slate_controller
 import fishsense_api.controllers.fish_controller
+import fishsense_api.controllers.head_tail_prediction_controller
 import fishsense_api.controllers.image_controller
 import fishsense_api.controllers.label_controller
 import fishsense_api.controllers.laser_depth_controller
