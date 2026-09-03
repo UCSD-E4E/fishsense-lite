@@ -11,6 +11,13 @@ package = false
 # this, uv refuses to resolve the conflict between path:// and git+https://.
 override-dependencies = [
     "fishsense-api-sdk",
+    # SAM3 declares `numpy>=1.26,<2`, which is stale rather than real: the
+    # upstream checkout has been exercised end to end on numpy 2.4.6, and every
+    # measurement behind the head/tail stage's backend choice was taken there.
+    # fishsense-core requires numpy>=2.3.5, so without this the data-worker
+    # cannot resolve at all. Revisit if SAM3 ever publishes a wheel with an
+    # honest pin.
+    "numpy",
 ]
 
 # Workspace-level dev group. uv's --all-groups only picks up groups defined on

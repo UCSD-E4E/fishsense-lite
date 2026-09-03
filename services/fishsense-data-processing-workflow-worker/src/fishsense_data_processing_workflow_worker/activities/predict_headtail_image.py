@@ -317,8 +317,7 @@ async def predict_headtail_image(payload):  # type: ignore[no-untyped-def]
     if not isinstance(payload, PredictHeadtailImage):
         payload = PredictHeadtailImage.model_validate(payload)
 
-    settings = _settings()
-    sam3_cfg = settings.sam3
+    sam3_cfg = _settings().sam3
     client = open_object_store_client()
 
     checkpoint = await ensure_checkpoint(
@@ -330,9 +329,7 @@ async def predict_headtail_image(payload):  # type: ignore[no-untyped-def]
     )
     segmenter = _Sam3Adapter(get_segmenter(str(checkpoint)))
 
-    jpeg = await client.download_processed_jpeg(
-        settings.headtail_predict.jpeg_folder, payload.checksum
-    )
+    jpeg = await client.download_processed_jpeg(payload.jpeg_folder, payload.checksum)
 
     result = await asyncio.to_thread(
         predict_from_jpeg,

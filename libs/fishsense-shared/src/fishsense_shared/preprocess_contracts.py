@@ -275,6 +275,11 @@ class PredictHeadtailImage(BaseModel):
     checksum: str
     laser_points: List[List[float]]
     laser_label_ids: List[int]
+    # Which JPEG prefix to read. Set by the workflow from its own
+    # `jpeg_folder`, so the physical key contract stays owned by
+    # `fishsense_shared.object_store` and the activity never hard-codes a
+    # prefix or reaches into worker config for one.
+    jpeg_folder: str = ""
 
 
 class PredictHeadtailImagesInput(BaseModel):

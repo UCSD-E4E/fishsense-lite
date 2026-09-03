@@ -12,6 +12,13 @@ dependencies = [
     "dynaconf>=3.2.11",
     "fishsense-api-sdk>=1.48.1",
     "fishsense-core[laser-detector,slate]",
+    # SAM3 (head/tail predict). Installed from git because Meta publishes no
+    # wheel; pinned to a commit rather than a branch so the stage's behaviour
+    # cannot change under `HEADTAIL_PREDICTOR_VERSION` without a visible diff.
+    # The weights are NOT vendored here — they are fetched from Garage and
+    # cached on a volume (see `checkpoint_cache`), which keeps a gated,
+    # multi-gigabyte download out of a pullable image.
+    "sam3 @ git+https://github.com/facebookresearch/sam3.git@8e451d5eb43c817b64ae7577fb7b9ae223db88a9",
     "fishsense-shared",
     "httpx>=0.28.1",
     "label-studio-sdk>=2.0.7",
