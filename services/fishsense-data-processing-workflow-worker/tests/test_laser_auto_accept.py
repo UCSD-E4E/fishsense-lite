@@ -196,8 +196,6 @@ def test_audit_rate_of_zero_accepts_everything_eligible():
 def _no_audit() -> AutoAcceptConfig:
     """Config with the audit sample disabled, so per-frame geometry tests
     aren't perturbed by a frame being randomly diverted."""
-    from dataclasses import replace
-
     return replace(DEFAULT_CONFIG, audit_sample_rate=0.0)
 
 

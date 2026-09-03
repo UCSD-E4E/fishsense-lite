@@ -1,4 +1,8 @@
 # pylint: disable=unused-argument
+# `_stubs` and `_run` take one parameter per step the parent drives, so their
+# argument counts track the workflow's command sequence by design; collapsing
+# them into a config object would hide the very thing this test pins.
+# pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
 """Workflow contract test for PredictLaserImagesParentWorkflow.
 
 Pins down:

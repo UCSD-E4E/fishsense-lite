@@ -101,4 +101,4 @@ def test_downgrade_removes_all_four(migration, engine):
     with engine.begin() as conn:
         _run(migration, conn)
         _run(migration, conn, "downgrade")
-        assert not (_NEW & set(_columns(conn)))
+        assert _NEW.isdisjoint(_columns(conn))

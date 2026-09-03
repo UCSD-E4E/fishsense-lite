@@ -6,6 +6,11 @@ set (not just the newly-predicted images), it writes the verdict back for every
 row it judged, and it never leaves a stale `auto_accept=True` standing.
 """
 
+# These tests exercise `_config_from_settings` directly: it is the whole of the
+# settings-to-config contract, and the public activity reaches it only through a
+# Temporal activity call that would need a full settings object to drive.
+# pylint: disable=protected-access
+
 from __future__ import annotations
 
 from dataclasses import replace
