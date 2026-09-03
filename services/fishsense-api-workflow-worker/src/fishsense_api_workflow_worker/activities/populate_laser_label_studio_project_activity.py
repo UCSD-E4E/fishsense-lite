@@ -69,18 +69,14 @@ def dive_laser_label(predictions) -> str:
     return _LASER_LABEL_BY_COLOR[winner]
 
 
-def _prediction_annotations(
-    prediction, laser_label: str = _DEFAULT_LASER_LABEL
-) -> list:
-    """Build the LS `predictions` list (one keypoint pre-annotation) from a
-    model `LaserPrediction`, or [] when there's nothing placeable.
+def _keypoint_result(prediction, laser_label: str) -> dict | None:
+    """The LS keypoint result item for a prediction, or None when there is
+    nothing placeable (no detection, or missing frame dims).
 
-    Label Studio keypoints are in percentages, so convert the prediction's
-    rectified pixels using its own recorded frame dims. Skips a prediction
-    with no detection (x/y None) or missing dims.
+    Shared by the pre-annotation path and the auto-accept path so the two can
+    never disagree about where the dot is — the only difference between them
+    is which list the item ends up in.
     """
-    if prediction is None:
-        return []
     x, y, width, height = (
         prediction.x,
         prediction.y,
@@ -88,28 +84,66 @@ def _prediction_annotations(
         prediction.height,
     )
     if x is None or y is None or not width or not height:
+        return None
+    return {
+        "from_name": _KEYPOINT_FROM_NAME,
+        "to_name": _KEYPOINT_TO_NAME,
+        "type": "keypointlabels",
+        "original_width": width,
+        "original_height": height,
+        "image_rotation": 0,
+        "value": {
+            # Label Studio keypoints are percentages; convert from the
+            # prediction's rectified pixels using its own recorded dims.
+            "x": x / width * 100,
+            "y": y / height * 100,
+            "width": 0.5,
+            "keypointlabels": [laser_label],
+        },
+    }
+
+
+def _prediction_annotations(
+    prediction, laser_label: str = _DEFAULT_LASER_LABEL
+) -> list:
+    """The LS `predictions` list (one keypoint pre-annotation) for a model
+    `LaserPrediction`, or [] when there's nothing placeable."""
+    if prediction is None:
         return []
-    return [
-        {
-            "model_version": laser_model_version_tag(),
-            "result": [
-                {
-                    "from_name": _KEYPOINT_FROM_NAME,
-                    "to_name": _KEYPOINT_TO_NAME,
-                    "type": "keypointlabels",
-                    "original_width": width,
-                    "original_height": height,
-                    "image_rotation": 0,
-                    "value": {
-                        "x": x / width * 100,
-                        "y": y / height * 100,
-                        "width": 0.5,
-                        "keypointlabels": [laser_label],
-                    },
-                }
-            ],
-        }
-    ]
+    result = _keypoint_result(prediction, laser_label)
+    if result is None:
+        return []
+    return [{"model_version": laser_model_version_tag(), "result": [result]}]
+
+
+def _auto_accepted_annotations(
+    prediction, laser_label: str = _DEFAULT_LASER_LABEL
+) -> list:
+    """The LS `annotations` list for a prediction the gate cleared, or [].
+
+    An auto-accepted frame is imported already annotated. Label Studio serves
+    only un-annotated tasks in the labeling stream, so the labeler never sees
+    it — which is the point — while the project stays a complete record of the
+    dive and the frame can still be reopened and corrected. Writing the label
+    row directly with no task at all would save the same time and give up both.
+
+    `origin: prediction` is what LS itself stamps when a labeler opens a
+    pre-annotated task and submits it unchanged. That is exactly what happened
+    here, minus the human, and it is what 93% of reviewed predictions produced
+    — so an auto-accepted annotation is indistinguishable in shape from the
+    outcome it stands in for.
+
+    Coordinates are deliberately not written to the `LaserLabel` here. The
+    hourly sync stays the single writer of label x/y, reading them back out of
+    LS exactly as it does for a human annotation, so there is one code path and
+    no way for populate and sync to disagree about the same frame.
+    """
+    if prediction is None or not getattr(prediction, "auto_accept", False):
+        return []
+    result = _keypoint_result(prediction, laser_label)
+    if result is None:
+        return []
+    return [{"result": [dict(result, origin="prediction")]}]
 
 
 def _select_unlabeled_images(
@@ -185,13 +219,21 @@ def _build_task(
     interrogating each project's `label_config` first.
     """
     url = build_image_url(PREPROCESS_FOLDER, image.checksum)
+    # A prediction the auto-accept gate cleared is imported as a completed
+    # annotation and NOT also as a prediction: a task carrying both would show
+    # a labeler a pre-annotation for work already done. The two paths are
+    # mutually exclusive, and an ungated or rejected prediction takes the
+    # original one, so nothing changes for a frame the gate has not passed.
+    annotations = _auto_accepted_annotations(prediction, laser_label)
     return {
         "data": {"image": url, "img": url},
-        "annotations": [],
+        "annotations": annotations,
         # Model-assisted labeling: seed the laser-detector's predicted dot as
         # a pre-annotation the labeler confirms/nudges. Empty when there's no
-        # prediction for this image yet.
-        "predictions": _prediction_annotations(prediction, laser_label),
+        # prediction for this image yet, or when it was auto-accepted above.
+        "predictions": (
+            [] if annotations else _prediction_annotations(prediction, laser_label)
+        ),
     }
 
 
