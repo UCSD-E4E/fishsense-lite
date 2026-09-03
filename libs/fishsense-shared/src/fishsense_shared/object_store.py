@@ -37,6 +37,9 @@ from botocore.exceptions import ClientError
 
 RAW_PREFIX = "raw"
 SLATE_PDF_PREFIX = "slate_pdf"
+# Model weights too large to ship in a wheel or an image layer. Durable, not
+# scratch — nothing deletes from here. See .
+MODEL_PREFIX = "models"
 
 # botocore surfaces a missing key as one of these `Error.Code` values
 # depending on whether the call was HeadObject (404/NotFound) or
@@ -44,12 +47,14 @@ SLATE_PDF_PREFIX = "slate_pdf"
 NOT_FOUND_CODES = frozenset({"404", "NoSuchKey", "NotFound"})
 
 __all__ = [
+    "MODEL_PREFIX",
     "NOT_FOUND_CODES",
     "RAW_PREFIX",
     "SLATE_PDF_PREFIX",
     "BaseObjectStoreClient",
     "build_s3_client",
     "jpeg_key",
+    "model_key",
     "open_client",
     "raw_key",
     "slate_pdf_key",
@@ -64,6 +69,23 @@ def raw_key(checksum: str) -> str:
 def slate_pdf_key(slate_id: int) -> str:
     """Physical Garage key for a staged slate-template PDF."""
     return f"{SLATE_PDF_PREFIX}/{slate_id}.pdf"
+
+
+def model_key(name: str, version: str, filename: str) -> str:
+    """Physical Garage key for a stored model checkpoint.
+
+    Weights live in the object store rather than in the image because the
+    data-worker Deployment scales to zero: a multi-gigabyte layer is paid back
+    on every cold start, and the GPU start timeout exists partly so an image
+    pull is not mistaken for an outage. Keeping them here also means the bytes
+    are never redistributed in a pullable artifact, which matters for weights
+    whose upstream distribution is gated.
+
+    `version` is part of the key on purpose — new weights are a new object, so
+    a cached copy can never be silently the wrong one, and the cache key lines
+    up with the stage's `predictor_version`.
+    """
+    return f"{MODEL_PREFIX}/{name}/{version}/{filename}"
 
 
 def jpeg_key(folder: str, checksum: str, prefix: str = "") -> str:
