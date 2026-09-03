@@ -64,10 +64,12 @@ class PreprocessHeadtailImagesParentWorkflow:
             execution_timeout=timedelta(hours=1),
         )
         await _dispatch.cleanup_raw(dive_id)
-        await _dispatch.dispatch_populate(
-            "PopulateHeadTailLabelStudioProjectWorkflow",
-            dive_id,
-            f"populate-headtail-{dive_id}",
-        )
+        # Populate is NOT dispatched here any more. It moved to its own hourly
+        # parent at +34, after the +32 head/tail predict parent, because
+        # populate seeds sentinel `HeadTailLabel` rows and the predict cohort
+        # excludes any image carrying a live label — chaining populate straight
+        # off preprocess would starve every image of a prediction permanently.
+        # Same decoupling, for the same reason, that the laser stage did at
+        # +10/+12. See `PopulateHeadTailLabelStudioProjectParentWorkflow`.
 
         return inputs.dive_id

@@ -115,6 +115,9 @@ from fishsense_api_workflow_worker.activities.resolve_headtail_predict_inputs_ac
 from fishsense_api_workflow_worker.activities.persist_headtail_predictions_activity import (  # noqa: E501  pylint: disable=line-too-long
     persist_headtail_predictions_activity,
 )
+from fishsense_api_workflow_worker.activities.select_dives_needing_headtail_population_activity import (  # noqa: E501  pylint: disable=line-too-long
+    select_dives_needing_headtail_population_activity,
+)
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_headtail_prediction_activity import (  # noqa: E501  pylint: disable=line-too-long
     select_next_high_priority_dive_for_headtail_prediction_activity,
 )
@@ -259,6 +262,9 @@ from fishsense_api_workflow_worker.workflows.preprocess_species_images_parent_wo
 )
 from fishsense_api_workflow_worker.workflows.preprocess_headtail_images_parent_workflow import (  # pylint: disable=line-too-long
     PreprocessHeadtailImagesParentWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.populate_headtail_label_studio_project_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    PopulateHeadTailLabelStudioProjectParentWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.predict_headtail_images_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PredictHeadtailImagesParentWorkflow,
@@ -481,6 +487,25 @@ async def schedule_workflows(client: Client):
                     timedelta(hours=1),
                     offset=timedelta(minutes=32),
                     run_timeout=timedelta(hours=2),
+                    overlap=ScheduleOverlapPolicy.SKIP,
+                )
+            )
+            # Head/tail populate: hourly at +34, after the +32 predict parent
+            # has written its rows. Decoupled from the stage-5.1 preprocess
+            # parent, which used to chain into it: populate seeds sentinel
+            # `HeadTailLabel` rows and the predict cohort excludes any image
+            # with a live label, so chaining would starve every image of a
+            # prediction permanently. Same fix, same reason, as laser's
+            # +10/+12 pair. Idempotent + prediction-gated, so SKIP-overlap
+            # hourly firings converge.
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "populate-headtail-labels-workflow-schedule",
+                    PopulateHeadTailLabelStudioProjectParentWorkflow,
+                    timedelta(hours=1),
+                    offset=timedelta(minutes=34),
+                    run_timeout=timedelta(hours=1),
                     overlap=ScheduleOverlapPolicy.SKIP,
                 )
             )
@@ -733,6 +758,7 @@ async def main():
                 VerifyAllDivesChecksumsWorkflow,
                 IngestDiveWorkflow,
                 ClusterDiveFramesParentWorkflow,
+                PopulateHeadTailLabelStudioProjectParentWorkflow,
                 PredictHeadtailImagesParentWorkflow,
                 PredictLaserImagesParentWorkflow,
                 PredictSlateImagesParentWorkflow,
@@ -793,6 +819,7 @@ async def main():
                 persist_dive_frame_clusters_activity,
                 select_next_high_priority_dive_for_clustering_activity,
                 select_next_high_priority_dive_for_laser_preprocessing_activity,
+                select_dives_needing_headtail_population_activity,
                 select_next_high_priority_dive_for_headtail_prediction_activity,
                 select_next_high_priority_dive_for_laser_prediction_activity,
                 select_next_high_priority_dive_for_slate_prediction_activity,

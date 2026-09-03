@@ -170,6 +170,15 @@ class DiveClient(ClientBase):
         response.raise_for_status()
         return response.json() or []
 
+    async def get_dives_needing_headtail_population(self) -> list[int]:
+        """Every dive needing model-assisted head/tail LS tasks (re)populated —
+        prediction-gated. Returns all matches so the scheduled populate parent
+        fans out one populate child per dive. See the
+        `needing-headtail-population` endpoint docstring."""
+        response = await self._get("/api/v1/dives/needing-headtail-population/")
+        response.raise_for_status()
+        return response.json() or []
+
     async def get_dives_needing_species_population(self) -> list[int]:
         """Every dive needing species LS tasks (re)populated onto a live
         project — superseded-aware, returns *all* matches (not one), so

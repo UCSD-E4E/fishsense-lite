@@ -27,6 +27,8 @@ selector added here later as a bare single segment would genuinely be at risk.
 did not cover any prediction selector before this split.
 """
 
+from typing import List
+
 from fastapi import Depends
 from fishsense_shared import (
     HEADTAIL_PREDICTOR_VERSION,
@@ -312,3 +314,64 @@ async def select_next_for_slate_prediction(
         .limit(1)
     )
     return (await session.exec(query)).first()
+
+
+@app.get("/api/v1/dives/needing-headtail-population/")
+async def select_dives_needing_headtail_population(
+    session: AsyncSession = Depends(get_async_session),
+) -> List[int]:
+    """Dives that need model-assisted head/tail LS tasks (re)populated.
+
+    Cohort: HIGH priority + at least one canonical image with a *valid* laser
+    dot, a `HeadTailPrediction` (the detector has run for it), and no
+    *completed* `HeadTailLabel`.
+
+    The prediction gate is what makes this the decoupled populate cohort rather
+    than the preprocess one: populate seeds sentinel `HeadTailLabel` rows, and
+    the predict cohort excludes any image with a live label, so populating an
+    unpredicted image would starve it of a prediction forever. Gating on
+    "prediction exists" guarantees the detector ran first. An abstention still
+    opens the gate — the image was visited, and withholding it would strand it
+    with neither a prediction nor a human label.
+
+    "No completed label" rather than "no row" keeps a dive in the cohort until
+    its labelers finish, so the idempotent populate self-heals hourly. Returns
+    every match; the scheduled parent fans out one child per dive.
+    """
+    has_populatable_image = (
+        select(Image.id)
+        .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
+        .where(
+            select(LaserLabel.id)
+            .where(LaserLabel.image_id == Image.id)
+            .where(LaserLabel.completed == True)
+            .where(LaserLabel.superseded == False)
+            .where(LaserLabel.x != None)
+            .where(LaserLabel.y != None)
+            .correlate(Image)
+            .exists()
+        )
+        .where(
+            select(HeadTailPrediction.id)
+            .where(HeadTailPrediction.image_id == Image.id)
+            .correlate(Image)
+            .exists()
+        )
+        .where(
+            ~select(HeadTailLabel.id)
+            .where(HeadTailLabel.image_id == Image.id)
+            .where(HeadTailLabel.completed == True)
+            .correlate(Image)
+            .exists()
+        )
+        .correlate(Dive)
+        .exists()
+    )
+    query = (
+        select(Dive.id)
+        .where(Dive.priority == Priority.HIGH)
+        .where(has_populatable_image)
+        .order_by(Dive.id)
+    )
+    return list((await session.exec(query)).all())
