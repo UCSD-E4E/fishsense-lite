@@ -11,6 +11,8 @@ never count toward a human "valid head/tail" gate.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from sqlmodel import select
 
 # Shared with the other controller tests — see `tests_support.db`.
@@ -153,3 +155,59 @@ async def test_crop_origin_round_trips(session):
     )
     row = await session.get(HeadTailPrediction, pid)
     assert (row.crop_x, row.crop_y) == (1200, 900)
+
+
+async def test_put_stamps_created_at(session):
+    """`created_at` is what makes a prediction datable, and nothing wrote it.
+
+    Predictions upsert on `image_id`, so a re-prediction overwrites the
+    coordinates a labeler was actually shown. The stamp is what separates the
+    two cases: a prediction written *after* the label's `updated_at` provably
+    never reached a labeler, and one written before it is the row that was
+    shown. Without it, "did the labeler move the seeded point?" is unanswerable
+    for the whole corpus.
+    """
+    from fishsense_api.controllers.head_tail_prediction_controller import (
+        put_head_tail_prediction,
+    )
+    from fishsense_api.models.head_tail_prediction import HeadTailPrediction
+
+    session.add_all([_dive(1), _image(11, 1)])
+    await session.flush()
+
+    before = datetime.now(timezone.utc)
+    pid = await put_head_tail_prediction(11, _prediction(), session=session)
+    row = await session.get(HeadTailPrediction, pid)
+
+    assert row.created_at is not None
+    stamped = row.created_at
+    if stamped.tzinfo is None:
+        stamped = stamped.replace(tzinfo=timezone.utc)
+    assert stamped >= before - timedelta(seconds=5)
+
+
+async def test_put_restamps_and_ignores_a_client_supplied_created_at(session):
+    """Stamped server-side, and re-stamped on upsert.
+
+    The surviving row *is* the prediction in force, so the field means "when
+    this x/y was produced". A client value must not win, or a replayed payload
+    would date the new coordinates to the old run.
+    """
+    from fishsense_api.controllers.head_tail_prediction_controller import (
+        put_head_tail_prediction,
+    )
+    from fishsense_api.models.head_tail_prediction import HeadTailPrediction
+
+    session.add_all([_dive(1), _image(11, 1)])
+    await session.flush()
+
+    ancient = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    stale = _prediction()
+    stale.created_at = ancient
+    pid = await put_head_tail_prediction(11, stale, session=session)
+    row = await session.get(HeadTailPrediction, pid)
+
+    stamped = row.created_at
+    if stamped.tzinfo is None:
+        stamped = stamped.replace(tzinfo=timezone.utc)
+    assert stamped > ancient, "server-side stamp must overwrite a client value"
