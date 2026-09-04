@@ -1,5 +1,11 @@
 """Shared helpers for FishSense Lite services."""
 
+from fishsense_shared.auto_accept_timeouts import (
+    GATE_ACTIVITY_TIMEOUT,
+    GATE_CHILD_EXECUTION_TIMEOUT,
+    GATE_EXECUTION_TIMEOUT,
+    GATE_QUEUE_WAIT_TIMEOUT,
+)
 from fishsense_shared.config import (
     IS_DOCKER,
     get_config_path,
@@ -56,6 +62,10 @@ from fishsense_shared.temporal import (
 
 __all__ = [
     "IS_DOCKER",
+    "GATE_ACTIVITY_TIMEOUT",
+    "GATE_CHILD_EXECUTION_TIMEOUT",
+    "GATE_EXECUTION_TIMEOUT",
+    "GATE_QUEUE_WAIT_TIMEOUT",
     "DEFAULT_LASER_BBOX",
     "LASER_PREDICTOR_VERSION",
     "laser_model_version_tag",
