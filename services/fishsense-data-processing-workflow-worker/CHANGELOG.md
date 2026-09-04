@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.20.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.20.0...fishsense-data-processing-workflow-worker-v2.20.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **laser-auto-accept:** never auto-accept a stale detector's predictions ([#715](https://github.com/UCSD-E4E/fishsense-lite/issues/715)) ([187ddff](https://github.com/UCSD-E4E/fishsense-lite/commit/187ddffdc46faf2c043d46ae3b710dffd9a1d4f0))
+
 ## [2.20.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.19.1...fishsense-data-processing-workflow-worker-v2.20.0) (2026-09-04)
 
 

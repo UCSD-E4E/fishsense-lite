@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.51.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.51.1...fishsense-api-v1.51.2) (2026-09-04)
+
+
+### Bug Fixes
+
+* **laser-auto-accept:** never auto-accept a stale detector's predictions ([#715](https://github.com/UCSD-E4E/fishsense-lite/issues/715)) ([187ddff](https://github.com/UCSD-E4E/fishsense-lite/commit/187ddffdc46faf2c043d46ae3b710dffd9a1d4f0))
+
 ## [1.51.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.51.0...fishsense-api-v1.51.1) (2026-09-04)
 
 
