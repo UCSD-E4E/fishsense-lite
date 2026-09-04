@@ -38,4 +38,4 @@ configMapGenerator:
 # only by `E4EFS_GENERAL__ROLE`. CI's `kustomize edit set image` is unchanged.
 images:
   - name: ghcr.io/ucsd-e4e/fishsense-data-processing-workflow-worker
-    newTag: v2.19.0
+    newTag: v2.19.1
