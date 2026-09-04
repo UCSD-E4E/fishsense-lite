@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.57.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.57.1...fishsense-api-workflow-worker-v1.57.2) (2026-09-04)
+
+
+### Bug Fixes
+
+* **laser-auto-accept:** bound the gate's queue wait separately from its run ([#707](https://github.com/UCSD-E4E/fishsense-lite/issues/707)) ([682fb35](https://github.com/UCSD-E4E/fishsense-lite/commit/682fb35567565130212cb31336081dcd655a56fd))
+
 ## [1.57.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.57.0...fishsense-api-workflow-worker-v1.57.1) (2026-09-04)
 
 
