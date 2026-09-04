@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.51.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.51.2...fishsense-api-v1.51.3) (2026-09-04)
+
+
+### Bug Fixes
+
+* **stage13:** count calibration observations, not slate labels ([#719](https://github.com/UCSD-E4E/fishsense-lite/issues/719)) ([77b3507](https://github.com/UCSD-E4E/fishsense-lite/commit/77b35076eca6f86b1cd95ac39569420f1640edd4))
+
 ## [1.51.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.51.1...fishsense-api-v1.51.2) (2026-09-04)
 
 

@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.58.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.58.0...fishsense-api-workflow-worker-v1.58.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **stage13:** count calibration observations, not slate labels ([#719](https://github.com/UCSD-E4E/fishsense-lite/issues/719)) ([77b3507](https://github.com/UCSD-E4E/fishsense-lite/commit/77b35076eca6f86b1cd95ac39569420f1640edd4))
+
 ## [1.58.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.57.2...fishsense-api-workflow-worker-v1.58.0) (2026-09-04)
 
 
