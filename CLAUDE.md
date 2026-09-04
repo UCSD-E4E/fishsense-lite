@@ -982,6 +982,52 @@ Operator notes, the annotation table, and the CI behavior (a GPU rollout
 failure is a *warning*, so a GPU shortage cannot block shipping the CPU stages)
 are in `deploy/k8s/data-worker/README.md`.
 
+## The landing page hides laser projects the gate has not finished
+
+**Added 2026-09-04.** `apps/fishsense-lite-web`'s laser cards come from
+`GET /api/v1/labels/laser/label-studio-project-ids?incomplete=true&gated=true`.
+A project whose auto-accept gate still has frames pending is not linked.
+
+The reason is that an ungated frame is the *machine's* work. The gate is about
+to accept or decline it, so a labeler who judges it first has done the work
+twice — and had no way to know. Hiding the project is the only place that can
+be prevented, because nothing downstream can distinguish a human accept from
+an auto-accept after the fact (`apply_laser_auto_accept` deliberately writes
+the same annotation shape a human produces).
+
+**The predicate is "the gate is done here", not "the gate has run here", and
+the difference is the whole point.** A dive swept halfway satisfies the weaker
+test while still holding frames the gate is about to take — exactly the case
+the filter exists to prevent. So `gated=true` requires *no* `LaserPrediction`
+with a NULL `gate_verdict`, plus at least one judged. `gated=false` is its
+exact complement, pinned by a test, so the two answers reassemble into the
+unfiltered one rather than being a third silently different query.
+
+A project the gate has never touched is **not** gated: vacuous truth reads as
+False, the same convention the `*_labeling_complete` flags use in
+`dive_pipeline_status`.
+
+This is self-correcting across re-prediction, for free. The persist activity
+builds `LaserPrediction` without the gate fields and the upsert merges the
+whole model, so re-predicting a dive clears its verdicts — and the dive drops
+off the landing page until the gate has been back through it. That is correct:
+the old verdict was computed from a dot the row no longer holds.
+
+**Laser only, and deliberately per-kind.** `LaserPrediction` is the sole
+prediction model carrying `gate_verdict` — head/tail and slate have no gate,
+and species has no prediction model at all. Sending `gated=true` to one of
+those would ask for a condition nothing can satisfy and silently blank that
+section, so the web client opts in per kind via `GATED_KINDS` in
+`lib/fishsense-api.ts` and the other three endpoints take no such flag. Add a
+kind there when its predictions grow a verdict; head/tail is the next
+candidate.
+
+The SDK's `get_laser_label_studio_project_ids` deliberately did **not** gain
+the parameter. Its only consumer is the sync enumeration, which must see every
+project regardless of gate state, and this repo has already removed one flag
+that shipped honoured by no code (`verify_existing` on ingest, #618) rather
+than leave a declared control that does nothing.
+
 ## Data-worker activity pattern
 
 Every ported per-image stage follows the same shape:
