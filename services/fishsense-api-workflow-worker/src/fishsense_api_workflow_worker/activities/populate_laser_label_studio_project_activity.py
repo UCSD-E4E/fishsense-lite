@@ -133,6 +133,17 @@ def _auto_accepted_annotations(
     — so an auto-accepted annotation is indistinguishable in shape from the
     outcome it stands in for.
 
+    **`ground_truth` is explicitly False, and the "minus the human" is why.**
+    Matching the shape of a human review is about the geometry; it does not
+    extend to the claim. Label Studio treats `ground_truth` as "this annotation
+    is definitive" — the reference other work is scored against — and an
+    auto-accepted frame skipped review entirely. The gate ships an audit sample
+    precisely because a fraction of these are expected to be wrong.
+
+    It has to be said out loud: left unset, Label Studio stamped
+    `ground_truth: true` on import, so the claim was being made silently. Prod
+    dive 520 carried it on all 37 of its auto-accepted annotations.
+
     Coordinates are deliberately not written to the `LaserLabel` here. The
     hourly sync stays the single writer of label x/y, reading them back out of
     LS exactly as it does for a human annotation, so there is one code path and
@@ -143,7 +154,7 @@ def _auto_accepted_annotations(
     result = _keypoint_result(prediction, laser_label)
     if result is None:
         return []
-    return [{"result": [dict(result, origin="prediction")]}]
+    return [{"result": [dict(result, origin="prediction")], "ground_truth": False}]
 
 
 def _select_unlabeled_images(

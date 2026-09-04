@@ -494,6 +494,24 @@ def test_auto_accepted_annotation_matches_the_shape_of_an_accepted_prediction():
     assert result["type"] == "keypointlabels"
 
 
+def test_auto_accepted_annotation_is_not_marked_ground_truth():
+    """Shape-matching a human review stops at the *geometry*, not the claim.
+
+    `origin: prediction` is truthful — the model placed the point and nothing
+    moved it. `ground_truth` is a different assertion: Label Studio treats it
+    as "this annotation is definitive", the reference other work is scored
+    against. An auto-accepted frame skipped review entirely, and the gate ships
+    an audit sample precisely because some of these are expected to be wrong.
+
+    Must be explicit. Left unset, Label Studio stamped `ground_truth: true` on
+    import — verified on prod dive 520, all 37 annotations.
+    """
+    # pylint: disable=protected-access
+    task = sut._build_task(_image(7, "abc123"), _accepted(7), "Red Laser")
+
+    assert task["annotations"][0]["ground_truth"] is False
+
+
 def test_auto_accepted_keypoint_carries_the_same_percentages_as_a_prediction():
     """The annotation must land on the pixel the detector chose. Sharing the
     conversion with `_prediction_annotations` is what guarantees it."""
