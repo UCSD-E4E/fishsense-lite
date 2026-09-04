@@ -20,9 +20,7 @@ data-worker child fetches the dive's predictions itself and the work is a line
 fit.
 """
 
-from datetime import timedelta
-
-from fishsense_shared import LaserAutoAcceptSummary
+from fishsense_shared import GATE_CHILD_EXECUTION_TIMEOUT, LaserAutoAcceptSummary
 from temporalio import workflow
 
 from fishsense_api_workflow_worker.workflows import _dispatch
@@ -49,7 +47,10 @@ class EvaluateLaserAutoAcceptParentWorkflow:
             "EvaluateLaserAutoAcceptWorkflow",
             dive_id,
             child_id=f"auto-accept-laser-{dive_id}",
-            execution_timeout=timedelta(minutes=30),
+            # Shared with the predict parent, which dispatches the same child.
+            # It must outlast the child's own activity budget so the activity's
+            # timeout is the one that fires and names the bound that was hit.
+            execution_timeout=GATE_CHILD_EXECUTION_TIMEOUT,
             result_type=LaserAutoAcceptSummary,
         )
         workflow.logger.info(

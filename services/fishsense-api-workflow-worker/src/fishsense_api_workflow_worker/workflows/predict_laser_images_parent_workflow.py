@@ -33,6 +33,7 @@ from datetime import timedelta
 from typing import List
 
 from fishsense_shared import (
+    GATE_CHILD_EXECUTION_TIMEOUT,
     LaserAutoAcceptSummary,
     LaserPredictionResult,
     PredictLaserImagesInput,
@@ -150,7 +151,11 @@ class PredictLaserImagesParentWorkflow:
                 "EvaluateLaserAutoAcceptWorkflow",
                 dive_id,
                 child_id=f"auto-accept-laser-{dive_id}",
-                execution_timeout=timedelta(minutes=30),
+                # Shared with the backlog drain, which dispatches the same
+                # child. Both must outlast the child's own activity budget so
+                # the activity's timeout is the one that fires; a literal left
+                # behind at either call site caps that path alone, silently.
+                execution_timeout=GATE_CHILD_EXECUTION_TIMEOUT,
                 result_type=LaserAutoAcceptSummary,
             )
             # Logged at the parent because the per-dive verdict mix is the

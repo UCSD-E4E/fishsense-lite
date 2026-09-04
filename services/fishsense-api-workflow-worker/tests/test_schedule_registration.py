@@ -18,6 +18,7 @@ from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fishsense_shared import GATE_CHILD_EXECUTION_TIMEOUT
 from temporalio.client import ScheduleOverlapPolicy
 from temporalio.service import RPCError, RPCStatusCode
 
@@ -263,6 +264,30 @@ async def test_laser_auto_accept_backlog_is_scheduled_hourly_at_22(registered):
 
     assert _every(schedule) == timedelta(hours=1)
     assert _offset(schedule) == timedelta(minutes=22)
+
+
+async def test_laser_auto_accept_run_timeout_accommodates_the_whole_budget(
+    registered,
+):
+    """The registered `run_timeout` has to hold the gate child plus every other
+    declared step of the firing, because `ensure_schedule` refuses to update a
+    live schedule in place.
+
+    That refusal is what makes this a real constraint rather than a comment: a
+    budget needing a longer `run_timeout` would ship as a silent no-op in prod
+    until an operator deleted the schedule and let the next worker start
+    recreate it. So the shared budget is sized against the value already
+    deployed, and this asserts that from the registration rather than from a
+    literal.
+
+    The other steps come from `workflows/_dispatch.py`: `select_dive` and
+    `wake_data_worker` are 5 min each, and `run_sdk_activity` (the apply step)
+    is 15 min.
+    """
+    schedule = registered["evaluate-laser-auto-accept-workflow-schedule"]
+    other_steps = timedelta(minutes=5) + timedelta(minutes=5) + timedelta(minutes=15)
+
+    assert schedule.action.run_timeout >= GATE_CHILD_EXECUTION_TIMEOUT + other_steps
 
 
 async def test_every_offset_parent_lands_on_its_own_minute(registered):
