@@ -445,3 +445,24 @@ class TestDiveClientPost:
                 pass
             else:
                 raise AssertionError("post must not swallow a non-2xx response")
+
+
+class TestSelectNextForLaserAutoAccept:
+    """The auto-accept gate's backlog selector."""
+
+    async def test_select_next_for_laser_auto_accept_hits_the_cohort_endpoint(self):
+        client = _make_client()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = 42
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            async with client:
+                result = await client.select_next_for_laser_auto_accept()
+                assert result == 42
+                mock_get.assert_awaited_once_with(
+                    "/api/v1/dives/select-next/laser-auto-accept/"
+                )

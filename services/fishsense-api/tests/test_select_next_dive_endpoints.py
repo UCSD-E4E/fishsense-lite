@@ -2136,3 +2136,130 @@ async def test_needing_laser_population_empty_when_nothing_predicted(session):
     await session.flush()
 
     assert await select_dives_needing_laser_population(session=session) == []
+
+
+# --- laser auto-accept gate cohort --------------------------------------------
+#
+# The gate hangs off the predict parent's post-persist step, which only fires
+# when the predict child returned NEW predictions. A dive that was already
+# fully predicted never re-enters the predict cohort, so it never produces
+# results, so its predictions were never judged — 3,711 rows across ~65 prod
+# dives sat at `gate_verdict IS NULL` permanently after the gate shipped.
+#
+# This is that backlog's drain, and it is a cohort rather than a hand-run
+# backfill for the reason CLAUDE.md gives about selecting on mismatch: it
+# empties itself and stays empty, and it re-arms on its own if anything ever
+# leaves a verdict NULL again (a re-prediction clears them by design).
+
+
+def _judged_prediction(image_id: int, verdict: str = "auto_accepted"):
+    from fishsense_api.models.laser_prediction import LaserPrediction
+
+    return LaserPrediction(
+        image_id=image_id,
+        x=1.0,
+        y=2.0,
+        confidence=0.9,
+        gate_verdict=verdict,
+        auto_accept=verdict == "auto_accepted",
+    )
+
+
+async def test_auto_accept_selects_a_dive_with_an_unjudged_prediction(session):
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_laser_auto_accept,
+    )
+
+    session.add_all([_dive(3), _image(11, 3), _laser_prediction(11)])
+    await session.flush()
+
+    assert await select_next_for_laser_auto_accept(session=session) == 3
+
+
+async def test_auto_accept_skips_a_dive_whose_predictions_were_all_judged(session):
+    """The drain condition. Once the gate has ruled on every prediction the
+    dive drops out — including the ones it refused, because a refusal is a
+    verdict and re-running would reach the same one."""
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_laser_auto_accept,
+    )
+
+    session.add_all(
+        [_dive(3), _image(11, 3), _judged_prediction(11, "off_line")]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_auto_accept(session=session) is None
+
+
+async def test_auto_accept_ignores_an_abstention_with_no_dot(session):
+    """A prediction with no x/y takes no part in the fit and cannot be
+    auto-accepted, so an unjudged one is not a reason to re-run the gate. If it
+    were, a dive whose detector abstained on one frame would be selected
+    forever — the gate would judge it `no_prediction` every pass and the row
+    would look unjudged again on the next."""
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_laser_auto_accept,
+    )
+    from fishsense_api.models.laser_prediction import LaserPrediction
+
+    session.add_all(
+        [
+            _dive(3),
+            _image(11, 3),
+            LaserPrediction(image_id=11, x=None, y=None, confidence=0.1),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_auto_accept(session=session) is None
+
+
+async def test_auto_accept_only_selects_high_priority_dives(session):
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_laser_auto_accept,
+    )
+
+    session.add_all(
+        [_dive(3, priority="LOW"), _image(11, 3), _laser_prediction(11)]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_auto_accept(session=session) is None
+
+
+async def test_auto_accept_ignores_non_canonical_images(session):
+    """Mirrors every other selector: duplicate frames are invisible to the
+    pipeline, and judging them would put a verdict on a row nothing reads."""
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_laser_auto_accept,
+    )
+
+    session.add_all(
+        [_dive(3), _image(11, 3, is_canonical=False), _laser_prediction(11)]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_auto_accept(session=session) is None
+
+
+async def test_auto_accept_selects_a_dive_only_partly_judged(session):
+    """A dive whose gate run died halfway must come back, not be treated as
+    done — the activity writes verdicts per row, so a partial write is a real
+    state."""
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_laser_auto_accept,
+    )
+
+    session.add_all(
+        [
+            _dive(3),
+            _image(11, 3),
+            _image(12, 3),
+            _judged_prediction(11),
+            _laser_prediction(12),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_auto_accept(session=session) == 3

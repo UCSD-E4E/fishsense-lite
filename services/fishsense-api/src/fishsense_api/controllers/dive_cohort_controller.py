@@ -2,6 +2,15 @@
 #   `== True` / `!= None` are required here, not sloppy: SQLAlchemy overloads
 #   the comparison operators to build SQL expressions, and `is True` / `is not
 #   None` would evaluate to a Python bool and silently drop the predicate.
+# pylint: disable=too-many-lines
+#   TEMPORARY, and it should not outlive the pending split. Adding the
+#   auto-accept selector pushed this module to ~1049 lines, and this module
+#   exists precisely because `dive_controller` grew past 1000 and carried this
+#   same disable. The right home for the selector is the prediction-cohort
+#   module being split out on the headtail branch (0b7f84c) — it is not on
+#   main yet, and duplicating that split here would guarantee a conflict with
+#   it. Move `select_next_for_laser_auto_accept` there when it lands and drop
+#   this line.
 """Cohort selectors — which dive each pipeline stage should work on next.
 
 Split out of `dive_controller` because that module had grown past 1000 lines
@@ -998,3 +1007,52 @@ def _laser_depth_cohort_query():
         .order_by(Dive.id)
         .limit(1)
     )
+
+
+@app.get("/api/v1/dives/select-next/laser-auto-accept/")
+async def select_next_for_laser_auto_accept(
+    session: AsyncSession = Depends(get_async_session),
+) -> int | None:
+    """Auto-accept gate backlog: HIGH-priority + at least one canonical image
+    whose `LaserPrediction` carries a dot and has never been judged.
+
+    The gate normally runs off the back of the predict parent, but only when
+    the predict child returned *new* predictions — and a dive that is already
+    fully predicted never re-enters the predict cohort, so it never produces
+    results and its predictions were never judged. That left 3,711 rows across
+    ~65 dives permanently at `gate_verdict IS NULL` when the gate shipped, so
+    auto-accept reached almost none of the backlog it was built for.
+
+    A cohort rather than a hand-run backfill, for the reason CLAUDE.md gives
+    about selecting on mismatch: it drains itself, stays empty afterwards, and
+    re-arms on its own if anything leaves a verdict NULL again — which a
+    re-prediction does by design, since it clears the verdict computed from a
+    dot the row no longer holds.
+
+    **Abstentions are excluded, and that is what makes it drain.** A prediction
+    with no `x`/`y` is judged `no_prediction` and can never be auto-accepted,
+    but the gate only *writes* rows whose verdict changed. Selecting on
+    "unjudged" alone would keep re-selecting a dive whose detector abstained on
+    any frame: the gate would reach the same verdict every pass, write nothing,
+    and the dive would look unjudged again on the next poll. Requiring a dot
+    both matches what the gate can act on and gives the cohort a false
+    condition to reach.
+    """
+    has_unjudged_prediction = (
+        select(LaserPrediction.id)
+        .join(Image, Image.id == LaserPrediction.image_id)
+        .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
+        .where(LaserPrediction.x != None)
+        .where(LaserPrediction.y != None)
+        .where(LaserPrediction.gate_verdict == None)
+        .exists()
+    )
+    query = (
+        select(Dive.id)
+        .where(Dive.priority == Priority.HIGH)
+        .where(has_unjudged_prediction)
+        .order_by(Dive.id)
+        .limit(1)
+    )
+    return (await session.exec(query)).first()
