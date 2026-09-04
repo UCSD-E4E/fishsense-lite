@@ -1,6 +1,6 @@
 [project]
 name = "fishsense-api-workflow-worker"
-version = "1.57.2"
+version = "1.58.0"
 description = "Temporal API Workflow Worker"
 readme = "README.md"
 requires-python = ">=3.13"
