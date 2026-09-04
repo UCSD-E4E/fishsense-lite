@@ -46,4 +46,4 @@ configMapGenerator:
 # `kustomize edit set image` is unchanged.
 images:
   - name: ghcr.io/ucsd-e4e/fishsense-data-processing-workflow-worker
-    newTag: v2.19.1
+    newTag: v2.20.0
