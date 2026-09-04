@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.52.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.51.3...fishsense-api-v1.52.0) (2026-09-04)
+
+
+### Features
+
+* **laser-auto-accept:** hide projects the gate has not finished ([#722](https://github.com/UCSD-E4E/fishsense-lite/issues/722)) ([1810cb9](https://github.com/UCSD-E4E/fishsense-lite/commit/1810cb93689896f6f7bffc4d6c6fd2d7991a7046))
+
 ## [1.51.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.51.2...fishsense-api-v1.51.3) (2026-09-04)
 
 
