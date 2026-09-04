@@ -1,0 +1,175 @@
+# fishsense-data-processing-workflow-worker-light — NRP Deployment.
+#
+# Serves `fishsense_data_processing_light_queue`: frame clustering (stage 1),
+# laser calibration (13), fish measurement (14), laser depth, laser-label
+# validation, and the auto-accept gate. Same image, `E4EFS_GENERAL__ROLE=light`.
+#
+# **This exists because of a memory cap, not a CPU one.** These stages were on
+# `fishsense_data_processing_queue` until 2026-09-04. That queue's worker runs
+# `max_concurrent_activities = 2`, and the 2 is not a throughput choice — each
+# per-image activity decodes a full-res `.ORF` and peaks at 1-3 GB, the
+# Temporal default of 100 OOMKilled the pod into CrashLoopBackOff, and a cap of
+# 4 did it again on 2026-07-21 with 17 restarts. So two slots is genuinely the
+# most that pod can offer, one multi-image preprocess dispatch takes both for
+# as long as a dive takes, and everything else waits behind it. Measured cost:
+# three of the auto-accept drain's first four firings and two consecutive laser
+# calibrations expired with `ScheduleToStart timeout`, for work that runs in
+# under two seconds when it gets a slot.
+#
+# The stages here hold no image bytes — they fetch rows from fishsense-api, do
+# numpy, and write rows back — so this pod is small and its concurrency has
+# nothing to do with the decoders'. That is the whole decoupling.
+#
+# Like the others, `replicas` is omitted: the api-worker owns it
+# (`ensure_light_worker_running_activity` scales up when a parent has work, the
+# hourly sweeper scales back to 0). NRP asks us to scale to zero when idle, so
+# this pod does — the cold start is why the light stages bound their queue wait
+# separately from their execution time.
+#
+# Apply via `kubectl apply -k deploy/k8s/data-worker`.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fishsense-data-processing-workflow-worker-light
+  labels:
+    app.kubernetes.io/name: fishsense-data-processing-workflow-worker-light
+    app.kubernetes.io/part-of: fishsense
+    app.kubernetes.io/component: light
+spec:
+  # `replicas` intentionally omitted — the api-worker owns it. See
+  # deployment.yaml's note; on the first apply k8s defaults it to 1 and the
+  # hourly sweeper drops it to 0.
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fishsense-data-processing-workflow-worker-light
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fishsense-data-processing-workflow-worker-light
+        app.kubernetes.io/part-of: fishsense
+        app.kubernetes.io/component: light
+    spec:
+      # fishsense-core ships only a cp313 x86_64 manylinux wheel; NRP
+      # also has arm64 nodes.
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      # We're a guest on a shared cluster — let NRP preempt our pods whenever
+      # it needs the capacity. No PodDisruptionBudget on purpose; an evicted
+      # activity times out and re-runs, and every stage on this queue is an
+      # idempotent cohort drain (SDK upserts, one dive per firing).
+      terminationGracePeriodSeconds: 45   # >= worker.py GRACEFUL_SHUTDOWN_TIMEOUT (30s) + slack
+      # The data-worker never talks to the k8s API (only the api-worker does,
+      # from outside the cluster) — don't mount a SA token.
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          # Tag is overridden by kustomization.yaml (shared across all four).
+          image: ghcr.io/ucsd-e4e/fishsense-data-processing-workflow-worker:v2.4.1
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: E4EFS_DOCKER
+              value: "true"
+            # The only thing distinguishing this pod from the per-image one.
+            - name: E4EFS_GENERAL__ROLE
+              value: "light"
+            # Deliberately far above the per-image worker's 2. That cap is a
+            # memory ceiling for rawpy decodes; nothing on this queue decodes
+            # an image, so the ceiling does not apply. Six stages share this
+            # pod and each drains one dive per firing, so 8 means a busy hour
+            # never queues at all.
+            - name: E4EFS_GENERAL__MAX_CONCURRENT_ACTIVITIES
+              value: "8"
+            - name: E4EFS_FISHSENSE_API__USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: fishsense-data-worker-secrets
+                  key: fishsense_api_username
+            - name: E4EFS_FISHSENSE_API__PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: fishsense-data-worker-secrets
+                  key: fishsense_api_password
+            - name: E4EFS_OBJECT_STORE__ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fishsense-data-worker-secrets
+                  key: object_store_access_key
+            - name: E4EFS_OBJECT_STORE__SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fishsense-data-worker-secrets
+                  key: object_store_secret_key
+          resources:
+            # An order of magnitude smaller than the per-image pod, and that is
+            # the point: no rawpy decode ever runs here, so peak memory is a
+            # few numpy arrays over one dive's labels rather than 1-3 GB per
+            # in-flight activity. Sized so NRP can nearly always schedule it,
+            # since a stage that cannot get a pod is a stage that does not run.
+            #
+            # `measure_fish` and `perform_laser_calibration` do import opencv
+            # and fishsense-core, so this is not a trivial process — the
+            # request covers that import cost, not image bytes.
+            requests:
+              cpu: "1"
+              memory: 2Gi
+              ephemeral-storage: 1Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+              ephemeral-storage: 2Gi
+              # No `nvidia.com/gpu` — none of these stages touch torch.
+          volumeMounts:
+            - name: settings
+              mountPath: /e4efs/config/settings.toml
+              subPath: settings.toml
+              readOnly: true
+            - name: temporal-certs
+              mountPath: /certs
+              readOnly: true
+            - name: logs
+              mountPath: /e4efs/logs
+            - name: cache
+              mountPath: /e4efs/cache
+            - name: scratch
+              mountPath: /e4efs/data
+      volumes:
+        - name: settings
+          configMap:
+            name: fishsense-data-worker-settings   # kustomize rewrites to the hashed name
+        - name: temporal-certs
+          # Shared with the other Deployments — same `CN=fishsense-worker`
+          # identity, so the slot's nrp_cert_sync keeps rotating exactly one
+          # Secret for every pod. NOTE: adding this Deployment means adding its
+          # name to `DEPLOY_NAMES` in deploy/incus/nrp_cert_sync/sync.sh, or it
+          # keeps an expired leaf and crash-loops on the next rotation.
+          secret:
+            secretName: fishsense-data-worker-temporal-certs
+            items:
+              - key: client.pem
+                path: client/fishsense-data-processing-workflow-worker.pem
+              - key: client.key
+                path: client/fishsense-data-processing-workflow-worker.key
+              - key: root-ca.pem
+                path: ca/root-ca.pem
+        - name: logs
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: cache
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: scratch
+          emptyDir:
+            sizeLimit: 1Gi

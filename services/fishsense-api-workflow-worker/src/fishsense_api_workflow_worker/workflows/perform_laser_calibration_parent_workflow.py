@@ -42,12 +42,17 @@ from temporalio.common import WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
 with workflow.unsafe.imports_passed_through():
+    # The light queue, not the per-image one. These stages hold no image
+    # bytes; the per-image worker caps concurrency at 2 for memory reasons
+    # (1-3 GB per rawpy decode), so a seconds-long job queued there waits on
+    # whole dives. Imported from the shared contract rather than spelled as a
+    # literal -- this module used to carry its own copy of the queue name.
+    from fishsense_shared import DATA_PROCESSING_LIGHT_TASK_QUEUE
+
     from fishsense_api_workflow_worker.workflows._retry_policies import (
         SCALING_RETRY_POLICY,
         SDK_FAIL_FAST_RETRY_POLICY,
     )
-
-DATA_PROCESSING_TASK_QUEUE = "fishsense_data_processing_queue"
 
 
 @workflow.defn
@@ -81,7 +86,7 @@ class PerformLaserCalibrationParentWorkflow:
         # on the configured replica count, never accumulates; a no-op
         # when k8s scaling isn't configured.
         await workflow.execute_activity(
-            "ensure_data_worker_running_activity",
+            "ensure_light_worker_running_activity",
             args=(),
             schedule_to_close_timeout=timedelta(minutes=5),
             retry_policy=SCALING_RETRY_POLICY,
@@ -92,7 +97,7 @@ class PerformLaserCalibrationParentWorkflow:
                 "PerformLaserCalibrationWorkflow",
                 dive_id,
                 id=f"perform-laser-calibration-{dive_id}",
-                task_queue=DATA_PROCESSING_TASK_QUEUE,
+                task_queue=DATA_PROCESSING_LIGHT_TASK_QUEUE,
                 execution_timeout=timedelta(minutes=15),
                 # ALLOW_DUPLICATE (not FAILED_ONLY): a completed child id
                 # must not block a refit after remediation (bad extrinsics

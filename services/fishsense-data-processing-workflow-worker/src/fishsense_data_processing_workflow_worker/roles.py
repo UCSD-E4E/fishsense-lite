@@ -53,6 +53,7 @@ from fishsense_data_processing_workflow_worker.role_names import (
     ROLE_ALL,
     ROLE_CPU,
     ROLE_GPU,
+    ROLE_LIGHT,
     ROLE_TASK_QUEUES,
     ROLES,
 )
@@ -130,29 +131,49 @@ from fishsense_data_processing_workflow_worker.workflows.validate_laser_labels_f
     ValidateLaserLabelsForDiveWorkflow,
 )
 
+# The per-image fan-out stages, and only those. Every one of these decodes a
+# full-res `.ORF` with rawpy and peaks at 1-3 GB, which is why this role runs
+# `general.max_concurrent_activities = 2` and why the pod's memory limit is
+# derived from that number. Adding anything cheap here puts it behind those
+# two slots — which is exactly the bug the light role exists to fix.
 CPU_WORKFLOWS: Final[Sequence[type]] = (
+    PreprocessHeadtailImagesWorkflow,
+    PreprocessLaserImagesWorkflow,
+    PreprocessSlateImagesWorkflow,
+    PreprocessSpeciesImagesWorkflow,
+)
+
+CPU_ACTIVITIES: Final[Sequence[Callable[..., Any]]] = (
+    preprocess_headtail_image,
+    preprocess_laser_image,
+    preprocess_slate_image,
+    preprocess_species_image,
+)
+
+# The stages that hold no image bytes: they fetch rows from fishsense-api, do
+# numpy, and write rows back. Flat memory, sub-second to seconds of work, no
+# object-store traffic and no fan-out — so this pod can be small and can run a
+# much higher concurrency than the decoders'.
+#
+# They were all on the CPU queue until 2026-09-04, when the cost of that became
+# measurable: three of the auto-accept drain's first four firings and two
+# consecutive laser calibrations died with `ScheduleToStart timeout`, waiting
+# behind a 34-image preprocess dispatch for work that takes under a second.
+LIGHT_WORKFLOWS: Final[Sequence[type]] = (
     ComputeLaserDepthsWorkflow,
     DiveFrameClusteringWorkflow,
     EvaluateLaserAutoAcceptWorkflow,
     MeasureFishWorkflow,
     PerformLaserCalibrationWorkflow,
-    PreprocessHeadtailImagesWorkflow,
-    PreprocessLaserImagesWorkflow,
-    PreprocessSlateImagesWorkflow,
-    PreprocessSpeciesImagesWorkflow,
     ValidateLaserLabelsForDiveWorkflow,
 )
 
-CPU_ACTIVITIES: Final[Sequence[Callable[..., Any]]] = (
+LIGHT_ACTIVITIES: Final[Sequence[Callable[..., Any]]] = (
     cluster_dive_frames,
     compute_laser_depths_activity,
     evaluate_laser_auto_accept_activity,
     measure_fish_activity,
     perform_laser_calibration_activity,
-    preprocess_headtail_image,
-    preprocess_laser_image,
-    preprocess_slate_image,
-    preprocess_species_image,
     validate_laser_labels_for_dive_activity,
 )
 
@@ -171,10 +192,15 @@ GPU_ACTIVITIES: Final[Sequence[Callable[..., Any]]] = (
 )
 
 #: The union, for the exhaustiveness tripwire in `tests/test_worker_roles.py`.
-ALL_WORKFLOWS: Final[Sequence[type]] = (*CPU_WORKFLOWS, *GPU_WORKFLOWS)
+ALL_WORKFLOWS: Final[Sequence[type]] = (
+    *CPU_WORKFLOWS,
+    *GPU_WORKFLOWS,
+    *LIGHT_WORKFLOWS,
+)
 ALL_ACTIVITIES: Final[Sequence[Callable[..., Any]]] = (
     *CPU_ACTIVITIES,
     *GPU_ACTIVITIES,
+    *LIGHT_ACTIVITIES,
 )
 
 
@@ -189,6 +215,9 @@ class Registration(NamedTuple):
 _REGISTRATIONS: Final[dict[str, Registration]] = {
     ROLE_CPU: Registration(ROLE_TASK_QUEUES[ROLE_CPU], CPU_WORKFLOWS, CPU_ACTIVITIES),
     ROLE_GPU: Registration(ROLE_TASK_QUEUES[ROLE_GPU], GPU_WORKFLOWS, GPU_ACTIVITIES),
+    ROLE_LIGHT: Registration(
+        ROLE_TASK_QUEUES[ROLE_LIGHT], LIGHT_WORKFLOWS, LIGHT_ACTIVITIES
+    ),
 }
 
 
@@ -212,7 +241,11 @@ def registration_for_role(role: str) -> Registration:
 def registrations_for_role(role: str) -> list[Registration]:
     """Return every worker `role` should run — two entries for ``all``."""
     if role == ROLE_ALL:
-        return [_REGISTRATIONS[ROLE_CPU], _REGISTRATIONS[ROLE_GPU]]
+        return [
+            _REGISTRATIONS[ROLE_CPU],
+            _REGISTRATIONS[ROLE_GPU],
+            _REGISTRATIONS[ROLE_LIGHT],
+        ]
     return [registration_for_role(role)]
 
 
@@ -231,10 +264,13 @@ __all__ = [
     "CPU_WORKFLOWS",
     "GPU_ACTIVITIES",
     "GPU_WORKFLOWS",
+    "LIGHT_ACTIVITIES",
+    "LIGHT_WORKFLOWS",
     "ROLES",
     "ROLE_ALL",
     "ROLE_CPU",
     "ROLE_GPU",
+    "ROLE_LIGHT",
     "Registration",
     "queue_for_role",
     "registration_for_role",

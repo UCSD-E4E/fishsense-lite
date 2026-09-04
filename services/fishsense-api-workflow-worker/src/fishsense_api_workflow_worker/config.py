@@ -93,6 +93,16 @@ _VALIDATORS = [
     # many minutes — so a back-to-back dive doesn't thrash the pod.
     # `resolve_scaling_config` floors a negative value at 0.
     Validator("kubernetes.idle_cooldown_minutes", cast=int, default=15),
+    # --- light queue ---------------------------------------------------------
+    # `fishsense_data_processing_light_queue` is served by its own Deployment,
+    # running the same image with `E4EFS_GENERAL__ROLE=light`. It exists
+    # because the per-image worker's `max_concurrent_activities = 2` is a
+    # memory ceiling, not a throughput choice, and a sub-second line fit
+    # queued behind two multi-GB rawpy decodes simply expires. Name defaults
+    # off `kubernetes.deployment_name`; replicas default to 1 and clamp to
+    # [1, 4] in `resolve_scaling_config`.
+    Validator("kubernetes.light_deployment_name", cast=str),
+    Validator("kubernetes.light_active_replicas", cast=int, default=1),
     # --- GPU split + CPU fallback -------------------------------------------
     # `fishsense_data_processing_gpu_queue` is served by two Deployments
     # running the same image: one that requests a GPU and one that does not and
