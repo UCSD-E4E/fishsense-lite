@@ -64,6 +64,10 @@ def app():
             "/api/v1/dives/select-next/measure-fish/",
             "select_next_for_measure_fish",
         ),
+        (
+            "/api/v1/dives/select-next/laser-auto-accept/",
+            "select_next_for_laser_auto_accept",
+        ),
         # Numeric dive_id catch-all still resolves correctly even
         # though it's declared last.
         ("/api/v1/dives/123", "get_dive"),

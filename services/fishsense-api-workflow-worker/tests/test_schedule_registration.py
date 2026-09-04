@@ -248,3 +248,42 @@ async def test_labeling_config_reconcile_skips_when_still_in_flight(registered):
     schedule = registered["reconcile-labeling-configs-workflow-schedule"]
 
     assert schedule.policy.overlap == ScheduleOverlapPolicy.SKIP
+
+
+async def test_laser_auto_accept_backlog_is_scheduled_hourly_at_22(registered):
+    """Slot +22, between species-populate (+20) and reconcile-labeling-configs
+    (+25).
+
+    The slot itself does not matter much — this is a backlog drain, not a stage
+    with an upstream dependency — but the stagger does: every parent that opens
+    with a cohort query has to land on its own minute so their selectors do not
+    all hit `dives.get()` together.
+    """
+    schedule = registered["evaluate-laser-auto-accept-workflow-schedule"]
+
+    assert _every(schedule) == timedelta(hours=1)
+    assert _offset(schedule) == timedelta(minutes=22)
+
+
+async def test_every_offset_parent_lands_on_its_own_minute(registered):
+    """Tripwire for the stagger: adding a parent on an already-taken minute.
+
+    The +0 group is excluded because sharing it is the documented design, not
+    an accident — the four Label Studio sync schedules select no dives so they
+    cannot race over one, and stage 0.1 sits with them. Those register without
+    an explicit offset, so they read as None here rather than as zero.
+
+    Everything that asks for a minute must get its own, so two selectors never
+    hit `dives.get()` together.
+    """
+    offsets: dict = {}
+    for schedule_id, schedule in registered.items():
+        offset = _offset(schedule)
+        if offset in (None, timedelta(0)):
+            continue
+        offsets.setdefault(offset, []).append(schedule_id)
+
+    collisions = {
+        offset: ids for offset, ids in offsets.items() if len(ids) > 1
+    }
+    assert not collisions, f"schedules share a minute: {collisions}"
