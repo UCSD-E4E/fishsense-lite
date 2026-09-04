@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.14.1...fishsense-shared-v0.15.0) (2026-09-04)
+
+
+### Features
+
+* **data-worker:** give the non-image stages their own task queue ([#711](https://github.com/UCSD-E4E/fishsense-lite/issues/711)) ([f6540e4](https://github.com/UCSD-E4E/fishsense-lite/commit/f6540e4cef8787be662a20f0245f69db53558ab6))
+
 ## [0.14.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.14.0...fishsense-shared-v0.14.1) (2026-09-04)
 
 
