@@ -20,6 +20,7 @@ from unittest.mock import MagicMock
 import pytest
 from fishsense_shared import (
     DATA_PROCESSING_GPU_TASK_QUEUE,
+    DATA_PROCESSING_LIGHT_TASK_QUEUE,
     DATA_PROCESSING_TASK_QUEUE,
 )
 from temporalio.testing import ActivityEnvironment
@@ -29,13 +30,20 @@ from fishsense_api_workflow_worker.activities import (
 )
 from fishsense_api_workflow_worker.activities.k8s_scaling import (
     GpuScalingConfig,
+    LightScalingConfig,
     ScalingConfig,
 )
 
 CPU_DEPLOYMENT = "fishsense-data-processing-workflow-worker"
 GPU_DEPLOYMENT = f"{CPU_DEPLOYMENT}-gpu"
 FALLBACK_DEPLOYMENT = f"{GPU_DEPLOYMENT}-cpu-fallback"
-ALL_DEPLOYMENTS = [CPU_DEPLOYMENT, GPU_DEPLOYMENT, FALLBACK_DEPLOYMENT]
+LIGHT_DEPLOYMENT = f"{CPU_DEPLOYMENT}-light"
+ALL_DEPLOYMENTS = [
+    CPU_DEPLOYMENT,
+    GPU_DEPLOYMENT,
+    FALLBACK_DEPLOYMENT,
+    LIGHT_DEPLOYMENT,
+]
 
 
 def _config(cooldown: int = 15) -> ScalingConfig:
@@ -49,13 +57,18 @@ def _config(cooldown: int = 15) -> ScalingConfig:
             deployment_name=GPU_DEPLOYMENT,
             fallback_deployment_name=FALLBACK_DEPLOYMENT,
         ),
+        light=LightScalingConfig(deployment_name=LIGHT_DEPLOYMENT),
     )
 
 
 def _stub_busy(monkeypatch, value: bool | set[str]) -> None:
     """Mark every queue busy/idle, or name exactly the busy queues."""
     busy = (
-        {DATA_PROCESSING_TASK_QUEUE, DATA_PROCESSING_GPU_TASK_QUEUE}
+        {
+            DATA_PROCESSING_TASK_QUEUE,
+            DATA_PROCESSING_GPU_TASK_QUEUE,
+            DATA_PROCESSING_LIGHT_TASK_QUEUE,
+        }
         if value is True
         else (set() if value is False else value)
     )
@@ -148,9 +161,11 @@ async def test_scales_every_deployment_to_zero_when_idle(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_a_busy_cpu_queue_does_not_keep_the_gpu_pods_alive(monkeypatch):
+async def test_a_busy_cpu_queue_does_not_keep_the_other_pods_alive(monkeypatch):
     """The reason the split exists. Before it, one queue served everything, so
-    hours of rectify work held a GPU the whole time."""
+    hours of rectify work held a GPU the whole time — and, once the light queue
+    was carved out, would equally have held a light pod that had nothing to
+    do."""
     monkeypatch.setattr(sut, "resolve_scaling_config", lambda: _config())
     _stub_busy(monkeypatch, {DATA_PROCESSING_TASK_QUEUE})
     monkeypatch.setattr(sut, "apps_v1_api", lambda path: MagicMock())
@@ -160,6 +175,7 @@ async def test_a_busy_cpu_queue_does_not_keep_the_gpu_pods_alive(monkeypatch):
     assert [name for _ns, name, _n in calls] == [
         GPU_DEPLOYMENT,
         FALLBACK_DEPLOYMENT,
+        LIGHT_DEPLOYMENT,
     ]
 
 
@@ -171,7 +187,7 @@ async def test_a_busy_gpu_queue_does_not_keep_the_cpu_worker_alive(monkeypatch):
     monkeypatch.setattr(sut, "deployment_is_wedged", lambda *_a, **_k: False)
     calls = _record_scales(monkeypatch)
     await ActivityEnvironment().run(sut.scale_down_data_worker_if_idle_activity)
-    assert [name for _ns, name, _n in calls] == [CPU_DEPLOYMENT]
+    assert [name for _ns, name, _n in calls] == [CPU_DEPLOYMENT, LIGHT_DEPLOYMENT]
 
 
 @pytest.mark.asyncio
@@ -192,7 +208,7 @@ async def test_never_touches_the_gpu_fallback_annotations(monkeypatch):
 @pytest.mark.asyncio
 async def test_queries_each_task_queue_once_not_once_per_deployment(monkeypatch):
     """Two GPU Deployments share one queue; asking Temporal twice for the same
-    answer is pure waste on an hourly job."""
+    answer is pure waste on an hourly job. Three queues, four Deployments."""
     monkeypatch.setattr(sut, "resolve_scaling_config", lambda: _config())
     monkeypatch.setattr(sut, "apps_v1_api", lambda path: MagicMock())
     _record_scales(monkeypatch)
@@ -205,8 +221,33 @@ async def test_queries_each_task_queue_once_not_once_per_deployment(monkeypatch)
     monkeypatch.setattr(sut, "_data_worker_task_queue_busy", _busy)
     await ActivityEnvironment().run(sut.scale_down_data_worker_if_idle_activity)
     assert sorted(asked) == sorted(
-        {DATA_PROCESSING_TASK_QUEUE, DATA_PROCESSING_GPU_TASK_QUEUE}
+        {
+            DATA_PROCESSING_TASK_QUEUE,
+            DATA_PROCESSING_GPU_TASK_QUEUE,
+            DATA_PROCESSING_LIGHT_TASK_QUEUE,
+        }
     )
+
+
+@pytest.mark.asyncio
+async def test_a_busy_light_queue_does_not_keep_the_per_image_worker_alive(
+    monkeypatch,
+):
+    """The converse of the split, and the one that costs real money: the light
+    stages fire hourly and finish in seconds, so if their queue being busy held
+    the per-image pod up, we would be paying for a 16 Gi rawpy worker to watch
+    a line fit."""
+    monkeypatch.setattr(sut, "resolve_scaling_config", lambda: _config())
+    _stub_busy(monkeypatch, {DATA_PROCESSING_LIGHT_TASK_QUEUE})
+    monkeypatch.setattr(sut, "apps_v1_api", lambda path: MagicMock())
+    monkeypatch.setattr(sut, "deployment_is_wedged", lambda *_a, **_k: False)
+    calls = _record_scales(monkeypatch)
+    await ActivityEnvironment().run(sut.scale_down_data_worker_if_idle_activity)
+    assert [name for _ns, name, _n in calls] == [
+        CPU_DEPLOYMENT,
+        GPU_DEPLOYMENT,
+        FALLBACK_DEPLOYMENT,
+    ]
 
 
 def test_busy_query_targets_data_worker_task_queue_with_running_or_recent_close():

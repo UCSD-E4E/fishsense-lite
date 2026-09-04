@@ -41,7 +41,7 @@ SECRET_NAME="${SECRET_NAME:-fishsense-data-worker-temporal-certs}"
 # forwarder exists to prevent, reintroduced through the back door.
 # Space-separated and overridable so CI can point it at one name.
 DEPLOY_NAME="${DEPLOY_NAME:-fishsense-data-processing-workflow-worker}"
-DEPLOY_NAMES="${DEPLOY_NAMES:-${DEPLOY_NAME} ${DEPLOY_NAME}-gpu ${DEPLOY_NAME}-gpu-cpu-fallback}"
+DEPLOY_NAMES="${DEPLOY_NAMES:-${DEPLOY_NAME} ${DEPLOY_NAME}-gpu ${DEPLOY_NAME}-gpu-cpu-fallback ${DEPLOY_NAME}-light}"
 # Records which leaf the Secret currently holds, so a converge that changed
 # nothing does not roll the data-worker.
 FP_ANNOTATION="fishsense.e4e.ucsd.edu/leaf-sha256"

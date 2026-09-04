@@ -42,11 +42,15 @@ class EvaluateLaserAutoAcceptParentWorkflow:
         if dive_id is None:
             return None
 
-        await _dispatch.wake_data_worker()
+        await _dispatch.wake_light_worker()
         summary: LaserAutoAcceptSummary = await _dispatch.dispatch_child(
             "EvaluateLaserAutoAcceptWorkflow",
             dive_id,
             child_id=f"auto-accept-laser-{dive_id}",
+            # The light queue: a RANSAC line fit has no business queueing
+            # behind a dive's worth of rawpy decodes, which is what the
+            # per-image queue's two memory-bound slots meant in practice.
+            task_queue=_dispatch.DATA_PROCESSING_LIGHT_TASK_QUEUE,
             # Shared with the predict parent, which dispatches the same child.
             # It must outlast the child's own activity budget so the activity's
             # timeout is the one that fires and names the bound that was hit.

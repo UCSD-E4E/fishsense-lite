@@ -52,6 +52,7 @@ from fishsense_shared.preprocess_contracts import (
 )
 from fishsense_shared.task_queues import (
     DATA_PROCESSING_GPU_TASK_QUEUE,
+    DATA_PROCESSING_LIGHT_TASK_QUEUE,
     DATA_PROCESSING_TASK_QUEUE,
 )
 from fishsense_shared.temporal import (
@@ -81,6 +82,7 @@ __all__ = [
     "RejectedImage",
     "SubfolderReport",
     "DATA_PROCESSING_GPU_TASK_QUEUE",
+    "DATA_PROCESSING_LIGHT_TASK_QUEUE",
     "DATA_PROCESSING_TASK_QUEUE",
     "ClusterDiveFrameImage",
     "ClusterDiveFramesInput",

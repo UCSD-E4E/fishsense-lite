@@ -89,6 +89,7 @@ def _stub_dispatch(monkeypatch) -> list[dict]:
     monkeypatch.setattr(_dispatch, "select_dive", _select_dive)
     monkeypatch.setattr(_dispatch, "resolve_inputs", _resolve_inputs)
     monkeypatch.setattr(_dispatch, "wake_data_worker", _noop)
+    monkeypatch.setattr(_dispatch, "wake_light_worker", _noop)
     monkeypatch.setattr(_dispatch, "wake_gpu_worker", _wake_gpu_worker)
     monkeypatch.setattr(_dispatch, "stage_raw", _noop)
     monkeypatch.setattr(_dispatch, "cleanup_raw", _noop)
@@ -122,6 +123,18 @@ def test_the_drain_waits_the_shared_budget(drain_gate):
 
 def test_the_predict_path_waits_the_shared_budget(predict_gate):
     assert predict_gate["execution_timeout"] == GATE_CHILD_EXECUTION_TIMEOUT
+
+
+def test_both_paths_dispatch_the_gate_to_the_light_queue(drain_gate, predict_gate):
+    """A RANSAC line fit must not queue behind rawpy decodes. The per-image
+    worker caps concurrency at 2 for memory reasons, so on 2026-09-04 three of
+    the drain's first four firings expired waiting there; the predict parent's
+    inline gate shares the same child and must not be left behind on the old
+    queue."""
+    from fishsense_shared import DATA_PROCESSING_LIGHT_TASK_QUEUE
+
+    assert drain_gate["task_queue"] == DATA_PROCESSING_LIGHT_TASK_QUEUE
+    assert predict_gate["task_queue"] == DATA_PROCESSING_LIGHT_TASK_QUEUE
 
 
 def test_both_paths_reuse_the_same_child_id(drain_gate, predict_gate):

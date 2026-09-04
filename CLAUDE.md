@@ -79,7 +79,8 @@ landed; the clones behind them are now collapsed into
 | `services/fishsense-api/` | FastAPI app (DB CRUD, label endpoints) | — |
 | `services/fishsense-api-workflow-worker/` | api-side Temporal worker: hourly Label Studio sync (laser/headtail/dive-slate/species), on-demand Create/Populate × {Laser,Species,HeadTail,DiveSlate} LS project workflows, on-demand dive ingestion (`IngestDiveWorkflow`, see below) + checksum verification, hourly preprocess parents for stages 0.1 / 1 / 2 / 5.1 / 9 (select + resolve; dispatch child to data-worker) | `fishsense_api_queue` |
 | `apps/fishsense-lite-web/` | Next.js 15 (App Router) + React + TS landing page at `fishsense.e4e.ucsd.edu`. SSR fetches LS project IDs from fishsense-api, resolves names from Label Studio, renders categorized link cards. Auth.js (next-auth v5) with Authentik OIDC gates `/portal/*`; landing stays public. Replaces the prior mafl dashboard + its hourly config-writer workflow. Will grow into a full web app. | — |
-| `services/fishsense-data-processing-workflow-worker/` | image preprocessing (rectify/overlay/JPEG), laser calibration, fish measurement, laser depth, clustering, label validation | `fishsense_data_processing_queue` (role `cpu`) |
+| `services/fishsense-data-processing-workflow-worker/` | image preprocessing (rectify/overlay/JPEG) — nothing else | `fishsense_data_processing_queue` (role `cpu`) |
+| ⤷ same package, role `light` | laser calibration, fish measurement, laser depth, clustering, label validation, auto-accept gate | `fishsense_data_processing_light_queue` |
 | ⤷ same package, role `gpu` | torch inference: laser detector + slate masker | `fishsense_data_processing_gpu_queue` |
 | `services/fishsense-backup-worker/` | nightly Postgres → NAS backups + retention | `fishsense_backup_queue` |
 
@@ -866,8 +867,29 @@ roles, on two task queues, as three Kubernetes Deployments.
 
 | Role | Queue | Stages |
 |---|---|---|
-| `cpu` | `fishsense_data_processing_queue` | rectify/overlay/JPEG (0.1 / 2 / 5.1 / 9), clustering, calibration, measurement, laser depth, laser-label validation |
+| `cpu` | `fishsense_data_processing_queue` | rectify/overlay/JPEG (0.1 / 2 / 5.1 / 9) — the per-image fan-out, and only that |
+| `light` | `fishsense_data_processing_light_queue` | clustering, calibration, measurement, laser depth, laser-label validation, auto-accept gate |
 | `gpu` | `fishsense_data_processing_gpu_queue` | `predict_laser_image`, `predict_slate_image` |
+
+**The `light` split (2026-09-04) is about memory, not CPU.** Both roles are
+CPU-only and could share a pod; what they cannot share is the concurrency cap.
+The per-image worker runs `max_concurrent_activities = 2`, and that number is
+the scar of a real OOM — each activity peaks at 1-3 GB in a rawpy decode, the
+SDK default of 100 CrashLoopBackOff'd the pod, and a cap of 4 did it again on
+2026-07-21 with 17 restarts. The pod's memory limit is *derived* from the cap,
+so the cap cannot simply be raised. Two slots means one multi-image preprocess
+dispatch owns the queue for as long as a dive takes: on 2026-09-04 that expired
+three of the auto-accept drain's first four firings and two consecutive laser
+calibrations with `ScheduleToStart timeout`, for work that runs in under two
+seconds. The light pod holds no image bytes, so it is an order of magnitude
+smaller and runs a cap of 8.
+
+It still scales to zero — NRP asks guests to hold as little as possible — so
+cold start is part of the latency budget. That is why stages on this queue
+bound queue wait *separately* from execution rather than with one conflated
+`schedule_to_close_timeout`; `fishsense_shared.auto_accept_timeouts` is the
+worked example. A dedicated queue is not an instant one; it means nothing else
+can be ahead of you in it.
 
 `general.role` selects it (`cpu` / `gpu` / `all`); the registration lists live
 in `roles.py`, the vocabulary in the leaf `role_names.py` (config imports the

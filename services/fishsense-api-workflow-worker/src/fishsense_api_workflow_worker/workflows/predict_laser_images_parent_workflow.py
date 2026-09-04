@@ -141,16 +141,17 @@ class PredictLaserImagesParentWorkflow:
             # firing of the stage-0.1 parent — so there is no reason to insert
             # it earlier and every reason not to.
             #
-            # CPU queue, not the GPU one that just produced the predictions:
-            # it is a line fit, and holding a contended NRP card through it
-            # would be waste. That means waking the CPU Deployment, which is
-            # cheap and idempotent, and usually already up for the preprocess
-            # stages.
-            await _dispatch.wake_data_worker()
+            # The light queue, not the GPU one that just produced the
+            # predictions: it is a line fit, and holding a contended NRP card
+            # through it would be waste. Nor the per-image queue it used to go
+            # to -- that worker caps concurrency at 2 for memory reasons, so
+            # the fit waited on whole dives of rawpy decoding and expired.
+            await _dispatch.wake_light_worker()
             summary: LaserAutoAcceptSummary = await _dispatch.dispatch_child(
                 "EvaluateLaserAutoAcceptWorkflow",
                 dive_id,
                 child_id=f"auto-accept-laser-{dive_id}",
+                task_queue=_dispatch.DATA_PROCESSING_LIGHT_TASK_QUEUE,
                 # Shared with the backlog drain, which dispatches the same
                 # child. Both must outlast the child's own activity budget so
                 # the activity's timeout is the one that fires; a literal left
