@@ -1448,6 +1448,31 @@ async def test_slate_preprocessing_ignores_null_project_sentinels(session):
 
 
 # ---------- stage 13: laser-calibration ----------
+#
+# **The cohort counts calibration OBSERVATIONS, not slate labels**, and the
+# difference is what wedged prod. `perform_laser_calibration_activity` walks the
+# dive's slate labels and keeps one only when `get_laser_label(image_id)`
+# returns a row with x/y set -- that endpoint filters `superseded == False` and
+# nothing else -- then refuses the dive below `MIN_LASER_POINTS = 2`.
+#
+# The selector used to count completed `DiveSlateLabel` rows and never look at
+# the laser at all. Prod dive 347 has 18 completed slate labels and exactly ONE
+# image with a live laser dot (the rest were superseded during the breach
+# recovery, which is permanent). So the cohort said eligible, the activity
+# raised `insufficient laser points (1 < 2)`, nothing was written, and the dive
+# was re-selected every hour forever -- the same shape as the `Fish Model,`
+# empty-leaf bug, and it blocked dives 427 and 436, which are calibratable.
+# Dive 466 (zero live dots) sat right behind it.
+
+
+def _slate_laser_dot(image_id: int, *, x: float = 100.0, superseded: bool = False):
+    """A live laser label on a slate image -- what turns a slate label into a
+    usable calibration observation."""
+    from fishsense_api.models.laser_label import LaserLabel
+
+    return LaserLabel(image_id=image_id, x=x, y=200.0, superseded=superseded)
+
+
 
 
 async def test_laser_calibration_requires_min_completed_slate_labels(session):
@@ -1487,12 +1512,147 @@ async def test_laser_calibration_requires_min_completed_slate_labels(session):
             DiveSlateLabel(image_id=31, completed=True),
             DiveSlateLabel(image_id=32, completed=True),
             DiveSlateLabel(image_id=33, completed=True),
+            # A slate label only becomes a calibration observation when its
+            # image also carries a laser dot -- see the readiness tests below.
+            _slate_laser_dot(11),
+            _slate_laser_dot(21),
+            _slate_laser_dot(22),
+            _slate_laser_dot(31),
+            _slate_laser_dot(32),
+            _slate_laser_dot(33),
             _calibration(3),
         ]
     )
     await session.flush()
 
     assert await select_next_for_laser_calibration(session=session) == 2
+
+
+async def test_laser_calibration_needs_two_images_with_laser_dots(session):
+    """The prod wedge, in miniature. A dive can have plenty of completed slate
+    labels and still be uncalibratable, because a slate label without a laser
+    dot on the same image contributes no observation."""
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_laser_calibration,
+    )
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel
+
+    session.add(_dive(1, dive_slate_id=99))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1), _image(13, 1)])
+    await session.flush()
+    session.add_all(
+        [
+            DiveSlateLabel(image_id=11, completed=True),
+            DiveSlateLabel(image_id=12, completed=True),
+            DiveSlateLabel(image_id=13, completed=True),
+            _slate_laser_dot(11),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_calibration(session=session) is None
+
+
+async def test_laser_calibration_selects_once_two_dots_exist(session):
+    """The converse: two observations is exactly `MIN_LASER_POINTS`."""
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_laser_calibration,
+    )
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel
+
+    session.add(_dive(1, dive_slate_id=99))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1)])
+    await session.flush()
+    session.add_all(
+        [
+            DiveSlateLabel(image_id=11, completed=True),
+            DiveSlateLabel(image_id=12, completed=True),
+            _slate_laser_dot(11),
+            _slate_laser_dot(12),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_calibration(session=session) == 1
+
+
+async def test_laser_calibration_ignores_a_superseded_laser_dot(session):
+    """`get_laser_label` filters `superseded == False`, so a dead-lettered dot
+    is invisible to the activity and must be invisible here. This is exactly
+    how dive 347 got into its state -- the breach recovery superseded its
+    lasers, permanently."""
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_laser_calibration,
+    )
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel
+
+    session.add(_dive(1, dive_slate_id=99))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1)])
+    await session.flush()
+    session.add_all(
+        [
+            DiveSlateLabel(image_id=11, completed=True),
+            DiveSlateLabel(image_id=12, completed=True),
+            _slate_laser_dot(11),
+            _slate_laser_dot(12, superseded=True),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_calibration(session=session) is None
+
+
+async def test_laser_calibration_ignores_a_dotless_laser_label(session):
+    """A populate-seeded placeholder carries no x/y. The activity skips it on
+    `laser_label.x is None`, so it is not an observation."""
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_laser_calibration,
+    )
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel
+    from fishsense_api.models.laser_label import LaserLabel
+
+    session.add(_dive(1, dive_slate_id=99))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1)])
+    await session.flush()
+    session.add_all(
+        [
+            DiveSlateLabel(image_id=11, completed=True),
+            DiveSlateLabel(image_id=12, completed=True),
+            _slate_laser_dot(11),
+            LaserLabel(image_id=12, x=None, y=None),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_calibration(session=session) is None
+
+
+async def test_laser_calibration_does_not_count_a_dot_without_a_slate_label(session):
+    """An observation needs BOTH. A laser dot on an image with no slate label
+    gives the activity no plane to project onto."""
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_laser_calibration,
+    )
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel
+
+    session.add(_dive(1, dive_slate_id=99))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1)])
+    await session.flush()
+    session.add_all(
+        [
+            DiveSlateLabel(image_id=11, completed=True),
+            _slate_laser_dot(11),
+            _slate_laser_dot(12),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_calibration(session=session) is None
 
 
 async def test_laser_calibration_requires_dive_slate_id(session):

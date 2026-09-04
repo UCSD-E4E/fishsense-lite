@@ -221,7 +221,11 @@ def _resolved_laser_extrinsics_id():
 # activity's `MIN_LASER_POINTS = 2` precondition. Selecting a dive with
 # fewer than two completed slate labels would dispatch a child that
 # raises and re-fires every hour.
-MIN_COMPLETED_SLATE_LABELS = 2
+#: Minimum usable slate-laser OBSERVATIONS a dive needs before stage 13 will
+#: attempt a fit. Must equal the data-worker activity's `MIN_LASER_POINTS`,
+#: which raises below it — the two are one threshold expressed twice, and a
+#: dive between them is re-selected hourly forever with nothing written.
+MIN_SLATE_LASER_POINTS = 2
 
 # Stage-9 species_label.content_of_image marker (re-exported from the
 # shared taxonomy vocabulary so the view and the worker read the same one).
@@ -786,8 +790,51 @@ async def select_next_for_laser_calibration(
     session: AsyncSession = Depends(get_async_session),
 ) -> int | None:
     """Stage 13: HIGH-priority + dive_slate_id set + no LaserExtrinsics +
-    at least MIN_COMPLETED_SLATE_LABELS completed DiveSlateLabel rows."""
-    completed_slate_label_count = (
+    at least `MIN_SLATE_LASER_POINTS` usable slate-laser observations.
+
+    **An observation is a completed slate label whose image also carries a live
+    laser dot**, which is what `perform_laser_calibration_activity` actually
+    counts: it walks the dive's slate labels, keeps one only when
+    `get_laser_label(image_id)` returns a row with x/y set, and raises below
+    `MIN_LASER_POINTS`. Keep the two in step — they are one threshold spelled
+    twice.
+
+    This used to count completed `DiveSlateLabel` rows and never look at the
+    laser, and the gap was not academic. Prod dive 347 carries 18 completed
+    slate labels and exactly ONE image with a live laser dot; the rest were
+    superseded during the breach recovery, which is permanent. The cohort said
+    eligible, the activity raised `insufficient laser points (1 < 2)`, nothing
+    was written, and the dive was re-selected every hour — the same
+    cohort-says-yes/activity-says-no shape as the `Fish Model,` empty-leaf bug.
+    Because the selector is `ORDER BY Dive.id LIMIT 1`, it also blocked dives
+    427 and 436, which have 3 and 12 observations and are perfectly
+    calibratable. Dive 466 (zero live dots) was next in line behind it.
+
+    `superseded == False` and nothing about `completed`, because that is
+    exactly what `get_laser_label` filters on — a populate-seeded placeholder
+    with NULL x/y is excluded by the x/y check, not by its completion state.
+
+    **Known approximation.** The activity can still reject an observation for
+    reasons SQL cannot model: `plane_from_correspondences` failing PnP, or a
+    NaN ray. This predicate is therefore an over-approximation, and a dive
+    whose geometry fails everywhere could still wedge. That residue is
+    unavoidable without running the solver; what it is not is the *common*
+    case, which was simply a missing laser dot. `get_laser_label` also takes
+    `.first()` among live labels with no ordering, so an image carrying both a
+    dotted and a dotless live label could resolve either way — no slate image
+    in prod does (checked), but it is why this counts EXISTS rather than trying
+    to reproduce `.first()`.
+    """
+    has_live_laser_dot = (
+        select(LaserLabel.id)
+        .where(LaserLabel.image_id == Image.id)
+        .where(LaserLabel.superseded == False)
+        .where(LaserLabel.x != None)
+        .where(LaserLabel.y != None)
+        .correlate(Image)
+        .exists()
+    )
+    usable_laser_point_count = (
         select(func.count(DiveSlateLabel.id))  # pylint: disable=not-callable
         .join(Image, Image.id == DiveSlateLabel.image_id)
         .where(Image.dive_id == Dive.id)
@@ -796,6 +843,7 @@ async def select_next_for_laser_calibration(
         # A dead-lettered slate label doesn't count toward the calibration
         # readiness gate — same validity convention laser calibration uses.
         .where(DiveSlateLabel.superseded == False)
+        .where(has_live_laser_dot)
         .scalar_subquery()
     )
     query = (
@@ -807,7 +855,7 @@ async def select_next_for_laser_calibration(
             .where(LaserExtrinsics.dive_id == Dive.id)
             .exists()
         )
-        .where(completed_slate_label_count >= MIN_COMPLETED_SLATE_LABELS)
+        .where(usable_laser_point_count >= MIN_SLATE_LASER_POINTS)
         .order_by(Dive.id)
         .limit(1)
     )
