@@ -86,6 +86,15 @@ class DiveIneligibleReason(Enum):
     NO_LINE = "no_line"
     WEAK_CONSENSUS = "weak_consensus"
     UNCONFIDENT_LINE = "unconfident_line"
+    #: The dive carries predictions from a detector version that is not the
+    #: current one. Unlike the others this is not a property of the fit -- it
+    #: is decided before fitting, in the activity, because a line drawn across
+    #: two different detector behaviours is not a meaningful line. See
+    #: `fishsense_shared.laser_predictor`: stage v1 (and every pre-versioning
+    #: NULL row) hardcoded the pre-annotation to "Red Laser" instead of reading
+    #: the dot, so auto-accepting one writes a possibly-wrong colour into the
+    #: corpus with no human in the loop.
+    STALE_PREDICTOR = "stale_predictor"
 
 
 class FrameVerdict(Enum):

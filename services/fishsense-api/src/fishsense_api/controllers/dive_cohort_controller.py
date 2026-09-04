@@ -1046,6 +1046,21 @@ async def select_next_for_laser_auto_accept(
         .where(LaserPrediction.x != None)
         .where(LaserPrediction.y != None)
         .where(LaserPrediction.gate_verdict == None)
+        # Only the CURRENT detector's output may ever be auto-accepted, and
+        # this is a correctness guard rather than a tidiness one. Stage v1 (and
+        # every pre-versioning NULL row) hardcoded the pre-annotation to
+        # "Red Laser" instead of reading the dot's colour -- see
+        # `fishsense_shared.laser_predictor`. Auto-accepting one writes a
+        # possibly-wrong colour into the corpus with NO human in the loop,
+        # because skipping review is precisely what this gate does; nothing
+        # downstream would catch it.
+        #
+        # `== version` rather than `is_distinct_from`: NULL == 2 is NULL, which
+        # is falsy, so pre-versioning rows are excluded exactly as intended.
+        # The predict cohort's mirror-image check uses `is_distinct_from` to
+        # *find* those same rows and re-predict them, so they are not stranded
+        # -- they come back here once they carry the current version.
+        .where(LaserPrediction.predictor_version == LASER_PREDICTOR_VERSION)
         .exists()
     )
     query = (

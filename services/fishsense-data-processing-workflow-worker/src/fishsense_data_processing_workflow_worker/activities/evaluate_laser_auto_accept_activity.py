@@ -25,7 +25,7 @@ from typing import List
 
 import numpy as np
 from fishsense_api_sdk.models.laser_prediction import LaserPrediction
-from fishsense_shared import LaserAutoAcceptSummary
+from fishsense_shared import LASER_PREDICTOR_VERSION, LaserAutoAcceptSummary
 from temporalio import activity
 
 from fishsense_data_processing_workflow_worker.activities.heartbeat import (
@@ -34,6 +34,8 @@ from fishsense_data_processing_workflow_worker.activities.heartbeat import (
 from fishsense_data_processing_workflow_worker.activities.utils import get_fs_client
 from fishsense_data_processing_workflow_worker.laser_label_validation.auto_accept import (  # noqa: E501  pylint: disable=line-too-long
     AutoAcceptConfig,
+    DiveIneligibleReason,
+    FrameVerdict,
     evaluate_dive,
 )
 
@@ -117,6 +119,56 @@ def _changed(prediction: LaserPrediction, decision) -> bool:
     return False
 
 
+async def _refuse_dive(
+    fs,
+    dive_id: int,
+    predictions: List[LaserPrediction],
+    reason: DiveIneligibleReason,
+    enabled: bool,
+) -> LaserAutoAcceptSummary:
+    """Mark every frame ineligible and clear any verdict that no longer holds.
+
+    Used for a refusal decided *before* the fit, where there is no line and so
+    no `perpendicular_px` / `along_line_z` to record. Clearing matters as much
+    as refusing: a dive that was auto-accepted under an earlier run and has
+    since been found stale must not leave `auto_accept=True` rows standing,
+    which is the same reason the ordinary path rewrites verdicts that changed.
+    """
+    written = 0
+    semaphore = asyncio.Semaphore(WRITE_CONCURRENCY)
+
+    async def _write(prediction: LaserPrediction) -> None:
+        nonlocal written
+        async with semaphore:
+            prediction.auto_accept = False
+            prediction.gate_verdict = FrameVerdict.DIVE_INELIGIBLE.value
+            prediction.line_offset_px = None
+            prediction.line_position_z = None
+            await fs.labels.put_laser_prediction(prediction.image_id, prediction)
+            written += 1
+            activity.heartbeat()
+
+    stale_or_standing = [
+        p
+        for p in predictions
+        if p.auto_accept
+        or p.gate_verdict != FrameVerdict.DIVE_INELIGIBLE.value
+        or p.line_offset_px is not None
+    ]
+    await asyncio.gather(*(_write(p) for p in stale_or_standing))
+
+    return LaserAutoAcceptSummary(
+        dive_id=dive_id,
+        enabled=enabled,
+        eligible=False,
+        reason=reason.value,
+        n_points=len(predictions),
+        auto_accepted=0,
+        verdicts={FrameVerdict.DIVE_INELIGIBLE.value: len(predictions)},
+        written=written,
+    )
+
+
 @activity.defn
 async def evaluate_laser_auto_accept_activity(dive_id: int) -> LaserAutoAcceptSummary:
     """Run the auto-accept gate over `dive_id` and persist the verdicts.
@@ -137,6 +189,50 @@ async def evaluate_laser_auto_accept_activity(dive_id: int) -> LaserAutoAcceptSu
             return LaserAutoAcceptSummary(dive_id=dive_id, eligible=False)
 
         config = _resolve_config()
+
+        # **Refuse the whole dive if ANY prediction is not from the current
+        # detector.** Decided before fitting, and deliberately at dive level.
+        #
+        # Stage v1 -- and every pre-versioning row, which carries NULL --
+        # hardcoded the laser pre-annotation to "Red Laser" rather than reading
+        # the dot's colour (`fishsense_shared.laser_predictor`). Auto-accepting
+        # one writes a possibly-wrong colour into the corpus with NO human in
+        # the loop, because skipping review is precisely what this gate does;
+        # nothing downstream re-checks it. In prod this was reachable: 1,296
+        # such rows sat in the drain's path at one dive an hour.
+        #
+        # Whole dive, not the individual rows, because the gate's decision IS a
+        # dive-level consensus -- a line fitted across two detector behaviours
+        # is not a meaningful fit, so the current-version frames could not be
+        # judged against it honestly either. The dive returns on its own once
+        # the predict cohort's stale-version path has re-predicted it and the
+        # new rows have cleared these verdicts.
+        #
+        # The cohort selector applies the same rule so the hourly drain never
+        # even selects such a dive. This second copy is not redundant: the
+        # predict parent runs this gate inline, and an operator can run it by
+        # hand, so the cohort guards neither of those paths.
+        stale = [
+            p for p in predictions if p.predictor_version != LASER_PREDICTOR_VERSION
+        ]
+        if stale:
+            activity.logger.warning(
+                "dive_id=%d refused: %d/%d predictions are not from detector "
+                "v%d (versions present: %s); re-predict before judging",
+                dive_id,
+                len(stale),
+                len(predictions),
+                LASER_PREDICTOR_VERSION,
+                sorted({str(p.predictor_version) for p in stale}),
+            )
+            return await _refuse_dive(
+                fs,
+                dive_id,
+                predictions,
+                DiveIneligibleReason.STALE_PREDICTOR,
+                config.enabled,
+            )
+
         gate, decisions = evaluate_dive(
             dive_id,
             [p.image_id for p in predictions],
