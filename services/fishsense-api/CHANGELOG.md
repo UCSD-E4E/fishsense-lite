@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.51.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.51.0...fishsense-api-v1.51.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **laser-auto-accept:** drain the predictions the gate never judged ([#701](https://github.com/UCSD-E4E/fishsense-lite/issues/701)) ([e2b26db](https://github.com/UCSD-E4E/fishsense-lite/commit/e2b26dba0db5761b45588f18b77da8d2dba397ea))
+
 ## [1.51.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.50.0...fishsense-api-v1.51.0) (2026-09-03)
 
 
