@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.20.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.20.1...fishsense-data-processing-workflow-worker-v2.20.2) (2026-09-04)
+
+
+### Bug Fixes
+
+* **stage13:** count calibration observations, not slate labels ([#719](https://github.com/UCSD-E4E/fishsense-lite/issues/719)) ([77b3507](https://github.com/UCSD-E4E/fishsense-lite/commit/77b35076eca6f86b1cd95ac39569420f1640edd4))
+
 ## [2.20.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.20.0...fishsense-data-processing-workflow-worker-v2.20.1) (2026-09-04)
 
 
