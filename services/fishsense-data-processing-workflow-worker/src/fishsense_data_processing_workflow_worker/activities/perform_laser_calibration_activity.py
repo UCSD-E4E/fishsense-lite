@@ -40,6 +40,13 @@ from fishsense_data_processing_workflow_worker.calibration_geometry import (
 )
 
 INCH_TO_M = 0.0254
+#: Minimum usable slate-laser observations before a fit is attempted. The
+#: api's `MIN_SLATE_LASER_POINTS` must equal this — they are one threshold
+#: spelled twice, on opposite sides of the worker boundary, and a dive that
+#: clears the cohort's copy but not this one is re-selected hourly forever
+#: with nothing written. That is not hypothetical: the cohort used to count
+#: completed slate labels rather than observations, and prod dive 347 (18
+#: labels, 1 live dot) wedged stage 13 for as long as it was scheduled.
 MIN_LASER_POINTS = 2
 
 __all__ = ["perform_laser_calibration_activity"]
