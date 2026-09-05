@@ -46,7 +46,7 @@ export async function loadQueue(
   let outstanding: number[] | null = null;
   try {
     const ids = await getIncompleteProjectIds(revalidate);
-    outstanding = kindKey === "laser" ? ids.laser : ids.headtail;
+    outstanding = ids.laser;
   } catch {
     outstanding = null;
   }

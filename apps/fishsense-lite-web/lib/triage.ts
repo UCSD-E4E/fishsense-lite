@@ -48,15 +48,15 @@ export type Keypoint = {
 };
 
 export type QueueKind = {
-  key: "laser" | "headtail";
+  key: "laser";
   label: string;
   /**
    * Suffix of the per-dive project title.
    *
-   * Mirrors `LASER_PROJECT_TITLE_SUFFIX` / `HEADTAIL_PROJECT_TITLE_SUFFIX` in
-   * the api-worker's create activities. Hand-maintained for now; the durable
-   * fix is for fishsense-api to serve this vocabulary so no client re-spells
-   * it. Renaming one side silently empties this queue.
+   * Mirrors `LASER_PROJECT_TITLE_SUFFIX` in the api-worker's create activity.
+   * Hand-maintained for now; the durable fix is for fishsense-api to serve
+   * this vocabulary so no client re-spells it. Renaming one side silently
+   * empties this queue.
    */
   titleSuffix: string;
   /**
@@ -68,6 +68,15 @@ export type QueueKind = {
   expectedKeypoints: number;
 };
 
+/**
+ * Laser only, deliberately.
+ *
+ * Head/tail belongs here too — the screen is the same and the machinery is
+ * parameterised for it — but its pre-annotations come from the head/tail
+ * predict stage, which is not on main. Shipping the tab now would give a
+ * labeler a queue that can only ever be empty, and would make this feature
+ * wait on that one. Adding a kind here is additive when that stage lands.
+ */
 export const QUEUE_KINDS: Record<QueueKind["key"], QueueKind> = {
   laser: {
     key: "laser",
@@ -75,13 +84,6 @@ export const QUEUE_KINDS: Record<QueueKind["key"], QueueKind> = {
     titleSuffix: "Laser Calibration Labeling",
     fromNames: ["laser", "kp-1"],
     expectedKeypoints: 1,
-  },
-  headtail: {
-    key: "headtail",
-    label: "Head/Tail",
-    titleSuffix: "HeadTail Labeling",
-    fromNames: ["kp-1"],
-    expectedKeypoints: 2,
   },
 };
 

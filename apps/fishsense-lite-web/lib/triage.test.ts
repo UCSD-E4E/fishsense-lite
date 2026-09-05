@@ -10,7 +10,6 @@ import {
 } from "./triage";
 
 const LASER = QUEUE_KINDS.laser;
-const HEADTAIL = QUEUE_KINDS.headtail;
 
 function keypoint(overrides: Record<string, unknown> = {}) {
   return {
@@ -50,9 +49,9 @@ describe("project title vocabulary", () => {
     expect(matchesProjectTitle("2024-08-21 reef dive 3 #412 - HeadTail Labeling", LASER)).toBe(
       false,
     );
-    expect(
-      matchesProjectTitle("2024-08-21 reef dive 3 #412 - HeadTail Labeling", HEADTAIL),
-    ).toBe(true);
+    expect(matchesProjectTitle("2024-08-21 reef dive 3 #412 - Species Labeling", LASER)).toBe(
+      false,
+    );
   });
 
   it("keeps the dive id in the recovered name", () => {
@@ -128,12 +127,10 @@ describe("rejectionReason", () => {
   // Never reject on region count. The accept path copies whatever the model
   // produced, verbatim; a partial detection is surfaced to the labeler, not
   // hidden from them.
-  it("accepts a head/tail prediction with only one of two keypoints", () => {
-    const t = task({
-      predictions: [{ id: 1, result: [keypoint({ from_name: "kp-1" })] }],
-    });
-    expect(rejectionReason(t, HEADTAIL, skips)).toBeNull();
-    expect(keypointsOf(pickPrediction(t)!).length).toBeLessThan(HEADTAIL.expectedKeypoints);
+  it("accepts a prediction even when it looks partial", () => {
+    const t = task({ predictions: [{ id: 1, result: [keypoint()] }] });
+    expect(rejectionReason(t, LASER, skips)).toBeNull();
+    expect(keypointsOf(pickPrediction(t)!)).toHaveLength(LASER.expectedKeypoints);
   });
 });
 
