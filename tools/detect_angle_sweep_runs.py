@@ -291,7 +291,9 @@ def histogram(gaps: list[float]) -> list[tuple[str, int]]:
     return buckets
 
 
-def report(conn: psycopg.Connection, dive_id: int, args: argparse.Namespace) -> None:
+def report(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+    conn: psycopg.Connection, dive_id: int, args: argparse.Namespace
+) -> None:
     frames = fetch_frames(conn, dive_id, args.include_noncanonical)
     print(f"\n=== {dive_label(conn, dive_id)} ===")
     if len(frames) < 2:
@@ -535,7 +537,7 @@ def expand(conn: psycopg.Connection, table: Path, out: Path) -> int:
     return 0
 
 
-def main() -> int:
+def main() -> int:  # pylint: disable=too-many-return-statements
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dive-id", type=int, action="append", default=[])
     parser.add_argument(

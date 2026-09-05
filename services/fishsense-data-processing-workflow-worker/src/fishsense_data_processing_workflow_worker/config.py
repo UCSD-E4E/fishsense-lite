@@ -13,6 +13,9 @@ from fishsense_shared import (
     url_condition,
 )
 
+from fishsense_data_processing_workflow_worker.laser_label_validation.line_fit import (
+    MIN_POINTS_FOR_LINE,
+)
 from fishsense_data_processing_workflow_worker.role_names import ROLE_ALL, ROLES
 
 APP_NAME = "e4efs_data_processing_workflow_worker"
@@ -85,6 +88,53 @@ _VALIDATORS = [
     Validator("object_store.labels_prefix", cast=str, default=""),
     Validator("object_store.access_key", required=True, cast=str),
     Validator("object_store.secret_key", required=True, cast=str),
+    # --- laser auto-accept gate -------------------------------------------
+    # Which of the laser detector's predictions may skip human review. Every
+    # knob lives here rather than in code because the two operations that
+    # matter most — starting a dark run and stopping the thing — must not need
+    # a deploy. See `laser_label_validation.auto_accept` for what each means
+    # and what it was measured against.
+    #
+    # `enabled=false` is both the kill switch and the dark run: the gate still
+    # fits, judges and records every verdict, it just clears nothing. Turn it
+    # off to watch what it would do; turn it off to stop it. Nothing has to be
+    # unwound either way, because the verdict is advisory until populate reads
+    # `auto_accept`.
+    Validator("laser_auto_accept.enabled", cast=bool, default=True),
+    # 1.0 sends every otherwise-cleared frame to a human anyway — a second,
+    # softer way to run dark. 0.0 disables the audit sample entirely, which
+    # gives up the only comparison set that can tell a better detector version
+    # from a worse one; prefer leaving it on.
+    Validator(
+        "laser_auto_accept.audit_sample_rate",
+        cast=float,
+        default=0.10,
+        condition=lambda x: 0.0 <= x <= 1.0,
+    ),
+    Validator(
+        "laser_auto_accept.min_predictions",
+        cast=int,
+        default=20,
+        condition=lambda x: x >= MIN_POINTS_FOR_LINE,
+    ),
+    Validator(
+        "laser_auto_accept.min_inlier_fraction",
+        cast=float,
+        default=0.75,
+        condition=lambda x: 0.0 <= x <= 1.0,
+    ),
+    Validator(
+        "laser_auto_accept.max_perpendicular_px",
+        cast=float,
+        default=10.0,
+        condition=lambda x: x > 0,
+    ),
+    Validator(
+        "laser_auto_accept.max_along_line_z",
+        cast=float,
+        default=4.0,
+        condition=lambda x: x > 0,
+    ),
     # SAM3 checkpoint, for the head/tail predict stage.
     #
     # Defaults rather than `required=True` on purpose: Dynaconf validates every

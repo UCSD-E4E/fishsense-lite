@@ -79,7 +79,8 @@ landed; the clones behind them are now collapsed into
 | `services/fishsense-api/` | FastAPI app (DB CRUD, label endpoints) | — |
 | `services/fishsense-api-workflow-worker/` | api-side Temporal worker: hourly Label Studio sync (laser/headtail/dive-slate/species), on-demand Create/Populate × {Laser,Species,HeadTail,DiveSlate} LS project workflows, on-demand dive ingestion (`IngestDiveWorkflow`, see below) + checksum verification, hourly preprocess parents for stages 0.1 / 1 / 2 / 5.1 / 9 (select + resolve; dispatch child to data-worker) | `fishsense_api_queue` |
 | `apps/fishsense-lite-web/` | Next.js 15 (App Router) + React + TS landing page at `fishsense.e4e.ucsd.edu`. SSR fetches LS project IDs from fishsense-api, resolves names from Label Studio, renders categorized link cards. Auth.js (next-auth v5) with Authentik OIDC gates `/portal/*`; landing stays public. Replaces the prior mafl dashboard + its hourly config-writer workflow. Will grow into a full web app. | — |
-| `services/fishsense-data-processing-workflow-worker/` | image preprocessing (rectify/overlay/JPEG), laser calibration, fish measurement, laser depth, clustering, label validation | `fishsense_data_processing_queue` (role `cpu`) |
+| `services/fishsense-data-processing-workflow-worker/` | image preprocessing (rectify/overlay/JPEG) — nothing else | `fishsense_data_processing_queue` (role `cpu`) |
+| ⤷ same package, role `light` | laser calibration, fish measurement, laser depth, clustering, label validation, auto-accept gate | `fishsense_data_processing_light_queue` |
 | ⤷ same package, role `gpu` | torch inference: laser detector + slate masker | `fishsense_data_processing_gpu_queue` |
 | `services/fishsense-backup-worker/` | nightly Postgres → NAS backups + retention | `fishsense_backup_queue` |
 
@@ -866,8 +867,29 @@ roles, on two task queues, as three Kubernetes Deployments.
 
 | Role | Queue | Stages |
 |---|---|---|
-| `cpu` | `fishsense_data_processing_queue` | rectify/overlay/JPEG (0.1 / 2 / 5.1 / 9), clustering, calibration, measurement, laser depth, laser-label validation |
+| `cpu` | `fishsense_data_processing_queue` | rectify/overlay/JPEG (0.1 / 2 / 5.1 / 9) — the per-image fan-out, and only that |
+| `light` | `fishsense_data_processing_light_queue` | clustering, calibration, measurement, laser depth, laser-label validation, auto-accept gate |
 | `gpu` | `fishsense_data_processing_gpu_queue` | `predict_laser_image`, `predict_slate_image` |
+
+**The `light` split (2026-09-04) is about memory, not CPU.** Both roles are
+CPU-only and could share a pod; what they cannot share is the concurrency cap.
+The per-image worker runs `max_concurrent_activities = 2`, and that number is
+the scar of a real OOM — each activity peaks at 1-3 GB in a rawpy decode, the
+SDK default of 100 CrashLoopBackOff'd the pod, and a cap of 4 did it again on
+2026-07-21 with 17 restarts. The pod's memory limit is *derived* from the cap,
+so the cap cannot simply be raised. Two slots means one multi-image preprocess
+dispatch owns the queue for as long as a dive takes: on 2026-09-04 that expired
+three of the auto-accept drain's first four firings and two consecutive laser
+calibrations with `ScheduleToStart timeout`, for work that runs in under two
+seconds. The light pod holds no image bytes, so it is an order of magnitude
+smaller and runs a cap of 8.
+
+It still scales to zero — NRP asks guests to hold as little as possible — so
+cold start is part of the latency budget. That is why stages on this queue
+bound queue wait *separately* from execution rather than with one conflated
+`schedule_to_close_timeout`; `fishsense_shared.auto_accept_timeouts` is the
+worked example. A dedicated queue is not an instant one; it means nothing else
+can be ahead of you in it.
 
 `general.role` selects it (`cpu` / `gpu` / `all`); the registration lists live
 in `roles.py`, the vocabulary in the leaf `role_names.py` (config imports the
@@ -959,6 +981,52 @@ throughput, while each GPU pod holds a card on a contended cluster.
 Operator notes, the annotation table, and the CI behavior (a GPU rollout
 failure is a *warning*, so a GPU shortage cannot block shipping the CPU stages)
 are in `deploy/k8s/data-worker/README.md`.
+
+## The landing page hides laser projects the gate has not finished
+
+**Added 2026-09-04.** `apps/fishsense-lite-web`'s laser cards come from
+`GET /api/v1/labels/laser/label-studio-project-ids?incomplete=true&gated=true`.
+A project whose auto-accept gate still has frames pending is not linked.
+
+The reason is that an ungated frame is the *machine's* work. The gate is about
+to accept or decline it, so a labeler who judges it first has done the work
+twice — and had no way to know. Hiding the project is the only place that can
+be prevented, because nothing downstream can distinguish a human accept from
+an auto-accept after the fact (`apply_laser_auto_accept` deliberately writes
+the same annotation shape a human produces).
+
+**The predicate is "the gate is done here", not "the gate has run here", and
+the difference is the whole point.** A dive swept halfway satisfies the weaker
+test while still holding frames the gate is about to take — exactly the case
+the filter exists to prevent. So `gated=true` requires *no* `LaserPrediction`
+with a NULL `gate_verdict`, plus at least one judged. `gated=false` is its
+exact complement, pinned by a test, so the two answers reassemble into the
+unfiltered one rather than being a third silently different query.
+
+A project the gate has never touched is **not** gated: vacuous truth reads as
+False, the same convention the `*_labeling_complete` flags use in
+`dive_pipeline_status`.
+
+This is self-correcting across re-prediction, for free. The persist activity
+builds `LaserPrediction` without the gate fields and the upsert merges the
+whole model, so re-predicting a dive clears its verdicts — and the dive drops
+off the landing page until the gate has been back through it. That is correct:
+the old verdict was computed from a dot the row no longer holds.
+
+**Laser only, and deliberately per-kind.** `LaserPrediction` is the sole
+prediction model carrying `gate_verdict` — head/tail and slate have no gate,
+and species has no prediction model at all. Sending `gated=true` to one of
+those would ask for a condition nothing can satisfy and silently blank that
+section, so the web client opts in per kind via `GATED_KINDS` in
+`lib/fishsense-api.ts` and the other three endpoints take no such flag. Add a
+kind there when its predictions grow a verdict; head/tail is the next
+candidate.
+
+The SDK's `get_laser_label_studio_project_ids` deliberately did **not** gain
+the parameter. Its only consumer is the sync enumeration, which must see every
+project regardless of gate state, and this repo has already removed one flag
+that shipped honoured by no code (`verify_existing` on ingest, #618) rather
+than leave a declared control that does nothing.
 
 ## Data-worker activity pattern
 

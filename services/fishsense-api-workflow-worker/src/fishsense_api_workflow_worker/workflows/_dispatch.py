@@ -36,6 +36,7 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 with workflow.unsafe.imports_passed_through():
     from fishsense_shared import (
         DATA_PROCESSING_GPU_TASK_QUEUE,
+        DATA_PROCESSING_LIGHT_TASK_QUEUE,
         DATA_PROCESSING_TASK_QUEUE,
     )
 
@@ -47,6 +48,7 @@ with workflow.unsafe.imports_passed_through():
 
 __all__ = [
     "DATA_PROCESSING_GPU_TASK_QUEUE",
+    "DATA_PROCESSING_LIGHT_TASK_QUEUE",
     "DATA_PROCESSING_TASK_QUEUE",
     "STAGE_RAW_RETRY_POLICY",
     "cleanup_raw",
@@ -59,6 +61,7 @@ __all__ = [
     "stage_slate_pdf",
     "wake_data_worker",
     "wake_gpu_worker",
+    "wake_light_worker",
 ]
 
 
@@ -95,6 +98,33 @@ async def wake_data_worker() -> None:
     """
     await workflow.execute_activity(
         "ensure_data_worker_running_activity",
+        args=(),
+        schedule_to_close_timeout=timedelta(minutes=5),
+        retry_policy=SCALING_RETRY_POLICY,
+    )
+
+
+async def wake_light_worker() -> None:
+    """Scale the NRP light-queue worker up before its child lands there.
+
+    The counterpart of `wake_data_worker` for
+    `fishsense_data_processing_light_queue` — the queue for the stages that
+    hold no image bytes (clustering, calibration, measurement, laser depth,
+    laser-label validation, the auto-accept gate).
+
+    A separate Deployment because the per-image worker's
+    `max_concurrent_activities = 2` is a memory ceiling, not a throughput
+    choice: each of its activities peaks at 1-3 GB in a rawpy decode. Two slots
+    means one multi-image dispatch owns that queue, and on 2026-09-04 that
+    expired three of four auto-accept firings and two consecutive laser
+    calibrations with `ScheduleToStart timeout`, for work taking under a
+    second.
+
+    Same shape as `wake_data_worker`: idempotent absolute target, returns
+    immediately, no-op when k8s scaling isn't configured.
+    """
+    await workflow.execute_activity(
+        "ensure_light_worker_running_activity",
         args=(),
         schedule_to_close_timeout=timedelta(minutes=5),
         retry_policy=SCALING_RETRY_POLICY,
@@ -219,7 +249,7 @@ async def dispatch_child(
         return None
 
 
-async def run_sdk_activity(activity_name: str, arg: Any) -> None:
+async def run_sdk_activity(activity_name: str, arg: Any) -> Any:
     """Run a single-argument SDK write-back step (15 min, fail-fast).
 
     Covers the predict parents' post-child work: persisting the child's
@@ -228,8 +258,12 @@ async def run_sdk_activity(activity_name: str, arg: Any) -> None:
     (`backfill_slate_predictions_for_dive_activity`, arg = dive_id).
     Both are idempotent, so the fail-fast policy is safe — a failure just
     means the next schedule firing redoes it.
+
+    Returns whatever the activity returned, for callers that want to log a
+    count. Most ignore it. This does not change the commands emitted, so it is
+    not a replay concern.
     """
-    await workflow.execute_activity(
+    return await workflow.execute_activity(
         activity_name,
         args=(arg,),
         schedule_to_close_timeout=timedelta(minutes=15),

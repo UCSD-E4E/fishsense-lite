@@ -1,3 +1,3 @@
 """Fishsense API SDK package."""
 
-__version__ = "1.48.2"
+__version__ = "1.49.1"

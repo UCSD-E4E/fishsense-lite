@@ -22,16 +22,20 @@ from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
+from fishsense_shared import DATA_PROCESSING_LIGHT_TASK_QUEUE
+
 from fishsense_api_workflow_worker.workflows.sync_label_studio_laser_labels_workflow import (
     SyncLabelStudioLaserLabelsWorkflow,
 )
 
 
-# Stand-in for the data-worker child workflow. Lives on a separate task
-# queue so the sync workflow's `task_queue=DATA_PROCESSING_TASK_QUEUE`
-# dispatch is exercised end-to-end (instead of silently degrading to
-# "child runs on the same queue").
-DATA_PROCESSING_TASK_QUEUE = "fishsense_data_processing_queue"
+# Stand-in for the data-worker child workflow. The stub worker below polls
+# the REAL queue name from the shared contract, not a local copy of the
+# string: the validation child moved to the light queue on 2026-09-04, and a
+# stale literal here would leave this stub polling the old queue while the
+# workflow dispatched to the new one. That does not fail — it hangs until the
+# child's execution timeout, which is exactly the silent degradation this
+# separate-queue setup exists to catch.
 
 
 @workflow.defn(name="ValidateLaserLabelsForDiveWorkflow")
@@ -174,7 +178,7 @@ async def test_workflow_dispatches_validation_child_per_complete_dive():
     async def stub_get_complete_dives() -> List[int]:
         return [10, 20, 30]
 
-    @activity.defn(name="ensure_data_worker_running_activity")
+    @activity.defn(name="ensure_light_worker_running_activity")
     async def stub_ensure() -> int:
         return 1
 
@@ -199,7 +203,7 @@ async def test_workflow_dispatches_validation_child_per_complete_dive():
         ):
             async with Worker(
                 env.client,
-                task_queue=DATA_PROCESSING_TASK_QUEUE,
+                task_queue=DATA_PROCESSING_LIGHT_TASK_QUEUE,
                 workflows=[_StubValidateChildWorkflow],
                 activities=[stub_validate],
             ):
@@ -308,7 +312,7 @@ async def test_workflow_completes_when_validation_children_fail():
     async def stub_get_complete_dives() -> List[int]:
         return [1, 2, 3]
 
-    @activity.defn(name="ensure_data_worker_running_activity")
+    @activity.defn(name="ensure_light_worker_running_activity")
     async def stub_ensure() -> int:
         return 1
 
@@ -335,7 +339,7 @@ async def test_workflow_completes_when_validation_children_fail():
         ):
             async with Worker(
                 env.client,
-                task_queue=DATA_PROCESSING_TASK_QUEUE,
+                task_queue=DATA_PROCESSING_LIGHT_TASK_QUEUE,
                 workflows=[_StubValidateChildWorkflow],
                 activities=[stub_validate_fails],
             ):
@@ -356,7 +360,7 @@ async def test_workflow_completes_when_validation_children_fail():
 async def test_workflow_wakes_data_worker_before_dispatching_validation():
     """Regression: the validation children run on the scale-to-zero
     data-worker queue, so the parent must scale the pod up
-    (`ensure_data_worker_running_activity`) before fanning them out —
+    (`ensure_light_worker_running_activity`) before fanning them out —
     otherwise they sit unpolled and hit their execution_timeout. The wake
     must happen before any validation child runs."""
     events: List[str] = []
@@ -377,7 +381,7 @@ async def test_workflow_wakes_data_worker_before_dispatching_validation():
     async def stub_get_complete_dives() -> List[int]:
         return [10, 20, 30]
 
-    @activity.defn(name="ensure_data_worker_running_activity")
+    @activity.defn(name="ensure_light_worker_running_activity")
     async def stub_ensure() -> int:
         events.append("ensure")
         return 1
@@ -403,7 +407,7 @@ async def test_workflow_wakes_data_worker_before_dispatching_validation():
         ):
             async with Worker(
                 env.client,
-                task_queue=DATA_PROCESSING_TASK_QUEUE,
+                task_queue=DATA_PROCESSING_LIGHT_TASK_QUEUE,
                 workflows=[_StubValidateChildWorkflow],
                 activities=[stub_validate],
             ):
@@ -446,7 +450,7 @@ async def test_workflow_does_not_wake_data_worker_when_no_dives_complete():
     async def stub_get_complete_dives() -> List[int]:
         return []
 
-    @activity.defn(name="ensure_data_worker_running_activity")
+    @activity.defn(name="ensure_light_worker_running_activity")
     async def stub_ensure() -> int:
         ensure_calls.append("ensure")
         return 1

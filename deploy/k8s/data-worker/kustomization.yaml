@@ -12,30 +12,38 @@ kind: Kustomization
 # NRP_KUBECONFIG context's default.
 namespace: e4e-fishsense
 
-# Three Deployments, one image, two task queues:
-#   deployment.yaml                  role=cpu, no GPU request
-#   deployment-gpu.yaml              role=gpu, nvidia.com/gpu: 1
-#   deployment-gpu-cpu-fallback.yaml role=gpu, no GPU request
-# The last two both serve `fishsense_data_processing_gpu_queue`; the api-worker
-# scales exactly one of them up. See each file's header.
+# Four Deployments, one image, three task queues:
+#   deployment.yaml                  role=cpu,   no GPU request
+#   deployment-gpu.yaml              role=gpu,   nvidia.com/gpu: 1
+#   deployment-gpu-cpu-fallback.yaml role=gpu,   no GPU request
+#   deployment-light.yaml            role=light, no GPU request, small pod
+# The two gpu ones both serve `fishsense_data_processing_gpu_queue`; the
+# api-worker scales exactly one of them up. `deployment-light.yaml` serves
+# `fishsense_data_processing_light_queue` — the stages that hold no image
+# bytes, split out because the per-image worker's concurrency cap of 2 is a
+# memory ceiling and a seconds-long job queued behind it simply expired. See
+# each file's header.
 resources:
   - deployment.yaml
   - deployment-gpu.yaml
   - deployment-gpu-cpu-fallback.yaml
+  - deployment-light.yaml
 
 # Builds the `fishsense-data-worker-settings` ConfigMap from the TOML
 # file in this directory and appends a content hash to its name, so a
-# settings change rolls the Deployments. All three reference the base
+# settings change rolls the Deployments. All four reference the base
 # name; kustomize rewrites it to the hashed name. Per-Deployment
-# differences (the worker role, the fallback's activity cap) are env vars
-# in the manifests rather than separate ConfigMaps.
+# differences (the worker role, and each pod's activity cap) are env vars
+# in the manifests rather than separate ConfigMaps — which is what lets the
+# light pod run a cap of 8 against the per-image pod's memory-bound 2.
 configMapGenerator:
   - name: fishsense-data-worker-settings
     files:
       - settings.toml
 
-# One entry covers all three Deployments — they run the same image, differing
-# only by `E4EFS_GENERAL__ROLE`. CI's `kustomize edit set image` is unchanged.
+# One entry covers all four Deployments — they run the same image, differing
+# only by `E4EFS_GENERAL__ROLE` and their resource requests. CI's
+# `kustomize edit set image` is unchanged.
 images:
   - name: ghcr.io/ucsd-e4e/fishsense-data-processing-workflow-worker
-    newTag: v2.18.2
+    newTag: v2.20.2

@@ -70,8 +70,8 @@ services/fishsense-data-processing-workflow-worker/scripts/dry_run_stage13_*.jso
 # Claude Code git worktrees. `EnterWorktree` creates these in-repo, and each
 # holds a full checkout with its own `.git` file — so git reports the whole
 # tree as one untracked entry and a blanket `git add -A` commits it as a bogus
-# gitlink. They are throwaway working copies; the branch is what carries the
-# work, and it lives in the repo already.
+# gitlink pointing at a path that exists on one machine. They are throwaway
+# working copies; the branch carries the work and is already in the repo.
 .claude/worktrees/
 
 # direnv (nix-direnv cache)

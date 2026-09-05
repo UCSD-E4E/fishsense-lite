@@ -10,6 +10,13 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 from fishsense_shared import ExceptionGroupErrorLogging
 
 with workflow.unsafe.imports_passed_through():
+    # The light queue, not the per-image one. These stages hold no image
+    # bytes; the per-image worker caps concurrency at 2 for memory reasons
+    # (1-3 GB per rawpy decode), so a seconds-long job queued there waits on
+    # whole dives. Imported from the shared contract rather than spelled as a
+    # literal -- this module used to carry its own copy of the queue name.
+    from fishsense_shared import DATA_PROCESSING_LIGHT_TASK_QUEUE
+
     from fishsense_api_workflow_worker.workflows._retry_policies import (
         SCALING_RETRY_POLICY,
     )
@@ -20,8 +27,6 @@ PROJECT_CONCURRENCY = 4
 # is one SDK fetch + numpy line fit (~100 points), so the cap is sized
 # to avoid pegging the api-worker on SDK roundtrips rather than CPU.
 VALIDATION_CONCURRENCY = 8
-
-DATA_PROCESSING_TASK_QUEUE = "fishsense_data_processing_queue"
 
 
 @workflow.defn
@@ -88,7 +93,7 @@ class SyncLabelStudioLaserLabelsWorkflow:
         # ensure_data_worker_running_activity).
         if complete_dive_ids:
             await workflow.execute_activity(
-                "ensure_data_worker_running_activity",
+                "ensure_light_worker_running_activity",
                 args=(),
                 schedule_to_close_timeout=timedelta(minutes=5),
                 retry_policy=SCALING_RETRY_POLICY,
@@ -107,7 +112,7 @@ class SyncLabelStudioLaserLabelsWorkflow:
                         # numpy fit). ALLOW_DUPLICATE so re-runs aren't
                         # blocked by the prior firing's success.
                         id=f"validate-laser-labels-{dive_id}",
-                        task_queue=DATA_PROCESSING_TASK_QUEUE,
+                        task_queue=DATA_PROCESSING_LIGHT_TASK_QUEUE,
                         # Must be ≥ the child activity's
                         # schedule_to_close (15m); see
                         # validate_laser_labels_for_dive_workflow.py.

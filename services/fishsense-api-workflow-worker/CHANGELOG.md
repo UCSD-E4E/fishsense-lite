@@ -2,6 +2,48 @@
 
 <!-- version list -->
 
+## [1.58.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.58.1...fishsense-api-workflow-worker-v1.58.2) (2026-09-05)
+
+
+### Bug Fixes
+
+* **laser-populate:** name the service account on imported annotations ([#729](https://github.com/UCSD-E4E/fishsense-lite/issues/729)) ([aaf7d57](https://github.com/UCSD-E4E/fishsense-lite/commit/aaf7d5741796d116633cd2436e7d6ca0d9707d4d))
+
+## [1.58.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.58.0...fishsense-api-workflow-worker-v1.58.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **stage13:** count calibration observations, not slate labels ([#719](https://github.com/UCSD-E4E/fishsense-lite/issues/719)) ([77b3507](https://github.com/UCSD-E4E/fishsense-lite/commit/77b35076eca6f86b1cd95ac39569420f1640edd4))
+
+## [1.58.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.57.2...fishsense-api-workflow-worker-v1.58.0) (2026-09-04)
+
+
+### Features
+
+* **data-worker:** give the non-image stages their own task queue ([#711](https://github.com/UCSD-E4E/fishsense-lite/issues/711)) ([f6540e4](https://github.com/UCSD-E4E/fishsense-lite/commit/f6540e4cef8787be662a20f0245f69db53558ab6))
+
+## [1.57.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.57.1...fishsense-api-workflow-worker-v1.57.2) (2026-09-04)
+
+
+### Bug Fixes
+
+* **laser-auto-accept:** bound the gate's queue wait separately from its run ([#707](https://github.com/UCSD-E4E/fishsense-lite/issues/707)) ([682fb35](https://github.com/UCSD-E4E/fishsense-lite/commit/682fb35567565130212cb31336081dcd655a56fd))
+
+## [1.57.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.57.0...fishsense-api-workflow-worker-v1.57.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **laser-auto-accept:** drain the predictions the gate never judged ([#701](https://github.com/UCSD-E4E/fishsense-lite/issues/701)) ([e2b26db](https://github.com/UCSD-E4E/fishsense-lite/commit/e2b26dba0db5761b45588f18b77da8d2dba397ea))
+
+## [1.57.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.56.6...fishsense-api-workflow-worker-v1.57.0) (2026-09-03)
+
+
+### Features
+
+* **laser:** skip human review of laser predictions the dive's own line agrees with ([#693](https://github.com/UCSD-E4E/fishsense-lite/issues/693)) ([c388e21](https://github.com/UCSD-E4E/fishsense-lite/commit/c388e21444c39b696ccd209c515f24f42ce4e1da))
+
 ## [1.56.6](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.56.5...fishsense-api-workflow-worker-v1.56.6) (2026-09-02)
 
 

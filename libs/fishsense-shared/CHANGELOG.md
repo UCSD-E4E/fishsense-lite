@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.15.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.14.1...fishsense-shared-v0.15.0) (2026-09-04)
+
+
+### Features
+
+* **data-worker:** give the non-image stages their own task queue ([#711](https://github.com/UCSD-E4E/fishsense-lite/issues/711)) ([f6540e4](https://github.com/UCSD-E4E/fishsense-lite/commit/f6540e4cef8787be662a20f0245f69db53558ab6))
+
+## [0.14.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.14.0...fishsense-shared-v0.14.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **laser-auto-accept:** bound the gate's queue wait separately from its run ([#707](https://github.com/UCSD-E4E/fishsense-lite/issues/707)) ([682fb35](https://github.com/UCSD-E4E/fishsense-lite/commit/682fb35567565130212cb31336081dcd655a56fd))
+
+## [0.14.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.13.0...fishsense-shared-v0.14.0) (2026-09-03)
+
+
+### Features
+
+* **laser:** skip human review of laser predictions the dive's own line agrees with ([#693](https://github.com/UCSD-E4E/fishsense-lite/issues/693)) ([c388e21](https://github.com/UCSD-E4E/fishsense-lite/commit/c388e21444c39b696ccd209c515f24f42ce4e1da))
+
 ## [0.13.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.12.1...fishsense-shared-v0.13.0) (2026-08-28)
 
 

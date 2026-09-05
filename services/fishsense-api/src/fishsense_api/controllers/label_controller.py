@@ -17,6 +17,7 @@ from fishsense_api.models.head_tail_label import HeadTailLabel
 from fishsense_api.models.image import Image
 from fishsense_api.models.label_studio_sync_cursor import LabelStudioSyncCursor
 from fishsense_api.models.laser_label import LaserLabel
+from fishsense_api.models.laser_prediction import LaserPrediction
 from fishsense_api.models.species_label import SpeciesLabel
 from fishsense_api.server import app
 
@@ -304,9 +305,47 @@ async def get_headtail_label_by_label_studio_id(
     return label
 
 
+def _gate_scan(*, judged: bool):
+    """Correlated EXISTS body: does this project hold a live-labelled image
+    whose laser prediction has (or has not) been judged by the gate?
+
+    Correlated explicitly on `LaserLabel` rather than relying on
+    auto-correlation, which only reaches the immediately enclosing SELECT —
+    the same trap that 500'd both cohort selectors when
+    `_resolved_laser_extrinsics_id()` compiled to a cross join. The inner
+    label table is aliased so it cannot be mistaken for the outer one.
+
+    `superseded == False` is applied inside the scan for the same reason
+    every other laser read applies it: a dead-lettered label is not live
+    labeling work, so a pending prediction on its image must not keep an
+    otherwise-finished project off the landing page.
+    """
+    inner = alias(LaserLabel.__table__, name="gate_scan_label")
+    verdict = (
+        LaserPrediction.gate_verdict != None
+        if judged
+        else LaserPrediction.gate_verdict == None
+    )
+    return (
+        select(1)
+        .select_from(
+            inner.join(
+                LaserPrediction.__table__,
+                LaserPrediction.image_id == inner.c.image_id,
+            )
+        )
+        .where(inner.c.label_studio_project_id == LaserLabel.label_studio_project_id)
+        .where(inner.c.superseded == False)
+        .where(verdict)
+        .correlate(LaserLabel.__table__)
+        .exists()
+    )
+
+
 @app.get("/api/v1/labels/laser/label-studio-project-ids")
 async def get_laser_label_studio_project_ids(
     incomplete: bool = False,
+    gated: bool | None = None,
     session: AsyncSession = Depends(get_async_session),
 ) -> List[int]:
     """Distinct Label Studio project IDs that have at least one laser label.
@@ -315,6 +354,30 @@ async def get_laser_label_studio_project_ids(
     where `completed` is NULL or false. Backs the `apps/fishsense-lite-web/` SSR
     landing page, which surfaces only LS projects with outstanding
     labeling work.
+
+    `gated=true` further narrows to projects the auto-accept gate has
+    **finished** with: no laser prediction still awaiting a verdict, and at
+    least one already judged. `gated=false` is its exact complement, and
+    omitting it keeps every project.
+
+    The predicate is "the gate is done here", not "the gate has run here",
+    and the difference is the whole point of the flag. A dive swept halfway
+    satisfies the weaker test while still holding frames the gate is about
+    to take, so a labeler sent there does work the machine is about to
+    finish — which is what this exists to prevent. A project the gate has
+    never touched is likewise not gated: vacuous truth reads as False, the
+    same convention `dive_pipeline_status`'s `*_labeling_complete` flags use.
+
+    This is self-correcting across re-prediction. The persist activity
+    constructs `LaserPrediction` without the gate fields and the upsert
+    merges the whole model, so re-predicting a dive clears its verdicts —
+    and the dive correctly drops off the landing page until the gate has
+    been back through it.
+
+    Only laser has a gate today; `LaserPrediction` is the sole prediction
+    model carrying `gate_verdict`. The headtail / species / dive-slate
+    endpoints deliberately take no `gated` flag rather than accepting one
+    that could never be satisfied.
 
     Replaces a per-dive fan-out the api-workflow-worker used to do (one
     HTTP round trip per canonical dive) — that approach blew past the
@@ -326,8 +389,9 @@ async def get_laser_label_studio_project_ids(
     """
     logger.debug(
         "Retrieving distinct Label Studio project IDs with laser labels "
-        "(incomplete=%s)",
+        "(incomplete=%s, gated=%s)",
         incomplete,
+        gated,
     )
     query = (
         select(LaserLabel.label_studio_project_id).where(
@@ -343,6 +407,9 @@ async def get_laser_label_studio_project_ids(
             (LaserLabel.completed == False)
             | (LaserLabel.completed.is_(None))  # pylint: disable=no-member
         )
+    if gated is not None:
+        finished = _gate_scan(judged=True) & ~_gate_scan(judged=False)
+        query = query.where(finished if gated else ~finished)
     return list((await session.exec(query.distinct())).all())
 
 

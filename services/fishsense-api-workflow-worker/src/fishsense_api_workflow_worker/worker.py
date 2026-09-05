@@ -34,6 +34,9 @@ from fishsense_api_workflow_worker.activities.list_dive_folder_activity import (
 from fishsense_api_workflow_worker.activities.preflight_ingest_activity import (
     preflight_ingest_activity,
 )
+from fishsense_api_workflow_worker.activities.apply_laser_auto_accept_activity import (  # pylint: disable=line-too-long
+    apply_laser_auto_accept_for_dive_activity,
+)
 from fishsense_api_workflow_worker.activities.backfill_laser_predictions_activity import (  # pylint: disable=line-too-long
     backfill_laser_predictions_for_dive_activity,
 )
@@ -45,6 +48,9 @@ from fishsense_api_workflow_worker.activities.cleanup_raw_bytes_for_dive_activit
 )
 from fishsense_api_workflow_worker.activities.ensure_data_worker_running_activity import (  # pylint: disable=line-too-long
     ensure_data_worker_running_activity,
+)
+from fishsense_api_workflow_worker.activities.ensure_light_worker_running_activity import (  # pylint: disable=line-too-long
+    ensure_light_worker_running_activity,
 )
 from fishsense_api_workflow_worker.activities.ensure_gpu_worker_running_activity import (  # pylint: disable=line-too-long
     ensure_gpu_worker_running_activity,
@@ -169,6 +175,9 @@ from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_laser_depth_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_laser_depth_activity,
 )
+from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_laser_auto_accept_activity import (  # pylint: disable=line-too-long
+    select_next_high_priority_dive_for_laser_auto_accept_activity,
+)
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_slate_prediction_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_slate_prediction_activity,
 )
@@ -256,6 +265,9 @@ from fishsense_api_workflow_worker.workflows.measure_fish_parent_workflow import
 )
 from fishsense_api_workflow_worker.workflows.compute_laser_depths_parent_workflow import (  # pylint: disable=line-too-long
     ComputeLaserDepthsParentWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.evaluate_laser_auto_accept_parent_workflow import (  # pylint: disable=line-too-long
+    EvaluateLaserAutoAcceptParentWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.perform_laser_calibration_parent_workflow import (  # pylint: disable=line-too-long
     PerformLaserCalibrationParentWorkflow,
@@ -700,6 +712,32 @@ async def schedule_workflows(client: Client):
                     overlap=ScheduleOverlapPolicy.SKIP,
                 )
             )
+            # Auto-accept gate backlog: hourly at +22, a free slot between
+            # species-populate (+20) and reconcile-labeling-configs (+25).
+            #
+            # The gate itself runs inline off the predict parent, but only for
+            # dives that produced NEW predictions — a dive already fully
+            # predicted never re-enters the predict cohort, so it never got
+            # judged. That was 3,711 predictions across ~65 dives when the gate
+            # shipped. This drains them at one dive per firing, so the backlog
+            # clears in about three days and the cohort then sits empty.
+            #
+            # It re-arms by itself: a re-prediction clears the verdict it
+            # computed from a dot the row no longer holds, so the dive comes
+            # back here if the predict parent did not judge it.
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "evaluate-laser-auto-accept-workflow-schedule",
+                    EvaluateLaserAutoAcceptParentWorkflow,
+                    timedelta(hours=1),
+                    offset=timedelta(minutes=22),
+                    # Child `execution_timeout` is 30m; margin for the selector
+                    # + data-worker scale-up + the apply step.
+                    run_timeout=timedelta(hours=1),
+                    overlap=ScheduleOverlapPolicy.SKIP,
+                )
+            )
             # Scale-to-zero sweeper for the NRP data-worker: hourly at
             # +55 min, after the last preprocess/calibration parent
             # firing, so it never races a parent that's still scaling
@@ -778,6 +816,7 @@ async def main():
                 PerformLaserCalibrationParentWorkflow,
                 MeasureFishParentWorkflow,
                 ComputeLaserDepthsParentWorkflow,
+                EvaluateLaserAutoAcceptParentWorkflow,
                 ScaleDownIdleDataWorkerWorkflow,
             ],
             activity_executor=executor,
@@ -820,6 +859,7 @@ async def main():
                 persist_slate_predictions_activity,
                 backfill_headtail_predictions_for_dive_activity,
                 backfill_laser_predictions_for_dive_activity,
+                apply_laser_auto_accept_for_dive_activity,
                 backfill_slate_predictions_for_dive_activity,
                 resolve_species_preprocess_inputs_activity,
                 resolve_headtail_preprocess_inputs_activity,
@@ -839,10 +879,12 @@ async def main():
                 select_next_high_priority_dive_for_laser_calibration_activity,
                 select_next_high_priority_dive_for_measure_fish_activity,
                 select_next_high_priority_dive_for_laser_depth_activity,
+                select_next_high_priority_dive_for_laser_auto_accept_activity,
                 stage_raw_bytes_for_dive_activity,
                 stage_slate_pdf_activity,
                 cleanup_raw_bytes_for_dive_activity,
                 ensure_data_worker_running_activity,
+                ensure_light_worker_running_activity,
                 ensure_gpu_worker_running_activity,
                 scale_down_data_worker_if_idle_activity,
             ],

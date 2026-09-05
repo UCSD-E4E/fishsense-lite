@@ -44,7 +44,7 @@ import sqlmodel
 from alembic import op
 
 revision: str = "e9c1a7b40d53"
-down_revision: Union[str, Sequence[str], None] = "d81b6c4a5f27"
+down_revision: Union[str, Sequence[str], None] = "c4f8a2e60b17"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
