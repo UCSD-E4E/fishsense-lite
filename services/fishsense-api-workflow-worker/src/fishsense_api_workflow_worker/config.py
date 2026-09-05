@@ -39,6 +39,22 @@ _VALIDATORS = [
     # LS Enterprise workspace new per-dive projects are created in. Empty =
     # personal/default workspace (back-compat for OSS LS / local dev / tests).
     Validator("label_studio.workspace", cast=str, default=""),
+    # Label Studio user id of the SERVICE ACCOUNT, stamped as `completed_by` on
+    # machine-written annotations that populate *imports*.
+    #
+    # Needed because an imported annotation is attributed to the project owner,
+    # not the API caller -- unlike `ls.annotations.create`, which takes the
+    # authenticated user and is therefore already correct once the worker holds
+    # the bot's token. Prod on 2026-09-04: the worker had been the bot since
+    # 18:07 and populate still seeded 61 annotations at 18:17, and 164 more at
+    # 19:17, under the human who owned the project.
+    #
+    # Defaults to 0 = "unset", which OMITS the field rather than sending null.
+    # This value reaches the slot through the OpenBao render, which is a manual
+    # three-step rotation (see deploy/incus/README.md); a miss must degrade to
+    # the old wrong-attribution behaviour, not fail populate for a whole dive
+    # on an LS validation error.
+    Validator("label_studio.bot_user_id", cast=int, default=0),
     Validator("e4e_nas.url", required=True, cast=str, condition=url_condition),
     Validator("e4e_nas.username", required=True, cast=str),
     Validator("e4e_nas.password", required=True, cast=str),
