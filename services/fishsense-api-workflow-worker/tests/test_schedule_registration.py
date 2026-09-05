@@ -18,6 +18,7 @@ from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fishsense_shared import GATE_CHILD_EXECUTION_TIMEOUT
 from temporalio.client import ScheduleOverlapPolicy
 from temporalio.service import RPCError, RPCStatusCode
 
@@ -250,3 +251,66 @@ async def test_labeling_config_reconcile_skips_when_still_in_flight(registered):
     schedule = registered["reconcile-labeling-configs-workflow-schedule"]
 
     assert schedule.policy.overlap == ScheduleOverlapPolicy.SKIP
+
+
+async def test_laser_auto_accept_backlog_is_scheduled_hourly_at_22(registered):
+    """Slot +22, between species-populate (+20) and reconcile-labeling-configs
+    (+25).
+
+    The slot itself does not matter much — this is a backlog drain, not a stage
+    with an upstream dependency — but the stagger does: every parent that opens
+    with a cohort query has to land on its own minute so their selectors do not
+    all hit `dives.get()` together.
+    """
+    schedule = registered["evaluate-laser-auto-accept-workflow-schedule"]
+
+    assert _every(schedule) == timedelta(hours=1)
+    assert _offset(schedule) == timedelta(minutes=22)
+
+
+async def test_laser_auto_accept_run_timeout_accommodates_the_whole_budget(
+    registered,
+):
+    """The registered `run_timeout` has to hold the gate child plus every other
+    declared step of the firing, because `ensure_schedule` refuses to update a
+    live schedule in place.
+
+    That refusal is what makes this a real constraint rather than a comment: a
+    budget needing a longer `run_timeout` would ship as a silent no-op in prod
+    until an operator deleted the schedule and let the next worker start
+    recreate it. So the shared budget is sized against the value already
+    deployed, and this asserts that from the registration rather than from a
+    literal.
+
+    The other steps come from `workflows/_dispatch.py`: `select_dive` and
+    `wake_data_worker` are 5 min each, and `run_sdk_activity` (the apply step)
+    is 15 min.
+    """
+    schedule = registered["evaluate-laser-auto-accept-workflow-schedule"]
+    other_steps = timedelta(minutes=5) + timedelta(minutes=5) + timedelta(minutes=15)
+
+    assert schedule.action.run_timeout >= GATE_CHILD_EXECUTION_TIMEOUT + other_steps
+
+
+async def test_every_offset_parent_lands_on_its_own_minute(registered):
+    """Tripwire for the stagger: adding a parent on an already-taken minute.
+
+    The +0 group is excluded because sharing it is the documented design, not
+    an accident — the four Label Studio sync schedules select no dives so they
+    cannot race over one, and stage 0.1 sits with them. Those register without
+    an explicit offset, so they read as None here rather than as zero.
+
+    Everything that asks for a minute must get its own, so two selectors never
+    hit `dives.get()` together.
+    """
+    offsets: dict = {}
+    for schedule_id, schedule in registered.items():
+        offset = _offset(schedule)
+        if offset in (None, timedelta(0)):
+            continue
+        offsets.setdefault(offset, []).append(schedule_id)
+
+    collisions = {
+        offset: ids for offset, ids in offsets.items() if len(ids) > 1
+    }
+    assert not collisions, f"schedules share a minute: {collisions}"

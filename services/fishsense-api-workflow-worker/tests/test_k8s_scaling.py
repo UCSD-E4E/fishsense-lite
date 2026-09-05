@@ -198,6 +198,7 @@ def test_wedge_grace_cannot_outlast_the_start_timeout(monkeypatch):
 def test_sweep_targets_pair_each_deployment_with_the_queue_it_serves(monkeypatch):
     from fishsense_shared import (
         DATA_PROCESSING_GPU_TASK_QUEUE,
+        DATA_PROCESSING_LIGHT_TASK_QUEUE,
         DATA_PROCESSING_TASK_QUEUE,
     )
 
@@ -206,4 +207,33 @@ def test_sweep_targets_pair_each_deployment_with_the_queue_it_serves(monkeypatch
         ("dw", DATA_PROCESSING_TASK_QUEUE),
         ("dw-gpu", DATA_PROCESSING_GPU_TASK_QUEUE),
         ("dw-gpu-cpu-fallback", DATA_PROCESSING_GPU_TASK_QUEUE),
+        ("dw-light", DATA_PROCESSING_LIGHT_TASK_QUEUE),
     )
+
+
+def test_the_light_deployment_name_defaults_off_the_cpu_one(monkeypatch):
+    """Same rule the GPU names follow: overriding the base name has to carry
+    the whole family with it, or a renamed deployment (a test namespace, a
+    second environment) is silently paired with the stock light one."""
+    cfg = _gpu_config(monkeypatch, deployment_name="dw")
+    assert cfg.light.deployment_name == "dw-light"
+
+
+def test_the_light_worker_can_be_scaled_independently_of_the_cpu_one(monkeypatch):
+    """Separate replica knob because the two size against different things.
+    `active_replicas` buys rawpy throughput on a memory-bound pod; the light
+    worker is bound by neither and one replica serves every stage."""
+    cfg = _gpu_config(monkeypatch, active_replicas=3, light_active_replicas=1)
+    assert (cfg.active_replicas, cfg.light.active_replicas) == (3, 1)
+
+
+def test_light_replicas_are_clamped_like_the_cpu_ones(monkeypatch):
+    cfg = _gpu_config(monkeypatch, light_active_replicas=99)
+    assert cfg.light.active_replicas == k8s_scaling.MAX_ACTIVE_REPLICAS
+
+
+def test_light_scaling_defaults_to_one_replica(monkeypatch):
+    """The light stages are one dive per firing each; a second pod would add
+    no throughput and NRP asks us to hold as little as possible."""
+    cfg = _gpu_config(monkeypatch)
+    assert cfg.light.active_replicas == 1

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.9.2...fishsense-lite-web-v0.10.0) (2026-09-04)
+
+
+### Features
+
+* **laser-auto-accept:** hide projects the gate has not finished ([#722](https://github.com/UCSD-E4E/fishsense-lite/issues/722)) ([1810cb9](https://github.com/UCSD-E4E/fishsense-lite/commit/1810cb93689896f6f7bffc4d6c6fd2d7991a7046))
+
 ## [0.9.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.9.1...fishsense-lite-web-v0.9.2) (2026-08-17)
 
 

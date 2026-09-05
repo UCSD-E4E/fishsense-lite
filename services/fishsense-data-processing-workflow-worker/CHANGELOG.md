@@ -1,5 +1,40 @@
 # Changelog
 
+## [2.20.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.20.1...fishsense-data-processing-workflow-worker-v2.20.2) (2026-09-04)
+
+
+### Bug Fixes
+
+* **stage13:** count calibration observations, not slate labels ([#719](https://github.com/UCSD-E4E/fishsense-lite/issues/719)) ([77b3507](https://github.com/UCSD-E4E/fishsense-lite/commit/77b35076eca6f86b1cd95ac39569420f1640edd4))
+
+## [2.20.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.20.0...fishsense-data-processing-workflow-worker-v2.20.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **laser-auto-accept:** never auto-accept a stale detector's predictions ([#715](https://github.com/UCSD-E4E/fishsense-lite/issues/715)) ([187ddff](https://github.com/UCSD-E4E/fishsense-lite/commit/187ddffdc46faf2c043d46ae3b710dffd9a1d4f0))
+
+## [2.20.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.19.1...fishsense-data-processing-workflow-worker-v2.20.0) (2026-09-04)
+
+
+### Features
+
+* **data-worker:** give the non-image stages their own task queue ([#711](https://github.com/UCSD-E4E/fishsense-lite/issues/711)) ([f6540e4](https://github.com/UCSD-E4E/fishsense-lite/commit/f6540e4cef8787be662a20f0245f69db53558ab6))
+
+## [2.19.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.19.0...fishsense-data-processing-workflow-worker-v2.19.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **laser-auto-accept:** bound the gate's queue wait separately from its run ([#707](https://github.com/UCSD-E4E/fishsense-lite/issues/707)) ([682fb35](https://github.com/UCSD-E4E/fishsense-lite/commit/682fb35567565130212cb31336081dcd655a56fd))
+
+## [2.19.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.18.2...fishsense-data-processing-workflow-worker-v2.19.0) (2026-09-03)
+
+
+### Features
+
+* **laser:** skip human review of laser predictions the dive's own line agrees with ([#693](https://github.com/UCSD-E4E/fishsense-lite/issues/693)) ([c388e21](https://github.com/UCSD-E4E/fishsense-lite/commit/c388e21444c39b696ccd209c515f24f42ce4e1da))
+
 ## [2.18.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.18.1...fishsense-data-processing-workflow-worker-v2.18.2) (2026-09-02)
 
 

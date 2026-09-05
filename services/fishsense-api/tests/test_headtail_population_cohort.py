@@ -58,7 +58,7 @@ async def test_unpredicted_images_are_not_populated(session):
     image from the predict cohort permanently."""
     session.add_all([_dive(1), _image(11, 1), _laser(101, 11)])
     await session.flush()
-    assert await _select(session) == []
+    assert not await _select(session)
 
 
 async def test_an_abstention_still_opens_the_gate(session):
@@ -78,7 +78,7 @@ async def test_drops_out_once_labelling_is_complete(session):
          _headtail(201, 11, completed=True)]
     )
     await session.flush()
-    assert await _select(session) == []
+    assert not await _select(session)
 
 
 async def test_stays_in_the_cohort_while_labelling_is_incomplete(session):
@@ -98,7 +98,7 @@ async def test_requires_a_valid_laser(session):
         [_dive(1), _image(11, 1), _laser(101, 11, superseded=True), _prediction(1, 11)]
     )
     await session.flush()
-    assert await _select(session) == []
+    assert not await _select(session)
 
 
 async def test_only_high_priority_and_canonical(session):
@@ -114,7 +114,7 @@ async def test_only_high_priority_and_canonical(session):
          _prediction(1, 11), _prediction(2, 22)]
     )
     await session.flush()
-    assert await _select(session) == []
+    assert not await _select(session)
 
 
 async def test_returns_every_match_in_id_order(session):

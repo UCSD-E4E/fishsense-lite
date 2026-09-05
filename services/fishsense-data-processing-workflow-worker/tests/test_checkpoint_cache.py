@@ -75,7 +75,7 @@ def test_partial_download_is_not_left_behind(tmp_path: Path):
     with pytest.raises(RuntimeError):
         asyncio.run(ensure_checkpoint(_Failing(), tmp_path, "sam3", "v1", "sam3.pt"))
 
-    assert list(tmp_path.rglob("*.pt")) == []
+    assert not list(tmp_path.rglob("*.pt"))
 
 
 def test_concurrent_callers_download_once(tmp_path: Path):

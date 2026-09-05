@@ -14,7 +14,7 @@ DEPLOY=fishsense-data-processing-workflow-worker
 # Every Deployment that mounts the leaf. All three must roll on a rotation, or
 # the ones left behind hold an expired cert and crash-loop on
 # `CertificateExpired` - the 2026-08-14 outage, reintroduced.
-DEPLOYS=("$DEPLOY" "$DEPLOY-gpu" "$DEPLOY-gpu-cpu-fallback")
+DEPLOYS=("$DEPLOY" "$DEPLOY-gpu" "$DEPLOY-gpu-cpu-fallback" "$DEPLOY-light")
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 WORK="$(mktemp -d)"

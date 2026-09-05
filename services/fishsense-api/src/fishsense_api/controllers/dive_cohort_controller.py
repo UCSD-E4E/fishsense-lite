@@ -2,6 +2,15 @@
 #   `== True` / `!= None` are required here, not sloppy: SQLAlchemy overloads
 #   the comparison operators to build SQL expressions, and `is True` / `is not
 #   None` would evaluate to a Python bool and silently drop the predicate.
+# pylint: disable=too-many-lines
+#   TEMPORARY, and it should not outlive the pending split. Adding the
+#   auto-accept selector pushed this module to ~1049 lines, and this module
+#   exists precisely because `dive_controller` grew past 1000 and carried this
+#   same disable. The right home for the selector is the prediction-cohort
+#   module being split out on the headtail branch (0b7f84c) — it is not on
+#   main yet, and duplicating that split here would guarantee a conflict with
+#   it. Move `select_next_for_laser_auto_accept` there when it lands and drop
+#   this line.
 """Cohort selectors — which dive each pipeline stage should work on next.
 
 Split out of `dive_controller` because that module had grown past 1000 lines
@@ -35,7 +44,7 @@ from sqlalchemy.orm import aliased
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from fishsense_shared import taxonomy
+from fishsense_shared import LASER_PREDICTOR_VERSION, taxonomy
 
 from fishsense_api.database import get_async_session
 from fishsense_api.models.data_source import DataSource
@@ -214,7 +223,11 @@ def _resolved_laser_extrinsics_id():
 # activity's `MIN_LASER_POINTS = 2` precondition. Selecting a dive with
 # fewer than two completed slate labels would dispatch a child that
 # raises and re-fires every hour.
-MIN_COMPLETED_SLATE_LABELS = 2
+#: Minimum usable slate-laser OBSERVATIONS a dive needs before stage 13 will
+#: attempt a fit. Must equal the data-worker activity's `MIN_LASER_POINTS`,
+#: which raises below it — the two are one threshold expressed twice, and a
+#: dive between them is re-selected hourly forever with nothing written.
+MIN_SLATE_LASER_POINTS = 2
 
 # Stage-9 species_label.content_of_image marker (re-exported from the
 # shared taxonomy vocabulary so the view and the worker read the same one).
@@ -627,8 +640,51 @@ async def select_next_for_laser_calibration(
     session: AsyncSession = Depends(get_async_session),
 ) -> int | None:
     """Stage 13: HIGH-priority + dive_slate_id set + no LaserExtrinsics +
-    at least MIN_COMPLETED_SLATE_LABELS completed DiveSlateLabel rows."""
-    completed_slate_label_count = (
+    at least `MIN_SLATE_LASER_POINTS` usable slate-laser observations.
+
+    **An observation is a completed slate label whose image also carries a live
+    laser dot**, which is what `perform_laser_calibration_activity` actually
+    counts: it walks the dive's slate labels, keeps one only when
+    `get_laser_label(image_id)` returns a row with x/y set, and raises below
+    `MIN_LASER_POINTS`. Keep the two in step — they are one threshold spelled
+    twice.
+
+    This used to count completed `DiveSlateLabel` rows and never look at the
+    laser, and the gap was not academic. Prod dive 347 carries 18 completed
+    slate labels and exactly ONE image with a live laser dot; the rest were
+    superseded during the breach recovery, which is permanent. The cohort said
+    eligible, the activity raised `insufficient laser points (1 < 2)`, nothing
+    was written, and the dive was re-selected every hour — the same
+    cohort-says-yes/activity-says-no shape as the `Fish Model,` empty-leaf bug.
+    Because the selector is `ORDER BY Dive.id LIMIT 1`, it also blocked dives
+    427 and 436, which have 3 and 12 observations and are perfectly
+    calibratable. Dive 466 (zero live dots) was next in line behind it.
+
+    `superseded == False` and nothing about `completed`, because that is
+    exactly what `get_laser_label` filters on — a populate-seeded placeholder
+    with NULL x/y is excluded by the x/y check, not by its completion state.
+
+    **Known approximation.** The activity can still reject an observation for
+    reasons SQL cannot model: `plane_from_correspondences` failing PnP, or a
+    NaN ray. This predicate is therefore an over-approximation, and a dive
+    whose geometry fails everywhere could still wedge. That residue is
+    unavoidable without running the solver; what it is not is the *common*
+    case, which was simply a missing laser dot. `get_laser_label` also takes
+    `.first()` among live labels with no ordering, so an image carrying both a
+    dotted and a dotless live label could resolve either way — no slate image
+    in prod does (checked), but it is why this counts EXISTS rather than trying
+    to reproduce `.first()`.
+    """
+    has_live_laser_dot = (
+        select(LaserLabel.id)
+        .where(LaserLabel.image_id == Image.id)
+        .where(LaserLabel.superseded == False)
+        .where(LaserLabel.x != None)
+        .where(LaserLabel.y != None)
+        .correlate(Image)
+        .exists()
+    )
+    usable_laser_point_count = (
         select(func.count(DiveSlateLabel.id))  # pylint: disable=not-callable
         .join(Image, Image.id == DiveSlateLabel.image_id)
         .where(Image.dive_id == Dive.id)
@@ -637,6 +693,7 @@ async def select_next_for_laser_calibration(
         # A dead-lettered slate label doesn't count toward the calibration
         # readiness gate — same validity convention laser calibration uses.
         .where(DiveSlateLabel.superseded == False)
+        .where(has_live_laser_dot)
         .scalar_subquery()
     )
     query = (
@@ -648,7 +705,7 @@ async def select_next_for_laser_calibration(
             .where(LaserExtrinsics.dive_id == Dive.id)
             .exists()
         )
-        .where(completed_slate_label_count >= MIN_COMPLETED_SLATE_LABELS)
+        .where(usable_laser_point_count >= MIN_SLATE_LASER_POINTS)
         .order_by(Dive.id)
         .limit(1)
     )
@@ -848,3 +905,67 @@ def _laser_depth_cohort_query():
         .order_by(Dive.id)
         .limit(1)
     )
+
+
+@app.get("/api/v1/dives/select-next/laser-auto-accept/")
+async def select_next_for_laser_auto_accept(
+    session: AsyncSession = Depends(get_async_session),
+) -> int | None:
+    """Auto-accept gate backlog: HIGH-priority + at least one canonical image
+    whose `LaserPrediction` carries a dot and has never been judged.
+
+    The gate normally runs off the back of the predict parent, but only when
+    the predict child returned *new* predictions — and a dive that is already
+    fully predicted never re-enters the predict cohort, so it never produces
+    results and its predictions were never judged. That left 3,711 rows across
+    ~65 dives permanently at `gate_verdict IS NULL` when the gate shipped, so
+    auto-accept reached almost none of the backlog it was built for.
+
+    A cohort rather than a hand-run backfill, for the reason CLAUDE.md gives
+    about selecting on mismatch: it drains itself, stays empty afterwards, and
+    re-arms on its own if anything leaves a verdict NULL again — which a
+    re-prediction does by design, since it clears the verdict computed from a
+    dot the row no longer holds.
+
+    **Abstentions are excluded, and that is what makes it drain.** A prediction
+    with no `x`/`y` is judged `no_prediction` and can never be auto-accepted,
+    but the gate only *writes* rows whose verdict changed. Selecting on
+    "unjudged" alone would keep re-selecting a dive whose detector abstained on
+    any frame: the gate would reach the same verdict every pass, write nothing,
+    and the dive would look unjudged again on the next poll. Requiring a dot
+    both matches what the gate can act on and gives the cohort a false
+    condition to reach.
+    """
+    has_unjudged_prediction = (
+        select(LaserPrediction.id)
+        .join(Image, Image.id == LaserPrediction.image_id)
+        .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
+        .where(LaserPrediction.x != None)
+        .where(LaserPrediction.y != None)
+        .where(LaserPrediction.gate_verdict == None)
+        # Only the CURRENT detector's output may ever be auto-accepted, and
+        # this is a correctness guard rather than a tidiness one. Stage v1 (and
+        # every pre-versioning NULL row) hardcoded the pre-annotation to
+        # "Red Laser" instead of reading the dot's colour -- see
+        # `fishsense_shared.laser_predictor`. Auto-accepting one writes a
+        # possibly-wrong colour into the corpus with NO human in the loop,
+        # because skipping review is precisely what this gate does; nothing
+        # downstream would catch it.
+        #
+        # `== version` rather than `is_distinct_from`: NULL == 2 is NULL, which
+        # is falsy, so pre-versioning rows are excluded exactly as intended.
+        # The predict cohort's mirror-image check uses `is_distinct_from` to
+        # *find* those same rows and re-predict them, so they are not stranded
+        # -- they come back here once they carry the current version.
+        .where(LaserPrediction.predictor_version == LASER_PREDICTOR_VERSION)
+        .exists()
+    )
+    query = (
+        select(Dive.id)
+        .where(Dive.priority == Priority.HIGH)
+        .where(has_unjudged_prediction)
+        .order_by(Dive.id)
+        .limit(1)
+    )
+    return (await session.exec(query)).first()

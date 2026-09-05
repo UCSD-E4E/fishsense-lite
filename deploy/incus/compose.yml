@@ -64,7 +64,7 @@ services:
 
   # ── web portal → fishsense.e4e.ucsd.edu ────────────────────────────────────────────────
   web:
-    image: ghcr.io/ucsd-e4e/fishsense-lite-web:v0.9.2
+    image: ghcr.io/ucsd-e4e/fishsense-lite-web:v0.10.0
     restart: unless-stopped
     # Non-secret config inline (committed IaC); secrets from the vault-agent render
     # (AUTH_SECRET, AUTH_AUTHENTIK_{ID,SECRET,ISSUER}, FISHSENSE_API_{USERNAME,PASSWORD},
@@ -108,7 +108,7 @@ services:
 
   # ── API → api.fishsense.e4e.ucsd.edu (forwardAuth-gated) ───────────────────────────────
   fishsense-api:
-    image: ghcr.io/ucsd-e4e/fishsense-api:v1.50.0
+    image: ghcr.io/ucsd-e4e/fishsense-api:v1.52.0
     restart: unless-stopped
     # DB password (admin role) as E4EFS_POSTGRES__PASSWORD from the render.
     env_file:
@@ -226,7 +226,7 @@ services:
 
   # ── api-side Temporal worker (hourly schedules, LS sync, preprocess parents) ───────────
   fishsense-api-workflow-worker:
-    image: ghcr.io/ucsd-e4e/fishsense-api-workflow-worker:v1.56.6
+    image: ghcr.io/ucsd-e4e/fishsense-api-workflow-worker:v1.58.2
     restart: unless-stopped
     # Secrets as dynaconf E4EFS_* env overrides from the vault-agent render
     # (API basic-auth, Garage keys, LS key, NAS creds — see secrets.nix).
