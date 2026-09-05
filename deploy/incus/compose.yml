@@ -93,20 +93,22 @@ services:
       # none of the mapped groups gets Public / no access).
       #
       # This is the real Authentik group, checked against a live session on
-      # 2026-09-05. It was previously `fishsense-portal-admin`, guessed from the
+      # Confirmed against a live session on 2026-09-05, after two wrong guesses:
+      # `fishsense-portal-admin` (invented from the
       # `fishsense-superset-{admin,editor,viewer}` convention before anyone had
-      # signed in — so the portal denied its own admin.
+      # signed in) and `FishSense Prod Admins` (right words, wrong separator).
       #
-      # Matched EXACTLY, and Authentik group names are case- and space-
-      # sensitive: `authz.ts` deliberately does not do a loose match, because an
-      # allowlist that matches loosely is advisory. Quoted so the spaces survive
-      # the YAML scalar unambiguously.
+      # Matched EXACTLY. `authz.ts` deliberately does not normalise case or
+      # whitespace, because an allowlist that matches loosely is advisory — so
+      # spaces and hyphens are not interchangeable and neither is capitalisation.
+      # Do not "tidy" this value.
       #
       # OPERATOR PREREQUISITE: the FishSense OIDC application needs the `groups`
       # scope + property mapping, same as the analytics app. Without it every
       # session arrives with no groups and the portal denies everyone — which
-      # looks identical to a wrong group name here.
-      PORTAL_ALLOWED_GROUPS: "FishSense Prod Admins"
+      # renders the identical page to a wrong name here, and is the reason both
+      # guesses above took a deploy each to disprove.
+      PORTAL_ALLOWED_GROUPS: FishSense-Prod-Admins
     env_file:
       - /run/tenant/secrets/app.env
     expose: ["3000"]
