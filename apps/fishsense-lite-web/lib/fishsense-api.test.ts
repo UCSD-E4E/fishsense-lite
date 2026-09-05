@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getIncompleteProjectIds } from "./fishsense-api";
+import { getIncompleteProjectIds, getUngatedLaserProjectIds } from "./fishsense-api";
 
 beforeEach(() => {
   vi.stubEnv("FISHSENSE_API_URL", "http://api.test");
@@ -142,5 +142,31 @@ describe("the auto-accept gate filter", () => {
     for (const [url] of fetchMock.mock.calls) {
       expect(url).toContain("incomplete=true");
     }
+  });
+});
+
+describe("getUngatedLaserProjectIds", () => {
+  // The landing page hides dives the auto-accept gate has not finished with.
+  // Triage must NOT inherit that: it skips annotated tasks per-frame already,
+  // and an auto-accepted frame carries an annotation. Applying both left the
+  // queue empty for as long as the gate's backlog took to drain — days.
+  it("asks without the gate filter", async () => {
+    const fetchMock = vi.fn<FetchSig>(async () => jsonResponse([42]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const ids = await getUngatedLaserProjectIds(60);
+
+    expect(ids).toEqual([42]);
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toContain("/labels/laser/label-studio-project-ids");
+    expect(url).toContain("incomplete=true");
+    expect(url).not.toContain("gated");
+  });
+
+  it("still asks only for projects with outstanding work", async () => {
+    const fetchMock = vi.fn<FetchSig>(async () => jsonResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+    await getUngatedLaserProjectIds(60);
+    expect(fetchMock.mock.calls[0][0]).toContain("incomplete=true");
   });
 });

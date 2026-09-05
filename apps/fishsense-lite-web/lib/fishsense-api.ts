@@ -14,7 +14,11 @@ type LabelKind = "laser" | "species" | "headtail" | "dive-slate";
 // which is why this is a per-kind opt-in rather than a blanket parameter.
 const GATED_KINDS: ReadonlySet<LabelKind> = new Set<LabelKind>(["laser"]);
 
-async function getProjectIds(kind: LabelKind, revalidate: number): Promise<number[]> {
+async function getProjectIds(
+  kind: LabelKind,
+  revalidate: number,
+  { gated = true }: { gated?: boolean } = {},
+): Promise<number[]> {
   // `LabelKind` values are the URL segments verbatim — there was a
   // `KIND_TO_PATH` map here that mapped each key to itself.
   //
@@ -25,7 +29,7 @@ async function getProjectIds(kind: LabelKind, revalidate: number): Promise<numbe
   // "the gate has run here" — a half-swept dive still holds frames it is
   // about to take.
   const params = new URLSearchParams({ incomplete: "true" });
-  if (GATED_KINDS.has(kind)) {
+  if (gated && GATED_KINDS.has(kind)) {
     params.set("gated", "true");
   }
   const url = `${env.fishsenseApiUrl}/api/v1/labels/${kind}/label-studio-project-ids?${params}`;
@@ -46,6 +50,23 @@ async function getProjectIds(kind: LabelKind, revalidate: number): Promise<numbe
   }
 
   return (await response.json()) as number[];
+}
+
+/**
+ * Laser projects with outstanding work, WITHOUT the auto-accept gate filter.
+ *
+ * The landing page hides dives the gate has not finished, because it sends a
+ * labeler into Label Studio to do the machine's pending work. Triage is not
+ * that: it offers one prediction at a time and already skips anything carrying
+ * an annotation — which is exactly what an auto-accepted frame carries. The
+ * per-task check does the job the project-level filter was doing, so applying
+ * both leaves triage blind to every dive the gate has not swept to completion.
+ *
+ * That mattered immediately: the gate's backlog drains one dive an hour, so
+ * inheriting the filter emptied the triage queue for days at a stretch.
+ */
+export async function getUngatedLaserProjectIds(revalidate: number): Promise<number[]> {
+  return getProjectIds("laser", revalidate, { gated: false });
 }
 
 export async function getIncompleteProjectIds(

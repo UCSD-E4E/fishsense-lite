@@ -1,4 +1,4 @@
-import { getIncompleteProjectIds } from "./fishsense-api";
+import { getUngatedLaserProjectIds } from "./fishsense-api";
 import { getProject } from "./label-studio";
 import { listTasks } from "./label-studio-tasks";
 import {
@@ -45,8 +45,7 @@ export async function loadQueue(
 
   let outstanding: number[] | null = null;
   try {
-    const ids = await getIncompleteProjectIds(revalidate);
-    outstanding = ids.laser;
+    outstanding = await getUngatedLaserProjectIds(revalidate);
   } catch {
     outstanding = null;
   }
