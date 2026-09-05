@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [1.58.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.58.1...fishsense-api-workflow-worker-v1.58.2) (2026-09-05)
+
+
+### Bug Fixes
+
+* **laser-populate:** name the service account on imported annotations ([#729](https://github.com/UCSD-E4E/fishsense-lite/issues/729)) ([aaf7d57](https://github.com/UCSD-E4E/fishsense-lite/commit/aaf7d5741796d116633cd2436e7d6ca0d9707d4d))
+
 ## [1.58.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.58.0...fishsense-api-workflow-worker-v1.58.1) (2026-09-04)
 
 
