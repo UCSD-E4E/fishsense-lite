@@ -48,16 +48,4 @@ export async function getProjectIds(kind: LabelKind, revalidate: number): Promis
   return (await response.json()) as number[];
 }
 
-export async function getIncompleteProjectIds(
-  revalidate: number,
-): Promise<Record<LabelKind, number[]>> {
-  const [laser, species, headtail, slate] = await Promise.all([
-    getProjectIds("laser", revalidate),
-    getProjectIds("species", revalidate),
-    getProjectIds("headtail", revalidate),
-    getProjectIds("dive-slate", revalidate),
-  ]);
-  return { laser, species, headtail, "dive-slate": slate };
-}
-
 export type { LabelKind };
