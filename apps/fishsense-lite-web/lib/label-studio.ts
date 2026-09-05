@@ -3,6 +3,20 @@ import { env } from "./env";
 export type LabelStudioProject = {
   id: number;
   title: string;
+  /**
+   * Tasks in the project, and how many already carry an annotation.
+   *
+   * Label Studio returns both on the project object we already fetch, so
+   * knowing whether a project still holds work costs no extra request. This
+   * is the *source of truth* for that question: `LaserLabel.completed` in our
+   * own database is a mirror of it, updated by the hourly sync, and reading
+   * the mirror is what made the landing page and triage disagree.
+   *
+   * Undefined when Label Studio does not report them — treated as "still has
+   * work", so a field rename can never silently hide real labeling.
+   */
+  taskCount?: number;
+  annotatedCount?: number;
   /** LS publish state. Unpublished projects are drafts or deliberately held
    *  and must not be surfaced — see `getActiveProjects`.
    *
@@ -133,14 +147,23 @@ export async function getProject(
     id: number;
     title: string;
     is_published?: boolean;
+    task_number?: number;
+    num_tasks_with_annotations?: number;
+    finished_task_number?: number;
   };
   // A missing `is_published` counts as published: the landing page should
   // fail OPEN (show the card) rather than silently hide real labeling work
   // if LS ever stops returning the field.
+  // `num_tasks_with_annotations` is the field on current Label Studio;
+  // `finished_task_number` is the older name. Take whichever is present.
+  const annotated = data.num_tasks_with_annotations ?? data.finished_task_number;
+
   return {
     id: data.id,
     title: data.title,
     isPublished: data.is_published !== false,
+    taskCount: data.task_number,
+    annotatedCount: annotated,
   };
 }
 

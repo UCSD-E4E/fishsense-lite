@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("./fishsense-api", () => ({ getProjectIds: vi.fn() }));
 
 import { getProjectIds } from "./fishsense-api";
-import { isPublished, liveProjectIds } from "./label-projects";
+import { hasPendingWork, isPublished, liveProjectIds } from "./label-projects";
 
 const idsMock = vi.mocked(getProjectIds);
 
@@ -60,5 +60,39 @@ describe("isPublished", () => {
   // response change cannot silently blank every surface at once.
   it("keeps one whose publish state is unknown", () => {
     expect(isPublished({ id: 1, title: "p" })).toBe(true);
+  });
+});
+
+describe("hasPendingWork", () => {
+  const project = (taskCount?: number, annotatedCount?: number) => ({
+    id: 1,
+    title: "p",
+    isPublished: true,
+    taskCount,
+    annotatedCount,
+  });
+
+  it("keeps a project with unannotated tasks", () => {
+    expect(hasPendingWork(project(24, 18))).toBe(true);
+  });
+
+  // This is the case that made the landing page list nine projects next to an
+  // empty triage queue: our own `completed` column said work remained while
+  // Label Studio had every task annotated.
+  it("drops a project whose tasks are all annotated", () => {
+    expect(hasPendingWork(project(24, 24))).toBe(false);
+  });
+
+  it("drops an empty project", () => {
+    expect(hasPendingWork(project(0, 0))).toBe(false);
+  });
+
+  // Fails OPEN. Hiding real labeling work is the worse error — a labeler
+  // cannot act on a queue that never mentions it, and nothing reports the
+  // omission.
+  it("keeps a project when Label Studio reports no counts", () => {
+    expect(hasPendingWork(project(undefined, undefined))).toBe(true);
+    expect(hasPendingWork(project(24, undefined))).toBe(true);
+    expect(hasPendingWork(project(undefined, 0))).toBe(true);
   });
 });

@@ -1,4 +1,4 @@
-import { isPublished, liveProjectIds } from "./label-projects";
+import { hasPendingWork, isPublished, liveProjectIds } from "./label-projects";
 import { getProjects, type LabelStudioProject } from "./label-studio";
 
 export type ActiveProjects = {
@@ -39,10 +39,17 @@ export async function getActiveProjects(revalidate = 300): Promise<ActiveProject
     resolve(slateIds),
   ]);
 
+  // Published AND still holding work a human can act on — the same two
+  // conditions triage applies before walking a project. Linking a project
+  // whose tasks are all annotated sends a labeler somewhere with nothing to
+  // do, which is what "9 projects" next to an empty triage queue meant.
+  const offerable = (projects: LabelStudioProject[]) =>
+    projects.filter(isPublished).filter(hasPendingWork);
+
   return {
-    laser: laser.filter(isPublished),
-    species: species.filter(isPublished),
-    headtail: headtail.filter(isPublished),
-    slate: slate.filter(isPublished),
+    laser: offerable(laser),
+    species: offerable(species),
+    headtail: offerable(headtail),
+    slate: offerable(slate),
   };
 }
