@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getIncompleteProjectIds } from "./fishsense-api";
+import { getProjectIds } from "./fishsense-api";
 
 beforeEach(() => {
   vi.stubEnv("FISHSENSE_API_URL", "http://api.test");
@@ -25,7 +25,7 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 type NextFetchInit = RequestInit & { next?: { revalidate?: number } };
 type FetchSig = (input: string, init?: NextFetchInit) => Promise<Response>;
 
-describe("getIncompleteProjectIds", () => {
+describe("getProjectIds", () => {
   it("calls all four label-kind endpoints with incomplete=true and Basic auth", async () => {
     const fetchMock = vi.fn<FetchSig>(async (url) => {
       if (url.includes("/labels/laser/")) return jsonResponse([42, 43]);
@@ -36,7 +36,12 @@ describe("getIncompleteProjectIds", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await getIncompleteProjectIds(60);
+    const result = {
+      laser: await getProjectIds("laser", 60),
+      species: await getProjectIds("species", 60),
+      headtail: await getProjectIds("headtail", 60),
+      "dive-slate": await getProjectIds("dive-slate", 60),
+    };
 
     expect(result).toEqual({
       laser: [42, 43],
@@ -59,7 +64,7 @@ describe("getIncompleteProjectIds", () => {
     const fetchMock = vi.fn<FetchSig>(async () => jsonResponse([]));
     vi.stubGlobal("fetch", fetchMock);
 
-    await getIncompleteProjectIds(123);
+    await Promise.all(["laser", "species", "headtail", "dive-slate"].map((k) => getProjectIds(k as never, 123)));
 
     for (const [, init] of fetchMock.mock.calls) {
       expect(init?.next?.revalidate).toBe(123);
@@ -75,7 +80,7 @@ describe("getIncompleteProjectIds", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(getIncompleteProjectIds(60)).rejects.toThrow(/laser.*500/);
+    await expect(getProjectIds("laser", 60)).rejects.toThrow(/laser.*500/);
   });
 
   it("hits all four endpoints in parallel (single Promise.all)", async () => {
@@ -90,7 +95,7 @@ describe("getIncompleteProjectIds", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await getIncompleteProjectIds(60);
+    await Promise.all(["laser", "species", "headtail", "dive-slate"].map((k) => getProjectIds(k as never, 60)));
 
     expect(maxInFlight).toBe(4);
   });
@@ -106,7 +111,7 @@ describe("the auto-accept gate filter", () => {
     const fetchMock = vi.fn<FetchSig>(async () => jsonResponse([]));
     vi.stubGlobal("fetch", fetchMock);
 
-    await getIncompleteProjectIds(60);
+    await Promise.all(["laser", "species", "headtail", "dive-slate"].map((k) => getProjectIds(k as never, 60)));
 
     const laserCall = fetchMock.mock.calls.find(([url]) =>
       url.includes("/labels/laser/"),
@@ -124,7 +129,7 @@ describe("the auto-accept gate filter", () => {
       const fetchMock = vi.fn<FetchSig>(async () => jsonResponse([]));
       vi.stubGlobal("fetch", fetchMock);
 
-      await getIncompleteProjectIds(60);
+      await Promise.all(["laser", "species", "headtail", "dive-slate"].map((k) => getProjectIds(k as never, 60)));
 
       const call = fetchMock.mock.calls.find(([url]) =>
         url.includes(`/labels/${kind}/`),
@@ -137,7 +142,7 @@ describe("the auto-accept gate filter", () => {
     const fetchMock = vi.fn<FetchSig>(async () => jsonResponse([]));
     vi.stubGlobal("fetch", fetchMock);
 
-    await getIncompleteProjectIds(60);
+    await Promise.all(["laser", "species", "headtail", "dive-slate"].map((k) => getProjectIds(k as never, 60)));
 
     for (const [url] of fetchMock.mock.calls) {
       expect(url).toContain("incomplete=true");
