@@ -1,13 +1,12 @@
 """Client for interacting with label-related endpoints of the Fishsense API."""
 
-from typing import List, Optional
+from typing import List
 
 from fishsense_api_sdk.clients.client_base import ClientBase
 from fishsense_api_sdk.models.dive_slate_label import DiveSlateLabel
 from fishsense_api_sdk.models.headtail_label import HeadTailLabel
 from fishsense_api_sdk.models.label_studio_sync_cursor import LabelStudioSyncCursor
 from fishsense_api_sdk.models.laser_label import LaserLabel
-from fishsense_api_sdk.models.head_tail_prediction import HeadTailPrediction
 from fishsense_api_sdk.models.laser_prediction import LaserPrediction
 from fishsense_api_sdk.models.slate_prediction import SlatePrediction
 from fishsense_api_sdk.models.species_label import SpeciesLabel
@@ -423,55 +422,6 @@ class LabelClient(ClientBase):
         response.raise_for_status()
         json = response.json()
         return [LaserPrediction.model_validate(row) for row in (json or [])]
-
-    async def put_headtail_prediction(
-        self, image_id: int, prediction: HeadTailPrediction
-    ) -> int:
-        """Upsert the model's head/tail prediction for an image.
-
-        Args:
-            image_id (int): The image the prediction is for.
-            prediction (HeadTailPrediction): The predicted snout/fork keypoints.
-
-        Returns:
-            int: The id of the upserted prediction row.
-        """
-        response = await self._put(
-            f"/api/v1/images/{image_id}/headtail-prediction/",
-            json=prediction.model_dump(exclude_unset=True, mode="json"),
-        )
-        response.raise_for_status()
-        return response.json()
-
-    async def get_headtail_prediction(
-        self, image_id: int
-    ) -> Optional[HeadTailPrediction]:
-        """Get the model's head/tail prediction for one image, if any.
-
-        Args:
-            image_id (int): The image to retrieve the prediction for.
-
-        Returns:
-            Optional[HeadTailPrediction]: None when not yet predicted.
-        """
-        response = await self._get(f"/api/v1/images/{image_id}/headtail-prediction/")
-        response.raise_for_status()
-        json = response.json()
-        return HeadTailPrediction.model_validate(json) if json else None
-
-    async def get_headtail_predictions(self, dive_id: int) -> List[HeadTailPrediction]:
-        """Get every model head/tail prediction for a dive's images.
-
-        Args:
-            dive_id (int): The dive to retrieve predictions for.
-
-        Returns:
-            List[HeadTailPrediction]: Predictions (empty when the dive has none).
-        """
-        response = await self._get(f"/api/v1/dives/{dive_id}/headtail-predictions/")
-        response.raise_for_status()
-        json = response.json()
-        return [HeadTailPrediction.model_validate(row) for row in (json or [])]
 
     async def put_slate_prediction(
         self, image_id: int, prediction: SlatePrediction
