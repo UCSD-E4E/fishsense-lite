@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.10.0...fishsense-lite-web-v0.11.0) (2026-09-05)
+
+
+### Features
+
+* **web:** accept/skip triage of laser predictions ([#732](https://github.com/UCSD-E4E/fishsense-lite/issues/732)) ([126d131](https://github.com/UCSD-E4E/fishsense-lite/commit/126d1318f87d65995fc0c2448d0b181278d46645))
+
 ## [0.10.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.9.2...fishsense-lite-web-v0.10.0) (2026-09-04)
 
 
