@@ -133,3 +133,35 @@ describe("fetchTaskImage", () => {
     );
   });
 });
+
+describe("rate limiting", () => {
+  // Hosted Label Studio 429s a burst. Surfacing it aborts the whole queue load
+  // over a condition that clears by itself — which is what took the triage page
+  // down on its first real run.
+  it("retries a 429 and returns the eventual success", async () => {
+    let calls = 0;
+    mockFetch(async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response("slow down", { status: 429, headers: { "retry-after": "0" } })
+        : json({ tasks: [{ id: 7 }] });
+    });
+
+    const page = await listTasks(9, 1);
+    expect(page.tasks.map((t) => t.id)).toEqual([7]);
+    expect(calls).toBe(2);
+  });
+
+  it("gives up after a bounded number of retries rather than hanging", async () => {
+    let calls = 0;
+    mockFetch(async () => {
+      calls += 1;
+      return new Response("slow down", { status: 429, headers: { "retry-after": "0" } });
+    });
+
+    await expect(listTasks(9, 1)).rejects.toThrow(/429/);
+    // First attempt plus a bounded number of retries — never unbounded.
+    expect(calls).toBeGreaterThan(1);
+    expect(calls).toBeLessThanOrEqual(5);
+  });
+});

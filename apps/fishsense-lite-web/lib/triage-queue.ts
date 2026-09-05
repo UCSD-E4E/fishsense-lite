@@ -1,5 +1,5 @@
 import { getIncompleteProjectIds } from "./fishsense-api";
-import { getProjects, type LabelStudioProject } from "./label-studio";
+import { getProject } from "./label-studio";
 import { listTasks } from "./label-studio-tasks";
 import {
   QUEUE_KINDS,
@@ -54,17 +54,39 @@ export async function loadQueue(
     return { items: [], scanned: 0, rejected: [] };
   }
 
-  const projects: LabelStudioProject[] = (await getProjects(outstanding, revalidate))
-    .filter((p) => p.isPublished !== false)
-    .sort((a, b) => b.id - a.id);
+  // Newest dive first, and resolved ONE AT A TIME.
+  //
+  // This used to call `getProjects(outstanding)`, which fans out a request per
+  // outstanding project before looking at any of them — dozens of parallel
+  // calls to hosted Label Studio on every page load, which is what earned a
+  // `429 Too Many Requests`. Almost all of that work was wasted: the loop
+  // below stops as soon as it has a batch, so most of those projects were
+  // fetched and never read.
+  //
+  // Sequential rather than a smaller parallel batch, because a labeler needs
+  // one batch to start work and the rest is speculative. Two requests per
+  // project walked, and it stops early.
+  const candidates = [...outstanding].sort((a, b) => b - a);
 
   const items: TriageItem[] = [];
   const rejected: string[] = [];
   let scanned = 0;
 
-  for (const project of projects.slice(0, MAX_PROJECTS_PER_LOAD)) {
+  for (const projectId of candidates.slice(0, MAX_PROJECTS_PER_LOAD)) {
     if (items.length >= want) break;
     scanned += 1;
+
+    let project;
+    try {
+      project = await getProject(projectId, revalidate);
+    } catch (error) {
+      // A legacy id that no longer resolves must not take down the page.
+      if (rejected.length < 5) {
+        rejected.push(`project ${projectId}: ${error instanceof Error ? error.message : "unresolvable"}`);
+      }
+      continue;
+    }
+    if (project.isPublished === false) continue;
 
     const page = await listTasks(project.id, 1);
     for (const task of page.tasks) {
