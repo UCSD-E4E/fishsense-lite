@@ -3,9 +3,9 @@
 ## [2.21.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.20.2...fishsense-data-processing-workflow-worker-v2.21.0) (2026-09-05)
 
 
-### Features
+### Changes
 
-* model-assisted head/tail labeling (SAM3 on a laser-centred crop) ([#694](https://github.com/UCSD-E4E/fishsense-lite/issues/694)) ([d9145ca](https://github.com/UCSD-E4E/fishsense-lite/commit/d9145cad64c369979fb0f12a2307214948869561))
+* **No user-facing change.** This version exists only because "model-assisted head/tail labeling (SAM3 on a laser-centred crop)" ([#694](https://github.com/UCSD-E4E/fishsense-lite/issues/694)) was merged and then reverted ([#734](https://github.com/UCSD-E4E/fishsense-lite/issues/734)) before any release was cut. Release-please does not reconcile a revert against the feature it undoes, so the version bump could not be withdrawn — but none of that code is in this release. The feature never shipped.
 
 ## [2.20.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v2.20.1...fishsense-data-processing-workflow-worker-v2.20.2) (2026-09-04)
 
