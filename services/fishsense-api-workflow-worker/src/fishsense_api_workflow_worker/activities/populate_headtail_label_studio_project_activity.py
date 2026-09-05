@@ -197,10 +197,7 @@ def prediction_annotations(prediction) -> list:
 
     return [
         {
-            "model_version": headtail_model_version_tag(
-                getattr(prediction, "checkpoint", None),
-                getattr(prediction, "core_version", None),
-            ),
+            "model_version": headtail_model_version_tag(),
             "result": [
                 _point(head_x, head_y, _SNOUT_LABEL),
                 _point(tail_x, tail_y, _FORK_LABEL),

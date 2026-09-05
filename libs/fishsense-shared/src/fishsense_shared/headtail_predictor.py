@@ -64,15 +64,26 @@ HEADTAIL_CROP_WIDTH = 1800
 HEADTAIL_CROP_HEIGHT = 1350
 
 
-def headtail_model_version_tag(checkpoint: str | None, core_version: str | None) -> str:
-    """A human-readable provenance tag for logs and debugging.
+def headtail_model_version_tag() -> str:
+    """The Label Studio `model_version` stamped on every pre-annotation.
 
-    Never parsed and never decided on — `HEADTAIL_PREDICTOR_VERSION` is the
-    only thing anything selects against.
+    **This is an idempotency key, not a log line.** The backfill activity keys
+    on `(task_id, model_version)` to decide whether a task already carries this
+    stage's prediction, so the tag must be a pure function of the stage's
+    *behaviour* and of nothing else.
+
+    It used to interpolate `checkpoint`, which is the pod-local filesystem path
+    the checkpoint happened to be cached at — so moving the cache directory, or
+    the PVC mounting at a different point, changed the key for output that was
+    byte-identical and stacked a second prediction onto every already-seeded
+    task. `core_version` had the same flaw one release removed.
+
+    Both are still recorded on the `HeadTailPrediction` row, which is where
+    "why did this frame come out that way" belongs; they simply do not belong
+    in a key. `HEADTAIL_PREDICTOR_VERSION` is the thing that changes when the
+    output changes, and it is now the only thing in here that can vary.
     """
     return (
         f"v{HEADTAIL_PREDICTOR_VERSION}"
-        f" checkpoint={checkpoint or 'unknown'}"
-        f" core={core_version or 'unknown'}"
         f" crop={HEADTAIL_CROP_WIDTH}x{HEADTAIL_CROP_HEIGHT}"
     )

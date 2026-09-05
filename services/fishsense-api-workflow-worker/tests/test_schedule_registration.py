@@ -34,6 +34,8 @@ _DIVE_SELECTING_PARENT_SCHEDULE_IDS = (
     "preprocess-species-images-workflow-schedule",
     "populate-species-labels-workflow-schedule",
     "preprocess-headtail-images-workflow-schedule",
+    "predict-headtail-images-workflow-schedule",
+    "populate-headtail-labels-workflow-schedule",
     "preprocess-slate-images-workflow-schedule",
     "perform-laser-calibration-workflow-schedule",
     "measure-fish-workflow-schedule",

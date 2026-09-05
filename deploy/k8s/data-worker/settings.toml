@@ -75,3 +75,18 @@ labels_prefix = "fishsense-lite"
 # only side that touches the NAS, and it stages all bytes the
 # data-worker needs into the Garage object store before dispatching
 # child workflows. Don't add an [e4e_nas] block here.
+
+# SAM3 checkpoint for the head/tail predict stage (gpu role).
+#
+# Weights are pulled from the object store rather than baked into the image:
+# this Deployment scales to zero, so a multi-gigabyte layer would be re-pulled
+# on every cold start, and the upstream distribution is gated.
+#
+# `name/version/filename` address `models/{name}/{version}/{filename}` in the
+# bucket and must match what was uploaded there. `cache_dir` must live on the
+# `cache` volume or the download repeats on every cold start.
+[sam3]
+cache_dir = "/e4efs/cache/sam3"
+model_name = "sam3"
+model_version = "v1"
+checkpoint_filename = "sam3.pt"

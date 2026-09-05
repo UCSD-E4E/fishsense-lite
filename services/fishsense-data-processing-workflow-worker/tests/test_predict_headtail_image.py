@@ -175,3 +175,49 @@ def test_no_laser_points_abstains():
 def test_undecodable_bytes_abstain_rather_than_raise():
     result = predict_from_jpeg(b"not a jpeg", [(1.0, 1.0)], _Stub([]), image_id=7)
     assert result.status == "decode_failed"
+
+
+class TestMaskConversion:
+    """SAM3 returns torch tensors, and on the GPU worker they live on the
+    device. `np.asarray` on a CUDA tensor raises rather than converting, so
+    the stage would fail on the only machine it is meant to run on while
+    passing every test that stubs the backend.
+    """
+
+    def test_detaches_and_moves_a_device_tensor(self):
+        import numpy as np
+
+        from fishsense_data_processing_workflow_worker.activities.predict_headtail_image import (
+            _to_numpy,
+        )
+
+        class _DeviceTensor:
+            """Refuses direct conversion, the way a CUDA tensor does."""
+
+            def __init__(self, data):
+                self._data = data
+                self.detached = False
+
+            def __array__(self, *args, **kwargs):
+                raise TypeError("can't convert cuda:0 device type tensor to numpy")
+
+            def detach(self):
+                self.detached = True
+                return self
+
+            def cpu(self):
+                return np.asarray(self._data)
+
+        tensor = _DeviceTensor([[1, 0], [0, 1]])
+        out = _to_numpy(tensor)
+        assert tensor.detached
+        assert out.tolist() == [[1, 0], [0, 1]]
+
+    def test_passes_a_plain_array_through(self):
+        import numpy as np
+
+        from fishsense_data_processing_workflow_worker.activities.predict_headtail_image import (
+            _to_numpy,
+        )
+
+        assert _to_numpy(np.zeros((2, 2))).shape == (2, 2)

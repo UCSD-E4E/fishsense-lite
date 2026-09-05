@@ -128,3 +128,53 @@ def test_carries_every_valid_dot_in_order():
     )
     assert picked[0].laser_points == [[10.0, 20.0], [11.0, 21.0]]
     assert picked[0].laser_label_ids == [101, 102]
+
+
+class TestJpegPresenceGate:
+    """The predict stage reads the stage-5.1 JPEG, so it must not be
+    dispatched for an image stage 5.1 has not rendered yet.
+
+    +30 renders and +32 predicts, and stage 5.1 is a rawpy pass over a whole
+    dive, so the two overlap routinely. Without the gate the child retries a
+    `NoSuchKey` with no ceiling until its own execution timeout expires.
+    """
+
+    @staticmethod
+    async def _gate(monkeypatch, present_checksums):
+        from fishsense_api_workflow_worker.activities import (
+            resolve_headtail_predict_inputs_activity as mod,
+        )
+
+        class _Store:
+            async def has_processed_jpeg(self, folder, checksum):
+                return checksum in present_checksums
+
+        monkeypatch.setattr(mod, "open_object_store_client", lambda: _Store())
+        monkeypatch.setattr(mod.activity, "heartbeat", lambda *a, **k: None)
+        return mod
+
+    async def test_defers_images_without_a_rendered_jpeg(self, monkeypatch):
+        from fishsense_shared.preprocess_contracts import PredictHeadtailImage
+
+        mod = await self._gate(monkeypatch, {"aaa"})
+        candidates = [
+            PredictHeadtailImage(
+                image_id=1, checksum="aaa", laser_points=[[1.0, 2.0]], laser_label_ids=[1]
+            ),
+            PredictHeadtailImage(
+                image_id=2, checksum="bbb", laser_points=[[3.0, 4.0]], laser_label_ids=[2]
+            ),
+        ]
+        kept = await mod._only_with_rendered_jpeg(candidates)
+        assert [c.image_id for c in kept] == [1]
+
+    async def test_empty_input_touches_no_object_store(self, monkeypatch):
+        from fishsense_api_workflow_worker.activities import (
+            resolve_headtail_predict_inputs_activity as mod,
+        )
+
+        def _explode():
+            raise AssertionError("must not open the object store for an empty dive")
+
+        monkeypatch.setattr(mod, "open_object_store_client", _explode)
+        assert await mod._only_with_rendered_jpeg([]) == []
