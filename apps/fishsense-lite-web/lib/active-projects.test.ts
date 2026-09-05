@@ -1,17 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./fishsense-api", () => ({
-  getIncompleteProjectIds: vi.fn(),
+  getProjectIds: vi.fn(),
 }));
 vi.mock("./label-studio", () => ({
   getProjects: vi.fn(),
 }));
 
 import { getActiveProjects } from "./active-projects";
-import { getIncompleteProjectIds } from "./fishsense-api";
+import { getProjectIds } from "./fishsense-api";
 import { getProjects } from "./label-studio";
 
-const idsMock = vi.mocked(getIncompleteProjectIds);
+const idsMock = vi.mocked(getProjectIds);
 const projectsMock = vi.mocked(getProjects);
 
 beforeEach(() => {
@@ -29,19 +29,23 @@ afterEach(() => {
 
 describe("getActiveProjects", () => {
   it("resolves IDs once, then resolves names per kind, returning a four-bucket map", async () => {
-    idsMock.mockResolvedValue({
-      laser: [42, 43],
-      species: [70],
-      headtail: [44],
-      "dive-slate": [66],
-    });
+    idsMock.mockImplementation(async (kind) =>
+      ({ "laser": [42, 43], "species": [70], "headtail": [44], "dive-slate": [66] } as Record<string, number[]>)[kind] ?? [],
+    );
     projectsMock.mockImplementation(async (ids) =>
       ids.map((id) => ({ id, title: `p-${id}`, isPublished: true })),
     );
 
     const result = await getActiveProjects(60);
 
-    expect(idsMock).toHaveBeenCalledExactlyOnceWith(60);
+    expect(idsMock).toHaveBeenCalledTimes(4);
+    expect(idsMock.mock.calls.map(([kind]) => kind).sort()).toEqual([
+      "dive-slate",
+      "headtail",
+      "laser",
+      "species",
+    ]);
+    expect(idsMock.mock.calls.every(([, revalidate]) => revalidate === 60)).toBe(true);
     expect(projectsMock).toHaveBeenCalledTimes(4);
     expect(projectsMock).toHaveBeenNthCalledWith(1, [42, 43], 60);
     expect(projectsMock).toHaveBeenNthCalledWith(2, [70], 60);
@@ -60,19 +64,24 @@ describe("getActiveProjects", () => {
   });
 
   it("defaults revalidate to 300 seconds", async () => {
-    idsMock.mockResolvedValue({ laser: [], species: [], headtail: [], "dive-slate": [] });
+    idsMock.mockImplementation(async (kind) =>
+      ({ "laser": [], "species": [], "headtail": [], "dive-slate": [] } as Record<string, number[]>)[kind] ?? [],
+    );
     projectsMock.mockResolvedValue([]);
 
     await getActiveProjects();
 
-    expect(idsMock).toHaveBeenCalledExactlyOnceWith(300);
+    expect(idsMock).toHaveBeenCalledTimes(4);
+    expect(idsMock.mock.calls.every(([, revalidate]) => revalidate === 300)).toBe(true);
     for (const call of projectsMock.mock.calls) {
       expect(call[1]).toBe(300);
     }
   });
 
   it("returns empty arrays for kinds with no incomplete projects", async () => {
-    idsMock.mockResolvedValue({ laser: [], species: [], headtail: [], "dive-slate": [] });
+    idsMock.mockImplementation(async (kind) =>
+      ({ "laser": [], "species": [], "headtail": [], "dive-slate": [] } as Record<string, number[]>)[kind] ?? [],
+    );
     projectsMock.mockResolvedValue([]);
 
     const result = await getActiveProjects(60);
@@ -138,12 +147,9 @@ describe("getActiveProjects — publish filtering", () => {
     // hold it back from labelers, but the id list comes from fishsense-api
     // (derived from label rows) and knows nothing about publish state — so
     // without this filter the held project stays linked from the landing page.
-    idsMock.mockResolvedValue({
-      laser: [274728, 73],
-      species: [],
-      headtail: [],
-      "dive-slate": [],
-    });
+    idsMock.mockImplementation(async (kind) =>
+      ({ "laser": [274728, 73], "species": [], "headtail": [], "dive-slate": [] } as Record<string, number[]>)[kind] ?? [],
+    );
     projectsMock.mockImplementation(async (ids) =>
       ids.map((id) => ({
         id,
@@ -158,12 +164,9 @@ describe("getActiveProjects — publish filtering", () => {
   });
 
   it("filters every kind, not just laser", async () => {
-    idsMock.mockResolvedValue({
-      laser: [1],
-      species: [2],
-      headtail: [3],
-      "dive-slate": [4],
-    });
+    idsMock.mockImplementation(async (kind) =>
+      ({ "laser": [1], "species": [2], "headtail": [3], "dive-slate": [4] } as Record<string, number[]>)[kind] ?? [],
+    );
     projectsMock.mockImplementation(async (ids) =>
       ids.map((id) => ({ id, title: `p-${id}`, isPublished: false })),
     );
@@ -176,12 +179,9 @@ describe("getActiveProjects — publish filtering", () => {
   it("keeps drafts out while a project is still being populated", async () => {
     // Per-dive projects are created as drafts and only published once their
     // task set is complete, so a half-filled project must not appear either.
-    idsMock.mockResolvedValue({
-      laser: [],
-      species: [100, 101],
-      headtail: [],
-      "dive-slate": [],
-    });
+    idsMock.mockImplementation(async (kind) =>
+      ({ "laser": [], "species": [100, 101], "headtail": [], "dive-slate": [] } as Record<string, number[]>)[kind] ?? [],
+    );
     projectsMock.mockImplementation(async (ids) =>
       ids.map((id) => ({ id, title: `p-${id}`, isPublished: id === 100 })),
     );
