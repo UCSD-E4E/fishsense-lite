@@ -18,6 +18,22 @@ export type TaskPage = {
  * it here rather than per-caller is why nothing above this layer knows the
  * token exists.
  */
+const RATE_LIMIT_RETRIES = 3;
+const RATE_LIMIT_BASE_MS = 750;
+
+/** Hosted Label Studio rate-limits, and says how long to wait when it does. */
+function retryAfterMs(response: Response, attempt: number): number {
+  const header = response.headers.get("retry-after");
+  if (header) {
+    const seconds = Number(header);
+    if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+    const at = Date.parse(header);
+    if (Number.isFinite(at)) return Math.max(0, at - Date.now());
+  }
+  // Exponential, so a burst backs off rather than re-forming.
+  return RATE_LIMIT_BASE_MS * 2 ** attempt;
+}
+
 async function authed(path: string, init: RequestInit = {}): Promise<Response> {
   const url = `${env.labelStudioUrl}${path}`;
   const send = async (token: string) =>
@@ -30,10 +46,20 @@ async function authed(path: string, init: RequestInit = {}): Promise<Response> {
       cache: "no-store",
     });
 
-  const response = await send(await getAccessToken());
+  let response = await send(await getAccessToken());
   if (response.status === 401 || response.status === 403) {
-    return send(await getAccessToken(true));
+    response = await send(await getAccessToken(true));
   }
+
+  // 429 is a "come back shortly", not a failure — surfacing it aborts the
+  // whole queue load over a condition that clears on its own. Honour
+  // `Retry-After` when the server sends one; it knows the window and we do
+  // not.
+  for (let attempt = 0; response.status === 429 && attempt < RATE_LIMIT_RETRIES; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, retryAfterMs(response, attempt)));
+    response = await send(await getAccessToken());
+  }
+
   return response;
 }
 
