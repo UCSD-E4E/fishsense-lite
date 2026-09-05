@@ -135,6 +135,20 @@ _VALIDATORS = [
         default=4.0,
         condition=lambda x: x > 0,
     ),
+    # SAM3 checkpoint, for the head/tail predict stage.
+    #
+    # Defaults rather than `required=True` on purpose: Dynaconf validates every
+    # Validator on first attribute access of `settings`, not lazily per key, so
+    # requiring these would make the cpu-role worker and every test that
+    # imports any activity module plumb SAM3 config it never uses.
+    #
+    # `cache_dir` must sit on the `cache` volume the Deployments mount — the
+    # container filesystem is ephemeral and this Deployment scales to zero, so
+    # anything cached elsewhere is re-downloaded on every cold start.
+    Validator("sam3.cache_dir", cast=str, default="/e4efs/cache/sam3"),
+    Validator("sam3.model_name", cast=str, default="sam3"),
+    Validator("sam3.model_version", cast=str, default="v1"),
+    Validator("sam3.checkpoint_filename", cast=str, default="sam3.pt"),
 ]
 
 # NOTE: standardized on E4EFS_ envvar prefix (was DYNACONF_) to match the other

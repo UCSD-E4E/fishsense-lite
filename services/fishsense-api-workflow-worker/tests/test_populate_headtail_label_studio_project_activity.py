@@ -98,10 +98,31 @@ def test_build_task_emits_dual_image_and_img_keys(monkeypatch):
     assert not task["predictions"]
 
 
+class _StubPrediction:  # pylint: disable=too-many-instance-attributes
+    """Minimal `HeadTailPrediction` stand-in.
+
+    Defaults to an *abstention*: it passes populate's prediction gate (the
+    detector visited the image) while seeding no keypoints, so these tests keep
+    asserting task import and supersede behaviour rather than annotation
+    content. Annotation content has its own file.
+    """
+
+    def __init__(self, image_id, status="no_detections"):
+        self.image_id = image_id
+        self.status = status
+        self.head_x = self.head_y = self.tail_x = self.tail_y = None
+        self.width = self.height = None
+        self.silhouette_ratio = None
+        self.rejected_low_confidence = False
+        self.checkpoint = None
+        self.core_version = None
+
+
 def _make_fs_client(
     laser_labels: List[LaserLabel],
     existing_headtail: List[HeadTailLabel],
     images_by_id: dict,
+    predictions=None,
 ):
     fs = MagicMock()
     fs.__aenter__ = AsyncMock(return_value=fs)
@@ -117,6 +138,11 @@ def _make_fs_client(
     fs.labels.get_laser_labels = AsyncMock(return_value=laser_labels)
     fs.labels.get_headtail_labels = AsyncMock(return_value=existing_headtail)
     fs.labels.put_headtail_label = AsyncMock()
+    # Populate is prediction-gated, so by default every candidate counts as
+    # already visited; a test that cares passes its own list.
+    if predictions is None:
+        predictions = [_StubPrediction(image_id) for image_id in images_by_id]
+    fs.labels.get_headtail_predictions = AsyncMock(return_value=predictions)
     return fs
 
 
@@ -376,3 +402,32 @@ async def test_legacy_other_project_rows_are_superseded_even_when_refreshed(monk
     assert [w.label_studio_project_id for w in superseded] == [66], (
         "only the legacy-project row should be dead-lettered"
     )
+
+
+@pytest.mark.asyncio
+async def test_unpredicted_images_are_deferred(monkeypatch):
+    """Populate must not seed a sentinel row before the detector has run.
+
+    The predict cohort requires "no live head/tail label", so an image
+    populated first would leave that cohort permanently and never be predicted
+    — the same starvation the laser side hit on dive 84.
+    """
+    laser = [_laser(1), _laser(2)]
+    images_by_id = {1: _image(1, "a"), 2: _image(2, "b")}
+
+    # Only image 2 has been visited by the detector.
+    fs = _make_fs_client(
+        laser, [], images_by_id, predictions=[_StubPrediction(2)]
+    )
+    ls = _make_ls_client(returned_task_ids=[3001])
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    n = await ActivityEnvironment().run(
+        sut.populate_headtail_label_studio_project_activity, 42, 71
+    )
+
+    assert n == 1, "only the predicted image should be seeded"
+    written = [c.args[1] for c in fs.labels.put_headtail_label.await_args_list]
+    assert [row.image_id for row in written] == [2]

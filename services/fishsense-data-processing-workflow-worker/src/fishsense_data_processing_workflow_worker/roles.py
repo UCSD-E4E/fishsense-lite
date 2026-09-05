@@ -6,7 +6,8 @@ needs a GPU:
 * ``cpu`` — the nine stages that are pure CPU: rectify/overlay/JPEG for stages
   0.1 / 2 / 5.1 / 9, frame clustering, laser calibration, fish measurement,
   laser depth, and laser-label validation.
-* ``gpu`` — the two torch inference stages: `predict_laser_image`
+* ``gpu`` — the torch inference stages: `predict_headtail_image` (SAM3),
+  `predict_laser_image`
   (`fishsense_core.laser.LaserDetector`) and the retired `predict_slate_image`
   (`fishsense_core.slate.BoardMasker`).
 
@@ -73,6 +74,9 @@ from fishsense_data_processing_workflow_worker.activities.measure_fish_activity 
 from fishsense_data_processing_workflow_worker.activities.perform_laser_calibration_activity import (  # noqa: E501  pylint: disable=line-too-long
     perform_laser_calibration_activity,
 )
+from fishsense_data_processing_workflow_worker.activities.predict_headtail_image import (  # noqa: E501  pylint: disable=line-too-long
+    predict_headtail_image,
+)
 from fishsense_data_processing_workflow_worker.activities.predict_laser_image import (
     predict_laser_image,
 )
@@ -105,6 +109,9 @@ from fishsense_data_processing_workflow_worker.workflows.measure_fish_workflow i
 )
 from fishsense_data_processing_workflow_worker.workflows.perform_laser_calibration_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PerformLaserCalibrationWorkflow,
+)
+from fishsense_data_processing_workflow_worker.workflows.predict_headtail_images_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    PredictHeadtailImagesWorkflow,
 )
 from fishsense_data_processing_workflow_worker.workflows.predict_laser_images_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PredictLaserImagesWorkflow,
@@ -182,11 +189,13 @@ LIGHT_ACTIVITIES: Final[Sequence[Callable[..., Any]]] = (
 # actively deleted at api-worker startup, but it stays registered so a future
 # evaluation can start it by hand, and it should get a GPU when one is there.
 GPU_WORKFLOWS: Final[Sequence[type]] = (
+    PredictHeadtailImagesWorkflow,
     PredictLaserImagesWorkflow,
     PredictSlateImagesWorkflow,
 )
 
 GPU_ACTIVITIES: Final[Sequence[Callable[..., Any]]] = (
+    predict_headtail_image,
     predict_laser_image,
     predict_slate_image,
 )

@@ -145,6 +145,10 @@ class DiveClient(ClientBase):
         """
         return await self._select_next("laser-auto-accept")
 
+    async def select_next_for_headtail_prediction(self) -> int | None:
+        """Head/tail-predict cohort selector. See `select_next_for_laser_preprocessing`."""
+        return await self._select_next("headtail-prediction")
+
     async def select_next_for_slate_prediction(self) -> int | None:
         """Slate-detector cohort selector. See `select_next_for_laser_preprocessing`."""
         return await self._select_next("slate-prediction")
@@ -172,6 +176,15 @@ class DiveClient(ClientBase):
         fans out one populate child per dive. See the
         `needing-laser-population` endpoint docstring."""
         response = await self._get("/api/v1/dives/needing-laser-population/")
+        response.raise_for_status()
+        return response.json() or []
+
+    async def get_dives_needing_headtail_population(self) -> list[int]:
+        """Every dive needing model-assisted head/tail LS tasks (re)populated —
+        prediction-gated. Returns all matches so the scheduled populate parent
+        fans out one populate child per dive. See the
+        `needing-headtail-population` endpoint docstring."""
+        response = await self._get("/api/v1/dives/needing-headtail-population/")
         response.raise_for_status()
         return response.json() or []
 

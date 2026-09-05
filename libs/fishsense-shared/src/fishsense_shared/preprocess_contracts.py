@@ -257,6 +257,72 @@ class PreprocessSlateImagesInput(BaseModel):
     distortion_coefficients: List[float]
 
 
+class PredictHeadtailImage(BaseModel):
+    """Per-image input for head/tail prediction.
+
+    Carries the laser dots as well as the checksum, because the gate is also
+    the crop centre: the predictor looks only at a window centred on the dot
+    rather than searching the frame (see docs/plans/headtail-prediction.md
+    §0.2b). `laser_label_ids` is parallel to `laser_points`, so the result can
+    name which dot chose the fish and the cohort can later select on that dot
+    having been superseded.
+
+    An image may carry more than one valid laser label — 461 prod images do —
+    and first-hit-wins is what was measured.
+    """
+
+    image_id: int
+    checksum: str
+    laser_points: List[List[float]]
+    laser_label_ids: List[int]
+    # Which JPEG prefix to read. Set by the workflow from its own
+    # `jpeg_folder`, so the physical key contract stays owned by
+    # `fishsense_shared.object_store` and the activity never hard-codes a
+    # prefix or reaches into worker config for one.
+    jpeg_folder: str = ""
+
+
+class PredictHeadtailImagesInput(BaseModel):
+    """Head/tail predict workflow-level input (api-worker -> data-worker).
+
+    No camera intrinsics and no raw bytes: this stage reads the stage-5.1 JPEG
+    that already exists in Garage, which is the exact frame the labeler sees.
+    `jpeg_folder` is a parameter rather than a constant so the physical key
+    contract stays owned by `fishsense_shared.object_store`.
+    """
+
+    dive_id: int
+    images: List[PredictHeadtailImage]
+    jpeg_folder: str
+
+
+class HeadtailPredictionResult(BaseModel):
+    """Per-image head/tail prediction (data-worker -> api-worker).
+
+    Coordinates are rectified-frame pixels, already lifted out of the crop by
+    `crop_x`/`crop_y` — the same space as `LaserLabel.x/y` and the labeler's
+    own clicks. All four are None on an abstention, and `status` says which
+    kind: "no_detections", "laser_off_all_fish" or "headtail_failed".
+    """
+
+    image_id: int
+    status: str
+    head_x: Optional[float] = None
+    head_y: Optional[float] = None
+    tail_x: Optional[float] = None
+    tail_y: Optional[float] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    mask_area_px: Optional[int] = None
+    silhouette_ratio: Optional[float] = None
+    crop_x: Optional[int] = None
+    crop_y: Optional[int] = None
+    laser_label_id: Optional[int] = None
+    predictor_version: Optional[int] = None
+    checkpoint: Optional[str] = None
+    core_version: Optional[str] = None
+
+
 class LaserAutoAcceptSummary(BaseModel):
     """What the auto-accept gate decided for one dive.
 

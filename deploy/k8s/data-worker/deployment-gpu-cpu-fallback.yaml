@@ -158,7 +158,11 @@ spec:
             sizeLimit: 1Gi
         - name: cache
           emptyDir:
-            sizeLimit: 2Gi
+            # Holds the SAM3 checkpoint, which is multi-gigabyte. At 2Gi the
+            # download filled the volume and the stage failed on a pod that
+            # looked healthy. Still an emptyDir, so it is re-fetched on every
+            # cold start — sized to hold the file, not to avoid the fetch.
+            sizeLimit: 12Gi
         - name: scratch
           emptyDir:
             sizeLimit: 4Gi

@@ -18,20 +18,24 @@ already pass as ``output_folder`` — ``preprocess_jpeg`` (0.1),
 from __future__ import annotations
 
 from fishsense_shared.object_store import (
+    MODEL_PREFIX,
     RAW_PREFIX,
     SLATE_PDF_PREFIX,
     BaseObjectStoreClient,
     jpeg_key,
+    model_key,
     open_client,
     raw_key,
     slate_pdf_key,
 )
 
 __all__ = [
+    "MODEL_PREFIX",
     "RAW_PREFIX",
     "SLATE_PDF_PREFIX",
     "ObjectStoreClient",
     "jpeg_key",
+    "model_key",
     "open_client",
     "open_object_store_client",
     "raw_key",
@@ -65,6 +69,33 @@ class ObjectStoreClient(BaseObjectStoreClient):
 
     async def download_slate_pdf(self, slate_id: int) -> bytes:
         return await self._get(slate_pdf_key(slate_id))
+
+    async def download_processed_jpeg(self, folder: str, checksum: str) -> bytes:
+        """Read back a JPEG this worker wrote.
+
+        A deliberate widening of the read/write asymmetry in this module's
+        docstring: until now the data-worker only ever *wrote* the JPEG
+        prefixes. The head/tail predict stage reads one, because the stage-5.1
+        JPEG is the exact frame the labeler is shown, so predicting on anything
+        else would be predicting on a different image than the one being
+        labelled. It reads its own output, in its own bucket, and still cannot
+        delete anything.
+        """
+        return await self._get(
+            jpeg_key(folder, checksum, self._labels_prefix),
+            bucket=self._labels_bucket,
+        )
+
+    async def download_model(self, name: str, version: str, filename: str) -> bytes:
+        """Fetch a model checkpoint from the object store.
+
+        Weights live here rather than in the image because this Deployment
+        scales to zero — a multi-gigabyte layer would be re-pulled on every
+        cold start — and because keeping them out of a pullable artifact
+        avoids redistributing weights whose upstream distribution is gated.
+        Callers cache the bytes on a volume; see `checkpoint_cache`.
+        """
+        return await self._get(model_key(name, version, filename))
 
     async def upload_processed_jpeg(
         self, folder: str, checksum: str, data: bytes

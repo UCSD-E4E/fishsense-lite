@@ -44,6 +44,23 @@ def app():
             "/api/v1/dives/select-next/dive-frame-clustering/",
             "select_next_for_dive_frame_clustering",
         ),
+        # The three model-assisted (prediction) selectors. These live in
+        # `dive_prediction_cohort_controller`, a *second* module that must also
+        # be imported before `dive_controller`; until that split they were not
+        # covered here at all, so an import reorder would have 422'd every
+        # detector poll in prod with the suite still green.
+        (
+            "/api/v1/dives/select-next/laser-prediction/",
+            "select_next_for_laser_prediction",
+        ),
+        (
+            "/api/v1/dives/select-next/headtail-prediction/",
+            "select_next_for_headtail_prediction",
+        ),
+        (
+            "/api/v1/dives/select-next/slate-prediction/",
+            "select_next_for_slate_prediction",
+        ),
         (
             "/api/v1/dives/select-next/species-preprocessing/",
             "select_next_for_species_preprocessing",
