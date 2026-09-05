@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.11.1...fishsense-lite-web-v0.11.2) (2026-09-05)
+
+
+### Bug Fixes
+
+* **web:** triage listed no projects, and the cause could not surface ([#752](https://github.com/UCSD-E4E/fishsense-lite/issues/752)) ([242c73a](https://github.com/UCSD-E4E/fishsense-lite/commit/242c73a6f10ef6d1e569f91afe792e7068714a70))
+
 ## [0.11.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.11.0...fishsense-lite-web-v0.11.1) (2026-09-05)
 
 
