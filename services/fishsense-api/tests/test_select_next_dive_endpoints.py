@@ -980,7 +980,7 @@ async def test_needing_species_population_excludes_dive_with_live_species(sessio
     )
     await session.flush()
 
-    assert await select_dives_needing_species_population(session=session) == []
+    assert not await select_dives_needing_species_population(session=session)
 
 
 async def test_needing_species_population_excludes_invalid_laser(session):
@@ -1003,7 +1003,7 @@ async def test_needing_species_population_excludes_invalid_laser(session):
     )
     await session.flush()
 
-    assert await select_dives_needing_species_population(session=session) == []
+    assert not await select_dives_needing_species_population(session=session)
 
 
 # ---------- stage 5.1: headtail-preprocessing ----------
@@ -2326,7 +2326,7 @@ async def test_needing_laser_population_empty_when_nothing_predicted(session):
     session.add_all([_dive(1), _image(11, 1)])
     await session.flush()
 
-    assert await select_dives_needing_laser_population(session=session) == []
+    assert not await select_dives_needing_laser_population(session=session)
 
 
 # --- laser auto-accept gate cohort --------------------------------------------

@@ -98,7 +98,7 @@ async def test_get_empty_when_dive_has_no_predictions(session):
 
     session.add(_dive(1))
     await session.flush()
-    assert await get_slate_predictions_for_dive(1, session=session) == []
+    assert not await get_slate_predictions_for_dive(1, session=session)
 
 
 async def test_put_stamps_created_at(session):

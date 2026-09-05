@@ -218,4 +218,4 @@ async def test_delete_measurement_is_idempotent(session):
 
     from fishsense_api.models.measurement import Measurement
 
-    assert (await session.exec(select(Measurement))).all() == []
+    assert not (await session.exec(select(Measurement))).all()

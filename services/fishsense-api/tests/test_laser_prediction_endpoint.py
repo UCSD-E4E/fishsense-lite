@@ -87,7 +87,7 @@ async def test_get_returns_empty_list_when_none(session):
     session.add(_dive(1))
     await session.flush()
 
-    assert await get_laser_predictions_for_dive(1, session=session) == []
+    assert not await get_laser_predictions_for_dive(1, session=session)
 
 
 # --- auto-accept verdict ------------------------------------------------------

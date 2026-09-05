@@ -103,6 +103,6 @@ async def test_no_dispatch_when_cohort_empty():
                 task_queue="test-queue",
             )
 
-    assert result == []
+    assert not result
     assert len(selector_calls) == 1
     assert not dispatched

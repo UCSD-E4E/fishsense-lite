@@ -161,7 +161,7 @@ async def test_a_project_with_no_predictions_at_all_is_not_gated(session):
         session,
         [_image(1), _laser_label(1, 1, project_id=FULLY_GATED)],
     )
-    assert await _ids(session, gated=True) == []
+    assert not await _ids(session, gated=True)
     assert await _ids(session, gated=False) == [FULLY_GATED]
 
 

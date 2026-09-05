@@ -332,7 +332,7 @@ async def test_accuracy_view_excludes_real_fish(session):
     session.add(Measurement(image_id=11, fish_id=wild.id, length_m=0.5))
     await session.flush()
 
-    assert await _rows(session) == []
+    assert not await _rows(session)
 
 
 async def test_accuracy_view_excludes_models_without_a_reference(session):
@@ -342,4 +342,4 @@ async def test_accuracy_view_excludes_models_without_a_reference(session):
         session, dive_id=1, image_id=11, model_name="Unmeasured Model", length_m=0.4
     )
 
-    assert await _rows(session) == []
+    assert not await _rows(session)

@@ -59,12 +59,12 @@ def _names_for_days(n: int):
 
 def test_filenames_to_prune_returns_empty_when_under_limit():
     files = _names_for_days(5)
-    assert filenames_to_prune(files, keep=14) == []
+    assert not filenames_to_prune(files, keep=14)
 
 
 def test_filenames_to_prune_returns_empty_at_exact_limit():
     files = _names_for_days(14)
-    assert filenames_to_prune(files, keep=14) == []
+    assert not filenames_to_prune(files, keep=14)
 
 
 def test_filenames_to_prune_keeps_most_recent_n_drops_the_rest():

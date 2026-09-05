@@ -153,4 +153,4 @@ def test_upgrade_is_a_no_op_if_the_model_is_ever_renamed(
 
     _run(migration, monkeypatch, conn)
 
-    assert _rows(conn) == []
+    assert not _rows(conn)

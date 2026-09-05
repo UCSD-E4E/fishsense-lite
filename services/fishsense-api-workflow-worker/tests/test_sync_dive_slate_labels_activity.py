@@ -117,7 +117,7 @@ def test_parse_results_extracts_all_fields():
 
 def test_parse_results_handles_minimal_annotation():
     parsed = sut._parse_results({"result": []})  # pylint: disable=protected-access
-    assert parsed["reference_points"] == []
+    assert not parsed["reference_points"]
     assert parsed["slate_rectangle"] is None
     assert parsed["skipped_points"] is None
     assert parsed["original_height"] is None
@@ -133,7 +133,7 @@ def test_parse_results_ignores_removed_upside_down_control():
     }
     parsed = sut._parse_results(annotation)  # pylint: disable=protected-access
     assert "upside_down" not in parsed
-    assert parsed["reference_points"] == []
+    assert not parsed["reference_points"]
 
 
 # --------------------------- pdf aspect ratio --------------------------

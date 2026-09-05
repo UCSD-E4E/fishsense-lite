@@ -361,7 +361,7 @@ async def test_checksum_lookup_handles_an_empty_batch(session):
         post_checksum_lookup,
     )
 
-    assert await post_checksum_lookup([], session=session) == {}
+    assert not await post_checksum_lookup([], session=session)
 
 
 async def test_checksum_lookup_deduplicates_repeated_checksums(session):

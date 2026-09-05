@@ -215,7 +215,7 @@ def test_every_view_is_actually_queryable_on_postgres():
         FISH_LENGTH_ESTIMATE_VIEW_NAME,
         FISH_MODEL_MISLABEL_SUSPECTS_VIEW_NAME,
     ):
-        assert _query(f"SELECT * FROM {view} LIMIT 1") == []
+        assert not _query(f"SELECT * FROM {view} LIMIT 1")
 
 
 @pytest.mark.usefixtures("empty_schema")

@@ -166,7 +166,7 @@ async def test_lookup_checksums_round_trips_through_the_real_endpoint(sdk):
 
     result = await images.lookup_checksums([CK_A, CK_B])
 
-    assert result[CK_B] == []
+    assert not result[CK_B]
     assert result[CK_A][0]["dive_id"] == dive_id
     assert result[CK_A][0]["is_canonical"] is True
 

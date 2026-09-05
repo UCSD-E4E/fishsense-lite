@@ -145,4 +145,4 @@ async def test_staging_uses_scratch_bucket_even_with_labels_configured(s3):
     assert await ActivityEnvironment().run(_run) is True
     assert _body(s3, "raw/abc123.ORF") == b"RAW"
     # nothing written to the labels bucket
-    assert s3.list_objects_v2(Bucket=labels).get("Contents", []) == []
+    assert not s3.list_objects_v2(Bucket=labels).get("Contents", [])

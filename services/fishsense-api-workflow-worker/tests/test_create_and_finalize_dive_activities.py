@@ -305,7 +305,7 @@ async def test_overlap_ignores_the_dive_being_ingested(monkeypatch):
 
     report = await _finalize(412, _request(), _totals(total=1, registered=1), fs, monkeypatch)
 
-    assert report.duplicate_overlap == []
+    assert not report.duplicate_overlap
 
 
 async def test_a_dive_with_no_overlap_reports_none(monkeypatch):
@@ -316,4 +316,4 @@ async def test_a_dive_with_no_overlap_reports_none(monkeypatch):
 
     report = await _finalize(412, _request(), _totals(total=1, registered=1), fs, monkeypatch)
 
-    assert report.duplicate_overlap == []
+    assert not report.duplicate_overlap

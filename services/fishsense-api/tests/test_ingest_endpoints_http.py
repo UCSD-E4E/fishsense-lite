@@ -150,7 +150,7 @@ def test_dive_then_images_then_lookup_round_trips_over_http(client):
     body = lookup.json()
 
     # Serialization of the nested Dict[str, List[Dict[str, Any]]] survives.
-    assert body[CK_B] == []
+    assert not body[CK_B]
     assert {hit["dive_id"] for hit in body[CK_A]} == {dive_id, other.json()}
     assert sorted(hit["is_canonical"] for hit in body[CK_A]) == [False, True]
 

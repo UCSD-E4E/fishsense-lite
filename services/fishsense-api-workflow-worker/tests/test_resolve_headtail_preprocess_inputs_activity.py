@@ -195,7 +195,7 @@ async def test_drops_lasers_that_are_incomplete_superseded_or_null_xy(
     result = await ActivityEnvironment().run(
         sut.resolve_headtail_preprocess_inputs_activity, 42
     )
-    assert result.image_checksums == []
+    assert not result.image_checksums
 
 
 @pytest.mark.asyncio
@@ -211,7 +211,7 @@ async def test_empty_when_no_laser_labels(monkeypatch):
     result = await ActivityEnvironment().run(
         sut.resolve_headtail_preprocess_inputs_activity, 42
     )
-    assert result.image_checksums == []
+    assert not result.image_checksums
 
 
 @pytest.mark.asyncio

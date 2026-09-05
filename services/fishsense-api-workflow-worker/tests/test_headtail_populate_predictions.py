@@ -10,13 +10,13 @@ from __future__ import annotations
 
 import pytest
 
-from fishsense_api_workflow_worker.activities.populate_headtail_label_studio_project_activity import (  # noqa: E501
+from fishsense_api_workflow_worker.activities.populate_headtail_label_studio_project_activity import (  # noqa: E501  pylint: disable=line-too-long
     prediction_annotations,
     select_predicted_image_ids,
 )
 
 
-class _Prediction:
+class _Prediction:  # pylint: disable=too-many-instance-attributes
     def __init__(
         self,
         image_id=1,
@@ -67,34 +67,34 @@ def test_pixels_convert_to_percentages_using_the_recorded_dims():
 
 
 def test_no_annotation_for_an_abstention():
-    assert prediction_annotations(_Prediction(status="no_detections", head=(None, None))) == []
-    assert prediction_annotations(None) == []
+    assert not prediction_annotations(_Prediction(status="no_detections", head=(None, None)))
+    assert not prediction_annotations(None)
 
 
 def test_no_annotation_when_frame_dims_are_missing():
     """Without dims the pixel->percentage conversion is undefined; seeding a
     guess would put the point somewhere arbitrary on the labeler's screen."""
-    assert prediction_annotations(_Prediction(width=None)) == []
+    assert not prediction_annotations(_Prediction(width=None))
 
 
 def test_low_confidence_is_seeded_as_a_task_with_no_prediction():
     """Outside the silhouette band the task is still created — the image needs
     labelling either way — but nothing is placed on it."""
-    assert prediction_annotations(_Prediction(rejected_low_confidence=True)) == []
+    assert not prediction_annotations(_Prediction(rejected_low_confidence=True))
 
 
 def test_silhouette_band_rejects_a_non_fish_shape():
     """Applied at seed time, not predict time, so the band can be retuned from
     rows already collected without re-predicting anything."""
-    assert prediction_annotations(_Prediction(silhouette_ratio=0.02)) == []
-    assert prediction_annotations(_Prediction(silhouette_ratio=0.9)) == []
-    assert prediction_annotations(_Prediction(silhouette_ratio=0.25)) != []
+    assert not prediction_annotations(_Prediction(silhouette_ratio=0.02))
+    assert not prediction_annotations(_Prediction(silhouette_ratio=0.9))
+    assert prediction_annotations(_Prediction(silhouette_ratio=0.25))
 
 
 def test_a_missing_ratio_is_not_treated_as_out_of_band():
     """None means "not recorded", which must not silently suppress every
     prediction written before the column existed."""
-    assert prediction_annotations(_Prediction(silhouette_ratio=None)) != []
+    assert prediction_annotations(_Prediction(silhouette_ratio=None))
 
 
 def test_prediction_gate_only_admits_predicted_images():

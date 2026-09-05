@@ -185,8 +185,6 @@ class TestMaskConversion:
     """
 
     def test_detaches_and_moves_a_device_tensor(self):
-        import numpy as np
-
         from fishsense_data_processing_workflow_worker.activities.predict_headtail_image import (
             _to_numpy,
         )
@@ -214,8 +212,6 @@ class TestMaskConversion:
         assert out.tolist() == [[1, 0], [0, 1]]
 
     def test_passes_a_plain_array_through(self):
-        import numpy as np
-
         from fishsense_data_processing_workflow_worker.activities.predict_headtail_image import (
             _to_numpy,
         )

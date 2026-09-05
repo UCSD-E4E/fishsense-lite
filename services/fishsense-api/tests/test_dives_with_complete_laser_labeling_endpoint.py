@@ -74,7 +74,7 @@ async def test_dive_with_any_incomplete_label_excluded(session):
     )
     await session.flush()
 
-    assert await _call(session) == []
+    assert not await _call(session)
 
 
 async def test_dive_with_null_completed_label_excluded(session):
@@ -92,7 +92,7 @@ async def test_dive_with_null_completed_label_excluded(session):
     )
     await session.flush()
 
-    assert await _call(session) == []
+    assert not await _call(session)
 
 
 async def test_superseded_incomplete_label_does_not_block(session):
@@ -124,7 +124,7 @@ async def test_dive_with_zero_labels_excluded(session):
     session.add_all([_image(11, 1)])
     await session.flush()
 
-    assert await _call(session) == []
+    assert not await _call(session)
 
 
 async def test_only_superseded_labels_excluded(session):
@@ -141,7 +141,7 @@ async def test_only_superseded_labels_excluded(session):
     )
     await session.flush()
 
-    assert await _call(session) == []
+    assert not await _call(session)
 
 
 async def test_mixed_dives_only_complete_returned(session):

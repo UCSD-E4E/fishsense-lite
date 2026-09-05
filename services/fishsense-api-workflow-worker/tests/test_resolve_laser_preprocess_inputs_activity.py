@@ -116,7 +116,7 @@ async def test_returns_empty_checksums_when_all_labels_completed(monkeypatch):
         sut.resolve_laser_preprocess_inputs_activity, 42
     )
 
-    assert result.image_checksums == []
+    assert not result.image_checksums
 
 
 @pytest.mark.asyncio
@@ -139,7 +139,7 @@ async def test_returns_empty_checksums_when_only_incomplete_labels(monkeypatch):
         sut.resolve_laser_preprocess_inputs_activity, 42
     )
 
-    assert result.image_checksums == []
+    assert not result.image_checksums
 
 
 @pytest.mark.asyncio
@@ -172,7 +172,7 @@ async def test_image_with_completed_and_incomplete_rows_treated_as_labeled(
     )
 
     # Both images carry at least one non-sentinel row -> both excluded.
-    assert result.image_checksums == []
+    assert not result.image_checksums
 
 
 @pytest.mark.asyncio
@@ -268,7 +268,7 @@ def test_unflagged_fully_labelled_set_is_empty():
     """The unchanged default -- without a flag a labelled image stays out."""
     images = [_image(1, "a")]
     labels = [_label(1, completed=True)]
-    assert sut._select_unlabeled_images(images, labels) == []
+    assert not sut._select_unlabeled_images(images, labels)
 
 
 def test_unlabelled_and_flagged_images_are_both_returned():

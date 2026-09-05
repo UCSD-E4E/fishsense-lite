@@ -128,7 +128,7 @@ async def test_correctly_labeled_models_are_not_flagged(session):
     for name, length in _KNOWN.items():
         await _measure(session, dive_id=1, model_name=name, length_m=length)
 
-    assert await _suspects(session) == []
+    assert not await _suspects(session)
 
 
 async def test_mild_foreshortening_is_not_flagged(session):
@@ -138,7 +138,7 @@ async def test_mild_foreshortening_is_not_flagged(session):
             session, dive_id=1, model_name="Snook", length_m=0.455 * (1 + pct)
         )
 
-    assert await _suspects(session) == []
+    assert not await _suspects(session)
 
 
 # ── high-confidence signal: over-measurement ──────────────────────────
@@ -188,7 +188,7 @@ async def test_near_identical_lengths_do_not_produce_flags(session):
     for length in (0.192, 0.196, 0.199, 0.200):
         await _measure(session, dive_id=1, model_name="Purple Angel", length_m=length)
 
-    assert await _suspects(session) == []
+    assert not await _suspects(session)
 
 
 async def test_one_bad_frame_does_not_condemn_its_neighbours(session):
@@ -240,7 +240,7 @@ async def test_a_provisional_reference_is_not_offered_as_a_best_fit(session):
 
     await _measure(session, dive_id=1, model_name="Shark", length_m=0.29)
 
-    assert await _suspects(session) == []
+    assert not await _suspects(session)
 
 
 async def test_a_non_provisional_reference_still_attracts(session):
