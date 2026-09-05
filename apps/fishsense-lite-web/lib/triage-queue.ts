@@ -23,6 +23,40 @@ export type TriageItem = {
   partial: boolean;
 };
 
+/**
+ * What one project contributed, and why.
+ *
+ * Per project rather than a flat sample. The first version capped the whole
+ * scan at five reasons, so the first project consumed every slot and every
+ * later project's outcome was invisible — which made a project that WAS walked
+ * look like one that was never offered.
+ */
+export type ProjectOutcome = {
+  projectId: number;
+  title?: string;
+  /** Tasks the project returned on the first page. */
+  tasks: number;
+  /** Triageable items taken from it. */
+  taken: number;
+  /** Refusal reason -> how many tasks it applied to. */
+  reasons: Record<string, number>;
+  /** Set when the project itself could not be read. */
+  error?: string;
+};
+
+export type QueueReport = {
+  items: TriageItem[];
+  scanned: number;
+  projects: ProjectOutcome[];
+  /** Projects discovery offered but the walk did not reach. */
+  notWalked: number;
+};
+
+/** Strips task ids so reasons group: "task 41: is_labeled" -> "is_labeled". */
+export function reasonKey(reason: string): string {
+  return reason.replace(/^task \d+: /, "");
+}
+
 /** How many projects to walk before giving up on filling a batch. */
 const MAX_PROJECTS_PER_LOAD = 12;
 
@@ -40,7 +74,7 @@ export async function loadQueue(
   kindKey: QueueKind["key"],
   want = 12,
   revalidate = 0,
-): Promise<{ items: TriageItem[]; scanned: number; rejected: string[] }> {
+): Promise<QueueReport> {
   const kind = QUEUE_KINDS[kindKey];
 
   // Deliberately NOT wrapped in a try/catch.
@@ -52,7 +86,7 @@ export async function loadQueue(
   // state. A failure here should reach the page and be read.
   const outstanding = await liveProjectIds("laser", revalidate);
   if (outstanding.length === 0) {
-    return { items: [], scanned: 0, rejected: [] };
+    return { items: [], scanned: 0, projects: [], notWalked: 0 };
   }
 
   // Resolved ONE AT A TIME, in the order the policy returned.
@@ -67,33 +101,41 @@ export async function loadQueue(
   const candidates = [...outstanding].sort((a, b) => b - a);
 
   const items: TriageItem[] = [];
-  const rejected: string[] = [];
+  const projects: ProjectOutcome[] = [];
   let scanned = 0;
 
   for (const projectId of candidates.slice(0, MAX_PROJECTS_PER_LOAD)) {
     if (items.length >= want) break;
     scanned += 1;
 
+    const outcome: ProjectOutcome = { projectId, tasks: 0, taken: 0, reasons: {} };
+    projects.push(outcome);
+
     let project;
     try {
       project = await getProject(projectId, revalidate);
     } catch (error) {
       // A legacy id that no longer resolves must not take down the page.
-      if (rejected.length < 5) {
-        rejected.push(`project ${projectId}: ${error instanceof Error ? error.message : "unresolvable"}`);
-      }
+      outcome.error = error instanceof Error ? error.message : "unresolvable";
       continue;
     }
-    if (!isPublished(project)) continue;
+    outcome.title = project.title;
+    if (!isPublished(project)) {
+      outcome.error = "unpublished in Label Studio";
+      continue;
+    }
 
     const page = await listTasks(project.id, 1);
+    outcome.tasks = page.tasks.length;
     for (const task of page.tasks) {
       if (items.length >= want) break;
       const reason = rejectionReason(task, kind, EMPTY);
       if (reason) {
-        if (rejected.length < 5) rejected.push(reason);
+        const key = reasonKey(reason);
+        outcome.reasons[key] = (outcome.reasons[key] ?? 0) + 1;
         continue;
       }
+      outcome.taken += 1;
       const prediction = pickPrediction(task)!;
       const keypoints = keypointsOf(prediction);
       items.push({
@@ -107,7 +149,12 @@ export async function loadQueue(
     }
   }
 
-  return { items, scanned, rejected };
+  return {
+    items,
+    scanned,
+    projects,
+    notWalked: Math.max(0, candidates.length - scanned),
+  };
 }
 
 /** Server-side load knows nothing about this session's skips — the client
