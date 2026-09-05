@@ -271,6 +271,21 @@ def _keypoint(
     )
 
 
+def _to_numpy(mask) -> np.ndarray:
+    """Mask -> ndarray, whatever the backend handed back.
+
+    SAM3 returns torch tensors, and on the GPU worker they live on the device.
+    `np.asarray` on a CUDA tensor raises rather than converting, so the whole
+    stage would fail on the machine it is meant to run on while passing every
+    test that stubs the backend. Detach first: the tensors carry grad history
+    we neither need nor want to keep alive.
+    """
+    to_cpu = getattr(mask, "detach", None)
+    if to_cpu is not None:
+        mask = mask.detach().cpu()
+    return np.asarray(mask)
+
+
 class _Sam3Adapter:
     """Adapts the SAM3 processor to the `segment(image) -> masks` seam."""
 
@@ -288,7 +303,7 @@ class _Sam3Adapter:
         masks = getattr(output, "masks", None)
         if masks is None:
             return []
-        return [np.asarray(m).squeeze() for m in masks]
+        return [_to_numpy(m).squeeze() for m in masks]
 
 
 def _settings():
@@ -327,7 +342,10 @@ async def predict_headtail_image(payload):  # type: ignore[no-untyped-def]
         sam3_cfg.model_version,
         sam3_cfg.checkpoint_filename,
     )
-    segmenter = _Sam3Adapter(get_segmenter(str(checkpoint)))
+    # Off the loop for the same reason the download is: loading a multi-GB
+    # checkpoint onto the GPU takes seconds, and this worker serves other
+    # activities while it happens.
+    segmenter = _Sam3Adapter(await asyncio.to_thread(get_segmenter, str(checkpoint)))
 
     jpeg = await client.download_processed_jpeg(payload.jpeg_folder, payload.checksum)
 
