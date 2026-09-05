@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.15.0...fishsense-shared-v0.16.0) (2026-09-05)
+
+
+### Features
+
+* model-assisted head/tail labeling (SAM3 on a laser-centred crop) ([#694](https://github.com/UCSD-E4E/fishsense-lite/issues/694)) ([d9145ca](https://github.com/UCSD-E4E/fishsense-lite/commit/d9145cad64c369979fb0f12a2307214948869561))
+
 ## [0.15.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.14.1...fishsense-shared-v0.15.0) (2026-09-04)
 
 
