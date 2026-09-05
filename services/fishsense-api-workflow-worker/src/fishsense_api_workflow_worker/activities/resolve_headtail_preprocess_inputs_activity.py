@@ -52,10 +52,19 @@ async def resolve_headtail_preprocess_inputs_activity(
             if label.label_studio_project_id is not None
         }
 
+        # `needs_reprocess` is the second way in, and must mirror the cohort
+        # selector exactly: a selector that honours the flag while this
+        # resolver ignores it picks the dive, stages its raw `.ORF`s from the
+        # NAS, resolves zero images, and repeats every hour forever.
+        flagged_ids = {
+            label.image_id for label in existing_headtail if label.needs_reprocess
+        }
+
         target_image_ids = [
             label.image_id
             for label in laser_labels
-            if _is_valid_laser(label) and label.image_id not in labeled_ids
+            if _is_valid_laser(label)
+            and (label.image_id not in labeled_ids or label.image_id in flagged_ids)
         ]
 
         images = await fs.images.get(dive_id=dive_id) or []

@@ -64,6 +64,9 @@ class PreprocessHeadtailImagesParentWorkflow:
             execution_timeout=timedelta(hours=1),
         )
         await _dispatch.cleanup_raw(dive_id)
+        await _dispatch.run_sdk_activity(
+            "clear_headtail_reprocess_flags_activity", dive_id
+        )
         await _dispatch.dispatch_populate(
             "PopulateHeadTailLabelStudioProjectWorkflow",
             dive_id,

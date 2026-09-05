@@ -69,6 +69,9 @@ class PreprocessSlateImagesParentWorkflow:
             execution_timeout=timedelta(hours=1),
         )
         await _dispatch.cleanup_raw(dive_id)
+        await _dispatch.run_sdk_activity(
+            "clear_slate_reprocess_flags_activity", dive_id
+        )
         await _dispatch.dispatch_populate(
             "PopulateDiveSlateLabelStudioProjectWorkflow",
             dive_id,

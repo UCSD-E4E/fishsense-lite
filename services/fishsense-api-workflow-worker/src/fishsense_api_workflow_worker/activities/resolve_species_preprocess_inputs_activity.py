@@ -90,6 +90,14 @@ async def resolve_species_preprocess_inputs_activity(
             if label.label_studio_project_id is not None
         }
 
+        # `needs_reprocess` is the second way in, and must mirror the cohort
+        # selector exactly: a selector that honours the flag while this
+        # resolver ignores it picks the dive, stages its raw `.ORF`s from the
+        # NAS, resolves zero images, and repeats every hour forever.
+        flagged_image_ids = {
+            label.image_id for label in existing_species if label.needs_reprocess
+        }
+
         clusters: List[List[str]] = []
         clustered_image_ids: set[int] = set()
         for cluster in prediction_clusters:
@@ -99,7 +107,10 @@ async def resolve_species_preprocess_inputs_activity(
                 if (
                     image_id in checksum_by_id
                     and image_id in valid_laser_image_ids
-                    and image_id not in labeled_image_ids
+                    and (
+                        image_id not in labeled_image_ids
+                        or image_id in flagged_image_ids
+                    )
                 ):
                     cluster_checksums.append(checksum_by_id[image_id])
             if cluster_checksums:

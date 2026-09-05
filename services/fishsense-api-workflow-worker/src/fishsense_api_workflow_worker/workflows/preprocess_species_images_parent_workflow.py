@@ -70,5 +70,8 @@ class PreprocessSpeciesImagesParentWorkflow:
             execution_timeout=timedelta(hours=2),
         )
         await _dispatch.cleanup_raw(dive_id)
+        await _dispatch.run_sdk_activity(
+            "clear_species_reprocess_flags_activity", dive_id
+        )
 
         return inputs.dive_id

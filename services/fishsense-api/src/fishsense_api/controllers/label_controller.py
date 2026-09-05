@@ -582,11 +582,15 @@ async def _set_needs_reprocess(
         select(model)
         .join_from(model, Image, model.image_id == Image.id)
         .where(Image.dive_id == dive_id)
-        .where(Image.is_canonical == True)  # noqa: E712  pylint: disable=singleton-comparison
+        .where(
+            Image.is_canonical == True
+        )  # noqa: E712  pylint: disable=singleton-comparison
     )
     if value and only_incomplete:
         query = query.where(
-            or_(model.completed == False, model.completed.is_(None))  # noqa: E712  pylint: disable=singleton-comparison
+            or_(
+                model.completed == False, model.completed.is_(None)
+            )  # noqa: E712  pylint: disable=singleton-comparison
         )
     labels = (await session.exec(query)).all()
     for label in labels:
