@@ -215,7 +215,7 @@ def test_every_view_is_actually_queryable_on_postgres():
         FISH_LENGTH_ESTIMATE_VIEW_NAME,
         FISH_MODEL_MISLABEL_SUSPECTS_VIEW_NAME,
     ):
-        assert not _query(f"SELECT * FROM {view} LIMIT 1")
+        assert _query(f"SELECT * FROM {view} LIMIT 1") == []
 
 
 @pytest.mark.usefixtures("empty_schema")
@@ -373,27 +373,17 @@ def _cohort_selectors() -> list:
     `test_canonical_only_pipeline_work.py`: a selector added later is covered
     by this the day it lands, instead of the day someone remembers to add it.
     """
-    import importlib
     import inspect
-    import pkgutil
 
-    import fishsense_api.controllers as controllers_pkg
+    from fishsense_api.controllers import (
+        dive_cohort_controller,
+    )
 
-    # Scan the whole controllers package, not one named module. Selectors were
-    # split across two modules the moment `dive_cohort_controller` passed 1000
-    # lines, and a discovery keyed on a single module name would have silently
-    # dropped every moved selector from Postgres coverage — the exact class of
-    # regression this file exists to prevent.
-    found = {}
-    for module_info in pkgutil.iter_modules(controllers_pkg.__path__):
-        module = importlib.import_module(
-            f"{controllers_pkg.__name__}.{module_info.name}"
-        )
-        for name, fn in inspect.getmembers(module, inspect.iscoroutinefunction):
-            if name.startswith("select_next_for_") or name.startswith("select_dives_"):
-                found[name] = fn
-    assert found, "no cohort selectors discovered — has the package layout changed?"
-    return sorted(found.items())
+    return sorted(
+        (name, fn)
+        for name, fn in inspect.getmembers(dive_cohort_controller, inspect.iscoroutinefunction)
+        if name.startswith("select_next_for_") or name.startswith("select_dives_")
+    )
 
 
 async def _seed_multi_valued(session, *, derived_rows: bool = True) -> None:
@@ -453,7 +443,6 @@ async def _seed_multi_valued(session, *, derived_rows: bool = True) -> None:
         return
 
     from fishsense_api.models.fish import Fish
-    from fishsense_api.models.head_tail_prediction import HeadTailPrediction
     from fishsense_api.models.laser_depth import LaserDepth
     from fishsense_api.models.measurement import Measurement
 
@@ -464,14 +453,6 @@ async def _seed_multi_valued(session, *, derived_rows: bool = True) -> None:
                    image_id=11, laser_label_id=101, laser_extrinsics_id=51),
         Measurement(id=1, length_m=0.3, image_id=11, fish_id=700,
                     laser_extrinsics_id=51),
-        # Same reason as the two rows above, for the head/tail predict cohort:
-        # its staleness clause nests a correlated EXISTS *inside* a subquery
-        # over HeadTailPrediction, so with no prediction row the inner query is
-        # never executed and a missing `.correlate()` would go unseen here.
-        # `laser_label_id` must point at one of image 11's two labels, or the
-        # nested lookup short-circuits on a NULL instead.
-        HeadTailPrediction(id=1, image_id=11, laser_label_id=101,
-                           status="predicted", predictor_version=1),
     ])
     await session.flush()
 

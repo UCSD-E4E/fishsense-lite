@@ -130,21 +130,13 @@ def test_cpu_role_keeps_exactly_the_per_image_fan_out_stages():
 
 
 def test_gpu_role_holds_exactly_the_torch_inference_stages():
-    """The GPU queue carries the torch models and nothing else. Anything else
-    there would wait on the GPU-capacity handshake for no benefit.
-
-    `predict_headtail_image` joined them when the head/tail stage moved from
-    the fishsense-core Mask R-CNN to SAM3 — a reversal from its original CPU
-    design, and the only cost of that backend choice. It is cheap per image
-    (~0.6 s against the 2.9 s CPU design it replaced), so it holds a card
-    briefly rather than continuously."""
+    """The GPU queue carries the two torch models and nothing else. Anything
+    else there would wait on the GPU-capacity handshake for no benefit."""
     assert {activity.__name__ for activity in roles.GPU_ACTIVITIES} == {
-        "predict_headtail_image",
         "predict_laser_image",
         "predict_slate_image",
     }
     assert {workflow.__name__ for workflow in roles.GPU_WORKFLOWS} == {
-        "PredictHeadtailImagesWorkflow",
         "PredictLaserImagesWorkflow",
         "PredictSlateImagesWorkflow",
     }

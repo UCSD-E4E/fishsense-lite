@@ -14,10 +14,7 @@
 """Cohort selectors — which dive each pipeline stage should work on next.
 
 Split out of `dive_controller` because that module had grown past 1000 lines
-and was carrying a `too-many-lines` disable. It then hit the same threshold
-itself, and the three model-assisted (prediction) selectors moved on to
-`dive_prediction_cohort_controller` for the same reason — which must likewise
-be imported before `dive_controller`. These endpoints are a coherent
+and was carrying a `too-many-lines` disable. These endpoints are a coherent
 group with a different job from dive CRUD: each answers "what is the next
 HIGH-priority dive whose pipeline state matches stage N's cohort", and the
 api-worker's hourly schedules poll them.
@@ -62,6 +59,7 @@ from fishsense_api.models.laser_label import LaserLabel
 from fishsense_api.models.laser_prediction import LaserPrediction
 from fishsense_api.models.measurement import Measurement
 from fishsense_api.models.priority import Priority
+from fishsense_api.models.slate_prediction import SlatePrediction
 from fishsense_api.models.species_label import SpeciesLabel
 from fishsense_api.server import app
 
@@ -312,6 +310,158 @@ async def select_next_for_laser_preprocessing(
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
         .where(or_(has_image_without_real_laser_label, has_image_flagged_for_reprocess))
+        .order_by(Dive.id)
+        .limit(1)
+    )
+    return (await session.exec(query)).first()
+
+
+@app.get("/api/v1/dives/select-next/laser-prediction/")
+async def select_next_for_laser_prediction(
+    session: AsyncSession = Depends(get_async_session),
+) -> int | None:
+    """Model-assisted laser labeling: HIGH-priority + at least one image
+    with no `LaserPrediction` row and no *completed* `LaserLabel` row.
+
+    An image needs a prediction only if it has neither been predicted nor
+    *labeled by a human* yet — so a dive drops out of the cohort once every
+    image is predicted, and images a human already labeled are never predicted
+    over.
+
+    Re-prediction is no longer "a manual affair": a dive is also selected while
+    it is still being labeled and carries a prediction from an older
+    `LASER_PREDICTOR_VERSION`.
+
+    "Labeled" here means `completed IS TRUE`, NOT merely
+    `project_id IS NOT NULL`: the laser populate step seeds placeholder
+    rows (`completed=False`, x/y NULL) that *carry* a `project_id`, so a
+    project-id check would exclude every populate-seeded-but-unlabeled
+    image — starving the detector on exactly the dives it should assist
+    (e.g. a dive populated before the detector shipped). Matches populate's
+    own `completed`-based definition of "labeled" (`_select_unlabeled_images`).
+
+    "Labeled" also requires `superseded IS FALSE`: a completed label that
+    `ValidateLaserLabelsForDiveWorkflow`'s RANSAC pass dead-lettered is an
+    *invalidated* label — the image has no live human label and should
+    re-enter the cohort. Mirrors the superseded-filter every downstream read
+    (`get_laser_labels`, the preprocess/predict resolvers) already applies.
+    """
+    has_image_needing_prediction = (
+        select(Image.id)
+        .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
+        .where(
+            ~select(LaserPrediction.id)
+            .where(LaserPrediction.image_id == Image.id)
+            .exists()
+        )
+        .where(
+            ~select(LaserLabel.id)
+            .where(LaserLabel.image_id == Image.id)
+            .where(LaserLabel.completed == True)
+            .where(LaserLabel.superseded == False)
+            .exists()
+        )
+        .exists()
+    )
+    # Second way in: a stale-version prediction on a dive still being labeled.
+    # Why mismatch rather than absence, and why only actively-labeled dives:
+    # `fishsense_shared.laser_predictor`. `IS DISTINCT FROM`, not `!=` — every
+    # pre-versioning row is NULL, and `!=` would answer NULL and select nothing.
+    version = LASER_PREDICTOR_VERSION
+    dive_is_still_being_labeled = (
+        select(Image.id)
+        .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
+        .where(
+            select(LaserLabel.id)
+            .where(LaserLabel.image_id == Image.id)
+            .where(LaserLabel.completed == False)
+            .where(LaserLabel.superseded == False)
+            .where(LaserLabel.label_studio_project_id != None)
+            .exists()
+        )
+        .exists()
+    )
+    has_image_with_a_stale_prediction = (
+        select(Image.id)
+        .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
+        .where(
+            select(LaserPrediction.id)
+            .where(LaserPrediction.image_id == Image.id)
+            # pylint: disable-next=no-member
+            .where(LaserPrediction.predictor_version.is_distinct_from(version))
+            .exists()
+        )
+        # Never re-predict over finished human work (the guard, not a fallout).
+        .where(
+            ~select(LaserLabel.id)
+            .where(LaserLabel.image_id == Image.id)
+            .where(LaserLabel.completed == True)
+            .where(LaserLabel.superseded == False)
+            .exists()
+        )
+        .exists()
+    )
+    query = (
+        select(Dive.id)
+        .where(Dive.priority == Priority.HIGH)
+        .where(
+            or_(
+                has_image_needing_prediction,
+                and_(dive_is_still_being_labeled, has_image_with_a_stale_prediction),
+            )
+        )
+        .order_by(Dive.id)
+        .limit(1)
+    )
+    return (await session.exec(query)).first()
+
+
+@app.get("/api/v1/dives/select-next/slate-prediction/")
+async def select_next_for_slate_prediction(
+    session: AsyncSession = Depends(get_async_session),
+) -> int | None:
+    """Model-assisted slate labeling: HIGH-priority + `dive_slate_id` set + at
+    least one slate frame with no `SlatePrediction` and no *completed*
+    `DiveSlateLabel`.
+
+    A slate frame is an image with a `SpeciesLabel.content_of_image =
+    'Slate, Laser on slate'` (the same frames stage 9 preprocesses). Such a
+    frame needs a prediction only if it has neither been predicted nor
+    labeled by a human yet — so a dive drops out once every slate frame is
+    predicted (one-shot per image), and human-labeled frames are never
+    predicted over. "Labeled" = `completed IS TRUE AND superseded IS FALSE`,
+    matching the laser-prediction cohort's rationale (populate seeds
+    placeholder rows that carry a project_id, so a project-id check would
+    starve the detector).
+    """
+    has_slate_frame_needing_prediction = (
+        select(SpeciesLabel.id)
+        .join(Image, Image.id == SpeciesLabel.image_id)
+        .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
+        .where(SpeciesLabel.content_of_image == SLATE_CONTENT_MARKER)
+        .where(
+            ~select(SlatePrediction.id)
+            .where(SlatePrediction.image_id == Image.id)
+            .exists()
+        )
+        .where(
+            ~select(DiveSlateLabel.id)
+            .where(DiveSlateLabel.image_id == Image.id)
+            .where(DiveSlateLabel.completed == True)
+            .where(DiveSlateLabel.superseded == False)
+            .exists()
+        )
+        .exists()
+    )
+    query = (
+        select(Dive.id)
+        .where(Dive.priority == Priority.HIGH)
+        .where(Dive.dive_slate_id != None)
+        .where(has_slate_frame_needing_prediction)
         .order_by(Dive.id)
         .limit(1)
     )
