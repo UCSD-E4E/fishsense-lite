@@ -1,6 +1,6 @@
 import { isPublished, liveProjectIds } from "./label-projects";
 import { getProject } from "./label-studio";
-import { listTasks } from "./label-studio-tasks";
+import { getTask, listTasks } from "./label-studio-tasks";
 import {
   QUEUE_KINDS,
   diveNameFromTitle,
@@ -42,6 +42,8 @@ export type ProjectOutcome = {
   reasons: Record<string, number>;
   /** Set when the project itself could not be read. */
   error?: string;
+  /** The hydration budget ran out before this project was exhausted. */
+  truncated?: boolean;
 };
 
 export type QueueReport = {
@@ -56,6 +58,23 @@ export type QueueReport = {
 export function reasonKey(reason: string): string {
   return reason.replace(/^task \d+: /, "");
 }
+
+/**
+ * How many task-detail fetches one load may spend.
+ *
+ * `/api/tasks/?project=N` returns task rows with NO `predictions` and NO
+ * `annotations` key — verified against Label Studio 1.13.1:
+ *
+ *     list   -> { id, is_labeled, data, ... }        no predictions key at all
+ *     detail -> { id, is_labeled, data, predictions[], annotations[] }
+ *
+ * So a candidate must be hydrated from the detail endpoint before it can be
+ * judged, and each hydration is a request. Bounded, because a project can hold
+ * dozens of tasks that all turn out unusable and one load should not spend a
+ * request on every one; when the budget runs out the project is reported as
+ * truncated rather than as exhausted.
+ */
+const MAX_HYDRATIONS_PER_LOAD = 30;
 
 /** How many projects to walk before giving up on filling a batch. */
 const MAX_PROJECTS_PER_LOAD = 12;
@@ -103,6 +122,7 @@ export async function loadQueue(
   const items: TriageItem[] = [];
   const projects: ProjectOutcome[] = [];
   let scanned = 0;
+  let hydrations = 0;
 
   for (const projectId of candidates.slice(0, MAX_PROJECTS_PER_LOAD)) {
     if (items.length >= want) break;
@@ -127,8 +147,34 @@ export async function loadQueue(
 
     const page = await listTasks(project.id, 1);
     outcome.tasks = page.tasks.length;
-    for (const task of page.tasks) {
+    for (const listed of page.tasks) {
       if (items.length >= want) break;
+
+      // Cheap refusal first, straight off the list row. `is_labeled` IS on the
+      // list response and excludes everything the gate or a human has already
+      // handled — most of a swept dive — so the hydration budget is spent only
+      // on tasks that might actually be offered.
+      if (listed.is_labeled) {
+        outcome.reasons.is_labeled = (outcome.reasons.is_labeled ?? 0) + 1;
+        continue;
+      }
+
+      if (hydrations >= MAX_HYDRATIONS_PER_LOAD) {
+        outcome.truncated = true;
+        break;
+      }
+
+      // The list row carries no predictions. Judging it directly reported
+      // "no prediction (0 present)" for every task in every project, which is
+      // indistinguishable from an empty queue and is exactly what it looked
+      // like.
+      hydrations += 1;
+      const task = await getTask(listed.id);
+      if (!task) {
+        outcome.reasons["task vanished"] = (outcome.reasons["task vanished"] ?? 0) + 1;
+        continue;
+      }
+
       const reason = rejectionReason(task, kind, EMPTY);
       if (reason) {
         const key = reasonKey(reason);
