@@ -22,7 +22,8 @@ export default async function TriagePage() {
   let queue: Awaited<ReturnType<typeof loadQueue>> = {
     items: [],
     scanned: 0,
-    rejected: [],
+    projects: [],
+    notWalked: 0,
   };
   let error: string | null = null;
   try {
@@ -52,7 +53,8 @@ export default async function TriagePage() {
           items={queue.items}
           kindLabel={kind.label}
           scanned={queue.scanned}
-          rejected={queue.rejected}
+          projects={queue.projects}
+          notWalked={queue.notWalked}
         />
       )}
     </main>
