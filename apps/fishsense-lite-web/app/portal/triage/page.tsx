@@ -19,10 +19,14 @@ export default async function TriagePage() {
 
   const kind = QUEUE_KINDS.laser;
 
-  let items: Awaited<ReturnType<typeof loadQueue>>["items"] = [];
+  let queue: Awaited<ReturnType<typeof loadQueue>> = {
+    items: [],
+    scanned: 0,
+    rejected: [],
+  };
   let error: string | null = null;
   try {
-    ({ items } = await loadQueue(kind.key));
+    queue = await loadQueue(kind.key);
   } catch (e) {
     error = e instanceof Error ? e.message : "Could not load the queue";
   }
@@ -44,7 +48,12 @@ export default async function TriagePage() {
       {error ? (
         <div className="p-6 text-sm text-amber-300">{error}</div>
       ) : (
-        <TriageClient items={items} kindLabel={kind.label} />
+        <TriageClient
+          items={queue.items}
+          kindLabel={kind.label}
+          scanned={queue.scanned}
+          rejected={queue.rejected}
+        />
       )}
     </main>
   );

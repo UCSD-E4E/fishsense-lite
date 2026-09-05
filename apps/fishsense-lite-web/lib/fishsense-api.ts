@@ -14,7 +14,7 @@ type LabelKind = "laser" | "species" | "headtail" | "dive-slate";
 // which is why this is a per-kind opt-in rather than a blanket parameter.
 const GATED_KINDS: ReadonlySet<LabelKind> = new Set<LabelKind>(["laser"]);
 
-async function getProjectIds(kind: LabelKind, revalidate: number): Promise<number[]> {
+export async function getProjectIds(kind: LabelKind, revalidate: number): Promise<number[]> {
   // `LabelKind` values are the URL segments verbatim — there was a
   // `KIND_TO_PATH` map here that mapped each key to itself.
   //

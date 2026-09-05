@@ -13,9 +13,15 @@ import { acceptAction, undoAcceptAction } from "./actions";
 const MAX_SCALE = 120;
 const MIN_SCALE = 0.02;
 
-type Props = { items: TriageItem[]; kindLabel: string };
+type Props = {
+  items: TriageItem[];
+  kindLabel: string;
+  /** Projects walked, and why tasks were refused — see the empty state. */
+  scanned: number;
+  rejected: string[];
+};
 
-export function TriageClient({ items, kindLabel }: Props) {
+export function TriageClient({ items, kindLabel, scanned, rejected }: Props) {
   const [index, setIndex] = useState(0);
   const [accepted, setAccepted] = useState(0);
   const [skipped, setSkipped] = useState(0);
@@ -77,11 +83,33 @@ export function TriageClient({ items, kindLabel }: Props) {
 
   if (!item) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
+      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center gap-3 p-8">
         <p className="text-sm text-slate-300">
           Nothing left to triage in the {kindLabel} queue.
         </p>
+
+        {/* An empty queue and a broken one looked identical, which cost real
+            time to tell apart more than once. `loadQueue` already knew all of
+            this and the page was throwing it away. */}
         <p className="text-xs text-slate-500">
+          Walked {scanned} {scanned === 1 ? "project" : "projects"}.{" "}
+          {scanned === 0
+            ? "No projects were offered — either Label Studio is switched off, or the auto-accept gate has not finished sweeping any dive yet."
+            : "Every task in them was already handled."}
+        </p>
+
+        {rejected.length > 0 && (
+          <details className="text-xs text-slate-500">
+            <summary className="cursor-pointer">Why tasks were skipped</summary>
+            <ul className="mt-2 space-y-1 font-mono text-[11px] text-slate-400">
+              {rejected.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          </details>
+        )}
+
+        <p className="text-xs text-slate-600">
           {accepted} accepted · {skipped} skipped this session
         </p>
       </div>

@@ -1,4 +1,4 @@
-import { getIncompleteProjectIds } from "./fishsense-api";
+import { isPublished, liveProjectIds } from "./label-projects";
 import { getProject } from "./label-studio";
 import { listTasks } from "./label-studio-tasks";
 import {
@@ -43,29 +43,27 @@ export async function loadQueue(
 ): Promise<{ items: TriageItem[]; scanned: number; rejected: string[] }> {
   const kind = QUEUE_KINDS[kindKey];
 
-  let outstanding: number[] | null = null;
-  try {
-    const ids = await getIncompleteProjectIds(revalidate);
-    outstanding = ids.laser;
-  } catch {
-    outstanding = null;
-  }
-  if (!outstanding || outstanding.length === 0) {
+  // Deliberately NOT wrapped in a try/catch.
+  //
+  // It used to swallow any discovery failure into an empty queue, which is the
+  // exact silent-loss shape this feature is otherwise careful to avoid:
+  // treating "cannot ask" as "nothing to do" reports a drained queue while
+  // Label Studio is full of work, and looks identical to the legitimate empty
+  // state. A failure here should reach the page and be read.
+  const outstanding = await liveProjectIds("laser", revalidate);
+  if (outstanding.length === 0) {
     return { items: [], scanned: 0, rejected: [] };
   }
 
-  // Newest dive first, and resolved ONE AT A TIME.
+  // Resolved ONE AT A TIME, in the order the policy returned.
   //
-  // This used to call `getProjects(outstanding)`, which fans out a request per
-  // outstanding project before looking at any of them — dozens of parallel
-  // calls to hosted Label Studio on every page load, which is what earned a
-  // `429 Too Many Requests`. Almost all of that work was wasted: the loop
-  // below stops as soon as it has a batch, so most of those projects were
-  // fetched and never read.
-  //
-  // Sequential rather than a smaller parallel batch, because a labeler needs
-  // one batch to start work and the rest is speculative. Two requests per
-  // project walked, and it stops early.
+  // This used to resolve every outstanding project up front — dozens of
+  // parallel calls to hosted Label Studio on page load, which earned a 429 —
+  // and then walk at most a handful. Sequential and lazy: two requests per
+  // project actually walked, stopping as soon as there is a batch.
+  // Newest dive first: project ids ascend with dives, and the recent ones are
+  // where labeling is still happening. Sorted here rather than in the shared
+  // policy, because the landing page has its own order.
   const candidates = [...outstanding].sort((a, b) => b - a);
 
   const items: TriageItem[] = [];
@@ -86,7 +84,7 @@ export async function loadQueue(
       }
       continue;
     }
-    if (project.isPublished === false) continue;
+    if (!isPublished(project)) continue;
 
     const page = await listTasks(project.id, 1);
     for (const task of page.tasks) {
