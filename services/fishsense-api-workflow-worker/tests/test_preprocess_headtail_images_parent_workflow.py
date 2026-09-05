@@ -148,13 +148,7 @@ async def test_dispatches_child_with_deterministic_id():
     assert child_id == "preprocess-headtail-440"
     assert child_dive_id == 440
     assert checksums == ["a", "b"]
-    # Populate is NOT chained here any more: it moved to its own +34 parent,
-    # behind the +32 predict parent. Populate seeds sentinel `HeadTailLabel`
-    # rows and the predict cohort excludes any image carrying a live label, so
-    # chaining would remove every image from that cohort before the detector
-    # ever ran. The failure would be silent — tasks still appear, they just
-    # never carry a prediction — which is why it is pinned as a negative.
-    assert not populate_runs
+    assert populate_runs == [("populate-headtail-440", 440)]
 
 
 @pytest.mark.asyncio
@@ -234,26 +228,36 @@ async def test_skips_child_when_no_image_checksums():
 
 
 @pytest.mark.asyncio
-async def test_populate_is_never_dispatched_even_with_images_to_process():
-    """Second guard on the decoupling, from a different starting state.
+async def test_populate_redispatches_on_a_later_firing_for_the_same_dive():
+    """The prod stall regression (dive 60, 2026-08-04).
 
-    The in-place assertion above covers the happy path; this covers a dive that
-    genuinely has work, which is the case that used to chain into populate.
+    Under `ALLOW_DUPLICATE_FAILED_ONLY` a *completed* `populate-headtail-{id}`
+    burned the id forever, so a dive that later gained an eligible image (a
+    laser validated after populate ran, an orphan clustered afterwards) could
+    never get an LS task for it -> never got a label row -> never drained from
+    the cohort -> blocked every higher-id dive behind it, while re-staging raw
+    .ORFs from NAS every hour. Dive 60 (2 missing images) held up 84/465/471.
+
+    Re-dispatch is safe because the populate child is idempotent twice over:
+    the activity selects only images with no non-sentinel label row, and
+    `import_tasks_and_record_labels` dedupes by URL against tasks already in
+    the project. The laser populate parent already runs ALLOW_DUPLICATE for
+    exactly this reason.
     """
     inputs = PreprocessHeadtailImagesInput(
-        dive_id=441,
-        image_checksums=["x", "y", "z"],
+        dive_id=440,
+        image_checksums=["a", "b"],
         camera_matrix=_K,
         distortion_coefficients=_D,
     )
-    activities = _make_stubs(441, inputs)
+    activities = _make_stubs(440, inputs)
     child_runs: List[tuple] = []
     populate_runs: List[tuple] = []
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
             env.client,
-            task_queue="test-stage5-1-nopop",
+            task_queue="test-stage5-1-parent",
             workflows=[
                 PreprocessHeadtailImagesParentWorkflow,
                 _StubPopulateWorkflow,
@@ -268,12 +272,15 @@ async def test_populate_is_never_dispatched_even_with_images_to_process():
             workflows=[_StubChildWorkflow],
             activities=[_make_recording_activity(child_runs)],
         ):
-            result = await env.client.execute_workflow(
-                PreprocessHeadtailImagesParentWorkflow.run,
-                id=f"test-stage5-1-nopop-{uuid.uuid4()}",
-                task_queue="test-stage5-1-nopop",
-            )
+            # Two hourly firings against the same cohort dive.
+            for _ in range(2):
+                await env.client.execute_workflow(
+                    PreprocessHeadtailImagesParentWorkflow.run,
+                    id=f"test-stage5-1-parent-{uuid.uuid4()}",
+                    task_queue="test-stage5-1-parent",
+                )
 
-    assert result == 441
-    assert len(child_runs) == 1, "preprocess itself must still run"
-    assert not populate_runs
+    assert populate_runs == [
+        ("populate-headtail-440", 440),
+        ("populate-headtail-440", 440),
+    ], "the second firing must re-dispatch populate, or the dive can never drain"

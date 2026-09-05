@@ -10,10 +10,10 @@ import logging
 from typing import List
 
 from fastapi import Depends
+from fastapi.encoders import jsonable_encoder
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from fishsense_api.controllers._prediction_upsert import upsert_prediction
 from fishsense_api.database import get_async_session
 from fishsense_api.models.dive import Dive
 from fishsense_api.models.image import Image
@@ -36,7 +36,22 @@ async def put_laser_prediction(
     INSERT and violate `uq_laser_prediction_image`.
     """
     logger.debug("Upserting laser prediction for image with id=%d", image_id)
-    return await upsert_prediction(session, LaserPrediction, image_id, prediction)
+    prediction = LaserPrediction.model_validate(jsonable_encoder(prediction))
+    prediction.image_id = image_id
+
+    if prediction.id is None:
+        existing = (
+            await session.exec(
+                select(LaserPrediction).where(LaserPrediction.image_id == image_id)
+            )
+        ).first()
+        if existing is not None:
+            prediction.id = existing.id
+
+    prediction = await session.merge(prediction)
+    await session.flush()
+
+    return prediction.id
 
 
 @app.get("/api/v1/dives/{dive_id}/laser-predictions/")

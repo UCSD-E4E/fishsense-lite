@@ -305,24 +305,3 @@ def test_open_client_passes_garage_addressing_through():
     client = sut.open_client(_settings(), sut.BaseObjectStoreClient)
     assert client._s3.meta.config.s3["addressing_style"] == "path"
     assert client._s3.meta.endpoint_url == "http://garage.example.com"
-
-
-def test_model_key_is_versioned():
-    """Model checkpoints are addressed `models/{name}/{version}/{filename}`.
-
-    The version is part of the key on purpose. Checkpoints are cached on a
-    volume by this same path, so if two sets of weights could share a key a
-    cold start could silently serve the wrong one — and the cache would keep
-    serving it until someone cleared the volume by hand.
-
-    This is a cross-worker key contract like the JPEG prefixes: the data-worker
-    reads it and whoever uploads the weights writes it, so it is pinned here
-    rather than left to agree by convention.
-    """
-    assert (
-        sut.model_key("sam3", "v1", "sam3.pt") == f"{sut.MODEL_PREFIX}/sam3/v1/sam3.pt"
-    )
-
-
-def test_model_key_separates_versions_of_the_same_model():
-    assert sut.model_key("sam3", "v1", "w.pt") != sut.model_key("sam3", "v2", "w.pt")

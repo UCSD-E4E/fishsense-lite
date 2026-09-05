@@ -166,34 +166,6 @@ class HeadTailLabel(BaseModel):
     user_id: int | None = Field(None, title='User Id')
 
 
-class HeadTailPrediction(BaseModel):
-    """
-    Predicted snout/fork keypoints, in rectified-image pixels — the space
-    labelers place `HeadTailLabel.head_x/y` and `tail_x/y`. One row per image;
-    re-prediction upserts on the natural key.
-    """
-
-    id: int | None = Field(None, title='Id')
-    head_x: float | None = Field(None, title='Head X')
-    head_y: float | None = Field(None, title='Head Y')
-    tail_x: float | None = Field(None, title='Tail X')
-    tail_y: float | None = Field(None, title='Tail Y')
-    width: int | None = Field(None, title='Width')
-    height: int | None = Field(None, title='Height')
-    mask_area_px: int | None = Field(None, title='Mask Area Px')
-    silhouette_ratio: float | None = Field(None, title='Silhouette Ratio')
-    crop_x: int | None = Field(None, title='Crop X')
-    crop_y: int | None = Field(None, title='Crop Y')
-    laser_label_id: int | None = Field(None, title='Laser Label Id')
-    predictor_version: int | None = Field(None, title='Predictor Version')
-    checkpoint: str | None = Field(None, title='Checkpoint')
-    core_version: str | None = Field(None, title='Core Version')
-    status: str | None = Field('predicted', title='Status')
-    rejected_low_confidence: bool | None = Field(False, title='Rejected Low Confidence')
-    created_at: AwareDatetime | None = Field(None, title='Created At')
-    image_id: int | None = Field(None, title='Image Id')
-
-
 class Image(BaseModel):
     """
     Model representing an image.
