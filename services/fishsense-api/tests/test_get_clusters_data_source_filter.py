@@ -116,4 +116,4 @@ async def test_get_clusters_handles_cluster_with_no_mappings(session):
     assert result is not None
     assert len(result) == 1
     assert result[0].id == empty.id
-    assert not result[0].image_ids
+    assert result[0].image_ids == []

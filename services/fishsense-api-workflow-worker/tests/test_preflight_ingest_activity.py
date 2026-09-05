@@ -158,7 +158,7 @@ async def test_reports_every_error_at_once_rather_than_the_first(monkeypatch):
 async def test_resolves_the_camera_from_the_makernote_serial(monkeypatch):
     preflight = await _run(_request(), _listing(), monkeypatch)
 
-    assert not preflight.errors
+    assert preflight.errors == []
     assert preflight.resolved_camera_id == 7
     assert preflight.resolved_camera_name == "FSL-07"
 
@@ -187,7 +187,7 @@ async def test_an_explicit_camera_id_overrides_serial_resolution(monkeypatch):
         _request(camera_id=3), _listing(), monkeypatch, fs=fs
     )
 
-    assert not preflight.errors
+    assert preflight.errors == []
     assert preflight.resolved_camera_id == 3
 
 
@@ -233,7 +233,7 @@ async def test_artist_disagreeing_with_the_resolved_camera_is_a_warning(
 
     preflight = await _run(_request(), _listing(), monkeypatch, fs=fs)
 
-    assert not preflight.errors
+    assert preflight.errors == []
     assert any("FSL-07" in w and "FSL-99" in w for w in preflight.warnings)
 
 
@@ -270,7 +270,7 @@ async def test_borrowing_calibration_alone_is_valid(monkeypatch):
         monkeypatch,
     )
 
-    assert not preflight.errors
+    assert preflight.errors == []
 
 
 # ── per-frame validation ──────────────────────────────────────────────
@@ -336,7 +336,7 @@ async def test_a_fallback_timestamp_tag_is_warned_about(monkeypatch):
         headers={"PA010001.ORF": fallback},
     )
 
-    assert not preflight.errors
+    assert preflight.errors == []
     assert any("PA010001.ORF" in w for w in preflight.warnings)
 
 
@@ -419,7 +419,7 @@ async def test_a_leaf_name_collision_with_an_existing_dive_warns(monkeypatch):
         _request(), _listing(), monkeypatch, fs=_fs(dives=[existing])
     )
 
-    assert not preflight.errors
+    assert preflight.errors == []
     assert any("64" in w for w in preflight.warnings)
 
 
@@ -505,5 +505,5 @@ async def test_a_folder_outside_the_root_keeps_absolute_frame_paths(
 
     preflight = await _run(_request(dive_path=folder), listing, monkeypatch)
 
-    assert not preflight.errors
+    assert preflight.errors == []
     assert preflight.images[0].path == f"{folder}/P1170188.ORF"

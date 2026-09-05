@@ -50,4 +50,4 @@ async def test_returns_empty_list_when_cohort_empty(monkeypatch):
         sut.select_dives_needing_species_population_activity
     )
 
-    assert not result
+    assert result == []

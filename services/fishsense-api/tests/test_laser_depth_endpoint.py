@@ -223,7 +223,7 @@ async def test_get_for_dive_returns_only_that_dives_rows(session):
 
     rows = await get_laser_depths_for_dive(1, session=session)
     assert sorted(r.depth_m for r in rows) == [1.0, 2.0]
-    assert not await get_laser_depths_for_dive(3, session=session)
+    assert await get_laser_depths_for_dive(3, session=session) == []
 
 
 # ── the cohort ────────────────────────────────────────────────────────

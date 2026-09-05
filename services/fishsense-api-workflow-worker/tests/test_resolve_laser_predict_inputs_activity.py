@@ -88,7 +88,7 @@ def test_a_completed_label_still_wins_over_a_stale_prediction():
     needing = sut._select_images_needing_prediction(
         images, [_prediction(1, version=None)], labels
     )
-    assert not needing
+    assert needing == []
 
 
 def test_seeded_placeholder_does_not_exclude():

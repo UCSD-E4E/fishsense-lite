@@ -102,7 +102,7 @@ def test_deletes_nothing_when_retention_says_nothing_to_prune(nas, monkeypatch):
     nas.list_filenames.return_value = ["a.dump", "b.dump"]
     monkeypatch.setattr(sut, "filenames_to_prune", lambda _files, keep: [])
 
-    assert not _prune(db_name="fishsense", nas_root_path="/backups", keep=5)
+    assert _prune(db_name="fishsense", nas_root_path="/backups", keep=5) == []
     nas.delete.assert_not_called()
 
 

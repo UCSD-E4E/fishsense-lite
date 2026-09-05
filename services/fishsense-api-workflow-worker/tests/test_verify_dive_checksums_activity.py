@@ -122,7 +122,7 @@ async def test_a_row_whose_stored_checksum_matches_the_file_is_counted_matched(
 
     assert report.checked == 1
     assert report.checksum_matched == 1
-    assert not report.mismatches
+    assert report.mismatches == []
 
 
 async def test_a_checksum_mismatch_reports_both_values_and_the_path(monkeypatch):
@@ -197,7 +197,7 @@ async def test_the_stored_timestamp_convention_is_naive_0x0132_stamped_utc(
         monkeypatch,
     )
 
-    assert not report.timestamp_mismatches
+    assert report.timestamp_mismatches == []
 
 
 # ── findings, not failures ────────────────────────────────────────────
@@ -238,7 +238,7 @@ async def test_a_row_with_no_stored_checksum_is_reported_not_silently_skipped(
 
     assert report.checked == 1
     assert report.checksum_matched == 0
-    assert not report.mismatches
+    assert report.mismatches == []
     assert len(report.no_stored_checksum) == 1
     assert report.no_stored_checksum[0].computed == hashlib.md5(data).hexdigest()
 

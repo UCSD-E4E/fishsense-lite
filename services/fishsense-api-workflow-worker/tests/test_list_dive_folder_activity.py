@@ -191,7 +191,7 @@ async def test_a_subfolder_without_orfs_is_not_reported(monkeypatch):
 
     listing = await _run(_request(), client, monkeypatch)
 
-    assert not listing.subfolders
+    assert listing.subfolders == []
 
 
 async def test_does_not_descend_past_the_immediate_children(monkeypatch):
@@ -279,5 +279,5 @@ async def test_an_empty_folder_lists_cleanly_rather_than_failing(monkeypatch):
 
     listing = await _run(_request(), client, monkeypatch)
 
-    assert not listing.files
-    assert not listing.subfolders
+    assert listing.files == []
+    assert listing.subfolders == []

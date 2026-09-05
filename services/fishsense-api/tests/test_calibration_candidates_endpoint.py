@@ -125,7 +125,7 @@ async def test_excludes_different_camera_no_extrinsics_and_out_of_tolerance(sess
     await session.flush()
 
     result = await _candidates(session, 1)
-    assert not result
+    assert result == []
 
 
 async def test_ranks_closer_line_first(session):
@@ -169,7 +169,7 @@ async def test_low_confidence_candidate_excluded(session):
     )
     await session.flush()
 
-    assert not await _candidates(session, 1, min_confidence=5.0)
+    assert await _candidates(session, 1, min_confidence=5.0) == []
 
 
 async def test_returns_empty_when_target_has_no_fingerprint(session):
@@ -178,7 +178,7 @@ async def test_returns_empty_when_target_has_no_fingerprint(session):
     session.add_all([_line(2, 0.0, -100.0), _extrinsics(2, 5)])  # target (1) has none
     await session.flush()
 
-    assert not await _candidates(session, 1)
+    assert await _candidates(session, 1) == []
 
 
 async def test_sign_flipped_line_still_matches(session):

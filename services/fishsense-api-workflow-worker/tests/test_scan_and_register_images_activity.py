@@ -106,7 +106,7 @@ async def test_registers_a_frame_with_its_checksum_and_timestamp(monkeypatch):
     result, _ = await _run(["A.ORF"], {"A.ORF": data}, monkeypatch, fs=fs)
 
     assert result.registered == 1
-    assert not result.rejected
+    assert result.rejected == []
     (_dive, image), kwargs = fs.images.post.call_args
     assert _dive == DIVE
     assert image.checksum == hashlib.md5(data).hexdigest()
@@ -178,7 +178,7 @@ async def test_a_fully_ingested_batch_downloads_nothing(monkeypatch):
 
     assert result.skipped_existing == 2
     assert result.registered == 0
-    assert not nas.downloaded
+    assert nas.downloaded == []
     assert fs.images.post.await_count == 0
 
 
@@ -324,7 +324,7 @@ async def test_a_fully_ingested_rerun_still_reports_the_max_timestamp(monkeypatc
         ["A.ORF", "B.ORF"], {"A.ORF": data, "B.ORF": data}, monkeypatch, fs=fs
     )
 
-    assert not nas.downloaded
+    assert nas.downloaded == []
     assert result.registered == 0
     assert result.max_taken_datetime == datetime(
         2024, 8, 21, 7, 0, 0, tzinfo=timezone.utc
