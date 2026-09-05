@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.11.0...fishsense-lite-web-v0.11.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **web:** stop the triage queue rate-limiting itself out of Label Studio ([#747](https://github.com/UCSD-E4E/fishsense-lite/issues/747)) ([f809771](https://github.com/UCSD-E4E/fishsense-lite/commit/f809771b1ba5794b6b3640a373b332da82f68d0c))
+
 ## [0.11.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.10.0...fishsense-lite-web-v0.11.0) (2026-09-05)
 
 
