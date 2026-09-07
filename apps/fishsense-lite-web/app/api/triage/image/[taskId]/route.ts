@@ -43,6 +43,16 @@ export async function GET(
     return new NextResponse(detail, { status: 502 });
   }
 
+  if (resolved.kind === "blocked") {
+    // Refused before the request was made. Naming the host is the point: in
+    // production the frame is presigned against the object store, whose host
+    // this server has no other way to learn, and it belongs in
+    // TRIAGE_IMAGE_HOSTS rather than being guessed at.
+    const detail = `Refused to fetch task ${taskId}'s frame from ${resolved.host} — not in the allowed image hosts. Add it to TRIAGE_IMAGE_HOSTS if it is expected.`;
+    console.error("[triage/image] blocked host", { taskId, host: resolved.host });
+    return new NextResponse(detail, { status: 502 });
+  }
+
   const upstream = resolved.response;
   if (!upstream.ok || !upstream.body) {
     // Say what the upstream actually said. A bare "Upstream image fetch

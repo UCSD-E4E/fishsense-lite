@@ -134,11 +134,17 @@ describe("fetchTaskImage", () => {
   }
 
   it("fetches a presigned URL WITHOUT our Authorization header", async () => {
+    vi.stubEnv("TRIAGE_IMAGE_HOSTS", "s3.example");
     const fetchMock = mockFetch(taskWith("https://s3.example/frame.JPG?sig=abc"));
     const out = await fetchTaskImage(42);
 
     expect(out.kind).toBe("response");
-    const call = fetchMock.mock.calls.find(([u]) => u.startsWith("https://s3.example"));
+    // Compare the parsed host, not a string prefix: "https://s3.example.evil"
+    // satisfies startsWith and is a different server. CodeQL flags the prefix
+    // form as incomplete URL sanitization, and it is right to.
+    const call = fetchMock.mock.calls.find(
+      ([u]) => u.startsWith("http") && new URL(u).host === "s3.example",
+    );
     expect(call).toBeDefined();
     // Sending a bearer alongside a presigned signature can be rejected
     // outright by S3.
@@ -160,6 +166,39 @@ describe("fetchTaskImage", () => {
   // Label Studio hands the URI straight back when the project has no storage
   // connected. Fetching harder cannot fix that, so it is reported rather than
   // attempted — the case that produced a bare 502 with nothing to read.
+  // Server-side request forgery. The task id comes from a portal user and the
+  // URL comes from task data, so without an allowlist this route fetches
+  // anything the server can reach — including services on the private docker
+  // network — and streams the body back.
+  it("refuses a host that is not allowed, without fetching it", async () => {
+    const fetchMock = mockFetch(taskWith("http://fishsense-api:8000/api/v1/dives/"));
+    const out = await fetchTaskImage(42);
+
+    expect(out).toMatchObject({ kind: "blocked", host: "fishsense-api:8000" });
+    expect(fetchMock.mock.calls.some(([u]) => u.includes("fishsense-api:8000"))).toBe(false);
+  });
+
+  it("refuses a cloud metadata address", async () => {
+    const fetchMock = mockFetch(taskWith("http://169.254.169.254/latest/meta-data/"));
+    const out = await fetchTaskImage(42);
+
+    expect(out).toMatchObject({ kind: "blocked" });
+    expect(fetchMock.mock.calls.some(([u]) => u.includes("169.254"))).toBe(false);
+  });
+
+  it("allows the Label Studio host itself", async () => {
+    mockFetch(taskWith("http://ls.test/data/frame.JPG"));
+    const out = await fetchTaskImage(42);
+    expect(out.kind).toBe("response");
+  });
+
+  it("allows a host named in TRIAGE_IMAGE_HOSTS", async () => {
+    vi.stubEnv("TRIAGE_IMAGE_HOSTS", "garage.internal:3900");
+    mockFetch(taskWith("https://garage.internal:3900/bucket/frame.JPG?sig=x"));
+    const out = await fetchTaskImage(42);
+    expect(out.kind).toBe("response");
+  });
+
   it("reports an unresolved s3 URI instead of fetching it", async () => {
     mockFetch(taskWith("s3://bucket/preprocess_jpeg/abc.JPG"));
     const out = await fetchTaskImage(42);
