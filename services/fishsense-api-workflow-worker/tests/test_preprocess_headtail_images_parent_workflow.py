@@ -182,7 +182,7 @@ async def test_dispatches_child_with_deterministic_id():
     # ever ran. The failure would be silent — tasks still appear, they just
     # never carry a prediction — which is why it is pinned as a negative.
     # This is the same decoupling the laser stage made on 2026-07-28.
-    assert populate_runs == []
+    assert not populate_runs
 
 
 @pytest.mark.asyncio
@@ -304,7 +304,7 @@ async def test_populate_is_never_dispatched_even_with_images_to_process():
 
     assert result == 441
     assert len(child_runs) == 1, "preprocess itself must still run"
-    assert populate_runs == []
+    assert not populate_runs
 
 
 async def test_lowers_the_reprocess_flag_even_when_no_work_resolves():

@@ -9,12 +9,12 @@ keypoint.
 
 from __future__ import annotations
 
-from fishsense_api_workflow_worker.activities.backfill_headtail_predictions_activity import (  # noqa: E501
+from fishsense_api_workflow_worker.activities.backfill_headtail_predictions_activity import (  # noqa: E501  pylint: disable=line-too-long
     select_attach_targets,
 )
 
 
-class _Prediction:
+class _Prediction:  # pylint: disable=too-many-instance-attributes
     def __init__(self, image_id, status="predicted", head=(10.0, 20.0)):
         self.image_id = image_id
         self.status = status
@@ -46,26 +46,26 @@ def test_skips_a_completed_task():
     """A labeler has already placed those points; a fresh pre-annotation beside
     them is noise at best, and an invitation to second-guess finished work at
     worst."""
-    assert select_attach_targets([_Prediction(1)], [_Label(1, completed=True)]) == {}
+    assert not select_attach_targets([_Prediction(1)], [_Label(1, completed=True)])
 
 
 def test_skips_a_superseded_row():
-    assert select_attach_targets([_Prediction(1)], [_Label(1, superseded=True)]) == {}
+    assert not select_attach_targets([_Prediction(1)], [_Label(1, superseded=True)])
 
 
 def test_skips_an_abstention():
     """Nothing placeable — attaching an empty prediction would be noise."""
-    assert select_attach_targets(
+    assert not select_attach_targets(
         [_Prediction(1, status="no_detections", head=(None, None))], [_Label(1)]
-    ) == {}
+    )
 
 
 def test_skips_a_task_with_no_ls_ids():
-    assert select_attach_targets([_Prediction(1)], [_Label(1, task_id=None)]) == {}
+    assert not select_attach_targets([_Prediction(1)], [_Label(1, task_id=None)])
 
 
 def test_skips_an_image_with_no_prediction():
-    assert select_attach_targets([], [_Label(1)]) == {}
+    assert not select_attach_targets([], [_Label(1)])
 
 
 def test_first_non_superseded_task_per_image_wins():

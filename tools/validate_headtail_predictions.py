@@ -436,7 +436,9 @@ def _parse_laser_points(raw: str) -> list[tuple[float, float]]:
     return points
 
 
-def _score_row(row: dict, labels, instance: int, head, tail) -> dict:
+def _score_row(  # pylint: disable=too-many-locals
+    row: dict, labels, instance: int, head, tail
+) -> dict:
     """Fill in the comparison columns for one successful prediction.
 
     Both head/tail assignments are scored and the better kept: a

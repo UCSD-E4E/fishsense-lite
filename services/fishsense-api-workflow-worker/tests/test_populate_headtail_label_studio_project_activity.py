@@ -98,7 +98,7 @@ def test_build_task_emits_dual_image_and_img_keys(monkeypatch):
     assert not task["predictions"]
 
 
-class _StubPrediction:
+class _StubPrediction:  # pylint: disable=too-many-instance-attributes
     """Minimal `HeadTailPrediction` stand-in.
 
     Defaults to an *abstention*: it passes populate's prediction gate (the
