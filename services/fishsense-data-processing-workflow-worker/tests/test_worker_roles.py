@@ -120,8 +120,19 @@ def test_light_role_holds_the_stages_with_no_per_image_fan_out():
 
 def test_cpu_role_keeps_exactly_the_per_image_fan_out_stages():
     """The converse, so moving a stage to the light queue cannot silently take
-    a memory-heavy one with it. These four are the rawpy decoders."""
+    a memory-heavy one with it. These are the rawpy decoders — plus exactly one
+    deliberate exception.
+
+    `fit_checkerboard_laser_extrinsics` holds no image bytes and would be a
+    light-queue stage on its own. It is here because an activity runs on its
+    workflow's task queue and its workflow is a per-image fan-out; splitting it
+    across queues would make one child need two pods scaled up. By the time it
+    is dispatched the fan-out has finished, so it is not competing for the two
+    slots it is nominally behind.
+    """
     assert {activity.__name__ for activity in roles.CPU_ACTIVITIES} == {
+        "detect_checkerboard_laser_point",
+        "fit_checkerboard_laser_extrinsics",
         "preprocess_headtail_image",
         "preprocess_laser_image",
         "preprocess_slate_image",

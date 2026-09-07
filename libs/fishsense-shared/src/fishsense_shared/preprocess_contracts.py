@@ -134,6 +134,70 @@ class PreprocessHeadtailImagesInput(BaseModel):
     distortion_coefficients: List[float]
 
 
+class CheckerboardCalibrationImage(BaseModel):
+    """One calibration observation: a frame and the dot the labeler placed on it.
+
+    The dot comes from the api-worker rather than from a detector because it
+    is already the pipeline's own product — a validated, non-superseded
+    `LaserLabel`. The board's corners are the only thing the data-worker finds
+    for itself.
+    """
+
+    image_id: int
+    checksum: str
+    laser_x: float
+    laser_y: float
+
+
+class PerformCheckerboardCalibrationInput(BaseModel):
+    """Checkerboard laser-calibration workflow-level input.
+
+    The board's geometry travels in the payload rather than being looked up
+    on the data-worker, for the same reason every other cross-worker DTO is
+    shaped this way: the child makes no SDK calls and no decisions, so a
+    replayed run cannot silently pick up a *different* square size than the
+    one it was dispatched with. `square_size_m` is the measured grid pitch and
+    the only thing setting the scale of every length this calibration will
+    later produce.
+
+    `target_rows` / `target_cols` are the declared board's INTERIOR CORNERS,
+    and they are an upper bound rather than a target — see
+    `checkerboard_detection`.
+    """
+
+    dive_id: int
+    camera_id: int
+    camera_matrix: List[List[float]]
+    distortion_coefficients: List[float]
+    target_rows: int
+    target_cols: int
+    square_size_m: float
+    images: List[CheckerboardCalibrationImage]
+
+
+class CheckerboardObservation(BaseModel):
+    """Where one frame put the laser dot in space, or why it could not.
+
+    `point` is None when the frame was unusable — no board detected, a
+    detection that could not be trusted (`checkerboard_detection` returns None),
+    a PnP failure, or a ray parallel to the plane. Those are dropped rather
+    than raised: one bad frame in a dive of dozens is ordinary, and the fit
+    only needs `MIN_LASER_POINTS` of them.
+
+    `detected_rows` / `detected_cols` are carried for the log, not the fit. A
+    dive whose frames all detect a small sub-grid is fitted from a worse-
+    conditioned set of poses than one seeing whole boards, and that is
+    otherwise invisible.
+    """
+
+    image_id: int
+    point: Optional[List[float]] = None
+    laser_x: float
+    laser_y: float
+    detected_rows: Optional[int] = None
+    detected_cols: Optional[int] = None
+
+
 class PredictLaserImage(BaseModel):
     """Per-image (checksum, image_id) pair for laser prediction.
 

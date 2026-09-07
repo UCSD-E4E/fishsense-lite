@@ -64,8 +64,14 @@ from fishsense_data_processing_workflow_worker.activities.cluster_dive_frames im
 from fishsense_data_processing_workflow_worker.activities.compute_laser_depths_activity import (  # noqa: E501  pylint: disable=line-too-long
     compute_laser_depths_activity,
 )
+from fishsense_data_processing_workflow_worker.activities.detect_checkerboard_laser_point import (  # noqa: E501  pylint: disable=line-too-long
+    detect_checkerboard_laser_point,
+)
 from fishsense_data_processing_workflow_worker.activities.evaluate_laser_auto_accept_activity import (  # noqa: E501  pylint: disable=line-too-long
     evaluate_laser_auto_accept_activity,
+)
+from fishsense_data_processing_workflow_worker.activities.fit_checkerboard_laser_extrinsics import (  # noqa: E501  pylint: disable=line-too-long
+    fit_checkerboard_laser_extrinsics,
 )
 from fishsense_data_processing_workflow_worker.activities.measure_fish_activity import (
     measure_fish_activity,
@@ -103,6 +109,9 @@ from fishsense_data_processing_workflow_worker.workflows.dive_frame_clustering_w
 from fishsense_data_processing_workflow_worker.workflows.measure_fish_workflow import (
     MeasureFishWorkflow,
 )
+from fishsense_data_processing_workflow_worker.workflows.perform_checkerboard_calibration_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    PerformCheckerboardCalibrationWorkflow,
+)
 from fishsense_data_processing_workflow_worker.workflows.perform_laser_calibration_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PerformLaserCalibrationWorkflow,
 )
@@ -137,6 +146,13 @@ from fishsense_data_processing_workflow_worker.workflows.validate_laser_labels_f
 # derived from that number. Adding anything cheap here puts it behind those
 # two slots — which is exactly the bug the light role exists to fix.
 CPU_WORKFLOWS: Final[Sequence[type]] = (
+    # Checkerboard calibration is here rather than beside stage 13's
+    # `PerformLaserCalibrationWorkflow` on the light queue, and the
+    # difference is real: stage 13 reads already-stored slate labels and
+    # never opens an image, while this one decodes every calibration frame
+    # to find the board. It belongs behind the memory cap, not in front
+    # of it.
+    PerformCheckerboardCalibrationWorkflow,
     PreprocessHeadtailImagesWorkflow,
     PreprocessLaserImagesWorkflow,
     PreprocessSlateImagesWorkflow,
@@ -144,6 +160,11 @@ CPU_WORKFLOWS: Final[Sequence[type]] = (
 )
 
 CPU_ACTIVITIES: Final[Sequence[Callable[..., Any]]] = (
+    detect_checkerboard_laser_point,
+    # Cheap, and on this queue only because its workflow is: an activity
+    # runs on its workflow's task queue, and by the time the fit is
+    # dispatched the fan-out that was holding the two slots is done.
+    fit_checkerboard_laser_extrinsics,
     preprocess_headtail_image,
     preprocess_laser_image,
     preprocess_slate_image,
