@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { TriageItem } from "@/lib/triage-queue";
+import type { ProjectOutcome, TriageItem } from "@/lib/triage-queue";
 import { acceptAction, undoAcceptAction } from "./actions";
 
 /**
@@ -16,12 +16,13 @@ const MIN_SCALE = 0.02;
 type Props = {
   items: TriageItem[];
   kindLabel: string;
-  /** Projects walked, and why tasks were refused — see the empty state. */
+  /** What each walked project contributed — see the empty state. */
   scanned: number;
-  rejected: string[];
+  projects: ProjectOutcome[];
+  notWalked: number;
 };
 
-export function TriageClient({ items, kindLabel, scanned, rejected }: Props) {
+export function TriageClient({ items, kindLabel, scanned, projects, notWalked }: Props) {
   const [index, setIndex] = useState(0);
   const [accepted, setAccepted] = useState(0);
   const [skipped, setSkipped] = useState(0);
@@ -98,14 +99,33 @@ export function TriageClient({ items, kindLabel, scanned, rejected }: Props) {
             : "Every task in them was already handled."}
         </p>
 
-        {rejected.length > 0 && (
-          <details className="text-xs text-slate-500">
-            <summary className="cursor-pointer">Why tasks were skipped</summary>
+        {projects.length > 0 && (
+          <details className="text-xs text-slate-500" open>
+            <summary className="cursor-pointer">Per project</summary>
             <ul className="mt-2 space-y-1 font-mono text-[11px] text-slate-400">
-              {rejected.map((reason) => (
-                <li key={reason}>{reason}</li>
+              {projects.map((p) => (
+                <li key={p.projectId}>
+                  <span className="text-slate-300">{p.projectId}</span>
+                  {p.title ? ` ${p.title}` : ""}
+                  {" — "}
+                  {p.error
+                    ? p.error
+                    : p.tasks === 0
+                      ? "0 tasks on page 1"
+                      : `${p.tasks} tasks, ${p.taken} taken` +
+                        (Object.keys(p.reasons).length > 0
+                          ? ` (${Object.entries(p.reasons)
+                              .map(([reason, n]) => `${n} ${reason}`)
+                              .join(", ")})`
+                          : "")}
+                </li>
               ))}
             </ul>
+            {notWalked > 0 && (
+              <p className="mt-2 text-[11px] text-slate-500">
+                {notWalked} more offered but not reached this load.
+              </p>
+            )}
           </details>
         )}
 
