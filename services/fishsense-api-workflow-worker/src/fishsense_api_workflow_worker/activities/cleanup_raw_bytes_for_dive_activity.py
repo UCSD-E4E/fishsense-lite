@@ -35,6 +35,7 @@ __all__ = [
     "raw_scratch_reader_ids",
     "CleanupRawBytesResult",
     "build_scratch_in_use_query",
+    "scratch_in_use",
     "cleanup_raw_bytes_for_dive_activity",
 ]
 
@@ -68,27 +69,44 @@ def build_scratch_in_use_query(dive_id: int) -> str:
     return f'ExecutionStatus = "Running" and WorkflowId in ({ids})'
 
 
-async def _scratch_in_use(dive_id: int) -> str | None:
-    """The id of a still-running sibling child, or None.
+async def scratch_in_use(dive_id: int) -> str | None:
+    """The id of a still-running sibling child, or None if the scratch is free.
 
     The child-id sentinel in `_dispatch.dispatch_child` cannot cover this: the
     ids differ across stages, so `WorkflowAlreadyStartedError` is never raised.
     Gated here rather than at each call site because it is one place, it covers
     every caller including future ones, and it adds no workflow command -- so
     no in-flight parent's replay contract changes.
+
+    **Fails closed.** If Temporal cannot be reached the answer is unknown, and
+    the two ways of being wrong are not symmetric: deleting scratch a live
+    child is reading kills a render silently and costs the whole dive's NAS
+    staging to redo, while keeping it costs object-store space until the next
+    firing re-stages -- which is cheap, because staging reports
+    `skipped_already_present` and re-uses what is there. So an unreachable
+    Temporal blocks the delete rather than waving it through.
     """
     from fishsense_api_workflow_worker.worker import (  # noqa: PLC0415
         build_tls_config,
         temporal_namespace,
     )
 
-    client = await Client.connect(
-        f"{settings.temporal.host}:{settings.temporal.port}",
-        tls=build_tls_config(settings.temporal),
-        namespace=temporal_namespace(settings.temporal),
-    )
-    async for w in client.list_workflows(query=build_scratch_in_use_query(dive_id)):
-        return w.id
+    try:
+        client = await Client.connect(
+            f"{settings.temporal.host}:{settings.temporal.port}",
+            tls=build_tls_config(settings.temporal),
+            namespace=temporal_namespace(settings.temporal),
+        )
+        async for w in client.list_workflows(query=build_scratch_in_use_query(dive_id)):
+            return w.id
+    except Exception as exc:  # pylint: disable=broad-except
+        activity.logger.warning(
+            "cannot determine whether dive_id=%d scratch is in use (%s); "
+            "declining to delete",
+            dive_id,
+            type(exc).__name__,
+        )
+        return "<temporal-unreachable>"
     return None
 
 
@@ -103,7 +121,7 @@ class CleanupRawBytesResult:
 async def cleanup_raw_bytes_for_dive_activity(
     dive_id: int,
 ) -> CleanupRawBytesResult:
-    holder = await _scratch_in_use(dive_id)
+    holder = await scratch_in_use(dive_id)
     if holder is not None:
         # Another stage's child is still reading these objects. Deleting now is
         # what killed prod dive 442's render (NoSuchKey, 2026-09-07). Whichever
