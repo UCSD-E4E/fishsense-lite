@@ -56,14 +56,30 @@ def test_the_name_is_the_taxonomy_leaf():
 def test_the_provenance_travels_with_the_number():
     """`square_size_m` alone cannot say how well it is known.
 
-    It is a single-square figure at two significant figures, so its reading
-    resolution is +-0.5 mm — about +-1.2% of scale, in the one direction
-    reprojection residual provably cannot see. A reader who takes 0.042 as
-    exact would misread every length that follows from it.
+    Measured with a ruler across one square, so it resolves to about
+    +-0.5 mm — roughly +-1.2% of scale, in the one direction reprojection
+    residual provably cannot see. A reader who takes 0.042 as exact would
+    misread every length that follows from it, and nothing downstream can
+    flag that.
     """
     notes = _row()["notes"]
     assert "4.2" in notes
+    assert "ruler" in notes.lower()
     assert "1.2%" in notes
+
+
+def test_the_notes_forbid_back_solving_from_the_fish_models():
+    """The known lengths are the validation set, never a calibration input.
+
+    A scale bias they reveal is evidence to re-measure the board. A pitch
+    fitted to them would make every future accuracy number self-confirming and
+    destroy the only independent check the measurement pipeline has — so the
+    warning has to travel with the row, where someone tempted to "improve" the
+    number will actually read it.
+    """
+    notes = _row()["notes"].lower()
+    assert "back-solve" in notes
+    assert "validation" in notes
 
 
 def test_the_grid_is_stated_as_interior_corners():

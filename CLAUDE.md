@@ -460,16 +460,21 @@ Five things that are load-bearing:
   are INTERIOR CORNERS (a 15x11 board has 14x10); confusing those with squares
   is a 7-10% scale error.
 
-  The E4E board is seeded at **4.2 cm** (migration `e07c31b9a4d2`, and
+  The E4E board is seeded at **4.2 cm**, measured with a ruler against the
+  board on 2026-09-07 (migration `e07c31b9a4d2`, and
   `_seed_calibration_targets` for the fresh-database stamp path, which runs no
-  migrations). That figure is a **single-square** reading at two significant
-  figures, so it carries +-0.5 mm of reading resolution — about **+-1.2% of
-  scale**, the same order as the errors the pipeline is validated against, and
-  invisible to every residual and fit statistic. Improving it is cheap and
-  worth ~10x: caliper the full 14-corner span (588 mm at this pitch) and
-  divide, then correct the row in place. Both seeds are **insert-only**, so a
-  correction survives every deploy. The row's `notes` carries all of this;
-  `views.KNOWN_CALIBRATION_TARGETS` is the source of truth for both seeds.
+  migrations). A millimetre rule resolves an edge to ~+-0.5 mm, so a pitch read
+  across one square is known to about **+-1.2% of scale** — a property of the
+  span, not of the care taken. Tightening it needs no better instrument, just a
+  longer span: the same read across the full 14-corner span (588 mm) is worth
+  +-0.09%. Both seeds are **insert-only**, so correcting the row in place
+  survives every deploy. `views.KNOWN_CALIBRATION_TARGETS` is the source of
+  truth for both, and the row's `notes` carries the provenance.
+
+  **Never back-solve the pitch from the known-length fish models.** They are
+  the validation set — a scale bias they reveal is evidence to re-measure the
+  board, but a pitch fitted to them makes every future accuracy number
+  self-confirming.
 * **The detector is asked for a 3x3 grid and told the real one.** Measured
   against OpenCV 4.13, asking for the nominal board is worse in both
   directions: a board with its right third out of frame returns *nothing* for
