@@ -109,6 +109,9 @@ from fishsense_api_workflow_worker.activities.resolve_species_preprocess_inputs_
 from fishsense_api_workflow_worker.activities.resolve_headtail_preprocess_inputs_activity import (  # pylint: disable=line-too-long
     resolve_headtail_preprocess_inputs_activity,
 )
+from fishsense_api_workflow_worker.activities.resolve_checkerboard_calibration_inputs_activity import (  # pylint: disable=line-too-long
+    resolve_checkerboard_calibration_inputs_activity,
+)
 from fishsense_api_workflow_worker.activities.clear_laser_reprocess_flags_activity import (  # pylint: disable=line-too-long
     clear_laser_reprocess_flags_activity,
 )
@@ -153,6 +156,9 @@ from fishsense_api_workflow_worker.activities.select_dives_needing_species_popul
 )
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_headtail_preprocessing_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_headtail_preprocessing_activity,
+)
+from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_checkerboard_calibration_activity import (  # pylint: disable=line-too-long
+    select_next_high_priority_dive_for_checkerboard_calibration_activity,
 )
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_laser_calibration_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_laser_calibration_activity,
@@ -262,6 +268,9 @@ from fishsense_api_workflow_worker.workflows.compute_laser_depths_parent_workflo
 )
 from fishsense_api_workflow_worker.workflows.evaluate_laser_auto_accept_parent_workflow import (  # pylint: disable=line-too-long
     EvaluateLaserAutoAcceptParentWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.perform_checkerboard_calibration_parent_workflow import (  # pylint: disable=line-too-long
+    PerformCheckerboardCalibrationParentWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.perform_laser_calibration_parent_workflow import (  # pylint: disable=line-too-long
     PerformLaserCalibrationParentWorkflow,
@@ -687,6 +696,35 @@ async def schedule_workflows(client: Client):
                     overlap=ScheduleOverlapPolicy.SKIP,
                 )
             )
+            # Checkerboard calibration: hourly at +52, straight after stage 13
+            # at +50 — the two are siblings producing the same
+            # `LaserExtrinsics` row from different targets, and their cohorts
+            # are disjoint (one needs a `dive_slate_id`, the other a
+            # `calibration_target_id`).
+            #
+            # It stages raw `.ORF`s from the NAS, so it does contend with the
+            # preprocess parents at :00/:15/:30/:45 for FileStation's single
+            # download stream. That is accepted rather than designed around:
+            # the cohort excludes any dive that already has extrinsics, so a
+            # dive passes through once and the standing corpus is eleven
+            # dives — about eleven hours of contention, once.
+            #
+            # SKIP overlap, like every other selector-driven parent: a run
+            # still staging when the next firing arrives must not let a second
+            # selector race it to the same dive.
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "perform-checkerboard-calibration-workflow-schedule",
+                    PerformCheckerboardCalibrationParentWorkflow,
+                    timedelta(hours=1),
+                    offset=timedelta(minutes=52),
+                    # Child `execution_timeout` is 2h; add margin for the
+                    # selector, the scale-up and up to ~30 min of NAS staging.
+                    run_timeout=timedelta(hours=3),
+                    overlap=ScheduleOverlapPolicy.SKIP,
+                )
+            )
             # Scale-to-zero sweeper for the NRP data-worker: hourly at
             # +55 min, after the last preprocess/calibration parent
             # firing, so it never races a parent that's still scaling
@@ -760,6 +798,7 @@ async def main():
                 PreprocessHeadtailImagesParentWorkflow,
                 PreprocessSlateImagesParentWorkflow,
                 PerformLaserCalibrationParentWorkflow,
+                PerformCheckerboardCalibrationParentWorkflow,
                 MeasureFishParentWorkflow,
                 ComputeLaserDepthsParentWorkflow,
                 EvaluateLaserAutoAcceptParentWorkflow,
@@ -809,6 +848,7 @@ async def main():
                 backfill_slate_predictions_for_dive_activity,
                 resolve_species_preprocess_inputs_activity,
                 resolve_headtail_preprocess_inputs_activity,
+                resolve_checkerboard_calibration_inputs_activity,
                 resolve_slate_preprocess_inputs_activity,
                 persist_dive_frame_clusters_activity,
                 select_next_high_priority_dive_for_clustering_activity,
@@ -821,6 +861,7 @@ async def main():
                 select_next_high_priority_dive_for_headtail_preprocessing_activity,
                 select_next_high_priority_dive_for_slate_preprocessing_activity,
                 select_next_high_priority_dive_for_laser_calibration_activity,
+                select_next_high_priority_dive_for_checkerboard_calibration_activity,
                 select_next_high_priority_dive_for_measure_fish_activity,
                 select_next_high_priority_dive_for_laser_depth_activity,
                 select_next_high_priority_dive_for_laser_auto_accept_activity,

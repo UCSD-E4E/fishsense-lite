@@ -37,6 +37,7 @@ _DIVE_SELECTING_PARENT_SCHEDULE_IDS = (
     "preprocess-headtail-images-workflow-schedule",
     "preprocess-slate-images-workflow-schedule",
     "perform-laser-calibration-workflow-schedule",
+    "perform-checkerboard-calibration-workflow-schedule",
     "measure-fish-workflow-schedule",
     "compute-laser-depths-workflow-schedule",
 )
@@ -192,6 +193,41 @@ async def test_measure_fish_run_timeout_outlives_its_child(registered):
     schedule = registered["measure-fish-workflow-schedule"]
 
     assert schedule.action.run_timeout > timedelta(hours=1)
+
+
+async def test_checkerboard_calibration_is_scheduled_hourly_at_52(registered):
+    """Straight after stage 13 at +50, and before the +55 sweeper.
+
+    The two calibration parents are siblings producing the same
+    `LaserExtrinsics` row from different targets, and their cohorts are
+    disjoint — one needs a `dive_slate_id`, the other a
+    `calibration_target_id` — so they cannot race for a dive.
+    """
+    schedule = registered["perform-checkerboard-calibration-workflow-schedule"]
+    assert schedule.spec.intervals[0].every == timedelta(hours=1)
+    assert _offset(schedule) == timedelta(minutes=52)
+
+
+async def test_checkerboard_calibration_skips_when_still_in_flight(registered):
+    """SKIP overlap, so two selectors cannot race past the same dive.
+
+    It matters more here than for the light-queue parents: this one stages a
+    dive's raw `.ORF`s from the NAS, and a second firing behind the first
+    would stage the same dive again over a 1 MB/s link.
+    """
+    schedule = registered["perform-checkerboard-calibration-workflow-schedule"]
+    assert schedule.policy.overlap == ScheduleOverlapPolicy.SKIP
+
+
+async def test_checkerboard_calibration_run_timeout_outlives_its_child(registered):
+    """The child's `execution_timeout` is 2h; the run must allow for it plus
+    the selector, the data-worker scale-up and up to ~30 min of NAS staging.
+
+    A run timeout shorter than the child's would kill the parent while the
+    child was still working, leaving the dive's staged raw bytes uncleaned.
+    """
+    schedule = registered["perform-checkerboard-calibration-workflow-schedule"]
+    assert schedule.action.run_timeout > timedelta(hours=2)
 
 
 async def test_dive_selecting_parents_do_not_share_a_slot(registered):
