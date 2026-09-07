@@ -12,6 +12,9 @@ from temporalio import activity, workflow
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
+from fishsense_api_workflow_worker.activities.reprocess_scope import (
+    ClearReprocessFlagsInput,
+)
 from fishsense_api_workflow_worker.workflows._dispatch import (
     DATA_PROCESSING_TASK_QUEUE,
 )
@@ -23,6 +26,17 @@ from fishsense_shared import PreprocessHeadtailImagesInput
 
 _K = [[1000.0, 0.0, 960.0], [0.0, 1000.0, 540.0], [0.0, 0.0, 1.0]]
 _D = [-0.1, 0.05, 0.0, 0.0, 0.0]
+
+
+#: `checksums` each clear call was scoped to, in order.
+#: `None` means the whole dive -- the no-work backstop.
+_CLEAR_SCOPES: list = []
+
+
+@pytest.fixture(autouse=True)
+def _reset_clear_scopes():
+    """Module-level, so it accumulates across tests in this file unless reset."""
+    _CLEAR_SCOPES.clear()
 
 
 @workflow.defn(name="PreprocessHeadtailImagesWorkflow")
@@ -97,10 +111,11 @@ def _make_stubs(
         return None
 
     @activity.defn(name="clear_headtail_reprocess_flags_activity")
-    async def stub_clear_reprocess(dive_id: int) -> int:
+    async def stub_clear_reprocess(payload: ClearReprocessFlagsInput) -> int:
         """The parent lowers the redraw flag after its child completes;
         without it the dive stays in the cohort forever."""
-        _CLEAR_CALLS.append(dive_id)
+        _CLEAR_CALLS.append(payload.dive_id)
+        _CLEAR_SCOPES.append(payload.checksums)
         return 0
 
     @activity.defn(name="ensure_data_worker_running_activity")

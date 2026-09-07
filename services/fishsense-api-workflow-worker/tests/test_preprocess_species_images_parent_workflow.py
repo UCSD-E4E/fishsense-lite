@@ -12,6 +12,9 @@ from temporalio import activity, workflow
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
+from fishsense_api_workflow_worker.activities.reprocess_scope import (
+    ClearReprocessFlagsInput,
+)
 from fishsense_api_workflow_worker.workflows._dispatch import (
     DATA_PROCESSING_TASK_QUEUE,
 )
@@ -23,6 +26,17 @@ from fishsense_shared import PreprocessSpeciesImagesInput
 
 _K = [[1000.0, 0.0, 960.0], [0.0, 1000.0, 540.0], [0.0, 0.0, 1.0]]
 _D = [-0.1, 0.05, 0.0, 0.0, 0.0]
+
+
+#: `checksums` each clear call was scoped to, in order.
+#: `None` means the whole dive -- the no-work backstop.
+_CLEAR_SCOPES: list = []
+
+
+@pytest.fixture(autouse=True)
+def _reset_clear_scopes():
+    """Module-level, so it accumulates across tests in this file unless reset."""
+    _CLEAR_SCOPES.clear()
 
 
 @workflow.defn(name="PreprocessSpeciesImagesWorkflow")
@@ -99,10 +113,11 @@ def _make_stubs(
         return None
 
     @activity.defn(name="clear_species_reprocess_flags_activity")
-    async def stub_clear_reprocess(dive_id: int) -> int:
+    async def stub_clear_reprocess(payload: ClearReprocessFlagsInput) -> int:
         """The parent lowers the redraw flag after its child completes;
         without it the dive stays in the cohort forever."""
-        _CLEAR_CALLS.append(dive_id)
+        _CLEAR_CALLS.append(payload.dive_id)
+        _CLEAR_SCOPES.append(payload.checksums)
         return 0
 
     @activity.defn(name="ensure_data_worker_running_activity")
@@ -341,3 +356,49 @@ async def test_lowers_the_reprocess_flag_even_when_no_work_resolves():
 
     assert result == 907
     assert _CLEAR_CALLS == [907], "the flag must be lowered on the no-work path"
+    assert _CLEAR_SCOPES == [None], (
+        "the no-work path clears the WHOLE dive on purpose -- the flag reached "
+        "no image, so nothing else will ever lower it"
+    )
+
+
+async def test_the_successful_path_clears_only_what_it_redrew():
+    """A flag raised while the child is running must survive the clear.
+
+    The child can run for two hours. An unscoped clear at the end of it lowers
+    every flag on the dive, including one raised minutes ago that this run
+    never saw and never redrew -- the operator's request gone, with no error.
+    Scoping the clear to the frames actually redrawn leaves that flag up, so
+    the next firing honours it.
+    """
+    inputs = PreprocessSpeciesImagesInput(
+        dive_id=908,
+        clusters=[["aa", "bb"], ["cc"]],
+        camera_matrix=_K,
+        distortion_coefficients=_D,
+    )
+    activities, _, _ = _make_stubs(908, inputs)
+    _CLEAR_CALLS.clear()
+
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
+            task_queue="test-stage2-clear-scope",
+            workflows=[PreprocessSpeciesImagesParentWorkflow, _StubPopulateWorkflow],
+            activities=[*activities, _make_populate_recording_activity([])],
+        ), Worker(
+            env.client,
+            task_queue=DATA_PROCESSING_TASK_QUEUE,
+            workflows=[_StubChildWorkflow],
+            activities=[_make_recording_activity([])],
+        ):
+            await env.client.execute_workflow(
+                PreprocessSpeciesImagesParentWorkflow.run,
+                id="reprocess-clear-scope-908",
+                task_queue="test-stage2-clear-scope",
+            )
+
+    assert _CLEAR_CALLS == [908]
+    assert _CLEAR_SCOPES == [
+        ["aa", "bb", "cc"]
+    ], "every redrawn checksum, and nothing else"

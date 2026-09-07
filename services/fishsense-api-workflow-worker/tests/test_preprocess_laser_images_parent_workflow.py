@@ -32,6 +32,9 @@ from temporalio import activity, workflow
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
+from fishsense_api_workflow_worker.activities.reprocess_scope import (
+    ClearReprocessFlagsInput,
+)
 from fishsense_api_workflow_worker.workflows._dispatch import (
     DATA_PROCESSING_TASK_QUEUE,
 )
@@ -46,6 +49,17 @@ _D = [-0.1, 0.05, 0.0, 0.0, 0.0]
 # Stub payload, like _K above — this test pins pass-through, not the box's
 # value. The real one is DEFAULT_LASER_BBOX (test_default_laser_bbox.py).
 _BBOX = [1800, 700, 2400, 1600]
+
+
+#: `checksums` each clear call was scoped to, in order.
+#: `None` means the whole dive -- the no-work backstop.
+_CLEAR_SCOPES: list = []
+
+
+@pytest.fixture(autouse=True)
+def _reset_clear_scopes():
+    """Module-level, so it accumulates across tests in this file unless reset."""
+    _CLEAR_SCOPES.clear()
 
 
 @workflow.defn(name="PreprocessLaserImagesWorkflow")
@@ -140,8 +154,9 @@ def _make_stub_activities(
         return 0
 
     @activity.defn(name="clear_laser_reprocess_flags_activity")
-    async def stub_clear(dive_id: int) -> int:
-        clear_calls.append(dive_id)
+    async def stub_clear(payload: ClearReprocessFlagsInput) -> int:
+        clear_calls.append(payload.dive_id)
+        _CLEAR_SCOPES.append(payload.checksums)
         return 0
 
     return (
@@ -299,6 +314,17 @@ async def test_skips_child_dispatch_when_no_incomplete_images():
     assert not stage_calls
     assert not child_runs
     assert not populate_runs
-    # Nothing was redrawn, so nothing may be marked as redrawn: clearing here
-    # would silently drop a flag raised between the selector and the resolver.
-    assert not clear_calls
+    # A flag that reached no image must still come down. It is the one term in
+    # the cohort predicate that does not go false on its own, so leaving it up
+    # re-selects this dive every hour forever, re-staging its raw `.ORF`s from
+    # the NAS and starving every higher-id dive behind it -- the dive-60 shape
+    # from CLAUDE.md.
+    #
+    # This reverses an earlier reading, which held that clearing here could
+    # drop a flag raised between the selector and the resolver. It can, and
+    # that loss is real -- but it is recoverable by raising the flag again,
+    # whereas a wedge is not, and it starves unrelated dives. The other three
+    # preprocess parents already resolve the trade-off this way; stage 0.1 was
+    # the odd one out.
+    assert clear_calls == [440], "the flag must be lowered on the no-work path"
+    assert _CLEAR_SCOPES == [None], "the backstop clears the whole dive"

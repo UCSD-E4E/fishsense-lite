@@ -132,6 +132,25 @@ async def _seed_labelled_dive(session, dive_id, kind, *, flagged, canonical=True
     await session.commit()
 
 
+def _models():
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel
+    from fishsense_api.models.head_tail_label import HeadTailLabel
+    from fishsense_api.models.species_label import SpeciesLabel
+
+    return {
+        "species": SpeciesLabel,
+        "headtail": HeadTailLabel,
+        "dive-slate": DiveSlateLabel,
+    }
+
+
+#: Physical table per kind, for the raw-SQL NULL seed below.
+_TABLES = {
+    "species": "specieslabel",
+    "headtail": "headtaillabel",
+    "dive-slate": "diveslatelabel",
+}
+
 _SELECTORS = {
     "species": "select_next_for_species_preprocessing",
     "headtail": "select_next_for_headtail_preprocessing",
@@ -165,5 +184,46 @@ class TestCohortHonoursFlag:
         from fishsense_api.controllers import dive_cohort_controller
 
         await _seed_labelled_dive(session, 1, kind, flagged=True, canonical=False)
+        selector = getattr(dive_cohort_controller, _SELECTORS[kind])
+        assert await selector(session=session) is None
+
+    async def test_flag_on_a_null_superseded_row_does_not_select(self, session, kind):
+        """The other half of the raise-path guard.
+
+        Every resolver reads its labels through `get_<kind>_labels_for_dive`,
+        which filters `superseded == False` -- and NULL is not False in SQL. So
+        a NULL row is invisible to the resolver, and a selector that counted it
+        as live would pick this dive, stage its raw `.ORF`s from the NAS,
+        resolve nothing, and do it again every hour forever.
+
+        `laserlabel` and `headtaillabel` still hold NULLs in prod: both gained
+        the column nullable with no backfill (b3a78115ba3d, 06886d4ca175),
+        unlike the species/dive-slate pair (7934e62a12c0). The NULL is written
+        in SQL because `Field(default=False)` is a column default, so the ORM
+        substitutes False on insert and cannot produce the legacy row at all.
+        """
+        from sqlmodel import text
+
+        from fishsense_api.controllers import dive_cohort_controller
+
+        # The dive keeps its live, unflagged row, so the primary "image has no
+        # row of this kind" term stays false and only the flag could select it.
+        # A second, legacy row on the same image carries the flag and the NULL.
+        await _seed_labelled_dive(session, 1, kind, flagged=False)
+        # A different project: `(image_id, label_studio_project_id)` is the
+        # natural key, and a legacy row would in practice sit in one of the
+        # grandfathered shared projects anyway.
+        legacy = _models()[kind](
+            image_id=100, label_studio_project_id=2, completed=False
+        )
+        session.add(legacy)
+        await session.commit()
+        await session.exec(
+            text(
+                f"UPDATE {_TABLES[kind]} "
+                "SET superseded = NULL, needs_reprocess = 1 WHERE id = :i"
+            ).bindparams(i=legacy.id)
+        )
+
         selector = getattr(dive_cohort_controller, _SELECTORS[kind])
         assert await selector(session=session) is None

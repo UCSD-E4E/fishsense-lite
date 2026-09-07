@@ -279,11 +279,16 @@ def _has_image_flagged_for_reprocess(model) -> Any:
             # Superseded rows are invisible to the resolvers, whose per-dive
             # getters filter them out. Selecting on one would pick a dive the
             # resolver finds no work for, every hour, forever.
+            #
+            # `== False`, not "not superseded": this has to match the getter's
+            # filter exactly, and NULL is not False in SQL. `laserlabel` and
+            # `headtaillabel` still carry NULLs in prod (added nullable with no
+            # backfill), so counting NULL as live here would select dives whose
+            # resolver returns nothing. Same reasoning, and the same spelling,
+            # as the raise path in `label_controller._set_needs_reprocess`.
             .where(
-                or_(
-                    model.superseded == False, model.superseded.is_(None)
-                )  # noqa: E712  pylint: disable=singleton-comparison
-            )
+                model.superseded == False
+            )  # noqa: E712  pylint: disable=singleton-comparison
             .exists()
         )
         .exists()
