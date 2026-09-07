@@ -762,6 +762,85 @@ def test_calibration_target_choice_none_for_fish():
     )
 
 
+def test_calibration_target_choice_survives_the_laser_on_slate_marker():
+    """Labelers mark these frames "Slate, Laser on slate" as well as the board.
+
+    That is real practice, not a mistake: the frame *does* show a laser on a
+    flat target, and the slate marker is how a laser-on-target frame has always
+    been described. It puts the two answers on different taxonomy paths of the
+    same annotation.
+
+    It has to be harmless, and it is only harmless because this reads ALL the
+    taxonomy paths. `content_of_image` keeps `taxonomy[0]` alone, so whichever
+    the labeler happened to pick first is the one that lands there — a parser
+    that looked only at `content_of_image` would find the board or not
+    depending on click order.
+    """
+    for order in (
+        [["Slate", "Laser on slate"], ["Calibration Targets", "E4E Checkerboard"]],
+        [["Calibration Targets", "E4E Checkerboard"], ["Slate", "Laser on slate"]],
+    ):
+        results = [{"from_name": "species", "value": {"taxonomy": order}}]
+        assert (
+            sut._calibration_target_choice(  # pylint: disable=protected-access
+                results, {"E4E Checkerboard"}
+            )
+            == "E4E Checkerboard"
+        ), order
+
+
+def test_the_laser_on_slate_marker_does_not_become_a_slate_type():
+    """The stage-9 marker is not a slate *template* answer.
+
+    `dive_slate_id` stays NULL unless a labeler names one of the 11 templates,
+    which is what keeps a checkerboard dive out of stages 9 and 13 — and, since
+    stage 13 takes precedence over the checkerboard cohort for any dive it can
+    fit, what keeps it in the checkerboard cohort at all.
+    """
+    results = [
+        {
+            "from_name": "species",
+            "value": {
+                "taxonomy": [
+                    ["Slate", "Laser on slate"],
+                    ["Calibration Targets", "E4E Checkerboard"],
+                ]
+            },
+        }
+    ]
+    assert (
+        sut._slate_type_choice(  # pylint: disable=protected-access
+            results, {"H-Slate", "V-Slate 2"}
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_sync_links_the_board_on_a_frame_also_marked_laser_on_slate(monkeypatch):
+    """End to end, in the shape the frames are actually being labeled."""
+    task = _make_task(
+        101,
+        annotations=[_checkerboard_annotation(extra=[["Slate", "Laser on slate"]])],
+    )
+    task.is_labeled = True
+    label = _empty_species_label(image_id=42)
+    fs = _make_fs_client(label_lookup={101: label}, image_to_dive={42: 7})
+    ls = _make_ls_client([task])
+
+    monkeypatch.setattr(sut_utils, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "get_ls_client", lambda: ls)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    await ActivityEnvironment().run(
+        sut.sync_species_labels_for_label_studio_project_activity, 1
+    )
+
+    fs.dives.set_calibration_target.assert_awaited_once_with(7, 4)
+    # And no slate template was invented from the marker.
+    fs.dives.set_dive_slate.assert_not_awaited()
+
+
 @pytest.mark.asyncio
 async def test_sync_sets_calibration_target_from_the_board_choice(monkeypatch):
     task = _make_task(101, annotations=[_checkerboard_annotation()])
