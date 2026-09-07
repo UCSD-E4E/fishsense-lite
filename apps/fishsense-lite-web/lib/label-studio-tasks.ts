@@ -1,5 +1,5 @@
 import { env } from "./env";
-import { getAccessToken } from "./label-studio";
+import { getAccessToken, retryAfterMs } from "./label-studio";
 import type { LsRegion, LsTask } from "./triage";
 
 export type TaskPage = {
@@ -19,20 +19,6 @@ export type TaskPage = {
  * token exists.
  */
 const RATE_LIMIT_RETRIES = 3;
-const RATE_LIMIT_BASE_MS = 750;
-
-/** Hosted Label Studio rate-limits, and says how long to wait when it does. */
-function retryAfterMs(response: Response, attempt: number): number {
-  const header = response.headers.get("retry-after");
-  if (header) {
-    const seconds = Number(header);
-    if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
-    const at = Date.parse(header);
-    if (Number.isFinite(at)) return Math.max(0, at - Date.now());
-  }
-  // Exponential, so a burst backs off rather than re-forming.
-  return RATE_LIMIT_BASE_MS * 2 ** attempt;
-}
 
 async function authed(path: string, init: RequestInit = {}): Promise<Response> {
   const url = `${env.labelStudioUrl}${path}`;
