@@ -348,6 +348,7 @@ class HeadtailPredictionResult(BaseModel):
     checkpoint: Optional[str] = None
     core_version: Optional[str] = None
 
+
 class LaserAutoAcceptSummary(BaseModel):
     """What the auto-accept gate decided for one dive.
 

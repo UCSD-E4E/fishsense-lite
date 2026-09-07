@@ -118,7 +118,6 @@ _VALIDATORS = [
     Validator("sam3.model_name", cast=str, default="sam3"),
     Validator("sam3.model_version", cast=str, default="3.1"),
     Validator("sam3.checkpoint_filename", cast=str, default="sam3.1_multiplex.pt"),
-
     # --- laser auto-accept gate -------------------------------------------
     # Which of the laser detector's predictions may skip human review. Every
     # knob lives here rather than in code because the two operations that
