@@ -8,9 +8,8 @@ forever.
 
 from __future__ import annotations
 
-import pytest
 
-from fishsense_api_workflow_worker.activities.resolve_headtail_predict_inputs_activity import (  # noqa: E501
+from fishsense_api_workflow_worker.activities.resolve_headtail_predict_inputs_activity import (  # noqa: E501  pylint: disable=line-too-long
     select_images_needing_prediction,
 )
 from fishsense_shared.headtail_predictor import HEADTAIL_PREDICTOR_VERSION
@@ -60,19 +59,19 @@ def test_selects_an_unpredicted_image_with_a_valid_laser():
 
 def test_skips_an_image_with_no_laser():
     """The dot is the crop centre; without one there is nothing to predict on."""
-    assert _run([_Image(1)], [], [], []) == []
+    assert not _run([_Image(1)], [], [], [])
 
 
 def test_skips_a_laser_missing_coordinates():
-    assert _run([_Image(1)], [_Laser(101, 1, x=None)], [], []) == []
+    assert not _run([_Image(1)], [_Laser(101, 1, x=None)], [], [])
 
 
 def test_skips_an_incomplete_laser():
-    assert _run([_Image(1)], [_Laser(101, 1, completed=False)], [], []) == []
+    assert not _run([_Image(1)], [_Laser(101, 1, completed=False)], [], [])
 
 
 def test_skips_an_image_a_human_already_labelled():
-    assert _run([_Image(1)], [_Laser(101, 1)], [_HeadTail(1)], []) == []
+    assert not _run([_Image(1)], [_Laser(101, 1)], [_HeadTail(1)], [])
 
 
 def test_an_incomplete_headtail_row_is_not_a_label():
@@ -83,7 +82,7 @@ def test_an_incomplete_headtail_row_is_not_a_label():
 
 
 def test_skips_an_image_with_a_current_prediction():
-    assert _run([_Image(1)], [_Laser(101, 1)], [], [_Prediction(1)]) == []
+    assert not _run([_Image(1)], [_Laser(101, 1)], [], [_Prediction(1)])
 
 
 def test_reselects_a_stale_version():
@@ -116,7 +115,7 @@ def test_reselects_when_the_predictions_laser_was_superseded():
 
 
 def test_skips_non_canonical_images():
-    assert _run([_Image(1, is_canonical=False)], [_Laser(101, 1)], [], []) == []
+    assert not _run([_Image(1, is_canonical=False)], [_Laser(101, 1)], [], [])
 
 
 def test_carries_every_valid_dot_in_order():
@@ -130,7 +129,7 @@ def test_carries_every_valid_dot_in_order():
     assert picked[0].laser_label_ids == [101, 102]
 
 
-class TestJpegPresenceGate:
+class TestJpegPresenceGate:  # pylint: disable=protected-access
     """The predict stage reads the stage-5.1 JPEG, so it must not be
     dispatched for an image stage 5.1 has not rendered yet.
 
@@ -146,10 +145,10 @@ class TestJpegPresenceGate:
         )
 
         class _Store:
-            async def has_processed_jpeg(self, folder, checksum):
+            async def has_processed_jpeg(self, _folder, checksum):
                 return checksum in present_checksums
 
-        monkeypatch.setattr(mod, "open_object_store_client", lambda: _Store())
+        monkeypatch.setattr(mod, "open_object_store_client", _Store)
         monkeypatch.setattr(mod.activity, "heartbeat", lambda *a, **k: None)
         return mod
 
@@ -177,4 +176,4 @@ class TestJpegPresenceGate:
             raise AssertionError("must not open the object store for an empty dive")
 
         monkeypatch.setattr(mod, "open_object_store_client", _explode)
-        assert await mod._only_with_rendered_jpeg([]) == []
+        assert not await mod._only_with_rendered_jpeg([])
