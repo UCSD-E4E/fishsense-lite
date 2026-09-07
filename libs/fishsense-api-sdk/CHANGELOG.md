@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## [2.0.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.50.0...fishsense-api-sdk-v2.0.0) (2026-09-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** `RawImage`'s default decode changed (use `DecodeConfig.production()` for the old chain), and `set_laser_needs_reprocess` now flags only incomplete labels by default (pass `only_incomplete=False` for the old wholesale behaviour).
+
+### Features
+
+* **api:** adopt fishsense-core 4.0.0 and honour needs-reprocess in every stage ([#760](https://github.com/UCSD-E4E/fishsense-lite/issues/760)) ([d64a5bd](https://github.com/UCSD-E4E/fishsense-lite/commit/d64a5bd55128c8c8123808dc908ddc90a469728c))
+
 ## [1.50.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.49.1...fishsense-api-sdk-v1.50.0) (2026-09-05)
 
 
