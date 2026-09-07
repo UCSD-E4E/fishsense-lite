@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.17.0...fishsense-shared-v0.18.0) (2026-09-07)
+
+
+### Features
+
+* add Box as a measurable species calibration target ([#795](https://github.com/UCSD-E4E/fishsense-lite/issues/795)) ([d57a65f](https://github.com/UCSD-E4E/fishsense-lite/commit/d57a65f07bef0eb74a70dde613a38e2af8e8bc95))
+
 ## [0.17.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.16.1...fishsense-shared-v0.17.0) (2026-09-07)
 
 
