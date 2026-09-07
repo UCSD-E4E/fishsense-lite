@@ -84,15 +84,15 @@ export function TriageClient({ items, kindLabel, scanned, projects, notWalked }:
 
   if (!item) {
     return (
-      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center gap-3 p-8">
-        <p className="text-sm text-slate-300">
+      <div className="flex w-full flex-col gap-3 rounded-md border border-slate-200 p-6 dark:border-slate-800">
+        <p className="text-sm text-slate-700 dark:text-slate-300">
           Nothing left to triage in the {kindLabel} queue.
         </p>
 
         {/* An empty queue and a broken one looked identical, which cost real
             time to tell apart more than once. `loadQueue` already knew all of
             this and the page was throwing it away. */}
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-600 dark:text-slate-400">
           Walked {scanned} {scanned === 1 ? "project" : "projects"}.{" "}
           {scanned === 0
             ? "No projects were offered — either Label Studio is switched off, or the auto-accept gate has not finished sweeping any dive yet."
@@ -100,12 +100,12 @@ export function TriageClient({ items, kindLabel, scanned, projects, notWalked }:
         </p>
 
         {projects.length > 0 && (
-          <details className="text-xs text-slate-500" open>
+          <details className="text-xs text-slate-600 dark:text-slate-400" open>
             <summary className="cursor-pointer">Per project</summary>
-            <ul className="mt-2 space-y-1 font-mono text-[11px] text-slate-400">
+            <ul className="mt-2 space-y-1 font-mono text-[11px] text-slate-600 dark:text-slate-400">
               {projects.map((p) => (
                 <li key={p.projectId}>
-                  <span className="text-slate-300">{p.projectId}</span>
+                  <span className="font-medium text-slate-900 dark:text-slate-200">{p.projectId}</span>
                   {p.title ? ` ${p.title}` : ""}
                   {" — "}
                   {p.error
@@ -122,14 +122,14 @@ export function TriageClient({ items, kindLabel, scanned, projects, notWalked }:
               ))}
             </ul>
             {notWalked > 0 && (
-              <p className="mt-2 text-[11px] text-slate-500">
+              <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-500">
                 {notWalked} more offered but not reached this load.
               </p>
             )}
           </details>
         )}
 
-        <p className="text-xs text-slate-600">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           {accepted} accepted · {skipped} skipped this session
         </p>
       </div>
@@ -140,8 +140,8 @@ export function TriageClient({ items, kindLabel, scanned, projects, notWalked }:
     <>
       <Viewer key={item.taskId} item={item} />
 
-      <footer className="border-t border-slate-800 px-4 py-3">
-        <div className="mb-2 flex items-center justify-between text-xs text-slate-400">
+      <footer className="flex flex-col gap-2">
+        <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
           <span className="truncate" title={item.diveName}>
             {item.diveName} · task {item.taskId}
           </span>
@@ -151,13 +151,13 @@ export function TriageClient({ items, kindLabel, scanned, projects, notWalked }:
         </div>
 
         {item.partial && (
-          <p className="mb-2 rounded border border-amber-700/60 bg-amber-900/25 px-2 py-1 text-xs text-amber-300">
+          <p className="rounded-md border border-amber-400 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200">
             Partial detection — the model found {item.keypoints.length} of the expected points.
           </p>
         )}
 
         {message && (
-          <p className="mb-2 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-300">
+          <p className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
             {message}
           </p>
         )}
@@ -166,14 +166,14 @@ export function TriageClient({ items, kindLabel, scanned, projects, notWalked }:
           <button
             type="button"
             onClick={onSkip}
-            className="flex-1 rounded border border-slate-700 bg-slate-900 py-3 text-sm font-medium hover:bg-slate-800"
+            className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
           >
             Skip
           </button>
           <button
             type="button"
             onClick={onAccept}
-            className="flex-[2] rounded border border-emerald-600 bg-emerald-600/90 py-3 text-sm font-semibold text-emerald-950 hover:bg-emerald-500"
+            className="flex-[2] rounded-md border border-emerald-600 bg-emerald-600 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-500 dark:border-emerald-500 dark:bg-emerald-600 dark:hover:bg-emerald-500"
           >
             Accept
           </button>
@@ -181,7 +181,7 @@ export function TriageClient({ items, kindLabel, scanned, projects, notWalked }:
             <button
               type="button"
               onClick={onUndo}
-              className="rounded border border-slate-700 bg-slate-900 px-3 text-xs hover:bg-slate-800"
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800 text-xs"
             >
               Undo
             </button>
@@ -271,7 +271,7 @@ function Viewer({ item }: { item: TriageItem }) {
   return (
     <div
       ref={stageRef}
-      className="relative flex-1 touch-none select-none overflow-hidden bg-black"
+      className="relative aspect-[4/3] max-h-[70vh] w-full touch-none select-none overflow-hidden rounded-md border border-slate-300 bg-black dark:border-slate-800"
       onPointerDown={(e) => {
         (e.target as Element).setPointerCapture?.(e.pointerId);
         pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -372,7 +372,7 @@ function Viewer({ item }: { item: TriageItem }) {
 
       {/* Outside the transformed layer, so retained zoom cannot magnify it. */}
       {!ready && (
-        <div className="absolute inset-0 grid place-items-center text-xs text-slate-500">
+        <div className="absolute inset-0 grid place-items-center text-xs text-slate-400">
           Loading frame…
         </div>
       )}
