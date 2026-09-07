@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { isPortalAuthorized } from "@/lib/authz";
-import { fetchTaskImage, getTask } from "@/lib/label-studio-tasks";
+import { fetchTaskImage } from "@/lib/label-studio-tasks";
 
 /**
  * Streams a task's frame through this server.
@@ -32,15 +32,30 @@ export async function GET(
     return new NextResponse("Bad task id", { status: 400 });
   }
 
-  const task = await getTask(taskId);
-  const uri = typeof task?.data?.image === "string" ? task.data.image : null;
-  if (!uri) {
-    return new NextResponse("Task has no image", { status: 404 });
+  const resolved = await fetchTaskImage(taskId);
+
+  if (resolved.kind === "unresolved") {
+    // Label Studio handed the URI back unchanged, so the project has no
+    // storage connected to resolve it against. Fetching harder will not help,
+    // and saying which URI failed is the whole point of reporting it.
+    const detail = `Label Studio could not resolve ${resolved.uri || "(no image in task data)"} for task ${taskId}. The project likely has no source storage connected.`;
+    console.error("[triage/image] unresolved", { taskId, uri: resolved.uri });
+    return new NextResponse(detail, { status: 502 });
   }
 
-  const upstream = await fetchTaskImage(taskId, uri);
+  const upstream = resolved.response;
   if (!upstream.ok || !upstream.body) {
-    return new NextResponse("Upstream image fetch failed", { status: 502 });
+    // Say what the upstream actually said. A bare "Upstream image fetch
+    // failed" is what made the first failure here undiagnosable from the
+    // browser, and it cost a deploy to learn nothing.
+    const body = await upstream.text().catch(() => "");
+    const detail = `Upstream ${upstream.status} ${upstream.statusText} for task ${taskId} at ${resolved.url}${body ? ` — ${body.slice(0, 300)}` : ""}`;
+    console.error("[triage/image] upstream failed", {
+      taskId,
+      url: resolved.url,
+      status: upstream.status,
+    });
+    return new NextResponse(detail, { status: 502 });
   }
 
   return new NextResponse(upstream.body, {

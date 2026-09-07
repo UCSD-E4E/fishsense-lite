@@ -114,23 +114,65 @@ describe("acceptPrediction", () => {
 });
 
 describe("fetchTaskImage", () => {
-  // `resolve_uri` does NOT return a presigned S3 URL — it returns a path on
-  // Label Studio's own API server, and that path is authenticated. Getting the
-  // shape wrong reported "queue empty" against a project holding 283 tasks.
-  it("hits the resolve path with the base64 of the s3 URI", async () => {
-    let seen = "";
-    mockFetch(async (url) => {
-      seen = url;
-      return new Response("jpegbytes", { status: 200 });
-    });
+  // The previous test asserted that a hand-built
+  // `/tasks/{id}/resolve/?fileuri={base64}` URL was constructed correctly. It
+  // passed for weeks and the fetch 502'd every time in production, because it
+  // verified our assumption rather than Label Studio's behaviour. Ask Label
+  // Studio where the frame is; handle each shape it can answer with.
 
-    await fetchTaskImage(42, "s3://bucket/preprocess_jpeg/abc.JPG");
+  function taskWith(image: string) {
+    return async (url: string) => {
+      if (url.includes("/api/tasks/")) {
+        expect(url).toContain("resolve_uri=true");
+        return json({ id: 42, data: { image } });
+      }
+      return new Response("jpegbytes", {
+        status: 200,
+        headers: { "content-type": "image/jpeg" },
+      });
+    };
+  }
 
-    expect(seen).toContain("/tasks/42/resolve/?fileuri=");
-    const encoded = new URL(seen).searchParams.get("fileuri") ?? "";
-    expect(Buffer.from(encoded, "base64").toString("utf8")).toBe(
-      "s3://bucket/preprocess_jpeg/abc.JPG",
+  it("fetches a presigned URL WITHOUT our Authorization header", async () => {
+    const fetchMock = mockFetch(taskWith("https://s3.example/frame.JPG?sig=abc"));
+    const out = await fetchTaskImage(42);
+
+    expect(out.kind).toBe("response");
+    const call = fetchMock.mock.calls.find(([u]) => u.startsWith("https://s3.example"));
+    expect(call).toBeDefined();
+    // Sending a bearer alongside a presigned signature can be rejected
+    // outright by S3.
+    const headers = (call?.[1]?.headers ?? {}) as Record<string, string>;
+    expect(headers.Authorization).toBeUndefined();
+  });
+
+  it("fetches a Label Studio path WITH auth, resolved against the base", async () => {
+    const fetchMock = mockFetch(taskWith("/data/upload/1/frame.JPG"));
+    const out = await fetchTaskImage(42);
+
+    expect(out.kind).toBe("response");
+    const call = fetchMock.mock.calls.find(([u]) => u.includes("/data/upload/"));
+    expect(call?.[0]).toBe("http://ls.test/data/upload/1/frame.JPG");
+    const headers = (call?.[1]?.headers ?? {}) as Record<string, string>;
+    expect(headers.Authorization).toMatch(/^Bearer /);
+  });
+
+  // Label Studio hands the URI straight back when the project has no storage
+  // connected. Fetching harder cannot fix that, so it is reported rather than
+  // attempted — the case that produced a bare 502 with nothing to read.
+  it("reports an unresolved s3 URI instead of fetching it", async () => {
+    mockFetch(taskWith("s3://bucket/preprocess_jpeg/abc.JPG"));
+    const out = await fetchTaskImage(42);
+
+    expect(out).toEqual({ kind: "unresolved", uri: "s3://bucket/preprocess_jpeg/abc.JPG" });
+  });
+
+  it("reports a task carrying no image at all", async () => {
+    mockFetch(async (url) =>
+      url.includes("/api/tasks/") ? json({ id: 42, data: {} }) : json({}),
     );
+    const out = await fetchTaskImage(42);
+    expect(out).toEqual({ kind: "unresolved", uri: "" });
   });
 });
 
