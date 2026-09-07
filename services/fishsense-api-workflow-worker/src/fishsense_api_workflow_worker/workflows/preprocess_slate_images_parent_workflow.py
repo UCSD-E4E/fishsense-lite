@@ -54,6 +54,19 @@ class PreprocessSlateImagesParentWorkflow:
         )
 
         if not inputs.image_checksums:
+            # A flag that reached no image still has to come down. It is the
+            # one term in the cohort predicate that does not go false on its
+            # own, so leaving it up re-selects this dive every hour forever,
+            # re-staging its raw `.ORF`s from the NAS and starving every
+            # higher-id dive behind it. Losing the operator's request is the
+            # lesser harm, so it is lowered and logged.
+            workflow.logger.warning(
+                "reprocess flag resolved to no work; lowering it dive_id=%d",
+                dive_id,
+            )
+            await _dispatch.run_sdk_activity(
+                "clear_slate_reprocess_flags_activity", dive_id
+            )
             return inputs.dive_id
 
         await _dispatch.wake_data_worker()
@@ -75,4 +88,7 @@ class PreprocessSlateImagesParentWorkflow:
             f"populate-dive-slate-{dive_id}",
         )
 
+        await _dispatch.run_sdk_activity(
+            "clear_slate_reprocess_flags_activity", dive_id
+        )
         return inputs.dive_id

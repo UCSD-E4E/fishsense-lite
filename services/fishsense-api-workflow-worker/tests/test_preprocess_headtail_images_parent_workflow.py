@@ -72,6 +72,9 @@ def _make_populate_recording_activity(captures: List[tuple]):
     return record_populate_dispatch
 
 
+_CLEAR_CALLS: List[int] = []
+
+
 def _make_stubs(
     selector_result: Optional[int],
     resolver_result: Optional[PreprocessHeadtailImagesInput],
@@ -93,6 +96,13 @@ def _make_stubs(
     async def stub_cleanup(dive_id: int) -> None:
         return None
 
+    @activity.defn(name="clear_headtail_reprocess_flags_activity")
+    async def stub_clear_reprocess(dive_id: int) -> int:
+        """The parent lowers the redraw flag after its child completes;
+        without it the dive stays in the cohort forever."""
+        _CLEAR_CALLS.append(dive_id)
+        return 0
+
     @activity.defn(name="ensure_data_worker_running_activity")
     async def stub_ensure_running() -> int:
         return 0
@@ -102,6 +112,8 @@ def _make_stubs(
         stub_resolve,
         stub_stage,
         stub_cleanup,
+
+        stub_clear_reprocess,
         stub_ensure_running,
     ]
 
@@ -284,3 +296,39 @@ async def test_populate_redispatches_on_a_later_firing_for_the_same_dive():
         ("populate-headtail-440", 440),
         ("populate-headtail-440", 440),
     ], "the second firing must re-dispatch populate, or the dive can never drain"
+
+
+async def test_lowers_the_reprocess_flag_even_when_no_work_resolves():
+    """A flag that reaches no image must still be lowered.
+
+    The flag is the one term in the cohort predicate that does not go false on
+    its own. If the "no work resolved" early return skips the clear step, the
+    selector picks the same dive on the next firing and every firing after --
+    staging its raw `.ORF`s from the NAS each time and starving every higher-id
+    dive behind it. Lowering a flag that reached nothing loses the operator's
+    request, which is why the parent logs it; wedging the cohort is worse.
+    """
+    inputs = PreprocessHeadtailImagesInput(
+        dive_id=907,
+        image_checksums=[],
+        camera_matrix=_K,
+        distortion_coefficients=_D,
+    )
+    activities = _make_stubs(907, inputs)
+    _CLEAR_CALLS.clear()
+
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
+            task_queue="test-stage5-1-clear",
+            workflows=[PreprocessHeadtailImagesParentWorkflow, _StubPopulateWorkflow],
+            activities=activities[0] if isinstance(activities, tuple) else activities,
+        ):
+            result = await env.client.execute_workflow(
+                PreprocessHeadtailImagesParentWorkflow.run,
+                id="reprocess-clear-907",
+                task_queue="test-stage5-1-clear",
+            )
+
+    assert result == 907
+    assert _CLEAR_CALLS == [907], "the flag must be lowered on the no-work path"

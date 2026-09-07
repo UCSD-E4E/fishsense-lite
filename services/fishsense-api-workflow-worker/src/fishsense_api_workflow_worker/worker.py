@@ -112,6 +112,15 @@ from fishsense_api_workflow_worker.activities.resolve_headtail_preprocess_inputs
 from fishsense_api_workflow_worker.activities.clear_laser_reprocess_flags_activity import (  # pylint: disable=line-too-long
     clear_laser_reprocess_flags_activity,
 )
+from fishsense_api_workflow_worker.activities.clear_species_reprocess_flags_activity import (  # pylint: disable=line-too-long
+    clear_species_reprocess_flags_activity,
+)
+from fishsense_api_workflow_worker.activities.clear_headtail_reprocess_flags_activity import (  # pylint: disable=line-too-long
+    clear_headtail_reprocess_flags_activity,
+)
+from fishsense_api_workflow_worker.activities.clear_slate_reprocess_flags_activity import (  # pylint: disable=line-too-long
+    clear_slate_reprocess_flags_activity,
+)
 from fishsense_api_workflow_worker.activities.resolve_laser_preprocess_inputs_activity import (  # pylint: disable=line-too-long
     resolve_laser_preprocess_inputs_activity,
 )
@@ -787,6 +796,9 @@ async def main():
                 finalize_dive_activity,
                 resolve_dive_frame_clustering_inputs_activity,
                 clear_laser_reprocess_flags_activity,
+                clear_species_reprocess_flags_activity,
+                clear_headtail_reprocess_flags_activity,
+                clear_slate_reprocess_flags_activity,
                 resolve_laser_preprocess_inputs_activity,
                 resolve_laser_predict_inputs_activity,
                 persist_laser_predictions_activity,

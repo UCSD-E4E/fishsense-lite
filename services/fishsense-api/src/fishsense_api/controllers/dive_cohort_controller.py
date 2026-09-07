@@ -33,7 +33,7 @@ which is silent. `test_dive_pipeline_status_view.py` pins the agreement.
 """
 
 import logging
-from typing import List
+from typing import Any, List
 
 from fastapi import Depends
 from sqlalchemy import and_, func, or_
@@ -245,6 +245,51 @@ SLATE_CONTENT_MARKER = taxonomy.SLATE_CONTENT_MARKER
 # 422.
 
 
+def _has_image_flagged_for_reprocess(model) -> Any:
+    """EXISTS: this dive has a canonical image whose `model` row is flagged.
+
+    `needs_reprocess` is the second way into a preprocess cohort, and the only
+    way a decode or overlay change reaches an image that has already been
+    preprocessed -- the main predicate is "image has no row of this kind",
+    which goes false the moment populate seeds a row, freezing that image's
+    JPEG for good.
+
+    Canonical images only. The same physical frame lives under several dive
+    rows and only the canonical copy is ever preprocessed, so a flag on a
+    duplicate would select a dive whose resolver finds no work for it -- and
+    the dive would re-stage its raw `.ORF`s from the NAS every hour, forever,
+    starving every higher-id dive behind it.
+
+    Parameterised by model rather than written out per stage: `duplicate-code`
+    is textual, so four copies differing only in `LaserLabel` vs `SpeciesLabel`
+    score zero and would never be flagged.
+    """
+    return (
+        select(Image.id)
+        .where(Image.dive_id == Dive.id)
+        .where(
+            Image.is_canonical == True
+        )  # noqa: E712  pylint: disable=singleton-comparison
+        .where(
+            select(model.id)
+            .where(model.image_id == Image.id)
+            .where(
+                model.needs_reprocess == True
+            )  # noqa: E712  pylint: disable=singleton-comparison
+            # Superseded rows are invisible to the resolvers, whose per-dive
+            # getters filter them out. Selecting on one would pick a dive the
+            # resolver finds no work for, every hour, forever.
+            .where(
+                or_(
+                    model.superseded == False, model.superseded.is_(None)
+                )  # noqa: E712  pylint: disable=singleton-comparison
+            )
+            .exists()
+        )
+        .exists()
+    )
+
+
 @app.get("/api/v1/dives/select-next/laser-preprocessing/")
 async def select_next_for_laser_preprocessing(
     session: AsyncSession = Depends(get_async_session),
@@ -294,18 +339,7 @@ async def select_next_for_laser_preprocessing(
         )
         .exists()
     )
-    has_image_flagged_for_reprocess = (
-        select(Image.id)
-        .where(Image.dive_id == Dive.id)
-        .where(Image.is_canonical == True)
-        .where(
-            select(LaserLabel.id)
-            .where(LaserLabel.image_id == Image.id)
-            .where(LaserLabel.needs_reprocess == True)
-            .exists()
-        )
-        .exists()
-    )
+    has_image_flagged_for_reprocess = _has_image_flagged_for_reprocess(LaserLabel)
     query = (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
@@ -591,7 +625,12 @@ async def select_next_for_species_preprocessing(
     query = (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
-        .where(has_valid_laser_image_in_cluster_without_real_species)
+        .where(
+            or_(
+                has_valid_laser_image_in_cluster_without_real_species,
+                _has_image_flagged_for_reprocess(SpeciesLabel),
+            )
+        )
         .order_by(Dive.id)
         .limit(1)
     )
@@ -737,7 +776,12 @@ async def select_next_for_headtail_preprocessing(
     query = (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
-        .where(has_valid_laser_image_without_real_headtail)
+        .where(
+            or_(
+                has_valid_laser_image_without_real_headtail,
+                _has_image_flagged_for_reprocess(HeadTailLabel),
+            )
+        )
         .order_by(Dive.id)
         .limit(1)
     )
@@ -778,7 +822,12 @@ async def select_next_for_slate_preprocessing(
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
         .where(Dive.dive_slate_id != None)
-        .where(has_slate_marked_image_without_real_dive_slate_label)
+        .where(
+            or_(
+                has_slate_marked_image_without_real_dive_slate_label,
+                _has_image_flagged_for_reprocess(DiveSlateLabel),
+            )
+        )
         .order_by(Dive.id)
         .limit(1)
     )
