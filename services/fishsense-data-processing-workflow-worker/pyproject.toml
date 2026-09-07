@@ -19,6 +19,31 @@ dependencies = [
     # cached on a volume (see `checkpoint_cache`), which keeps a gated,
     # multi-gigabyte download out of a pullable image.
     "sam3 @ git+https://github.com/facebookresearch/sam3.git@8e451d5eb43c817b64ae7577fb7b9ae223db88a9",
+    # sam3's `model_builder` does a module-level `import pkg_resources`, and
+    # calls `resource_filename("sam3", "assets/bpe_simple_vocab_16e6.txt.gz")`
+    # to find the BPE vocab inside its own wheel. sam3 does not declare
+    # setuptools, and Python 3.12+ no longer seeds it into a venv, so the
+    # `uv sync --no-dev` runtime image had no `pkg_resources` and every
+    # predict activity died on its first frame in prod (2026-09-07).
+    #
+    # The upper bound is the load-bearing half. setuptools **removed**
+    # `pkg_resources` in 81 -- it is not merely deprecated -- so an unbounded
+    # `setuptools` resolves to 83 and fails exactly as if it were absent.
+    # 80.9.0 still ships it, warning "pin to Setuptools<81", which is what
+    # this is. Revisit when sam3 stops importing it; this pin is a ceiling on
+    # a dependency we do not otherwise use, so it should not outlive that.
+    "setuptools>=80.9.0,<81",
+    # Three more that sam3's import chain reaches but its `[project]` block
+    # never declares -- it lists only timm/numpy/tqdm/ftfy/regex/iopath/
+    # typing_extensions/huggingface_hub. `pycocotools` is the surprising one:
+    # `model_builder` pulls in `sam3.train.data.coco_json_loaders`, training
+    # code that upstream lists only under its `dev`/`notebooks` extras, so an
+    # inference-only install cannot see it. Found by walking the chain in a
+    # `--no-dev` env one ModuleNotFoundError at a time; the runtime-import CI
+    # job now walks the same chain so the next gap cannot reach prod.
+    "einops>=0.8.0",
+    "psutil>=6.0.0",
+    "pycocotools>=2.0.8",
     "fishsense-shared",
     "httpx>=0.28.1",
     "label-studio-sdk>=2.0.7",

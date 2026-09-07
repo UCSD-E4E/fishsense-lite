@@ -101,6 +101,14 @@ jobs:
             # opencv-python needs libgl1 + libglib2.0-0 to import cv2,
             # mirroring this service's Dockerfile system-libs install.
             apt: libgl1 libglib2.0-0
+            # Heavy third-party modules the activities import *lazily*, inside
+            # the function that needs them, so that the cpu-role worker never
+            # pays for torch. `import ...worker` therefore never reaches them,
+            # which is exactly how a missing runtime dep got to prod: sam3's
+            # `model_builder` imports `pkg_resources` at module scope, the
+            # image had no setuptools, and every predict activity died on its
+            # first frame while this job stayed green. Import them explicitly.
+            lazy_modules: sam3.model_builder sam3.model.sam3_image_processor
     name: runtime import (${{ matrix.package }})
     steps:
       - uses: actions/checkout@v4
@@ -125,6 +133,15 @@ jobs:
         # `ModuleNotFoundError`. Same crash mode as the deployed
         # container.
         run: .venv/bin/python -c "import ${{ matrix.module }}"
+      - name: Import lazily-imported runtime modules
+        # Same runtime-only env; these are reached at activity runtime rather
+        # than at import, so the entry-point import above cannot cover them.
+        if: matrix.lazy_modules != ''
+        run: |
+          for m in ${{ matrix.lazy_modules }}; do
+            echo "importing $m"
+            .venv/bin/python -c "import $m"
+          done
 
   # Node test suite for apps/fishsense-lite-web. CLAUDE.md mandates TDD project-wide;
   # without this job, broken tests in apps/fishsense-lite-web/lib could land on main.
