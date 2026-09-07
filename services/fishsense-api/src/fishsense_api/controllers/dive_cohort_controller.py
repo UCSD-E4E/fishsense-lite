@@ -916,6 +916,78 @@ async def select_next_for_laser_calibration(
     return (await session.exec(query)).first()
 
 
+@app.get("/api/v1/dives/select-next/checkerboard-laser-calibration/")
+async def select_next_for_checkerboard_laser_calibration(
+    session: AsyncSession = Depends(get_async_session),
+) -> int | None:
+    """Checkerboard calibration: HIGH-priority + `calibration_target_id` set +
+    no LaserExtrinsics of its own + at least `MIN_SLATE_LASER_POINTS` images
+    carrying a live laser dot.
+
+    The sibling of `select_next_for_laser_calibration`, for the dives whose
+    calibration frames show a printed board rather than one of the 11
+    `DiveSlate` templates. Same fit, same threshold, same `LaserExtrinsics`
+    row — only the source of the plane differs. See
+    `docs/plans/checkerboard-laser-calibration.md`.
+
+    **An observation here is just a canonical image with a live laser dot.**
+    The slate cohort counts hand-clicked `DiveSlateLabel` rows because a human
+    supplied the correspondences; a checkerboard's corners are detected by the
+    data-worker at run time, so there is no label row to count. `superseded ==
+    False` with nothing about `completed`, matching `get_laser_label`: a
+    populate-seeded placeholder is excluded by its NULL x/y, not by its
+    completion state.
+
+    **No borrowed-calibration fallback, deliberately.** Stage 14's cohort
+    accepts `calibration_dive_id` because it only needs *some* extrinsics to
+    measure with. This one must not: a dive that can fit its own is exactly
+    the dive to fit, and `get_laser_extrinsics_for_dive` is own-wins-then-link,
+    so its own answer takes over the moment it exists.
+
+    **Known over-approximation, and a wider one than stage 13's.** SQL cannot
+    tell whether `findChessboardCornersSB` will actually find a board in these
+    frames — that needs the raw bytes, a rectification and a detector run. A
+    dive linked to a target whose frames never detect one is therefore offered
+    here, refused by the activity, and re-selected every hour, blocking every
+    higher-id dive behind it (this is ORDER BY id LIMIT 1, the shape that let
+    prod dive 347 hold up 427 and 436). The remedy is operator-side and
+    deliberate: clear the link (`DELETE /dives/{id}/calibration-target/`) or
+    park the dive at `Priority.NONE` with a note. Both drop it immediately.
+    """
+    has_live_laser_dot = (
+        select(LaserLabel.id)
+        .where(LaserLabel.image_id == Image.id)
+        .where(LaserLabel.superseded == False)
+        .where(LaserLabel.x != None)
+        .where(LaserLabel.y != None)
+        .correlate(Image)
+        .exists()
+    )
+    usable_observation_count = (
+        select(func.count(Image.id))  # pylint: disable=not-callable
+        .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
+        .where(has_live_laser_dot)
+        .correlate(Dive)
+        .scalar_subquery()
+    )
+    query = (
+        select(Dive.id)
+        .where(Dive.priority == Priority.HIGH)
+        .where(Dive.calibration_target_id != None)
+        .where(
+            ~select(LaserExtrinsics.id)
+            .where(LaserExtrinsics.dive_id == Dive.id)
+            .correlate(Dive)
+            .exists()
+        )
+        .where(usable_observation_count >= MIN_SLATE_LASER_POINTS)
+        .order_by(Dive.id)
+        .limit(1)
+    )
+    return (await session.exec(query)).first()
+
+
 @app.get("/api/v1/dives/select-next/measure-fish/")
 async def select_next_for_measure_fish(
     session: AsyncSession = Depends(get_async_session),

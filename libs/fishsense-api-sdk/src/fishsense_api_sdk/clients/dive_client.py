@@ -153,6 +153,15 @@ class DiveClient(ClientBase):
         """Stage 13 cohort selector. See `select_next_for_laser_preprocessing`."""
         return await self._select_next("laser-calibration")
 
+    async def select_next_for_checkerboard_laser_calibration(self) -> int | None:
+        """Checkerboard calibration cohort selector.
+
+        The sibling of `select_next_for_laser_calibration`, for dives linked
+        to a planar `CalibrationTarget` rather than a `DiveSlate`. See
+        `select_next_for_laser_preprocessing`.
+        """
+        return await self._select_next("checkerboard-laser-calibration")
+
     async def select_next_for_measure_fish(self) -> int | None:
         """Stage 14 cohort selector. See `select_next_for_laser_preprocessing`."""
         return await self._select_next("measure-fish")
