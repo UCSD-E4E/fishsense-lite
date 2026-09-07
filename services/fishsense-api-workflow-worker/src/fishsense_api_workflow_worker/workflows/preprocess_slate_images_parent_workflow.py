@@ -20,6 +20,9 @@ from datetime import timedelta
 from fishsense_shared import PreprocessSlateImagesInput
 from temporalio import workflow
 
+from fishsense_api_workflow_worker.activities.reprocess_scope import (
+    ClearReprocessFlagsInput,
+)
 from fishsense_api_workflow_worker.workflows import _dispatch
 
 
@@ -54,6 +57,20 @@ class PreprocessSlateImagesParentWorkflow:
         )
 
         if not inputs.image_checksums:
+            # A flag that reached no image still has to come down. It is the
+            # one term in the cohort predicate that does not go false on its
+            # own, so leaving it up re-selects this dive every hour forever,
+            # re-staging its raw `.ORF`s from the NAS and starving every
+            # higher-id dive behind it. Losing the operator's request is the
+            # lesser harm, so it is lowered and logged.
+            workflow.logger.warning(
+                "reprocess flag resolved to no work; lowering it dive_id=%d",
+                dive_id,
+            )
+            await _dispatch.run_sdk_activity(
+                "clear_slate_reprocess_flags_activity",
+                ClearReprocessFlagsInput(dive_id=dive_id),
+            )
             return inputs.dive_id
 
         await _dispatch.wake_data_worker()
@@ -75,4 +92,12 @@ class PreprocessSlateImagesParentWorkflow:
             f"populate-dive-slate-{dive_id}",
         )
 
+        # Scoped to what this run actually redrew. The child can run for two
+        # hours, so an unscoped clear would silently discard a flag raised
+        # while it was working -- a request that redrew nothing, lost with no
+        # error. Anything flagged since stays flagged for the next firing.
+        await _dispatch.run_sdk_activity(
+            "clear_slate_reprocess_flags_activity",
+            ClearReprocessFlagsInput(dive_id=dive_id, checksums=inputs.image_checksums),
+        )
         return inputs.dive_id

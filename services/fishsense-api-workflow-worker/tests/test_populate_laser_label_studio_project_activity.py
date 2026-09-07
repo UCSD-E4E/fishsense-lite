@@ -448,3 +448,138 @@ def test_the_chosen_label_reaches_the_keypoint_annotation():
     prediction = SimpleNamespace(x=2000.0, y=1200.0, width=4014, height=3016)
     annotations = _prediction_annotations(prediction, "Green Laser")
     assert annotations[0]["result"][0]["value"]["keypointlabels"] == ["Green Laser"]
+
+
+# --- auto-accepted frames -----------------------------------------------------
+#
+# A prediction the gate cleared is imported as a completed ANNOTATION rather
+# than a prediction. Label Studio's labeling stream serves only un-annotated
+# tasks, so the labeler never sees it — but the project stays a complete record
+# of the dive and any frame can be reopened and corrected later, which a
+# task-less direct write would not allow.
+#
+# Coordinates are deliberately NOT written here. The hourly sync remains the
+# single writer of label x/y, reading them back out of Label Studio exactly as
+# it does for a human annotation, so there is one code path and no way for
+# populate and sync to disagree about the same frame.
+
+
+def _accepted(image_id: int, **kwargs):
+    prediction = _prediction(image_id, **kwargs)
+    prediction.auto_accept = True
+    prediction.gate_verdict = "auto_accepted"
+    return prediction
+
+
+def test_auto_accepted_prediction_becomes_an_annotation_not_a_prediction():
+    # pylint: disable=protected-access
+    task = sut._build_task(_image(7, "abc123"), _accepted(7), "Red Laser")
+    assert not task["predictions"]
+    assert len(task["annotations"]) == 1
+    result = task["annotations"][0]["result"]
+    assert result[0]["value"]["keypointlabels"] == ["Red Laser"]
+
+
+def test_auto_accepted_annotation_matches_the_shape_of_an_accepted_prediction():
+    """`origin: prediction` is what Label Studio itself stamps when a labeler
+    opens a pre-annotated task and submits it unchanged. Writing the same thing
+    is truthful — the model placed the point and nothing moved it — and keeps
+    an auto-accepted frame indistinguishable in shape from the 93% of human
+    reviews that produced exactly this."""
+    # pylint: disable=protected-access
+    task = sut._build_task(_image(7, "abc123"), _accepted(7), "Red Laser")
+    result = task["annotations"][0]["result"][0]
+    assert result["origin"] == "prediction"
+    assert result["from_name"] == "laser"
+    assert result["type"] == "keypointlabels"
+
+
+def test_auto_accepted_annotation_names_the_service_account(monkeypatch):
+    """**The import path must say who wrote it; the token does not.**
+
+    `ls.annotations.create` stamps `completed_by` from the authenticated user,
+    so swapping the worker's token to the service account fixed that path. An
+    *imported* annotation is different: Label Studio attributes it to the
+    project owner, not the API caller. Prod proved it — the worker was already
+    running as the bot at 18:07 on 2026-09-04, and populate still seeded 61
+    annotations at 18:17 under the human who owned the project, then 164 more
+    at 19:17.
+
+    So this path has to name the account explicitly, from config, because
+    there is nothing in the request for LS to infer it from.
+    """
+    # pylint: disable=protected-access
+    monkeypatch.setattr(sut.settings.label_studio, "bot_user_id", 215238, raising=False)
+
+    task = sut._build_task(_image(7, "abc123"), _accepted(7), "Red Laser")
+
+    assert task["annotations"][0]["completed_by"] == 215238
+
+
+def test_auto_accepted_annotation_omits_completed_by_when_unconfigured(monkeypatch):
+    """Unset means omit the key, never send None.
+
+    `bot_user_id` has to reach the slot through the OpenBao render, and that is
+    a three-step manual rotation nobody can be relied on to complete in one go.
+    Sending `completed_by: null` on a miss would be a hard LS validation error
+    that fails populate for the whole dive; omitting it degrades to the old
+    behaviour, which is wrong attribution but not a broken pipeline.
+    """
+    # pylint: disable=protected-access
+    monkeypatch.setattr(sut.settings.label_studio, "bot_user_id", None, raising=False)
+
+    task = sut._build_task(_image(7, "abc123"), _accepted(7), "Red Laser")
+
+    assert "completed_by" not in task["annotations"][0]
+
+
+def test_auto_accepted_annotation_is_not_marked_ground_truth():
+    """Shape-matching a human review stops at the *geometry*, not the claim.
+
+    `origin: prediction` is truthful — the model placed the point and nothing
+    moved it. `ground_truth` is a different assertion: Label Studio treats it
+    as "this annotation is definitive", the reference other work is scored
+    against. An auto-accepted frame skipped review entirely, and the gate ships
+    an audit sample precisely because some of these are expected to be wrong.
+
+    Must be explicit. Left unset, Label Studio stamped `ground_truth: true` on
+    import — verified on prod dive 520, all 37 annotations.
+    """
+    # pylint: disable=protected-access
+    task = sut._build_task(_image(7, "abc123"), _accepted(7), "Red Laser")
+
+    assert task["annotations"][0]["ground_truth"] is False
+
+
+def test_auto_accepted_keypoint_carries_the_same_percentages_as_a_prediction():
+    """The annotation must land on the pixel the detector chose. Sharing the
+    conversion with `_prediction_annotations` is what guarantees it."""
+    # pylint: disable=protected-access
+    seeded = sut._build_task(_image(7, "abc123"), _prediction(7), "Red Laser")
+    accepted = sut._build_task(_image(7, "abc123"), _accepted(7), "Red Laser")
+    assert (
+        accepted["annotations"][0]["result"][0]["value"]
+        == seeded["predictions"][0]["result"][0]["value"]
+    )
+
+
+def test_a_prediction_the_gate_rejected_is_still_seeded_for_review():
+    """Not auto-accepted is the normal path, not an error: the frame goes to a
+    labeler with the model's guess as a pre-annotation, exactly as before the
+    gate existed."""
+    # pylint: disable=protected-access
+    prediction = _prediction(7)
+    prediction.auto_accept = False
+    prediction.gate_verdict = "off_line"
+    task = sut._build_task(_image(7, "abc123"), prediction, "Red Laser")
+    assert not task["annotations"]
+    assert len(task["predictions"]) == 1
+
+
+def test_an_ungated_prediction_is_seeded_not_auto_accepted():
+    """`auto_accept` defaults False, so a prediction the gate has never judged
+    behaves exactly as it did before this feature."""
+    # pylint: disable=protected-access
+    task = sut._build_task(_image(7, "abc123"), _prediction(7), "Red Laser")
+    assert not task["annotations"]
+    assert len(task["predictions"]) == 1

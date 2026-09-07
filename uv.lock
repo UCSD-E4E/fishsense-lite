@@ -662,7 +662,7 @@ wheels = [
 
 [[package]]
 name = "fishsense-api"
-version = "1.50.0"
+version = "2.0.1"
 source = { editable = "services/fishsense-api" }
 dependencies = [
     { name = "alembic" },
@@ -715,7 +715,7 @@ dev = [
 
 [[package]]
 name = "fishsense-api-sdk"
-version = "1.48.2"
+version = "2.0.1"
 source = { editable = "libs/fishsense-api-sdk" }
 dependencies = [
     { name = "httpx" },
@@ -742,7 +742,7 @@ dev = [
 
 [[package]]
 name = "fishsense-api-workflow-worker"
-version = "1.56.6"
+version = "2.0.1"
 source = { editable = "services/fishsense-api-workflow-worker" }
 dependencies = [
     { name = "boto3" },
@@ -842,16 +842,17 @@ dev = [
 
 [[package]]
 name = "fishsense-core"
-version = "3.0.0"
-source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v3.0.0/fishsense_core-3.0.0-cp313-cp313-manylinux_2_34_x86_64.whl" }
+version = "4.0.0"
+source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v4.0.0/fishsense_core-4.0.0-cp313-cp313-manylinux_2_34_x86_64.whl" }
 dependencies = [
     { name = "numpy" },
     { name = "opencv-python-headless" },
     { name = "rawpy" },
     { name = "scikit-image" },
+    { name = "scipy" },
 ]
 wheels = [
-    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v3.0.0/fishsense_core-3.0.0-cp313-cp313-manylinux_2_34_x86_64.whl", hash = "sha256:3ddf3503abb3e78e1a5d43998b9bd6156a814a242d2af5784bdecba09975e799" },
+    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v4.0.0/fishsense_core-4.0.0-cp313-cp313-manylinux_2_34_x86_64.whl", hash = "sha256:75396ed9200cf20fd621965ce3584cc2a460bd253ee1964f60870282fb34d428" },
 ]
 
 [package.optional-dependencies]
@@ -867,6 +868,7 @@ slate = [
 
 [package.metadata]
 requires-dist = [
+    { name = "bm3d", marker = "extra == 'denoise'", specifier = ">=4.0" },
     { name = "fishsense-api-sdk", marker = "extra == 'rectified'" },
     { name = "huggingface-hub", marker = "extra == 'laser-detector'", specifier = ">=0.26" },
     { name = "huggingface-hub", marker = "extra == 'slate'", specifier = ">=0.26" },
@@ -874,15 +876,16 @@ requires-dist = [
     { name = "opencv-python-headless", specifier = ">=4.11.0.86" },
     { name = "rawpy", specifier = ">=0.25.1" },
     { name = "scikit-image", specifier = ">=0.25.2" },
+    { name = "scipy", specifier = ">=1.13" },
     { name = "segmentation-models-pytorch", marker = "extra == 'laser-detector'", specifier = ">=0.4" },
     { name = "torch", marker = "extra == 'laser-detector'", specifier = ">=2.4" },
     { name = "torch", marker = "extra == 'slate'", specifier = ">=2.4" },
 ]
-provides-extras = ["laser-detector", "rectified", "slate"]
+provides-extras = ["denoise", "laser-detector", "rectified", "slate"]
 
 [[package]]
 name = "fishsense-data-processing-workflow-worker"
-version = "2.18.2"
+version = "3.0.1"
 source = { editable = "services/fishsense-data-processing-workflow-worker" }
 dependencies = [
     { name = "boto3" },
@@ -936,7 +939,7 @@ requires-dist = [
     { name = "dynaconf", specifier = ">=3.2.11" },
     { name = "fishsense-api-sdk", editable = "libs/fishsense-api-sdk" },
     { name = "fishsense-core", extras = ["laser-detector", "slate"], marker = "python_full_version != '3.13.*'" },
-    { name = "fishsense-core", extras = ["laser-detector", "slate"], marker = "python_full_version == '3.13.*'", url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v3.0.0/fishsense_core-3.0.0-cp313-cp313-manylinux_2_34_x86_64.whl" },
+    { name = "fishsense-core", extras = ["laser-detector", "slate"], marker = "python_full_version == '3.13.*'", url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v4.0.0/fishsense_core-4.0.0-cp313-cp313-manylinux_2_34_x86_64.whl" },
     { name = "fishsense-shared", editable = "libs/fishsense-shared" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "label-studio-sdk", specifier = ">=2.0.7" },
@@ -1003,7 +1006,7 @@ dev = [
 
 [[package]]
 name = "fishsense-shared"
-version = "0.13.0"
+version = "0.16.1"
 source = { editable = "libs/fishsense-shared" }
 dependencies = [
     { name = "dynaconf" },

@@ -140,6 +140,15 @@ class DiveClient(ClientBase):
         """Head/tail-predict cohort selector. See `select_next_for_laser_preprocessing`."""
         return await self._select_next("headtail-prediction")
 
+    async def select_next_for_laser_auto_accept(self) -> int | None:
+        """Auto-accept gate backlog selector.
+
+        Drains dives whose laser predictions were never judged because the dive
+        was already fully predicted when the gate shipped. See
+        `select_next_for_laser_preprocessing`.
+        """
+        return await self._select_next("laser-auto-accept")
+
     async def select_next_for_slate_prediction(self) -> int | None:
         """Slate-detector cohort selector. See `select_next_for_laser_preprocessing`."""
         return await self._select_next("slate-prediction")

@@ -2,11 +2,11 @@
 """Label Controller for FishSense API."""
 
 import logging
-from typing import List
+from typing import Annotated, List
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import alias
+from sqlalchemy import alias, or_
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -17,6 +17,7 @@ from fishsense_api.models.head_tail_label import HeadTailLabel
 from fishsense_api.models.image import Image
 from fishsense_api.models.label_studio_sync_cursor import LabelStudioSyncCursor
 from fishsense_api.models.laser_label import LaserLabel
+from fishsense_api.models.laser_prediction import LaserPrediction
 from fishsense_api.models.species_label import SpeciesLabel
 from fishsense_api.server import app
 
@@ -304,9 +305,47 @@ async def get_headtail_label_by_label_studio_id(
     return label
 
 
+def _gate_scan(*, judged: bool):
+    """Correlated EXISTS body: does this project hold a live-labelled image
+    whose laser prediction has (or has not) been judged by the gate?
+
+    Correlated explicitly on `LaserLabel` rather than relying on
+    auto-correlation, which only reaches the immediately enclosing SELECT —
+    the same trap that 500'd both cohort selectors when
+    `_resolved_laser_extrinsics_id()` compiled to a cross join. The inner
+    label table is aliased so it cannot be mistaken for the outer one.
+
+    `superseded == False` is applied inside the scan for the same reason
+    every other laser read applies it: a dead-lettered label is not live
+    labeling work, so a pending prediction on its image must not keep an
+    otherwise-finished project off the landing page.
+    """
+    inner = alias(LaserLabel.__table__, name="gate_scan_label")
+    verdict = (
+        LaserPrediction.gate_verdict != None
+        if judged
+        else LaserPrediction.gate_verdict == None
+    )
+    return (
+        select(1)
+        .select_from(
+            inner.join(
+                LaserPrediction.__table__,
+                LaserPrediction.image_id == inner.c.image_id,
+            )
+        )
+        .where(inner.c.label_studio_project_id == LaserLabel.label_studio_project_id)
+        .where(inner.c.superseded == False)
+        .where(verdict)
+        .correlate(LaserLabel.__table__)
+        .exists()
+    )
+
+
 @app.get("/api/v1/labels/laser/label-studio-project-ids")
 async def get_laser_label_studio_project_ids(
     incomplete: bool = False,
+    gated: bool | None = None,
     session: AsyncSession = Depends(get_async_session),
 ) -> List[int]:
     """Distinct Label Studio project IDs that have at least one laser label.
@@ -315,6 +354,30 @@ async def get_laser_label_studio_project_ids(
     where `completed` is NULL or false. Backs the `apps/fishsense-lite-web/` SSR
     landing page, which surfaces only LS projects with outstanding
     labeling work.
+
+    `gated=true` further narrows to projects the auto-accept gate has
+    **finished** with: no laser prediction still awaiting a verdict, and at
+    least one already judged. `gated=false` is its exact complement, and
+    omitting it keeps every project.
+
+    The predicate is "the gate is done here", not "the gate has run here",
+    and the difference is the whole point of the flag. A dive swept halfway
+    satisfies the weaker test while still holding frames the gate is about
+    to take, so a labeler sent there does work the machine is about to
+    finish — which is what this exists to prevent. A project the gate has
+    never touched is likewise not gated: vacuous truth reads as False, the
+    same convention `dive_pipeline_status`'s `*_labeling_complete` flags use.
+
+    This is self-correcting across re-prediction. The persist activity
+    constructs `LaserPrediction` without the gate fields and the upsert
+    merges the whole model, so re-predicting a dive clears its verdicts —
+    and the dive correctly drops off the landing page until the gate has
+    been back through it.
+
+    Only laser has a gate today; `LaserPrediction` is the sole prediction
+    model carrying `gate_verdict`. The headtail / species / dive-slate
+    endpoints deliberately take no `gated` flag rather than accepting one
+    that could never be satisfied.
 
     Replaces a per-dive fan-out the api-workflow-worker used to do (one
     HTTP round trip per canonical dive) — that approach blew past the
@@ -326,8 +389,9 @@ async def get_laser_label_studio_project_ids(
     """
     logger.debug(
         "Retrieving distinct Label Studio project IDs with laser labels "
-        "(incomplete=%s)",
+        "(incomplete=%s, gated=%s)",
         incomplete,
+        gated,
     )
     query = (
         select(LaserLabel.label_studio_project_id).where(
@@ -343,6 +407,9 @@ async def get_laser_label_studio_project_ids(
             (LaserLabel.completed == False)
             | (LaserLabel.completed.is_(None))  # pylint: disable=no-member
         )
+    if gated is not None:
+        finished = _gate_scan(judged=True) & ~_gate_scan(judged=False)
+        query = query.where(finished if gated else ~finished)
     return list((await session.exec(query.distinct())).all())
 
 
@@ -462,70 +529,277 @@ async def get_laser_labels_for_dive(
     return labels
 
 
-@app.put("/api/v1/dives/{dive_id}/labels/laser/needs-reprocess")
-async def set_laser_labels_needs_reprocess(
-    dive_id: int, session: AsyncSession = Depends(get_async_session)
+async def _set_needs_reprocess(
+    session: AsyncSession,
+    dive_id: int,
+    model,
+    value: bool,
+    only_incomplete: bool = True,
+    checksums: list[str] | None = None,
 ) -> int:
-    """Flag every canonical image in the dive for a stage-0.1 redraw.
+    """Set `needs_reprocess` on a dive's labels of one kind. Returns rows touched.
 
-    Raises the flag that `select_next_for_laser_preprocessing` selects on, so
-    an already-preprocessed dive re-enters the cohort and its overlay JPEGs
-    are regenerated at the same object-store keys. Label Studio presigns
-    those keys at serve time, so existing tasks pick the new image up with no
-    re-import and no loss of the labels already on them.
+    The flag lives on the label, one per kind, rather than once on `Image`: an
+    image carries a different JPEG per stage, and a change to one stage's
+    overlay says nothing about the other three.
 
-    Returns the number of rows flagged. Canonical images only: the same
-    physical frame lives under several dive rows and only the canonical copy
-    is ever preprocessed, so flagging the rest would raise a flag that no
-    cohort can lower.
-    """
-    return await _set_laser_needs_reprocess(session, dive_id, True)
+    Written once and parameterised by model rather than copied per kind. The
+    four `put_*_label` handlers were near-identical for a long time and scored
+    zero on `duplicate-code`, because that check is textual and
+    `LaserLabel.image_id == image_id` and `SpeciesLabel.image_id == image_id`
+    are different strings. A green duplicate-code run says nothing about this
+    shape, so it has to be avoided by hand.
 
+    **`only_incomplete` applies only when raising the flag.** Re-rendering a
+    frame someone has already answered buys nothing, and completed rows
+    outnumber open ones by more than an order of magnitude, so the default
+    keeps a dive-wide flag from costing hours of NAS staging to redraw frames
+    nobody will look at again.
 
-@app.delete("/api/v1/dives/{dive_id}/labels/laser/needs-reprocess")
-async def clear_laser_labels_needs_reprocess(
-    dive_id: int, session: AsyncSession = Depends(get_async_session)
-) -> int:
-    """Lower the flag once the dive's JPEGs have been redrawn.
+    Clearing deliberately ignores `only_incomplete` and lowers the flag whatever
+    the label's state. If it inherited that filter, a label completed *between*
+    the flag being raised and the redraw finishing would keep its flag up — and
+    a flag nothing lowers holds its dive in the cohort forever, re-staging raw
+    `.ORF`s from the NAS every hour and starving every higher-id dive behind it
+    (prod dive 60 did exactly that to dives 84/465/471 until 2026-08-04).
 
-    Called by `PreprocessLaserImagesParentWorkflow` after its data-worker
-    child completes. This is the half that keeps the cohort drainable -- a
-    flag nothing clears holds its dive in the cohort forever, re-staging raw
-    `.ORF`s from the NAS every hour and starving every higher-id dive behind
-    it (prod dive 60 did exactly that to dives 84/465/471 until 2026-08-04).
+    **`checksums` scopes the clear to named frames**, and is how the parents
+    avoid discarding a request they never acted on: their child can run for two
+    hours, so a flag raised inside that window would otherwise be lowered by a
+    run that redrew nothing for it. The success path passes what it redrew.
 
-    A dive with no laser labels returns 0 rather than 404: the parent calls
-    this unconditionally, and a 404 would fail the workflow.
-    """
-    return await _set_laser_needs_reprocess(session, dive_id, False)
+    `None` means "no scope" and clears the whole dive — the no-work backstop,
+    where the flag reached no image and nothing will ever lower it. `[]` is a
+    real, empty scope and clears nothing; a falsy check would collapse the two
+    and turn the commonest no-work payload into a dive-wide clear.
 
+    Canonical images only, both directions: the same physical frame lives under
+    several dive rows and only the canonical copy is ever preprocessed, so
+    flagging the rest would raise a flag no cohort can lower.
 
-async def _set_laser_needs_reprocess(
-    session: AsyncSession, dive_id: int, value: bool
-) -> int:
-    """Set `needs_reprocess` on every canonical image's laser label in a dive.
-
-    Returns the number of matching rows. Deliberately not conditioned on the
-    current value, so both directions are idempotent.
+    Not conditioned on the current value, so both directions are idempotent.
     """
     query = (
-        select(LaserLabel)
-        .join_from(LaserLabel, Image, LaserLabel.image_id == Image.id)
+        select(model)
+        .join_from(model, Image, model.image_id == Image.id)
         .where(Image.dive_id == dive_id)
-        .where(Image.is_canonical == True)
+        .where(
+            Image.is_canonical == True
+        )  # noqa: E712  pylint: disable=singleton-comparison
     )
+    if value:
+        # Never raise a flag on a row the resolver cannot see.
+        # `get_<kind>_labels_for_dive` -- the per-dive getter every resolver
+        # reads -- filters `superseded == False`, so a flag on anything else
+        # would be visible to the cohort selector and invisible to the
+        # resolver: the dive is picked, its raw `.ORF`s are staged from the
+        # NAS, nothing resolves, and it happens again next hour.
+        #
+        # `== False`, not "not superseded", and it must stay byte-identical to
+        # the getter's filter. `laserlabel` and `headtaillabel` gained this
+        # column nullable with no backfill (b3a78115ba3d, 06886d4ca175 --
+        # unlike the species/dive-slate pair in 7934e62a12c0), so prod holds
+        # NULL rows, and `NULL == False` is NULL in SQL. Reading NULL as live
+        # would flag exactly the rows the resolver drops. The cost: a legacy
+        # NULL row cannot be redrawn, and the endpoint returns 0 for it.
+        #
+        # Clearing is deliberately wider -- unfiltered -- so a row superseded
+        # *after* being flagged still gets its flag lowered.
+        query = query.where(
+            model.superseded == False
+        )  # noqa: E712  pylint: disable=singleton-comparison
+        if only_incomplete:
+            query = query.where(
+                or_(
+                    model.completed == False, model.completed.is_(None)
+                )  # noqa: E712  pylint: disable=singleton-comparison
+            )
+    if checksums is not None:
+        query = query.where(Image.checksum.in_(checksums))  # pylint: disable=no-member
     labels = (await session.exec(query)).all()
     for label in labels:
         label.needs_reprocess = value
         session.add(label)
     await session.flush()
     logger.info(
-        "set needs_reprocess=%s on %d laser labels for dive_id=%d",
+        "set needs_reprocess=%s on %d %s labels for dive_id=%d "
+        "(only_incomplete=%s scoped_to=%s)",
         value,
         len(labels),
+        model.__name__,
         dive_id,
+        only_incomplete,
+        "whole dive" if checksums is None else f"{len(checksums)} frames",
     )
     return len(labels)
+
+
+@app.put("/api/v1/dives/{dive_id}/labels/laser/needs-reprocess")
+async def set_laser_labels_needs_reprocess(
+    dive_id: int,
+    only_incomplete: bool = True,
+    session: AsyncSession = Depends(get_async_session),
+) -> int:
+    """Flag this dive's laser labels for a stage 0.1 redraw.
+
+    Raises the flag `select_next_for_laser_preprocessing` selects on, so an
+    already-preprocessed dive re-enters the cohort and its overlay JPEGs are
+    regenerated at the same object-store keys. Label Studio presigns those keys
+    at serve time, so existing tasks pick the new image up with no re-import
+    and no loss of the labels already on them.
+
+    `only_incomplete` defaults true — a frame someone has already answered does
+    not need redrawing. See `_set_needs_reprocess`.
+    """
+    return await _set_needs_reprocess(
+        session, dive_id, LaserLabel, True, only_incomplete=only_incomplete
+    )
+
+
+@app.delete("/api/v1/dives/{dive_id}/labels/laser/needs-reprocess")
+async def clear_laser_labels_needs_reprocess(
+    dive_id: int,
+    checksums: Annotated[list[str] | None, Query()] = None,
+    session: AsyncSession = Depends(get_async_session),
+) -> int:
+    """Lower the flag once this dive's laser JPEGs have been redrawn.
+
+    Called by the stage 0.1 parent after its data-worker child completes. This is
+    the half that keeps the cohort drainable.
+
+    `checksums` scopes the clear to the frames actually redrawn; omitting it
+    clears the whole dive. See `_set_needs_reprocess`. A dive with no laser labels
+    returns 0 rather than 404: the parent calls it unconditionally.
+    """
+    return await _set_needs_reprocess(
+        session, dive_id, LaserLabel, False, checksums=checksums
+    )
+
+
+@app.put("/api/v1/dives/{dive_id}/labels/species/needs-reprocess")
+async def set_species_labels_needs_reprocess(
+    dive_id: int,
+    only_incomplete: bool = True,
+    session: AsyncSession = Depends(get_async_session),
+) -> int:
+    """Flag this dive's species labels for a stage 2 redraw.
+
+    Raises the flag `select_next_for_species_preprocessing` selects on, so an
+    already-preprocessed dive re-enters the cohort and its overlay JPEGs are
+    regenerated at the same object-store keys. Label Studio presigns those keys
+    at serve time, so existing tasks pick the new image up with no re-import
+    and no loss of the labels already on them.
+
+    `only_incomplete` defaults true — a frame someone has already answered does
+    not need redrawing. See `_set_needs_reprocess`.
+    """
+    return await _set_needs_reprocess(
+        session, dive_id, SpeciesLabel, True, only_incomplete=only_incomplete
+    )
+
+
+@app.delete("/api/v1/dives/{dive_id}/labels/species/needs-reprocess")
+async def clear_species_labels_needs_reprocess(
+    dive_id: int,
+    checksums: Annotated[list[str] | None, Query()] = None,
+    session: AsyncSession = Depends(get_async_session),
+) -> int:
+    """Lower the flag once this dive's species JPEGs have been redrawn.
+
+    Called by the stage 2 parent after its data-worker child completes. This is
+    the half that keeps the cohort drainable.
+
+    `checksums` scopes the clear to the frames actually redrawn; omitting it
+    clears the whole dive. See `_set_needs_reprocess`. A dive with no species labels
+    returns 0 rather than 404: the parent calls it unconditionally.
+    """
+    return await _set_needs_reprocess(
+        session, dive_id, SpeciesLabel, False, checksums=checksums
+    )
+
+
+@app.put("/api/v1/dives/{dive_id}/labels/headtail/needs-reprocess")
+async def set_headtail_labels_needs_reprocess(
+    dive_id: int,
+    only_incomplete: bool = True,
+    session: AsyncSession = Depends(get_async_session),
+) -> int:
+    """Flag this dive's headtail labels for a stage 5.1 redraw.
+
+    Raises the flag `select_next_for_headtail_preprocessing` selects on, so an
+    already-preprocessed dive re-enters the cohort and its overlay JPEGs are
+    regenerated at the same object-store keys. Label Studio presigns those keys
+    at serve time, so existing tasks pick the new image up with no re-import
+    and no loss of the labels already on them.
+
+    `only_incomplete` defaults true — a frame someone has already answered does
+    not need redrawing. See `_set_needs_reprocess`.
+    """
+    return await _set_needs_reprocess(
+        session, dive_id, HeadTailLabel, True, only_incomplete=only_incomplete
+    )
+
+
+@app.delete("/api/v1/dives/{dive_id}/labels/headtail/needs-reprocess")
+async def clear_headtail_labels_needs_reprocess(
+    dive_id: int,
+    checksums: Annotated[list[str] | None, Query()] = None,
+    session: AsyncSession = Depends(get_async_session),
+) -> int:
+    """Lower the flag once this dive's headtail JPEGs have been redrawn.
+
+    Called by the stage 5.1 parent after its data-worker child completes. This is
+    the half that keeps the cohort drainable.
+
+    `checksums` scopes the clear to the frames actually redrawn; omitting it
+    clears the whole dive. See `_set_needs_reprocess`. A dive with no headtail labels
+    returns 0 rather than 404: the parent calls it unconditionally.
+    """
+    return await _set_needs_reprocess(
+        session, dive_id, HeadTailLabel, False, checksums=checksums
+    )
+
+
+@app.put("/api/v1/dives/{dive_id}/labels/dive-slate/needs-reprocess")
+async def set_dive_slate_labels_needs_reprocess(
+    dive_id: int,
+    only_incomplete: bool = True,
+    session: AsyncSession = Depends(get_async_session),
+) -> int:
+    """Flag this dive's dive-slate labels for a stage 9 redraw.
+
+    Raises the flag `select_next_for_dive_slate_preprocessing` selects on, so an
+    already-preprocessed dive re-enters the cohort and its overlay JPEGs are
+    regenerated at the same object-store keys. Label Studio presigns those keys
+    at serve time, so existing tasks pick the new image up with no re-import
+    and no loss of the labels already on them.
+
+    `only_incomplete` defaults true — a frame someone has already answered does
+    not need redrawing. See `_set_needs_reprocess`.
+    """
+    return await _set_needs_reprocess(
+        session, dive_id, DiveSlateLabel, True, only_incomplete=only_incomplete
+    )
+
+
+@app.delete("/api/v1/dives/{dive_id}/labels/dive-slate/needs-reprocess")
+async def clear_dive_slate_labels_needs_reprocess(
+    dive_id: int,
+    checksums: Annotated[list[str] | None, Query()] = None,
+    session: AsyncSession = Depends(get_async_session),
+) -> int:
+    """Lower the flag once this dive's dive-slate JPEGs have been redrawn.
+
+    Called by the stage 9 parent after its data-worker child completes. This is
+    the half that keeps the cohort drainable.
+
+    `checksums` scopes the clear to the frames actually redrawn; omitting it
+    clears the whole dive. See `_set_needs_reprocess`. A dive with no dive-slate labels
+    returns 0 rather than 404: the parent calls it unconditionally.
+    """
+    return await _set_needs_reprocess(
+        session, dive_id, DiveSlateLabel, False, checksums=checksums
+    )
 
 
 @app.put("/api/v1/labels/laser/{image_id}", status_code=201)

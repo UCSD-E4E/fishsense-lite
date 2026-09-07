@@ -1,6 +1,6 @@
 [project]
 name = "fishsense-data-processing-workflow-worker"
-version = "2.18.2"
+version = "3.0.1"
 description = "Add your description here"
 readme = "README.md"
 # Pinned to cp313 only: the [laser-detector] extra pulls torch, which has no
@@ -102,7 +102,7 @@ upload_to_vcs_release = true
 [tool.uv.sources]
 fishsense-api-sdk = { workspace = true }
 fishsense-core = [
-    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v3.0.0/fishsense_core-3.0.0-cp313-cp313-manylinux_2_34_x86_64.whl", marker = "python_version == '3.13'" },
+    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v4.0.0/fishsense_core-4.0.0-cp313-cp313-manylinux_2_34_x86_64.whl", marker = "python_version == '3.13'" },
 ]
 fishsense-shared = { workspace = true }
 

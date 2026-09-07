@@ -2,6 +2,71 @@
 
 <!-- version list -->
 
+## [2.0.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v2.0.0...fishsense-api-v2.0.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* close five ways the reprocess flag misbehaves ([#775](https://github.com/UCSD-E4E/fishsense-lite/issues/775)) ([#777](https://github.com/UCSD-E4E/fishsense-lite/issues/777)) ([ccdaccc](https://github.com/UCSD-E4E/fishsense-lite/commit/ccdaccc7dd058351ae4483f78bcb479a1d2fcce7))
+
+## [2.0.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.53.0...fishsense-api-v2.0.0) (2026-09-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** `RawImage`'s default decode changed (use `DecodeConfig.production()` for the old chain), and `set_laser_needs_reprocess` now flags only incomplete labels by default (pass `only_incomplete=False` for the old wholesale behaviour).
+
+### Features
+
+* **api:** adopt fishsense-core 4.0.0 and honour needs-reprocess in every stage ([#760](https://github.com/UCSD-E4E/fishsense-lite/issues/760)) ([d64a5bd](https://github.com/UCSD-E4E/fishsense-lite/commit/d64a5bd55128c8c8123808dc908ddc90a469728c))
+
+## [1.53.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.52.0...fishsense-api-v1.53.0) (2026-09-05)
+
+
+### Changes
+
+* **No user-facing change.** This version exists only because "model-assisted head/tail labeling (SAM3 on a laser-centred crop)" ([#694](https://github.com/UCSD-E4E/fishsense-lite/issues/694)) was merged and then reverted ([#734](https://github.com/UCSD-E4E/fishsense-lite/issues/734)) before any release was cut. Release-please does not reconcile a revert against the feature it undoes, so the version bump could not be withdrawn — but none of that code is in this release. The feature never shipped.
+
+## [1.52.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.51.3...fishsense-api-v1.52.0) (2026-09-04)
+
+
+### Features
+
+* **laser-auto-accept:** hide projects the gate has not finished ([#722](https://github.com/UCSD-E4E/fishsense-lite/issues/722)) ([1810cb9](https://github.com/UCSD-E4E/fishsense-lite/commit/1810cb93689896f6f7bffc4d6c6fd2d7991a7046))
+
+## [1.51.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.51.2...fishsense-api-v1.51.3) (2026-09-04)
+
+
+### Bug Fixes
+
+* **stage13:** count calibration observations, not slate labels ([#719](https://github.com/UCSD-E4E/fishsense-lite/issues/719)) ([77b3507](https://github.com/UCSD-E4E/fishsense-lite/commit/77b35076eca6f86b1cd95ac39569420f1640edd4))
+
+## [1.51.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.51.1...fishsense-api-v1.51.2) (2026-09-04)
+
+
+### Bug Fixes
+
+* **laser-auto-accept:** never auto-accept a stale detector's predictions ([#715](https://github.com/UCSD-E4E/fishsense-lite/issues/715)) ([187ddff](https://github.com/UCSD-E4E/fishsense-lite/commit/187ddffdc46faf2c043d46ae3b710dffd9a1d4f0))
+
+## [1.51.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.51.0...fishsense-api-v1.51.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **laser-auto-accept:** drain the predictions the gate never judged ([#701](https://github.com/UCSD-E4E/fishsense-lite/issues/701)) ([e2b26db](https://github.com/UCSD-E4E/fishsense-lite/commit/e2b26dba0db5761b45588f18b77da8d2dba397ea))
+
+## [1.51.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.50.0...fishsense-api-v1.51.0) (2026-09-03)
+
+
+### Features
+
+* **laser:** skip human review of laser predictions the dive's own line agrees with ([#693](https://github.com/UCSD-E4E/fishsense-lite/issues/693)) ([c388e21](https://github.com/UCSD-E4E/fishsense-lite/commit/c388e21444c39b696ccd209c515f24f42ce4e1da))
+
+
+### Bug Fixes
+
+* **api:** chain the auto-accept migration onto main's head ([#696](https://github.com/UCSD-E4E/fishsense-lite/issues/696)) ([00a684c](https://github.com/UCSD-E4E/fishsense-lite/commit/00a684ca9115da84c72785ff5b2fa1fe552ecfa1))
+
 ## [1.50.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v1.49.1...fishsense-api-v1.50.0) (2026-08-28)
 
 

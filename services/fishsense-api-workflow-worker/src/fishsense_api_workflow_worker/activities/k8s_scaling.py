@@ -31,6 +31,7 @@ from datetime import timedelta
 
 from fishsense_shared import (
     DATA_PROCESSING_GPU_TASK_QUEUE,
+    DATA_PROCESSING_LIGHT_TASK_QUEUE,
     DATA_PROCESSING_TASK_QUEUE,
 )
 
@@ -50,6 +51,7 @@ DEFAULT_DEPLOYMENT_NAME = "fishsense-data-processing-workflow-worker"
 # Exactly one of the two is ever scaled up; see `gpu_fallback`.
 DEFAULT_GPU_DEPLOYMENT_NAME = f"{DEFAULT_DEPLOYMENT_NAME}-gpu"
 DEFAULT_GPU_FALLBACK_DEPLOYMENT_NAME = f"{DEFAULT_GPU_DEPLOYMENT_NAME}-cpu-fallback"
+DEFAULT_LIGHT_DEPLOYMENT_NAME = f"{DEFAULT_DEPLOYMENT_NAME}-light"
 
 # The CPU fallback runs the same torch checkpoint without a GPU, so it is far
 # slower per image and there is no point running several. Capped low
@@ -76,6 +78,21 @@ class GpuScalingConfig:
 
 
 @dataclass(frozen=True)
+class LightScalingConfig:
+    """Which Deployment serves the light queue, and how many of it to run.
+
+    Separate from `ScalingConfig.active_replicas` because the two knobs size
+    against different limits. `active_replicas` buys rawpy throughput on a pod
+    whose memory ceiling already forces `max_concurrent_activities = 2`; the
+    light worker holds no image bytes, so it is bound by neither and one
+    replica serves every stage on the queue (each drains one dive per firing).
+    """
+
+    deployment_name: str = DEFAULT_LIGHT_DEPLOYMENT_NAME
+    active_replicas: int = 1
+
+
+@dataclass(frozen=True)
 class ScalingConfig:
     """Resolved, validated `[kubernetes]` settings for the scaling activities."""
 
@@ -90,20 +107,30 @@ class ScalingConfig:
     # worker never touches. Defaulted so such a caller — or a test — need not
     # restate the GPU topology; `resolve_scaling_config` always sets it fully.
     gpu: GpuScalingConfig = field(default_factory=GpuScalingConfig)
+    # Grouped for the same reason as `gpu`: which Deployment serves the light
+    # queue is one small subsystem, and a caller that only wants the per-image
+    # worker never touches it.
+    light: LightScalingConfig = field(default_factory=LightScalingConfig)
 
     def sweep_targets(self) -> tuple[tuple[str, str], ...]:
         """Every (deployment, task queue) pair the idle sweeper must consider.
 
-        Three Deployments, two queues: the CPU worker owns
-        `fishsense_data_processing_queue`, while the GPU worker and its CPU
-        fallback both serve `fishsense_data_processing_gpu_queue` (only one of
-        them is up at a time). Returning the pairing here keeps the sweeper
+        Four Deployments, three queues: the per-image worker owns
+        `fishsense_data_processing_queue` and the light worker owns
+        `fishsense_data_processing_light_queue`, while the GPU worker and its
+        CPU fallback both serve `fishsense_data_processing_gpu_queue` (only one
+        of them is up at a time). Returning the pairing here keeps the sweeper
         from having to know the topology.
+
+        **A Deployment missing from this tuple is never scaled down**, which on
+        NRP means holding pods around the clock — so adding a role means adding
+        it here, not only to the wake path.
         """
         return (
             (self.deployment_name, DATA_PROCESSING_TASK_QUEUE),
             (self.gpu.deployment_name, DATA_PROCESSING_GPU_TASK_QUEUE),
             (self.gpu.fallback_deployment_name, DATA_PROCESSING_GPU_TASK_QUEUE),
+            (self.light.deployment_name, DATA_PROCESSING_LIGHT_TASK_QUEUE),
         )
 
 
@@ -177,6 +204,19 @@ def resolve_scaling_config() -> ScalingConfig | None:
             minutes=max(1, int(section.get("gpu_fallback_minutes", 180)))
         ),
     )
+    # Same defaulting rule as the GPU names: derived from `deployment_name` so
+    # a renamed base carries the whole family.
+    light_deployment_name = (
+        section.get("light_deployment_name") or f"{deployment_name}-light"
+    )
+    # Independent of `active_replicas` for the same reason `gpu_active_replicas`
+    # is: that knob sizes the memory-bound per-image worker, where more pods is
+    # more rawpy throughput. The light stages drain one dive per firing each, so
+    # a second pod adds nothing, and NRP asks us to hold as little as possible.
+    light_active_replicas = max(
+        MIN_ACTIVE_REPLICAS,
+        min(int(section.get("light_active_replicas", 1)), MAX_ACTIVE_REPLICAS),
+    )
     return ScalingConfig(
         kubeconfig_path=kubeconfig_path,
         namespace=namespace,
@@ -188,6 +228,10 @@ def resolve_scaling_config() -> ScalingConfig | None:
             fallback_deployment_name=gpu_fallback_deployment_name,
             start_timeout_seconds=gpu_start_timeout_seconds,
             policy=fallback_policy,
+        ),
+        light=LightScalingConfig(
+            deployment_name=light_deployment_name,
+            active_replicas=light_active_replicas,
         ),
     )
 

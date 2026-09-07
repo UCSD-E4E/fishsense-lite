@@ -64,7 +64,7 @@ services:
 
   # ── web portal → fishsense.e4e.ucsd.edu ────────────────────────────────────────────────
   web:
-    image: ghcr.io/ucsd-e4e/fishsense-lite-web:v0.9.2
+    image: ghcr.io/ucsd-e4e/fishsense-lite-web:v0.12.0
     restart: unless-stopped
     # Non-secret config inline (committed IaC); secrets from the vault-agent render
     # (AUTH_SECRET, AUTH_AUTHENTIK_{ID,SECRET,ISSUER}, FISHSENSE_API_{USERNAME,PASSWORD},
@@ -92,15 +92,23 @@ services:
       # unset or empty denies everyone, matching Superset's posture (a user in
       # none of the mapped groups gets Public / no access).
       #
-      # OPERATOR PREREQUISITES, both required before this can admit anyone:
-      #   1. The group below must exist in Authentik and hold the FishSense
-      #      team. Naming follows `fishsense-superset-{admin,editor,viewer}`.
-      #   2. The FishSense OIDC application needs the `groups` scope + property
-      #      mapping, same as the analytics app. Without it every session
-      #      arrives with no groups and the portal denies everyone.
-      # Until both are done the portal shows a "not in a permitted group"
-      # page rather than silently allowing the whole realm.
-      PORTAL_ALLOWED_GROUPS: fishsense-portal-admin
+      # This is the real Authentik group, checked against a live session on
+      # Confirmed against a live session on 2026-09-05, after two wrong guesses:
+      # `fishsense-portal-admin` (invented from the
+      # `fishsense-superset-{admin,editor,viewer}` convention before anyone had
+      # signed in) and `FishSense Prod Admins` (right words, wrong separator).
+      #
+      # Matched EXACTLY. `authz.ts` deliberately does not normalise case or
+      # whitespace, because an allowlist that matches loosely is advisory — so
+      # spaces and hyphens are not interchangeable and neither is capitalisation.
+      # Do not "tidy" this value.
+      #
+      # OPERATOR PREREQUISITE: the FishSense OIDC application needs the `groups`
+      # scope + property mapping, same as the analytics app. Without it every
+      # session arrives with no groups and the portal denies everyone — which
+      # renders the identical page to a wrong name here, and is the reason both
+      # guesses above took a deploy each to disprove.
+      PORTAL_ALLOWED_GROUPS: FishSense-Prod-Admins
     env_file:
       - /run/tenant/secrets/app.env
     expose: ["3000"]
@@ -108,7 +116,7 @@ services:
 
   # ── API → api.fishsense.e4e.ucsd.edu (forwardAuth-gated) ───────────────────────────────
   fishsense-api:
-    image: ghcr.io/ucsd-e4e/fishsense-api:v1.50.0
+    image: ghcr.io/ucsd-e4e/fishsense-api:v2.0.1
     restart: unless-stopped
     # DB password (admin role) as E4EFS_POSTGRES__PASSWORD from the render.
     env_file:
@@ -226,7 +234,7 @@ services:
 
   # ── api-side Temporal worker (hourly schedules, LS sync, preprocess parents) ───────────
   fishsense-api-workflow-worker:
-    image: ghcr.io/ucsd-e4e/fishsense-api-workflow-worker:v1.56.6
+    image: ghcr.io/ucsd-e4e/fishsense-api-workflow-worker:v2.0.1
     restart: unless-stopped
     # Secrets as dynaconf E4EFS_* env overrides from the vault-agent render
     # (API basic-auth, Garage keys, LS key, NAS creds — see secrets.nix).

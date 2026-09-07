@@ -35,6 +35,24 @@ url = "https://app.heartex.com"
 # LS Enterprise workspace new per-dive projects are created in. Resolved to
 # its numeric id at runtime via workspaces.list(). Empty = personal/default.
 workspace = "FishSense"
+# Label Studio user id of the service account (e4e+fishsense@ucsd.edu), stamped
+# as `completed_by` on machine-written annotations populate IMPORTS.
+#
+# Not a secret — a user id is visible to any org member — so it lives here
+# rather than in OpenBao, alongside `workspace`. `api_key` is the secret half
+# and stays in the vault-agent render.
+#
+# Needed because Label Studio attributes an imported annotation to the PROJECT
+# OWNER, not the API caller. `ls.annotations.create` takes the authenticated
+# user and so was fixed by giving the worker the bot's token; the import path
+# was not. On 2026-09-04 the worker had been the bot since 18:07 and populate
+# still seeded 61 annotations at 18:17 — and 164 more at 19:17 — under the
+# human who happened to own the project.
+#
+# 0 or absent = omit the field (old, wrong-attribution behaviour) rather than
+# send `completed_by: null`, which LS rejects and which would fail populate for
+# a whole dive.
+bot_user_id = 215238
 
 [e4e_nas]
 url = "https://e4e-nas.ucsd.edu:6021"

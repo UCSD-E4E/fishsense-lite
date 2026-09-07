@@ -12,6 +12,9 @@ from temporalio import activity, workflow
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
+from fishsense_api_workflow_worker.activities.reprocess_scope import (
+    ClearReprocessFlagsInput,
+)
 from fishsense_api_workflow_worker.workflows._dispatch import (
     DATA_PROCESSING_TASK_QUEUE,
 )
@@ -23,6 +26,17 @@ from fishsense_shared import PreprocessHeadtailImagesInput
 
 _K = [[1000.0, 0.0, 960.0], [0.0, 1000.0, 540.0], [0.0, 0.0, 1.0]]
 _D = [-0.1, 0.05, 0.0, 0.0, 0.0]
+
+
+#: `checksums` each clear call was scoped to, in order.
+#: `None` means the whole dive -- the no-work backstop.
+_CLEAR_SCOPES: list = []
+
+
+@pytest.fixture(autouse=True)
+def _reset_clear_scopes():
+    """Module-level, so it accumulates across tests in this file unless reset."""
+    _CLEAR_SCOPES.clear()
 
 
 @workflow.defn(name="PreprocessHeadtailImagesWorkflow")
@@ -72,6 +86,9 @@ def _make_populate_recording_activity(captures: List[tuple]):
     return record_populate_dispatch
 
 
+_CLEAR_CALLS: List[int] = []
+
+
 def _make_stubs(
     selector_result: Optional[int],
     resolver_result: Optional[PreprocessHeadtailImagesInput],
@@ -93,6 +110,14 @@ def _make_stubs(
     async def stub_cleanup(dive_id: int) -> None:
         return None
 
+    @activity.defn(name="clear_headtail_reprocess_flags_activity")
+    async def stub_clear_reprocess(payload: ClearReprocessFlagsInput) -> int:
+        """The parent lowers the redraw flag after its child completes;
+        without it the dive stays in the cohort forever."""
+        _CLEAR_CALLS.append(payload.dive_id)
+        _CLEAR_SCOPES.append(payload.checksums)
+        return 0
+
     @activity.defn(name="ensure_data_worker_running_activity")
     async def stub_ensure_running() -> int:
         return 0
@@ -102,6 +127,8 @@ def _make_stubs(
         stub_resolve,
         stub_stage,
         stub_cleanup,
+
+        stub_clear_reprocess,
         stub_ensure_running,
     ]
 
@@ -154,6 +181,7 @@ async def test_dispatches_child_with_deterministic_id():
     # chaining would remove every image from that cohort before the detector
     # ever ran. The failure would be silent — tasks still appear, they just
     # never carry a prediction — which is why it is pinned as a negative.
+    # This is the same decoupling the laser stage made on 2026-07-28.
     assert populate_runs == []
 
 
@@ -277,3 +305,39 @@ async def test_populate_is_never_dispatched_even_with_images_to_process():
     assert result == 441
     assert len(child_runs) == 1, "preprocess itself must still run"
     assert populate_runs == []
+
+
+async def test_lowers_the_reprocess_flag_even_when_no_work_resolves():
+    """A flag that reaches no image must still be lowered.
+
+    The flag is the one term in the cohort predicate that does not go false on
+    its own. If the "no work resolved" early return skips the clear step, the
+    selector picks the same dive on the next firing and every firing after --
+    staging its raw `.ORF`s from the NAS each time and starving every higher-id
+    dive behind it. Lowering a flag that reached nothing loses the operator's
+    request, which is why the parent logs it; wedging the cohort is worse.
+    """
+    inputs = PreprocessHeadtailImagesInput(
+        dive_id=907,
+        image_checksums=[],
+        camera_matrix=_K,
+        distortion_coefficients=_D,
+    )
+    activities = _make_stubs(907, inputs)
+    _CLEAR_CALLS.clear()
+
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
+            task_queue="test-stage5-1-clear",
+            workflows=[PreprocessHeadtailImagesParentWorkflow, _StubPopulateWorkflow],
+            activities=activities[0] if isinstance(activities, tuple) else activities,
+        ):
+            result = await env.client.execute_workflow(
+                PreprocessHeadtailImagesParentWorkflow.run,
+                id="reprocess-clear-907",
+                task_queue="test-stage5-1-clear",
+            )
+
+    assert result == 907
+    assert _CLEAR_CALLS == [907], "the flag must be lowered on the no-work path"

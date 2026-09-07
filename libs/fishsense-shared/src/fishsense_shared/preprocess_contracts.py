@@ -15,7 +15,7 @@ construction.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from pydantic import BaseModel
 
@@ -77,6 +77,23 @@ class PreprocessLaserImagesInput(BaseModel):
     laser_region: Optional[List[List[int]]] = None
 
 
+class SpeciesClusterMember(BaseModel):
+    """One image to redraw, carrying its position in the FULL cluster.
+
+    The position has to travel with the image because it cannot be recovered
+    from the batch. The resolver emits only images that need work, so a partial
+    redraw -- which is the normal case once `needs_reprocess` exists, and
+    already happens whenever an image becomes eligible after its cluster was
+    first processed -- would otherwise be numbered against the emitted subset:
+    3 images out of a cluster of 7 rendered "1 of 3".."3 of 3" while their
+    four siblings still read "4 of 7".."7 of 7", at the same object-store keys.
+    """
+
+    checksum: str
+    cluster_index: int  # 1-based, within the whole PREDICTION cluster
+    cluster_size: int  # size of the whole PREDICTION cluster
+
+
 class PreprocessSpeciesImagesInput(BaseModel):
     """Stage 2 (species preprocess) workflow-level input.
 
@@ -85,12 +102,21 @@ class PreprocessSpeciesImagesInput(BaseModel):
     can render "image i of N" for each cluster. Cluster image_ids are
     pre-filtered by the api-worker resolver to images with a valid
     laser label and no non-sentinel species label.
+
+    `cluster_members` is the field to read: it names the same images as
+    `clusters` and adds each one's true position. `clusters` is kept, carrying
+    exactly the same checksums, so a data-worker running the previous image
+    during a rolling deploy still redraws the right set -- with the i/N it
+    always computed, which is no worse than before. Optional for the same
+    reason, in the other direction: a new data-worker must tolerate a payload
+    written by an older api-worker.
     """
 
     dive_id: int
     clusters: List[List[str]]  # each inner list is a PREDICTION cluster of checksums
     camera_matrix: List[List[float]]
     distortion_coefficients: List[float]
+    cluster_members: Optional[List[List[SpeciesClusterMember]]] = None
 
 
 class PreprocessHeadtailImagesInput(BaseModel):
@@ -321,3 +347,48 @@ class HeadtailPredictionResult(BaseModel):
     predictor_version: Optional[int] = None
     checkpoint: Optional[str] = None
     core_version: Optional[str] = None
+
+class LaserAutoAcceptSummary(BaseModel):
+    """What the auto-accept gate decided for one dive.
+
+    Returned by the data-worker `EvaluateLaserAutoAcceptWorkflow` to the
+    api-worker parent, so it is a cross-worker contract and lives here.
+
+    The per-dive numbers are the point of it. The audit sample is not the
+    safety net for this stage — it is slow and it is a biased instrument for
+    rare events — the *flag rate* is, and it is free: a dive that suddenly
+    routes far more frames to humans than the ~13% pool baseline is a detector
+    or an environment that has changed, visible on the first dive and without
+    a single human label. Alert on both tails. A suspiciously LOW flag rate in
+    a new environment is the signature of the one failure mode consensus
+    cannot self-detect, where a majority of predictions are wrong in a
+    mutually-consistent way and the true dots become the minority that gets
+    flagged.
+    """
+
+    dive_id: int
+    # Whether the gate was switched on. False is both the kill switch and the
+    # dark run: everything below is still computed and recorded, but
+    # `auto_accepted` is 0 and no frame skips a human. Read it alongside
+    # `verdicts` — with the gate off those two disagree on purpose, the
+    # histogram saying what the fit would have cleared and `auto_accepted`
+    # what actually may.
+    enabled: bool = True
+    # False when the dive's predictions did not agree well enough to
+    # auto-accept any of them; `reason` says which bar it failed.
+    eligible: bool
+    reason: str | None = None
+    # Fit metrics over the predictions carrying coordinates. `n_points`
+    # excludes abstentions: a frame the detector found nothing on is not a
+    # disagreement and must not count against the dive's consensus.
+    n_points: int = 0
+    inlier_count: int = 0
+    inlier_fraction: float = 0.0
+    line_confidence: float = 0.0
+    # Frames that may skip human review, and the full verdict histogram —
+    # every prediction is counted exactly once, including abstentions.
+    auto_accepted: int = 0
+    verdicts: Dict[str, int] = {}
+    # Rows actually PUT. Lower than the prediction count on a re-run, where
+    # only genuine changes are written.
+    written: int = 0

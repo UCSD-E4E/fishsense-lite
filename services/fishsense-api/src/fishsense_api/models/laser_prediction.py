@@ -59,6 +59,37 @@ class LaserPrediction(ModelBase, table=True):
     # `predictor_version` is the one thing anything decides on.
     checkpoint: str | None = Field(default=None)
     core_version: str | None = Field(default=None)
+    # --- auto-accept gate verdict --------------------------------------
+    # Whether this prediction may skip human review, decided by the
+    # data-worker's `laser_label_validation.auto_accept` gate and consumed by
+    # the api-worker's laser populate step. It is NOT a property of the
+    # prediction alone: the gate fits the dive's whole prediction set and
+    # requires them to agree, so a frame is auto-acceptable only in the
+    # context of the dive it came from.
+    #
+    # `False` is the safe default and is load-bearing: a prediction the gate
+    # has never seen must never read as auto-acceptable. It also means a
+    # re-prediction *clears* the verdict for free, because the persist
+    # activity constructs the row without these fields and the upsert merges
+    # the whole model — which is correct, since the old verdict was computed
+    # from a dot this row no longer holds. The gate must re-run.
+    auto_accept: bool = Field(default=False)
+    # The gate's own word for what happened, so a frame that was NOT
+    # auto-accepted still says why (off_line / along_line_outlier /
+    # audit_sample / dive_ineligible / no_prediction). Without it, "not
+    # auto-accepted" collapses a refusal to engage and a rejected dot into one
+    # indistinguishable state, and the per-dive verdict mix is the primary
+    # monitoring signal for this whole stage.
+    gate_verdict: str | None = Field(default=None, index=True)
+    # Perpendicular distance to the dive's fitted laser line, and position
+    # along it as a robust z against the rest of the dive. Recorded, never
+    # re-decided on — the role `LaserDepth.residual_m` plays. They are what
+    # answer "how close was this call" after the fact, and they let the
+    # thresholds be retuned against already-collected data without
+    # re-predicting.
+    line_offset_px: float | None = Field(default=None)
+    line_position_z: float | None = Field(default=None)
+
     created_at: datetime | None = Field(sa_type=DateTime(timezone=True), default=None)
 
     image_id: int | None = Field(default=None, foreign_key="image.id")

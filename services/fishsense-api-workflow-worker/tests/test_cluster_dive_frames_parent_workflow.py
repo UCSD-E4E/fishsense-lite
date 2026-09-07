@@ -13,7 +13,7 @@ from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
 from fishsense_api_workflow_worker.workflows.cluster_dive_frames_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
-    DATA_PROCESSING_TASK_QUEUE,
+    DATA_PROCESSING_LIGHT_TASK_QUEUE,
     ClusterDiveFramesParentWorkflow,
 )
 from fishsense_shared import ClusterDiveFrameImage, ClusterDiveFramesInput
@@ -69,7 +69,7 @@ def _make_stubs(
         persist_calls.append((dive_id, clusters))
         return len(clusters)
 
-    @activity.defn(name="ensure_data_worker_running_activity")
+    @activity.defn(name="ensure_light_worker_running_activity")
     async def stub_ensure_running() -> int:
         return 0
 
@@ -99,7 +99,7 @@ async def test_dispatches_child_with_deterministic_id_and_persists_clusters():
             activities=activities,
         ), Worker(
             env.client,
-            task_queue=DATA_PROCESSING_TASK_QUEUE,
+            task_queue=DATA_PROCESSING_LIGHT_TASK_QUEUE,
             workflows=[_StubChildWorkflow],
             activities=[_make_recording_activity(child_runs)],
         ):
@@ -132,7 +132,7 @@ async def test_returns_none_when_no_dive():
             activities=activities,
         ), Worker(
             env.client,
-            task_queue=DATA_PROCESSING_TASK_QUEUE,
+            task_queue=DATA_PROCESSING_LIGHT_TASK_QUEUE,
             workflows=[_StubChildWorkflow],
             activities=[_make_recording_activity(child_runs)],
         ):
@@ -162,7 +162,7 @@ async def test_skips_child_and_persist_when_no_images():
             activities=activities,
         ), Worker(
             env.client,
-            task_queue=DATA_PROCESSING_TASK_QUEUE,
+            task_queue=DATA_PROCESSING_LIGHT_TASK_QUEUE,
             workflows=[_StubChildWorkflow],
             activities=[_make_recording_activity(child_runs)],
         ):
