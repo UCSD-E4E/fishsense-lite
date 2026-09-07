@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.11.3...fishsense-lite-web-v0.11.4) (2026-09-07)
+
+
+### Bug Fixes
+
+* **web:** ask Label Studio where the frame is, and say why when it fails ([#759](https://github.com/UCSD-E4E/fishsense-lite/issues/759)) ([d3ad3eb](https://github.com/UCSD-E4E/fishsense-lite/commit/d3ad3ebdbac815225fd824f4ff22e3708be16c95))
+
 ## [0.11.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.11.2...fishsense-lite-web-v0.11.3) (2026-09-07)
 
 
