@@ -452,15 +452,24 @@ changed.
 
 Five things that are load-bearing:
 
-* **`CalibrationTarget.square_size_m` is NOT NULL, and no row is seeded.** The
-  measured grid pitch is the only thing setting the scale of every length the
+* **`CalibrationTarget.square_size_m` is NOT NULL, and it is the whole
+  ballgame.** The measured grid pitch alone sets the scale of every length the
   dive ultimately produces, and scale error is the term reprojection residual
-  provably cannot see (rho = -0.026 over 1109 depths). A nominal pitch off the
-  board's PDF is the `fishmodelreference` Ruler mistake repeated — assumed
-  355.6 mm, actually 342.9. **Until someone calipers a board and PUTs its row,
-  this stage calibrates nothing**, which is the same failure direction those
-  dives are already in. `rows`/`cols` are INTERIOR CORNERS (a 15x11 board has
-  14x10).
+  provably cannot see (rho = -0.026 over 1109 depths) — so a wrong pitch
+  calibrates cleanly and measures every fish in the dive wrong. `rows`/`cols`
+  are INTERIOR CORNERS (a 15x11 board has 14x10); confusing those with squares
+  is a 7-10% scale error.
+
+  The E4E board is seeded at **4.2 cm** (migration `e07c31b9a4d2`, and
+  `_seed_calibration_targets` for the fresh-database stamp path, which runs no
+  migrations). That figure is a **single-square** reading at two significant
+  figures, so it carries +-0.5 mm of reading resolution — about **+-1.2% of
+  scale**, the same order as the errors the pipeline is validated against, and
+  invisible to every residual and fit statistic. Improving it is cheap and
+  worth ~10x: caliper the full 14-corner span (588 mm at this pitch) and
+  divide, then correct the row in place. Both seeds are **insert-only**, so a
+  correction survives every deploy. The row's `notes` carries all of this;
+  `views.KNOWN_CALIBRATION_TARGETS` is the source of truth for both seeds.
 * **The detector is asked for a 3x3 grid and told the real one.** Measured
   against OpenCV 4.13, asking for the nominal board is worse in both
   directions: a board with its right third out of frame returns *nothing* for

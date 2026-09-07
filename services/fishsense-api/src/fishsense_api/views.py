@@ -499,6 +499,66 @@ KNOWN_FISH_MODELS = [
     {"name": "Weasly Fish", "known_length_m": 0.310},
 ]
 
+# The planar calibration targets laser extrinsics can be fitted against, seeded
+# the way `KNOWN_FISH_MODELS` is and for the same bootstrap reason: on a fresh
+# database `run_alembic_upgrade` STAMPS head instead of upgrading, so the seed
+# migration never runs and the table comes up empty. An empty table here is not
+# a cosmetic absence — it is every checkerboard dive silently staying
+# uncalibrated, which is exactly the state the stage was built to end.
+#
+# **`square_size_m` is the whole ballgame.** It alone sets the scale of every
+# length these dives ultimately produce, and scale error is the one term
+# reprojection residual provably cannot see (rho = -0.026 over 1109 depths), so
+# a wrong pitch calibrates cleanly and measures every fish in the dive wrong.
+# That is why the column is NOT NULL and why the table shipped empty rather
+# than with a nominal figure off the board's PDF — the `fishmodelreference`
+# Ruler is the standing warning (assumed 355.6 mm, actually 342.9).
+#
+# **`rows`/`cols` are INTERIOR CORNERS, not squares.** A 15 x 11 board has
+# 14 x 10 interior corners. Confusing the two is a 7-10% scale error that would
+# calibrate perfectly cleanly.
+#
+# Unlike `KNOWN_FISH_MODELS` the notes live on the row rather than in a
+# separate mapping, because no already-applied migration binds to this shape:
+# the seed migration reads named keys, so adding one later cannot retroactively
+# change what it did.
+KNOWN_CALIBRATION_TARGETS = [
+    {
+        "name": "E4E Checkerboard",
+        # 15 x 11 squares -> 14 x 10 interior corners, which is what a
+        # detector returns and what solvePnP is given.
+        "rows": 10,
+        "cols": 14,
+        "square_size_m": 0.042,
+        "notes": (
+            "Square pitch 4.2 cm, reported 2026-09-07. RECORDED AS GIVEN, and "
+            "the way it was obtained is part of the number: it is a "
+            "SINGLE-SQUARE figure at two significant figures, so its reading "
+            "resolution is +-0.5 mm — about +-1.2% of scale. That is the same "
+            "order as the measurement errors this pipeline is validated "
+            "against, and it lands in the one direction reprojection residual "
+            "provably cannot see, so it will not announce itself in any "
+            "residual or fit statistic. "
+            "TO IMPROVE IT: caliper a span of MANY squares and divide, rather "
+            "than one square — measuring a single square multiplies the "
+            "reading error by the grid count. A full 14-corner span is 588 mm "
+            "at this pitch, so a +-0.5 mm read over it is +-0.09%, an order of "
+            "magnitude better. Correct the row in place (PUT "
+            "/api/v1/calibration-targets/{id}); both the migration and the "
+            "startup seed are insert-only, so a correction survives every "
+            "deploy. "
+            "GEOMETRY: 14 x 10 INTERIOR CORNERS, i.e. a 15 x 11 grid of "
+            "squares, 63.0 x 46.2 cm overall at this pitch. The E4E-branded "
+            "board captioned '15x11 checkerboard' in the 2023 pool-test "
+            "LaserCalibration folders; detection returns 14 x 10, which is "
+            "what a 15 x 11 grid of squares has. "
+            "The 2025 pool-test board (24 x 17) is a DIFFERENT board with a "
+            "different pitch and is deliberately not seeded — OpenCV returned "
+            "five different grids over six frames of it."
+        ),
+    },
+]
+
 # Provenance for a reference row, keyed by name. Deliberately a SEPARATE
 # mapping rather than a `notes` key on the rows above: historical alembic
 # migrations import `KNOWN_FISH_MODELS` and pass it straight to an executemany

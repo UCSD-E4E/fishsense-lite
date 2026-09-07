@@ -67,6 +67,10 @@ def _patch_run_alembic(has_alembic_version: bool, missing_views=()):
             _create_all_views=_fake_create_views,
             _missing_views=_fake_missing_views,
             _seed_fish_model_references=_fake_seed,
+            # Every seed helper has to be stubbed here, not just the first
+            # one: they each open a real engine against `pg_connection_string`
+            # and this test has no database.
+            _seed_calibration_targets=_fake_seed,
         ),
     )
 
@@ -145,7 +149,11 @@ def test_run_alembic_upgrade_fresh_db_stamps_head_without_running_ddl():
     # would mark the DB fully-migrated with no views, no reference rows, and no
     # way back — the accuracy view would then be empty for every model, which
     # is the same silent absence the reference seeding exists to prevent.
-    assert calls == ["create_views", "seed", "stamp"]
+    # Two seed helpers now — fish-model references and calibration targets —
+    # and both must land before the stamp for the same reason. Asserted as a
+    # literal so adding a third makes this fail rather than quietly slipping
+    # one in after the stamp, where it would never run again.
+    assert calls == ["create_views", "seed", "seed", "stamp"]
     _assert_script_location_set(fake_cfg)
 
 

@@ -182,6 +182,59 @@ async def _seed_fish_model_references() -> None:
         await engine.dispose()
 
 
+async def _seed_calibration_targets() -> None:
+    """Insert any missing `calibrationtarget` rows, idempotently.
+
+    The exact counterpart of `_seed_fish_model_references`, and it exists for
+    the same bootstrap reason: on a fresh database `run_alembic_upgrade`
+    **stamps** head rather than running the migrations, so the seed migration
+    never runs and the table comes up empty.
+
+    Empty is not a cosmetic absence here. Species sync sets
+    `Dive.calibration_target_id` by matching the taxonomy leaf against
+    `CalibrationTarget.name`, and the checkerboard calibration cohort selects
+    on that link — so with no rows, every checkerboard dive stays uncalibrated
+    and nothing anywhere says why. That silence is precisely what the stage was
+    built to end.
+
+    Insert-only, never update: `square_size_m` is a caliper reading, and the
+    seeded 4.2 cm is a single-square figure that someone should improve by
+    measuring across many squares. Their correction must survive every
+    subsequent restart.
+    """
+    engine = create_async_engine(pg_connection_string())
+    try:
+        async with engine.begin() as conn:
+            result = await conn.execute(sa.text("SELECT name FROM calibrationtarget"))
+            present = {row[0] for row in result}
+            missing = [
+                t for t in views.KNOWN_CALIBRATION_TARGETS if t["name"] not in present
+            ]
+            for target in missing:
+                await conn.execute(
+                    sa.text(
+                        "INSERT INTO calibrationtarget "
+                        "(name, rows, cols, square_size_m, notes) "
+                        "VALUES (:name, :rows, :cols, :square_size_m, :notes)"
+                    ),
+                    {
+                        "name": target["name"],
+                        "rows": target["rows"],
+                        "cols": target["cols"],
+                        "square_size_m": target["square_size_m"],
+                        "notes": target.get("notes"),
+                    },
+                )
+            if missing:
+                _log.info(
+                    "seeded %d calibration target(s): %s",
+                    len(missing),
+                    ", ".join(t["name"] for t in missing),
+                )
+    finally:
+        await engine.dispose()
+
+
 def run_alembic_upgrade() -> None:
     """Apply pending migrations OR stamp head on a fresh DB.
 
@@ -245,6 +298,7 @@ def run_alembic_upgrade() -> None:
         # and nothing else will backfill it. Insert-only, so a healthy database
         # is untouched.
         asyncio.run(_seed_fish_model_references())
+        asyncio.run(_seed_calibration_targets())
     else:
         _log.info("alembic_version missing; fresh DB after create_all")
         # Views BEFORE the stamp, deliberately. Stamping marks every migration
@@ -265,6 +319,7 @@ def run_alembic_upgrade() -> None:
         # those migrations perform would never happen. If this raises,
         # `alembic_version` is still absent and the next restart retries.
         asyncio.run(_seed_fish_model_references())
+        asyncio.run(_seed_calibration_targets())
         _log.info("reference data seeded; stamping head")
         alembic_command.stamp(cfg, "head")
 
