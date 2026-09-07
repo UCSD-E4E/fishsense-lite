@@ -21,17 +21,27 @@ from __future__ import annotations
 
 from temporalio import activity
 
+from fishsense_api_workflow_worker.activities.reprocess_scope import (
+    ClearReprocessFlagsInput,
+)
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
 
 
 @activity.defn
-async def clear_laser_reprocess_flags_activity(dive_id: int) -> int:
+async def clear_laser_reprocess_flags_activity(
+    payload: ClearReprocessFlagsInput,
+) -> int:
     """Clear `needs_reprocess` on every laser label of a dive's canonical
     images. Returns the number of rows cleared."""
     async with get_fs_client() as fs:
-        cleared = await fs.labels.clear_laser_needs_reprocess(dive_id)
+        cleared = await fs.labels.clear_laser_needs_reprocess(
+            payload.dive_id, payload.checksums
+        )
 
     activity.logger.info(
-        "cleared laser reprocess flags dive_id=%d rows=%d", dive_id, cleared
+        "cleared laser reprocess flags dive_id=%d rows=%d scope=%s",
+        payload.dive_id,
+        cleared,
+        "whole dive" if payload.checksums is None else len(payload.checksums),
     )
     return cleared

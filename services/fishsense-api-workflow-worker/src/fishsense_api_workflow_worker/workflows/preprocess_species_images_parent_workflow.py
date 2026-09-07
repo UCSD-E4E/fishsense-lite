@@ -23,6 +23,9 @@ from datetime import timedelta
 from fishsense_shared import PreprocessSpeciesImagesInput
 from temporalio import workflow
 
+from fishsense_api_workflow_worker.activities.reprocess_scope import (
+    ClearReprocessFlagsInput,
+)
 from fishsense_api_workflow_worker.workflows import _dispatch
 
 
@@ -70,7 +73,8 @@ class PreprocessSpeciesImagesParentWorkflow:
                 dive_id,
             )
             await _dispatch.run_sdk_activity(
-                "clear_species_reprocess_flags_activity", dive_id
+                "clear_species_reprocess_flags_activity",
+                ClearReprocessFlagsInput(dive_id=dive_id),
             )
             return inputs.dive_id
 
@@ -83,8 +87,16 @@ class PreprocessSpeciesImagesParentWorkflow:
             execution_timeout=timedelta(hours=2),
         )
         await _dispatch.cleanup_raw(dive_id)
+        # Scoped to what this run actually redrew. The child can run for two
+        # hours, so an unscoped clear would silently discard a flag raised
+        # while it was working -- a request that redrew nothing, lost with no
+        # error. Anything flagged since stays flagged for the next firing.
         await _dispatch.run_sdk_activity(
-            "clear_species_reprocess_flags_activity", dive_id
+            "clear_species_reprocess_flags_activity",
+            ClearReprocessFlagsInput(
+                dive_id=dive_id,
+                checksums=[c for cluster in inputs.clusters for c in cluster],
+            ),
         )
 
         return inputs.dive_id

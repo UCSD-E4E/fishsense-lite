@@ -30,7 +30,7 @@ from typing import List
 
 from fishsense_api_sdk.models.data_source import DataSource
 from fishsense_api_sdk.models.laser_label import LaserLabel
-from fishsense_shared import PreprocessSpeciesImagesInput
+from fishsense_shared import PreprocessSpeciesImagesInput, SpeciesClusterMember
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
@@ -44,6 +44,52 @@ def _is_valid_laser(label: LaserLabel) -> bool:
         and label.x is not None
         and label.y is not None
     )
+
+
+def _build_clusters(
+    prediction_clusters,
+    checksum_by_id: dict,
+    eligible,
+) -> tuple[List[List[str]], List[List[SpeciesClusterMember]], set]:
+    """Split each PREDICTION cluster into the frames that need work.
+
+    Returns `(clusters, cluster_members, clustered_image_ids)`.
+
+    "image i of N" describes a frame's place in the WHOLE cluster, so both
+    numbers come from the full membership rather than from the subset being
+    redrawn. Numbering the subset instead renders 3 frames of a 7-image cluster
+    as 1/3..3/3 while their four siblings still read 4/7..7/7, at the same
+    object-store keys Label Studio presigns -- destroying the very context this
+    stage exists to provide, with nothing raising an error.
+
+    `clustered_image_ids` covers every image seen in a cluster, eligible or
+    not, because the orphan branch's job is to find images no cluster mentions.
+    """
+    clusters: List[List[str]] = []
+    cluster_members: List[List[SpeciesClusterMember]] = []
+    clustered_image_ids: set = set()
+
+    for cluster in prediction_clusters:
+        members = list(cluster.image_ids or [])
+        cluster_size = len(members)
+        checksums: List[str] = []
+        selected: List[SpeciesClusterMember] = []
+        for position, image_id in enumerate(members, start=1):
+            clustered_image_ids.add(image_id)
+            if image_id in checksum_by_id and eligible(image_id):
+                checksums.append(checksum_by_id[image_id])
+                selected.append(
+                    SpeciesClusterMember(
+                        checksum=checksum_by_id[image_id],
+                        cluster_index=position,
+                        cluster_size=cluster_size,
+                    )
+                )
+        if checksums:
+            clusters.append(checksums)
+            cluster_members.append(selected)
+
+    return clusters, cluster_members, clustered_image_ids
 
 
 @activity.defn
@@ -98,22 +144,17 @@ async def resolve_species_preprocess_inputs_activity(
             label.image_id for label in existing_species if label.needs_reprocess
         }
 
-        clusters: List[List[str]] = []
-        clustered_image_ids: set[int] = set()
-        for cluster in prediction_clusters:
-            cluster_checksums = []
-            for image_id in cluster.image_ids or []:
-                clustered_image_ids.add(image_id)
-                if image_id in checksum_by_id and (
-                    (
-                        image_id in valid_laser_image_ids
-                        and image_id not in labeled_image_ids
-                    )
-                    or image_id in flagged_image_ids
-                ):
-                    cluster_checksums.append(checksum_by_id[image_id])
-            if cluster_checksums:
-                clusters.append(cluster_checksums)
+        def eligible(image_id: int) -> bool:
+            """Ordinary work, or a redraw the operator asked for."""
+            return (
+                image_id in valid_laser_image_ids and image_id not in labeled_image_ids
+            ) or image_id in flagged_image_ids
+
+        clusters, cluster_members, clustered_image_ids = _build_clusters(
+            prediction_clusters,
+            checksum_by_id,
+            eligible,
+        )
 
         # Orphans: eligible images that belong to NO PREDICTION cluster.
         #
@@ -140,16 +181,15 @@ async def resolve_species_preprocess_inputs_activity(
         orphan_checksums = [
             checksum_by_id[image.id]
             for image in images
-            if image.id not in clustered_image_ids
-            and (
-                (
-                    image.id in valid_laser_image_ids
-                    and image.id not in labeled_image_ids
-                )
-                or image.id in flagged_image_ids
-            )
+            if image.id not in clustered_image_ids and eligible(image.id)
         ]
         clusters.extend([checksum] for checksum in orphan_checksums)
+        # An orphan genuinely is "image 1 of 1" -- it belongs to no cluster, so
+        # there is no larger grouping to be a part of.
+        cluster_members.extend(
+            [SpeciesClusterMember(checksum=checksum, cluster_index=1, cluster_size=1)]
+            for checksum in orphan_checksums
+        )
 
         activity.logger.info(
             "resolved species preprocess inputs dive_id=%d "
@@ -166,4 +206,5 @@ async def resolve_species_preprocess_inputs_activity(
             clusters=clusters,
             camera_matrix=intrinsics.camera_matrix.tolist(),
             distortion_coefficients=intrinsics.distortion_coefficients.tolist(),
+            cluster_members=cluster_members,
         )
