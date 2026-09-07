@@ -27,6 +27,7 @@ from fishsense_shared.preprocess_contracts import (
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
+from fishsense_api_workflow_worker.object_store import open_object_store_client
 
 
 def select_images_needing_prediction(
@@ -99,6 +100,44 @@ def select_images_needing_prediction(
     return out
 
 
+async def _only_with_rendered_jpeg(
+    candidates: List[PredictHeadtailImage],
+) -> List[PredictHeadtailImage]:
+    """Drop images whose stage-5.1 JPEG has not been written yet.
+
+    The predict stage reads that JPEG rather than raw bytes, so dispatching an
+    image before stage 5.1 has rendered it makes `download_processed_jpeg`
+    raise `NoSuchKey` — and per-image activities carry no retry ceiling, so the
+    child sits retrying a key that will not appear until the next hour, burning
+    its own execution timeout.
+
+    The two stages are only two minutes apart (+30 preprocess, +32 predict) and
+    stage 5.1 is a rawpy render over a whole dive, so overlapping is the normal
+    case rather than the exceptional one.
+
+    Deferring costs nothing: the predict cohort selects on a missing or stale
+    prediction, so the image is picked up on a later firing once the render has
+    landed. Mirrors the gate the headtail populate activity already applies for
+    the same reason.
+    """
+    if not candidates:
+        return candidates
+    store = open_object_store_client()
+    present: List[PredictHeadtailImage] = []
+    for candidate in candidates:
+        if await store.has_processed_jpeg(HEADTAIL_JPEG_FOLDER, candidate.checksum):
+            present.append(candidate)
+        else:
+            activity.logger.info(
+                "headtail JPEG not yet in Garage for image %d (checksum=%s); "
+                "deferring prediction to a later run",
+                candidate.image_id,
+                candidate.checksum,
+            )
+        activity.heartbeat()
+    return present
+
+
 @activity.defn
 async def resolve_headtail_predict_inputs_activity(
     dive_id: int,
@@ -113,11 +152,15 @@ async def resolve_headtail_predict_inputs_activity(
         needing = select_images_needing_prediction(
             images, lasers, headtail_labels, predictions
         )
+        selected = len(needing)
+        needing = await _only_with_rendered_jpeg(needing)
         activity.logger.info(
-            "resolved headtail predict inputs dive_id=%d images=%d needing=%d",
+            "resolved headtail predict inputs dive_id=%d images=%d needing=%d "
+            "deferred_no_jpeg=%d",
             dive_id,
             len(images),
             len(needing),
+            selected - len(needing),
         )
         return PredictHeadtailImagesInput(
             dive_id=dive_id,

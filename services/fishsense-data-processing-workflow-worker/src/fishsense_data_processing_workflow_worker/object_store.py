@@ -5,9 +5,10 @@ The key contract and the S3 primitives live in
 worker and the api-worker, so neither owns it. This module is only the
 data-worker's method subset layered on top.
 
-This worker reads staged raw inputs + slate PDFs from the scratch bucket
-and writes processed JPEGs to the labels bucket. It has **no NAS access**
-by design, and no way to delete anything.
+This worker reads staged raw inputs + slate PDFs from the scratch bucket,
+writes processed JPEGs to the labels bucket, and reads model weights from
+the models bucket. It has **no NAS access** by design, and no way to
+delete anything.
 
 The ``{jpeg_prefix}`` values are the same folder names the workflows
 already pass as ``output_folder`` — ``preprocess_jpeg`` (0.1),
@@ -18,7 +19,6 @@ already pass as ``output_folder`` — ``preprocess_jpeg`` (0.1),
 from __future__ import annotations
 
 from fishsense_shared.object_store import (
-    MODEL_PREFIX,
     RAW_PREFIX,
     SLATE_PDF_PREFIX,
     BaseObjectStoreClient,
@@ -30,7 +30,6 @@ from fishsense_shared.object_store import (
 )
 
 __all__ = [
-    "MODEL_PREFIX",
     "RAW_PREFIX",
     "SLATE_PDF_PREFIX",
     "ObjectStoreClient",
@@ -59,9 +58,10 @@ class ObjectStoreClient(BaseObjectStoreClient):
     """The data-worker's read + JPEG-write vocabulary.
 
     Reads raw/slate **scratch** from ``bucket``; writes processed JPEGs to
-    ``labels_bucket`` (the LS-facing bucket) under ``labels_prefix``.
-    ``labels_bucket`` defaults to ``bucket`` so single-bucket layouts keep
-    working unchanged.
+    ``labels_bucket`` (the LS-facing bucket) under ``labels_prefix``; reads
+    model weights from ``models_bucket`` under ``models_prefix``. Both of
+    the latter default to ``bucket`` so single-bucket layouts keep working
+    unchanged.
     """
 
     async def download_raw(self, checksum: str) -> bytes:
@@ -94,8 +94,16 @@ class ObjectStoreClient(BaseObjectStoreClient):
         cold start — and because keeping them out of a pullable artifact
         avoids redistributing weights whose upstream distribution is gated.
         Callers cache the bytes on a volume; see `checkpoint_cache`.
+
+        Reads ``models_bucket``, not ``bucket``: the weights are their own
+        kind of object with their own access grant, and pointing this at the
+        scratch bucket turns a checkpoint uploaded anywhere else into a 404
+        at cold start rather than a question at config review.
         """
-        return await self._get(model_key(name, version, filename))
+        return await self._get(
+            model_key(name, version, filename, self._models_prefix),
+            bucket=self._models_bucket,
+        )
 
     async def upload_processed_jpeg(
         self, folder: str, checksum: str, data: bytes

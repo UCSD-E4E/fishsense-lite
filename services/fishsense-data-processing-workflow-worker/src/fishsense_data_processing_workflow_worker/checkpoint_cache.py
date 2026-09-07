@@ -77,12 +77,19 @@ async def ensure_checkpoint(
 
         # Same directory as the target, so the rename cannot cross filesystems.
         tmp = target.with_name(f".{target.name}.{os.getpid()}.partial")
-        try:
-            tmp.write_bytes(data)
-            os.replace(tmp, target)
-        except BaseException:
-            tmp.unlink(missing_ok=True)
-            raise
+
+        def _write() -> None:
+            try:
+                tmp.write_bytes(data)
+                os.replace(tmp, target)
+            except BaseException:
+                tmp.unlink(missing_ok=True)
+                raise
+
+        # Off the loop: this is gigabytes. Writing it inline blocks every other
+        # coroutine in the worker for the duration, including the Temporal
+        # heartbeats that keep the activity from being declared lost.
+        await asyncio.to_thread(_write)
 
         _log.info("cached checkpoint at %s (%d bytes)", target, len(data))
         return target

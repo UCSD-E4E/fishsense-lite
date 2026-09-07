@@ -545,8 +545,8 @@ def test_laser_depth_cohort_drains_with_duplicate_labels_on_postgres():
 
     async def _exercise(session):
         from fishsense_api.controllers.dive_cohort_controller import (
-        select_next_for_laser_depth,
-    )
+            select_next_for_laser_depth,
+        )
         from fishsense_api.controllers.laser_depth_controller import (
             put_laser_depth,
         )

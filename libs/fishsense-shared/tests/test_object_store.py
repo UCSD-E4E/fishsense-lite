@@ -27,6 +27,7 @@ from fishsense_shared import object_store as sut
 
 BUCKET = "fishsense-test"
 LABELS_BUCKET = "labels-fishsense-test"
+MODELS_BUCKET = "model-weights-test"
 
 
 @pytest.fixture(name="s3")
@@ -92,6 +93,36 @@ def test_build_s3_client_uses_path_style_addressing_for_garage():
     assert client.meta.endpoint_url == "http://garage.example.com"
 
 
+def test_model_key_carries_no_content_type_prefix():
+    """Weights get their own bucket, so the key must not restate it.
+
+    `raw/` and `slate_pdf/` are content-type prefixes because they share the
+    one scratch bucket and must not collide. A dedicated models bucket makes
+    a `models/` prefix pure repetition, so there is no MODEL_PREFIX to spell.
+    """
+    assert (
+        sut.model_key("sam3", "3.1", "sam3.1_multiplex.pt")
+        == "sam3/3.1/sam3.1_multiplex.pt"
+    )
+    assert not hasattr(sut, "MODEL_PREFIX")
+
+
+@pytest.mark.parametrize(
+    ("prefix", "expected"),
+    [
+        ("", "sam3/3.1/sam3.1_multiplex.pt"),
+        (None, "sam3/3.1/sam3.1_multiplex.pt"),
+        ("fishsense-lite", "fishsense-lite/sam3/3.1/sam3.1_multiplex.pt"),
+        ("/fishsense-lite/", "fishsense-lite/sam3/3.1/sam3.1_multiplex.pt"),
+    ],
+)
+def test_model_key_prefix_handling(prefix, expected):
+    """Same slash-stripping contract as `jpeg_key`: a `models_prefix` is only
+    needed to partition a models bucket shared with another tenant, and a
+    stray slash would name a different object."""
+    assert sut.model_key("sam3", "3.1", "sam3.1_multiplex.pt", prefix) == expected
+
+
 # --------------------------------------------------------------------
 # Bucket routing
 # --------------------------------------------------------------------
@@ -116,6 +147,26 @@ def test_labels_bucket_and_prefix_are_honored_when_set():
 def test_none_labels_prefix_normalizes_to_empty_string():
     client = sut.BaseObjectStoreClient(object(), BUCKET, labels_prefix=None)
     assert client._labels_prefix == ""
+
+
+def test_models_bucket_defaults_to_scratch_bucket():
+    """Single-bucket layouts keep working, exactly as `labels_bucket` does."""
+    client = sut.BaseObjectStoreClient(object(), BUCKET)
+    assert client._models_bucket == BUCKET
+    assert client._models_prefix == ""
+
+
+def test_models_bucket_and_prefix_are_honored_when_set():
+    client = sut.BaseObjectStoreClient(
+        object(), BUCKET, models_bucket=MODELS_BUCKET, models_prefix="fishsense-lite"
+    )
+    assert client._models_bucket == MODELS_BUCKET
+    assert client._models_prefix == "fishsense-lite"
+
+
+def test_none_models_prefix_normalizes_to_empty_string():
+    client = sut.BaseObjectStoreClient(object(), BUCKET, models_prefix=None)
+    assert client._models_prefix == ""
 
 
 # --------------------------------------------------------------------
@@ -299,6 +350,28 @@ def test_open_client_normalizes_a_null_labels_prefix():
         _settings(labels_prefix=None), sut.BaseObjectStoreClient
     )
     assert client._labels_prefix == ""
+
+
+def test_open_client_defaults_optional_models_settings():
+    """The api-worker sets no models keys at all — it never reads weights —
+    so both must fall back rather than raise on a missing Dynaconf attribute."""
+    client = sut.open_client(_settings(), sut.BaseObjectStoreClient)
+    assert client._models_bucket == BUCKET
+    assert client._models_prefix == ""
+
+
+def test_open_client_honors_a_dedicated_models_bucket():
+    client = sut.open_client(
+        _settings(models_bucket=MODELS_BUCKET),
+        sut.BaseObjectStoreClient,
+    )
+    assert client._models_bucket == MODELS_BUCKET
+    assert client._models_prefix == ""
+
+
+def test_open_client_normalizes_a_null_models_prefix():
+    client = sut.open_client(_settings(models_prefix=None), sut.BaseObjectStoreClient)
+    assert client._models_prefix == ""
 
 
 def test_open_client_passes_garage_addressing_through():
