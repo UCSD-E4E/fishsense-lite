@@ -197,6 +197,22 @@ async def stage_slate_pdf(
     )
 
 
+class _ChildAlreadyRunning:
+    """Sentinel type for `CHILD_ALREADY_RUNNING`."""
+
+    __slots__ = ()
+
+
+#: Returned by `dispatch_child` when a prior child with the same id is still
+#: running, so this firing dispatched nothing.
+#:
+#: A distinct object rather than `None` because the preprocess children all
+#: return `None` on success -- the two cases are opposite in meaning and were
+#: indistinguishable. A caller that cannot tell them apart cleans up after a
+#: run it does not own.
+CHILD_ALREADY_RUNNING = _ChildAlreadyRunning()
+
+
 async def dispatch_child(
     workflow_name: str,
     inputs: Any,
@@ -227,9 +243,18 @@ async def dispatch_child(
 
     With ALLOW_DUPLICATE, `WorkflowAlreadyStartedError` is reachable only
     while a prior child with this id is still *running* (a manual run
-    overlapping the schedule). That run is doing the work, so the caller
-    continues to its cleanup rather than failing the firing. Returns None
-    in that case.
+    overlapping the schedule). Returns `CHILD_ALREADY_RUNNING`, and the
+    caller must then do **nothing further** -- not cleanup, not flag
+    clearing. The run that owns that child will do both.
+
+    This used to return None and the caller continued to its cleanup. That
+    deletes the dive's staged raw `.ORF`s from Garage while the running child
+    is still reading them. Prod dive 442, 2026-09-07: a manual stage-0.1
+    parent's child had scheduled all 259 per-image activities when the 07:00
+    firing was refused the duplicate dispatch, continued, deleted 984 raw
+    objects and cleared 515 reprocess flags. The child died with
+    `NoSuchKey ... GetObject` having redrawn 2 frames, and the flags were
+    already down, so nothing brought the rest back.
     """
     try:
         return await workflow.execute_child_workflow(
@@ -243,10 +268,11 @@ async def dispatch_child(
         )
     except WorkflowAlreadyStartedError:
         workflow.logger.info(
-            "%s is still running; skipping duplicate dispatch and continuing",
+            "%s is still running; this firing dispatched nothing and will not "
+            "clean up after the run that owns it",
             child_id,
         )
-        return None
+        return CHILD_ALREADY_RUNNING
 
 
 async def run_sdk_activity(activity_name: str, arg: Any) -> Any:

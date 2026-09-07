@@ -57,6 +57,17 @@ class EvaluateLaserAutoAcceptParentWorkflow:
             execution_timeout=GATE_CHILD_EXECUTION_TIMEOUT,
             result_type=LaserAutoAcceptSummary,
         )
+        if summary is _dispatch.CHILD_ALREADY_RUNNING:
+            # The predict parent is running this dive's gate right now. Same
+            # child id by design, so both directions of the overlap have to be
+            # handled -- reading `.enabled` off the sentinel would raise
+            # AttributeError and wedge the workflow task in an infinite retry.
+            workflow.logger.info(
+                "auto-accept gate for dive_id=%d is already running "
+                "(predict parent); skipping this drain firing",
+                dive_id,
+            )
+            return dive_id
         workflow.logger.info(
             "auto-accept backlog dive_id=%d enabled=%s eligible=%s reason=%s "
             "auto_accepted=%d/%d verdicts=%s",
