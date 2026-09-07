@@ -24,6 +24,8 @@ from temporalio import activity
 
 from temporalio.client import Client
 
+from fishsense_shared import build_tls_config, temporal_namespace
+
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
 from fishsense_api_workflow_worker.config import settings
 from fishsense_api_workflow_worker.object_store import open_object_store_client
@@ -86,11 +88,6 @@ async def scratch_in_use(dive_id: int) -> str | None:
     `skipped_already_present` and re-uses what is there. So an unreachable
     Temporal blocks the delete rather than waving it through.
     """
-    from fishsense_api_workflow_worker.worker import (  # noqa: PLC0415
-        build_tls_config,
-        temporal_namespace,
-    )
-
     try:
         client = await Client.connect(
             f"{settings.temporal.host}:{settings.temporal.port}",

@@ -120,7 +120,7 @@ async def _dive(
 
 
 async def _select(session):
-    from fishsense_api.controllers.dive_cohort_controller import (
+    from fishsense_api.controllers.dive_prediction_cohort_controller import (
         select_next_for_laser_prediction,
     )
 

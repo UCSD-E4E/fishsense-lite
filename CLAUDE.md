@@ -1996,6 +1996,44 @@ idempotent at the dive level — a partial failure mid-supersede leaves
 the previously-superseded labels in place, and the next run picks up
 where it left off.
 
+**The fitted line is a WITHIN-DIVE property. It is not stable across
+mount changes, so one dive's line is never a prior for another dive.**
+Demonstrated 2026-09-03.
+
+**Why:** the mount is static, but the laser can rotate *within* it, and a
+laser is not axial with its own body — the beam leaves at a small angle
+to the cylindrical case. So rolling the laser in its clamp sweeps the
+beam around a cone: a large pointing change produced by an event that
+leaves the mount, the camera and the visible rig geometry untouched.
+Nothing about a mount holding firm bounds it, because the degree of
+freedom is *inside* the mount. It is also why the line holds within a
+dive — nobody handles the laser underwater — and moves between them.
+
+The `DiveLaserLine` model docstring still says the opposite — that the
+line is "the fingerprint of the mount state" which on a given camera
+"changes only when the cold-shoe mount rotates, drifts, or is swapped"
+— and lists borrow, drift tracking, mount-swap detection and pooled
+calibration as things it enables. Do not build on
+that framing; it fails in both directions:
+
+* **Same line ⇏ same rig state.** Re-seat motion is anisotropic — φ
+  (in-plane toe-in) moves 2–4× more than out-of-plane and leaves the 2D
+  line unchanged. Dives 383 and 471 share a plane to 0.22° with Δφ =
+  3.1° and ±44/+305% length error. Mount epochs have to come from
+  deployment metadata, never from line agreement.
+* **Same rig ⇏ same line.** The line also moves across mount changes,
+  so a carry-forward line is not reliably available in the first place.
+
+Within a dive the fit is sound, and that is where it earns its keep:
+besides superseding outliers, a dive's own line cleanly separates laser
+predictions a labeler moved from ones they accepted (measured
+2026-09-03 on the v2 detector — accepted predictions sit ~1 px off the
+dive line, moved ones ~68 px; a ≥10 px test catches 19/22 moves and
+13/13 deletions at a 0.6% false-flag rate, while detector confidence
+catches almost none of them, 13 of the 22 moves scoring exactly
+1.0000). That gate needs the dive's own labels to exist first, so it is
+a post-hoc audit, not a pre-seed filter.
+
 Stage 13 + 14 consequences: laser calibration and fish measurement
 both consume `LaserLabel` rows via the `superseded=False` filter, so
 once a label is superseded it disappears from those pipelines too.
