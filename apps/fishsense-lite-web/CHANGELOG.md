@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.5](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.11.4...fishsense-lite-web-v0.11.5) (2026-09-07)
+
+
+### Bug Fixes
+
+* **web:** back off on token-refresh 429s, and stop causing them ([#765](https://github.com/UCSD-E4E/fishsense-lite/issues/765)) ([628fd33](https://github.com/UCSD-E4E/fishsense-lite/commit/628fd331ea7f77798e9c6fc0d8d5fd02e852888b))
+
 ## [0.11.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.11.3...fishsense-lite-web-v0.11.4) (2026-09-07)
 
 
