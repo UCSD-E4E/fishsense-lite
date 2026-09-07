@@ -1,0 +1,319 @@
+"""Unit tests for the checkerboard corner detector.
+
+The detector's whole job is to produce the `(body_points, image_points)` that
+`calibration_geometry.plane_from_correspondences` turns into a plane — the
+same pair a `DiveSlate`'s template points and hand-clicked corners produce
+today. Everything downstream is already shared and already tested.
+
+What is pinned here is the part that can go wrong *silently*, because
+`solvePnP` does not refuse a bad correspondence set — it returns success and a
+confident, meaningless pose:
+
+  * correspondences are index-aligned and built from the **detected** grid,
+    never the nominal board;
+  * a grid bigger than the declared board is refused (wrong target linked);
+  * a degenerate near-collinear detection is refused;
+  * a sub-grid recovers the *same plane* as the full board, which is what
+    makes partial detections usable at all — and how much less sharply it
+    does so once real corner noise is in play.
+"""
+
+from __future__ import annotations
+
+import cv2
+import numpy as np
+import pytest
+
+from fishsense_data_processing_workflow_worker import checkerboard_detection as sut
+from fishsense_data_processing_workflow_worker.calibration_geometry import (
+    laser_point_on_plane,
+    plane_from_correspondences,
+)
+
+SQUARE_PX = 40
+SQUARE_SIZE_M = 0.0254
+
+# The E4E board: 15 x 11 squares -> 14 x 10 interior corners.
+BOARD_COLS_SQ, BOARD_ROWS_SQ = 15, 11
+BOARD_COLS, BOARD_ROWS = BOARD_COLS_SQ - 1, BOARD_ROWS_SQ - 1
+
+CAMERA_MATRIX = np.array(
+    [[1800.0, 0.0, 640.0], [0.0, 1800.0, 480.0], [0.0, 0.0, 1.0]]
+)
+
+
+def _render(cols_sq: int = BOARD_COLS_SQ, rows_sq: int = BOARD_ROWS_SQ, border=80):
+    """A flat checkerboard on a white ground.
+
+    The white border is not decoration — `findChessboardCornersSB` requires a
+    quiet boundary around the pattern.
+    """
+    height = rows_sq * SQUARE_PX + 2 * border
+    width = cols_sq * SQUARE_PX + 2 * border
+    img = np.full((height, width), 255, np.uint8)
+    for row in range(rows_sq):
+        for col in range(cols_sq):
+            if (row + col) % 2 == 0:
+                y_0, x_0 = border + row * SQUARE_PX, border + col * SQUARE_PX
+                img[y_0 : y_0 + SQUARE_PX, x_0 : x_0 + SQUARE_PX] = 0
+    return img
+
+
+def _warped(img):
+    """The board seen at an angle, so the recovered pose is a real one."""
+    height, width = img.shape[:2]
+    source = np.float32([[0, 0], [width, 0], [width, height], [0, height]])
+    destination = np.float32(
+        [
+            [width * 0.10, height * 0.05],
+            [width * 0.92, height * 0.16],
+            [width * 0.88, height * 0.95],
+            [width * 0.06, height * 0.86],
+        ]
+    )
+    matrix = cv2.getPerspectiveTransform(source, destination)
+    return cv2.warpPerspective(img, matrix, (width, height), borderValue=255)
+
+
+def _detect(img, **overrides):
+    kwargs = {
+        "max_rows": BOARD_ROWS,
+        "max_cols": BOARD_COLS,
+        "square_size_m": SQUARE_SIZE_M,
+    }
+    kwargs.update(overrides)
+    return sut.detect_checkerboard(img, **kwargs)
+
+
+# ---------- the happy path ----------
+
+
+def test_detects_the_full_board():
+    detected = _detect(_render())
+
+    assert detected is not None
+    assert sorted((detected.rows, detected.cols)) == sorted((BOARD_ROWS, BOARD_COLS))
+    assert len(detected.body_points) == BOARD_ROWS * BOARD_COLS
+    assert len(detected.image_points) == len(detected.body_points)
+
+
+def test_body_points_carry_the_measured_pitch():
+    """The one number that sets the scale of every downstream length."""
+    detected = _detect(_render())
+
+    grid = detected.body_points.reshape(detected.rows, detected.cols, 2)
+    along_cols = np.diff(grid[0, :, 0])
+    down_rows = np.diff(grid[:, 0, 1])
+    assert np.allclose(along_cols, SQUARE_SIZE_M)
+    assert np.allclose(down_rows, SQUARE_SIZE_M)
+
+
+def test_accepts_a_colour_image():
+    """The pipeline hands it `RectifiedImage.data`, which is BGR."""
+    colour = cv2.cvtColor(_render(), cv2.COLOR_GRAY2BGR)
+
+    assert _detect(colour) is not None
+
+
+def test_correspondences_recover_a_plane():
+    detected = _detect(_warped(_render()))
+    assert detected is not None
+
+    plane = plane_from_correspondences(
+        detected.body_points, detected.image_points, CAMERA_MATRIX
+    )
+
+    assert plane is not None
+    assert np.isclose(np.linalg.norm(plane.normal), 1.0)
+
+
+# ---------- partial views: the property that makes them usable ----------
+
+
+def test_a_partial_view_is_detected_as_a_sub_grid():
+    """Occlusion and the frame edge cut the board down; ~96% still detect.
+
+    Note the exact patternSize would fail outright here — which is why the
+    detector asks for a small grid and reads the real one back from the
+    detector's own metadata, rather than asserting the nominal board.
+    """
+    board = _warped(_render())
+    cropped = board[:, : int(board.shape[1] * 0.66)].copy()
+
+    detected = _detect(cropped)
+
+    assert detected is not None
+    assert detected.rows * detected.cols < BOARD_ROWS * BOARD_COLS
+
+
+def _project(body_points, rvec, tvec):
+    """Where a body grid lands in a rectified image, exactly.
+
+    Analytic rather than detected, because the property below is about the
+    geometry and detected corners carry sub-pixel noise that would swamp it —
+    the noise is characterised separately in the next test.
+    """
+    points_3d = np.column_stack(
+        [body_points, np.zeros(len(body_points), dtype=np.float64)]
+    )
+    projected, _ = cv2.projectPoints(
+        points_3d, rvec, tvec, CAMERA_MATRIX, np.zeros((5,))
+    )
+    return projected.reshape(-1, 2)
+
+
+def test_a_sub_grid_recovers_the_identical_plane():
+    """The whole justification for accepting sub-grids.
+
+    A sub-grid of a regular grid has the same pitch, and only the plane
+    reaches the answer — the sub-board's unknown offset into the full board
+    lands in the in-plane pose, which nothing downstream reads. So a detector
+    that returns 10 x 10 of a 14 x 10 board, with no idea *which* 10 x 10, is
+    still answering the question stage 13 asks.
+    """
+    rvec = np.array([0.28, -0.16, 0.07])
+    tvec = np.array([-0.10, -0.08, 1.40])
+    grid = np.stack(
+        np.meshgrid(np.arange(BOARD_COLS), np.arange(BOARD_ROWS)), axis=-1
+    ).astype(np.float64)
+    body = grid * SQUARE_SIZE_M
+    image = _project(body.reshape(-1, 2), rvec, tvec).reshape(
+        BOARD_ROWS, BOARD_COLS, 2
+    )
+
+    dot = np.array([620.0, 500.0])
+
+    def _hit(body_grid, image_grid):
+        points = body_grid.reshape(-1, 2)
+        # Re-based to the sub-grid's own origin, as the detector emits it.
+        points = points - points.min(axis=0)
+        plane = plane_from_correspondences(
+            points, image_grid.reshape(-1, 2), CAMERA_MATRIX
+        )
+        return laser_point_on_plane(plane, dot, CAMERA_MATRIX)
+
+    whole = _hit(body, image)
+    for rows, cols in ((slice(2, None), slice(None, 7)), (slice(None, 5), slice(4, None))):
+        assert np.allclose(whole, _hit(body[rows, cols], image[rows, cols]), atol=1e-6)
+
+
+def test_a_partial_view_agrees_with_the_full_board_to_within_its_conditioning():
+    """Detected independently, a sub-grid answers the same question less sharply.
+
+    Not a contradiction of the exact property above: the corners themselves
+    agree to 0.025 px between the two runs, but a 10 x 10 sub-grid spans less
+    of the frame than the full 14 x 10, so the same corner error buys a worse
+    pose. Measured here at ~1.6% of a 1.43 m depth.
+
+    Recorded rather than gated on, because the defence against it is already
+    in place and is the right one: `calibrate_laser` is a least-squares fit
+    over every observation in the dive (28-133 frames in this corpus, against
+    a `MIN_LASER_POINTS` of 2), and `check_fit_self_consistency` refuses a fit
+    that disagrees with the dots it came from. Discarding small detections
+    instead would throw away usable frames to fix a term the aggregate already
+    handles.
+    """
+    board = _warped(_render())
+    cropped = board[:, : int(board.shape[1] * 0.66)].copy()
+
+    full = _detect(board)
+    partial = _detect(cropped)
+    assert full is not None and partial is not None
+    assert (partial.rows, partial.cols) != (full.rows, full.cols)
+
+    dot = np.array([620.0, 500.0])
+    from_full = laser_point_on_plane(
+        plane_from_correspondences(full.body_points, full.image_points, CAMERA_MATRIX),
+        dot,
+        CAMERA_MATRIX,
+    )
+    from_partial = laser_point_on_plane(
+        plane_from_correspondences(
+            partial.body_points, partial.image_points, CAMERA_MATRIX
+        ),
+        dot,
+        CAMERA_MATRIX,
+    )
+
+    relative = np.linalg.norm(from_full - from_partial) / np.linalg.norm(from_full)
+    assert relative < 0.03, relative
+
+
+def test_the_grid_orientation_does_not_change_the_plane():
+    """The detected grid may come back transposed or mirrored, and must not matter.
+
+    The board is a symmetric grid, so the detector's indexing is only defined
+    up to the 8 symmetries of a rectangle. A mirrored assignment is realised
+    by a real rotation (the board flipped 180 degrees about an in-plane axis),
+    which flips the plane normal — and the ray-plane intersection divides one
+    normal by the other, so the sign cancels.
+
+    This is why the classic checkerboard headaches (180-degree ambiguity,
+    which corner is the origin, consistent ordering between frames) are all
+    irrelevant to *this* use, and why building body points on the detected
+    shape is safe.
+    """
+    detected = _detect(_warped(_render()))
+    assert detected is not None
+
+    body = detected.body_points.reshape(detected.rows, detected.cols, 2)
+    image = detected.image_points.reshape(detected.rows, detected.cols, 2)
+
+    dot = np.array([620.0, 500.0])
+    straight = laser_point_on_plane(
+        plane_from_correspondences(
+            body.reshape(-1, 2), image.reshape(-1, 2), CAMERA_MATRIX
+        ),
+        dot,
+        CAMERA_MATRIX,
+    )
+    # Mirror the image traversal while leaving the body grid as it is: the
+    # body frame is now a reflection of the physical board's.
+    mirrored = laser_point_on_plane(
+        plane_from_correspondences(
+            body.reshape(-1, 2), image[:, ::-1, :].reshape(-1, 2), CAMERA_MATRIX
+        ),
+        dot,
+        CAMERA_MATRIX,
+    )
+
+    assert np.allclose(straight, mirrored, atol=1e-3)
+
+
+# ---------- refusals ----------
+
+
+def test_returns_none_when_there_is_no_board():
+    assert _detect(np.full((600, 800), 255, np.uint8)) is None
+
+
+def test_refuses_a_grid_larger_than_the_declared_board():
+    """A different board means a different pitch, i.e. a wrong scale.
+
+    The 2025 pool-test board is 24 x 17 where the E4E board is 14 x 10. A
+    frame linked to the wrong target would otherwise be fitted at the wrong
+    scale and calibrate cleanly — the error reprojection residual cannot see.
+    """
+    fine_board = _render(cols_sq=25, rows_sq=18)
+
+    assert _detect(fine_board) is None
+
+
+def test_accepts_the_declared_board_at_its_own_size():
+    """The refusal above must be about the geometry, not about strictness."""
+    fine_board = _render(cols_sq=25, rows_sq=18)
+
+    assert _detect(fine_board, max_rows=17, max_cols=24) is not None
+
+
+@pytest.mark.parametrize("side", [1, 2])
+def test_refuses_a_degenerate_grid(side):
+    """`solvePnP` accepts near-collinear points and returns confident junk.
+
+    A one- or two-corner-wide strip does not determine a plane, and nothing
+    downstream would notice: there is no residual check between here and
+    `LaserExtrinsics`.
+    """
+    strip = _render(cols_sq=side + 1, rows_sq=BOARD_ROWS_SQ)
+
+    assert _detect(strip) is None
