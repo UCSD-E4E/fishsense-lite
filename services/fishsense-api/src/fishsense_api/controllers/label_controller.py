@@ -586,12 +586,25 @@ async def _set_needs_reprocess(
             Image.is_canonical == True
         )  # noqa: E712  pylint: disable=singleton-comparison
     )
-    if value and only_incomplete:
+    if value:
+        # Never raise a flag on a dead-lettered row. `get_<kind>_labels_for_dive`
+        # -- the per-dive getter every resolver reads -- filters
+        # `superseded == False`, so a flag here would be visible to the cohort
+        # selector and invisible to the resolver: the dive is picked, its raw
+        # `.ORF`s are staged from the NAS, nothing resolves, and it happens
+        # again next hour. Clearing is deliberately not filtered, so a row
+        # superseded *after* being flagged still gets its flag lowered.
         query = query.where(
             or_(
-                model.completed == False, model.completed.is_(None)
+                model.superseded == False, model.superseded.is_(None)
             )  # noqa: E712  pylint: disable=singleton-comparison
         )
+        if only_incomplete:
+            query = query.where(
+                or_(
+                    model.completed == False, model.completed.is_(None)
+                )  # noqa: E712  pylint: disable=singleton-comparison
+            )
     labels = (await session.exec(query)).all()
     for label in labels:
         label.needs_reprocess = value

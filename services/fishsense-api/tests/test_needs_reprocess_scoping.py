@@ -142,3 +142,45 @@ class TestScoping:
         from fishsense_api.controllers.label_controller import _set_needs_reprocess
 
         assert await _set_needs_reprocess(session, 999, model, False) == 0
+
+
+@pytest.mark.parametrize("model", _kinds())
+class TestSupersededRowsAreNeverFlagged:
+    """A superseded row is dead-lettered: no labeler will ever see it again.
+
+    It also cannot be *reached*. `get_{kind}_labels_for_dive` -- the per-dive
+    getter every resolver uses -- filters `superseded == False`, so a flag on a
+    superseded row is visible to the cohort selector and invisible to the
+    resolver. That is the exact selector/resolver mismatch that stages a dive's
+    raw `.ORF`s from the NAS every hour and resolves nothing.
+    """
+
+    async def test_superseded_incomplete_row_is_not_flagged(self, session, model):
+        from fishsense_api.controllers.label_controller import _set_needs_reprocess
+        from fishsense_api.models.dive import Dive
+        from fishsense_api.models.image import Image
+        from fishsense_api.models.priority import Priority
+
+        when = datetime(2026, 9, 1, tzinfo=timezone.utc)
+        session.add(Dive(id=2, path="/d2", priority=Priority.HIGH, dive_datetime=when))
+        session.add(
+            Image(
+                id=20,
+                dive_id=2,
+                path="/i20.ORF",
+                checksum=f"{20:032d}",
+                is_canonical=True,
+                taken_datetime=when,
+            )
+        )
+        row = model(
+            image_id=20,
+            completed=False,
+            superseded=True,
+            label_studio_project_id=5,
+        )
+        session.add(row)
+        await session.flush()
+
+        assert await _set_needs_reprocess(session, 2, model, True) == 0
+        assert row.needs_reprocess is False

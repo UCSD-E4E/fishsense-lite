@@ -66,11 +66,20 @@ async def resolve_slate_preprocess_inputs_activity(
             label.image_id for label in existing_slate_labels if label.needs_reprocess
         }
 
-        target_image_ids = [
+        # A flagged image is reached on its own terms: the cohort's flag branch
+        # applies no laser gate and no marker gate, so neither may this. A laser
+        # superseded *after* the flag was raised would otherwise drop the image
+        # from the resolver while the selector still picks the dive -- which
+        # stages the dive's raw bytes from the NAS every hour, forever.
+        eligible_ids = [
             label.image_id
             for label in species_labels
             if label.content_of_image == SLATE_CONTENT_MARKER
-            and (label.image_id not in labeled_ids or label.image_id in flagged_ids)
+            and label.image_id not in labeled_ids
+        ]
+        seen = set(eligible_ids)
+        target_image_ids = eligible_ids + [
+            image_id for image_id in sorted(flagged_ids) if image_id not in seen
         ]
 
         images = await fs.images.get(dive_id=dive_id) or []

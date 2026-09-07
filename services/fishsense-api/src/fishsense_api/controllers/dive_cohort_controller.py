@@ -276,6 +276,14 @@ def _has_image_flagged_for_reprocess(model) -> Any:
             .where(
                 model.needs_reprocess == True
             )  # noqa: E712  pylint: disable=singleton-comparison
+            # Superseded rows are invisible to the resolvers, whose per-dive
+            # getters filter them out. Selecting on one would pick a dive the
+            # resolver finds no work for, every hour, forever.
+            .where(
+                or_(
+                    model.superseded == False, model.superseded.is_(None)
+                )  # noqa: E712  pylint: disable=singleton-comparison
+            )
             .exists()
         )
         .exists()

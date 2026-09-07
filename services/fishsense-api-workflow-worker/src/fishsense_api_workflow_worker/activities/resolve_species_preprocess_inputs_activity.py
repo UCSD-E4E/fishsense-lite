@@ -104,13 +104,12 @@ async def resolve_species_preprocess_inputs_activity(
             cluster_checksums = []
             for image_id in cluster.image_ids or []:
                 clustered_image_ids.add(image_id)
-                if (
-                    image_id in checksum_by_id
-                    and image_id in valid_laser_image_ids
-                    and (
-                        image_id not in labeled_image_ids
-                        or image_id in flagged_image_ids
+                if image_id in checksum_by_id and (
+                    (
+                        image_id in valid_laser_image_ids
+                        and image_id not in labeled_image_ids
                     )
+                    or image_id in flagged_image_ids
                 ):
                     cluster_checksums.append(checksum_by_id[image_id])
             if cluster_checksums:
@@ -134,12 +133,21 @@ async def resolve_species_preprocess_inputs_activity(
         # renders "image 1 of 1". Grouping them into one synthetic cluster
         # would be a lie about temporal grouping and would label unrelated
         # frames "image i of N".
+        # A flagged image in no cluster is reachable ONLY here. Leaving the
+        # flag out of this branch meant a flagged orphan resolved to nothing
+        # while still selecting its dive -- and if orphans were the only
+        # flagged images, the dive wedged the stage-2 cohort permanently.
         orphan_checksums = [
             checksum_by_id[image.id]
             for image in images
             if image.id not in clustered_image_ids
-            and image.id in valid_laser_image_ids
-            and image.id not in labeled_image_ids
+            and (
+                (
+                    image.id in valid_laser_image_ids
+                    and image.id not in labeled_image_ids
+                )
+                or image.id in flagged_image_ids
+            )
         ]
         clusters.extend([checksum] for checksum in orphan_checksums)
 

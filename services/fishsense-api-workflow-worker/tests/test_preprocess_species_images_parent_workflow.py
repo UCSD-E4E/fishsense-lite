@@ -69,6 +69,9 @@ def _make_populate_recording_activity(captures: List[tuple]):
     return record_populate_dispatch
 
 
+_CLEAR_CALLS: List[int] = []
+
+
 def _make_stubs(
     selector_result: Optional[int],
     resolver_result: Optional[PreprocessSpeciesImagesInput],
@@ -97,6 +100,7 @@ def _make_stubs(
 
     @activity.defn(name="clear_species_reprocess_flags_activity")
     async def stub_clear_reprocess(dive_id: int) -> int:
+        _CLEAR_CALLS.append(dive_id)
         """The parent lowers the redraw flag after its child completes;
         without it the dive stays in the cohort forever."""
         return 0
@@ -301,3 +305,39 @@ async def test_child_redispatches_after_a_prior_successful_run():
     # Same deterministic child id both times; both must have run.
     assert len(child_runs) == 2, "child must re-dispatch on the second parent run"
     assert {c[0] for c in child_runs} == {"preprocess-species-59"}
+
+
+async def test_lowers_the_reprocess_flag_even_when_no_work_resolves():
+    """A flag that reaches no image must still be lowered.
+
+    The flag is the one term in the cohort predicate that does not go false on
+    its own. If the "no work resolved" early return skips the clear step, the
+    selector picks the same dive on the next firing and every firing after --
+    staging its raw `.ORF`s from the NAS each time and starving every higher-id
+    dive behind it. Lowering a flag that reached nothing loses the operator's
+    request, which is why the parent logs it; wedging the cohort is worse.
+    """
+    inputs = PreprocessSpeciesImagesInput(
+        dive_id=907,
+        clusters=[],
+        camera_matrix=_K,
+        distortion_coefficients=_D,
+    )
+    activities, _, _ = _make_stubs(907, inputs)
+    _CLEAR_CALLS.clear()
+
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
+            task_queue="test-stage2-clear",
+            workflows=[PreprocessSpeciesImagesParentWorkflow],
+            activities=activities,
+        ):
+            result = await env.client.execute_workflow(
+                PreprocessSpeciesImagesParentWorkflow.run,
+                id="reprocess-clear-907",
+                task_queue="test-stage2-clear",
+            )
+
+    assert result == 907
+    assert _CLEAR_CALLS == [907], "the flag must be lowered on the no-work path"
