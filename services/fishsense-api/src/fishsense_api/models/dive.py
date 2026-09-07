@@ -30,6 +30,19 @@ class Dive(ModelBase, table=True):
     camera_id: int | None = Field(default=None, foreign_key="camera.id")
     dive_slate_id: int | None = Field(default=None, foreign_key="diveslate.id")
 
+    # Which planar calibration target this dive was shot against, when it was
+    # not one of the `DiveSlate` templates. Set by the species-label sync from
+    # the `Calibration Targets` taxonomy branch, and by an operator.
+    #
+    # Independent of `dive_slate_id` rather than an alternative spelling of
+    # it: the two name different physical objects and gate different stages,
+    # and a dive that carries a slate keeps calibrating through stage 13. NULL
+    # is the overwhelmingly common case — only the pool-test calibration dives
+    # were shot against a checkerboard.
+    calibration_target_id: int | None = Field(
+        default=None, foreign_key="calibrationtarget.id"
+    )
+
     # Self-referential link to the dive whose laser calibration this dive
     # borrows. Laser calibration is physically a property of the camera+laser
     # rig, not the dive, so a dive with no slate frames of its own (e.g. a

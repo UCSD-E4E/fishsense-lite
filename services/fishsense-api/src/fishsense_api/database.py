@@ -18,6 +18,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from fishsense_api import views
 from fishsense_api.config import pg_connection_string
+from fishsense_api.models.calibration_target import CalibrationTarget
 from fishsense_api.models.camera import Camera
 from fishsense_api.models.camera_intrinsics import CameraIntrinsics
 from fishsense_api.models.dive import Dive

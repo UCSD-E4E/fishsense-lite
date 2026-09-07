@@ -16,6 +16,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from fishsense_api.database import get_async_session
+from fishsense_api.models.calibration_target import CalibrationTarget
 from fishsense_api.models.camera import Camera
 from fishsense_api.models.camera_intrinsics import CameraIntrinsics
 from fishsense_api.models.dive import Dive
@@ -457,6 +458,68 @@ async def set_dive_slate(
     await session.flush()
 
     return dive_id
+
+
+@app.put("/api/v1/dives/{dive_id}/calibration-target/{calibration_target_id}")
+async def set_dive_calibration_target(
+    dive_id: int,
+    calibration_target_id: int,
+    session: AsyncSession = Depends(get_async_session),
+) -> int:
+    """Set which planar `CalibrationTarget` a dive was shot against.
+
+    The checkerboard counterpart of `set_dive_slate`: it is what admits a dive
+    to the checkerboard laser-calibration cohort, for dives whose calibration
+    frames show a board rather than one of the 11 `DiveSlate` templates.
+    Populated by the species-label sync from the labeler's
+    `Calibration Targets` choice; also settable by an operator.
+
+    Independent of `dive_slate_id` — a dive that carries both keeps
+    calibrating through stage 13, which owns the slate path.
+
+    Returns the dive id. 404 if the dive or the CalibrationTarget is missing.
+    The target check is not ceremony: sqlite ignores the FK, and a dive
+    pointing at a target that does not exist would enter the cohort and fail
+    its resolver on every hourly firing.
+    """
+    logger.debug(
+        "Setting dive id=%d calibration_target_id=%d", dive_id, calibration_target_id
+    )
+    dive = await session.get(Dive, dive_id)
+    if dive is None:
+        raise HTTPException(status_code=404, detail="Dive not found")
+
+    target = await session.get(CalibrationTarget, calibration_target_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="CalibrationTarget not found")
+
+    dive.calibration_target_id = calibration_target_id
+    session.add(dive)
+    await session.flush()
+
+    return dive_id
+
+
+@app.delete("/api/v1/dives/{dive_id}/calibration-target/", status_code=204)
+async def clear_dive_calibration_target(
+    dive_id: int,
+    session: AsyncSession = Depends(get_async_session),
+) -> None:
+    """Unlink `dive_id` from any calibration target (idempotent).
+
+    404 only if the dive itself is missing; clearing an already-null link is
+    a no-op. The dive drops out of the checkerboard calibration cohort; any
+    `LaserExtrinsics` already fitted for it stays, exactly as clearing a
+    slate link leaves an existing calibration alone.
+    """
+    logger.debug("Clearing calibration target link for dive id=%d", dive_id)
+    dive = await session.get(Dive, dive_id)
+    if dive is None:
+        raise HTTPException(status_code=404, detail="Dive not found")
+
+    dive.calibration_target_id = None
+    session.add(dive)
+    await session.flush()
 
 
 @app.put("/api/v1/dives/{dive_id}/notes")

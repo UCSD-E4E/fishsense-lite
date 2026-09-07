@@ -42,6 +42,12 @@ class Pair:
 # where the API splits a single SDK shape into separate persistence + JSON
 # classes.
 MODEL_PAIRS: list[Pair] = [
+    Pair(
+        "calibration_target",
+        "CalibrationTarget",
+        "calibration_target",
+        "CalibrationTarget",
+    ),
     Pair("camera", "Camera", "camera", "Camera"),
     Pair("camera_intrinsics", "_CameraIntrinsics", "camera_intrinsics", "CameraIntrinsics"),
     Pair("dive", "Dive", "dive", "Dive"),

@@ -339,6 +339,39 @@ class DiveClient(ClientBase):
 
         return response.json()
 
+    async def set_calibration_target(
+        self, dive_id: int, calibration_target_id: int
+    ) -> int:
+        """Set which planar `CalibrationTarget` a dive was shot against.
+
+        The checkerboard counterpart of `set_dive_slate`, and what admits a
+        dive to the checkerboard laser-calibration cohort. Independent of the
+        slate link — a dive carrying both still calibrates through the slate
+        path.
+
+        Args:
+            dive_id (int): The dive to set.
+            calibration_target_id (int): The CalibrationTarget id.
+
+        Returns:
+            int: The dive id.
+        """
+        response = await self._put(
+            f"/api/v1/dives/{dive_id}/calibration-target/{calibration_target_id}"
+        )
+        response.raise_for_status()
+
+        return response.json()
+
+    async def clear_calibration_target(self, dive_id: int) -> None:
+        """Unlink a dive from any calibration target (idempotent).
+
+        Args:
+            dive_id (int): The dive to clear.
+        """
+        response = await self._delete(f"/api/v1/dives/{dive_id}/calibration-target/")
+        response.raise_for_status()
+
     async def set_notes(self, dive_id: int, notes: str | None) -> int:
         """Set (or clear) a dive's free-text operator note.
 

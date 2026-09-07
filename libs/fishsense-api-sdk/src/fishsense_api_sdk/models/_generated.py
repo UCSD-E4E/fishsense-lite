@@ -31,6 +31,20 @@ class CalibrationCandidate(BaseModel):
     days_apart: float = Field(..., title='Days Apart')
 
 
+class CalibrationTarget(BaseModel):
+    """
+    A calibration target's identity and geometry, in metres.
+    """
+
+    id: int | None = Field(None, title='Id')
+    name: constr(max_length=100) = Field(..., title='Name')
+    rows: int = Field(..., title='Rows')
+    cols: int = Field(..., title='Cols')
+    square_size_m: float = Field(..., title='Square Size M')
+    notes: str | None = Field(None, title='Notes')
+    created_at: AwareDatetime | None = Field(None, title='Created At')
+
+
 class Camera(BaseModel):
     """
     Model representing a camera.
@@ -394,6 +408,7 @@ class Dive(BaseModel):
     notes: str | None = Field(None, title='Notes')
     camera_id: int | None = Field(None, title='Camera Id')
     dive_slate_id: int | None = Field(None, title='Dive Slate Id')
+    calibration_target_id: int | None = Field(None, title='Calibration Target Id')
     calibration_dive_id: int | None = Field(None, title='Calibration Dive Id')
 
 
