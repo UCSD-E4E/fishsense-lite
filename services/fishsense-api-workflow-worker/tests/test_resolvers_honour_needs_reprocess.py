@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 from temporalio.testing import ActivityEnvironment
 
 from fishsense_api_sdk.models.dive_slate_label import DiveSlateLabel
@@ -169,7 +168,7 @@ class TestSpecies:
         result = await ActivityEnvironment().run(
             sut.resolve_species_preprocess_inputs_activity, 42
         )
-        assert [c for c in result.clusters] == [[_CHECKSUM]]
+        assert list(result.clusters) == [[_CHECKSUM]]
 
     async def test_unflagged_labelled_image_is_still_excluded(self, monkeypatch):
         from fishsense_api_workflow_worker.activities import (

@@ -100,9 +100,9 @@ def _make_stubs(
 
     @activity.defn(name="clear_species_reprocess_flags_activity")
     async def stub_clear_reprocess(dive_id: int) -> int:
-        _CLEAR_CALLS.append(dive_id)
         """The parent lowers the redraw flag after its child completes;
         without it the dive stays in the cohort forever."""
+        _CLEAR_CALLS.append(dive_id)
         return 0
 
     @activity.defn(name="ensure_data_worker_running_activity")

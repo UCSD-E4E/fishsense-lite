@@ -25,7 +25,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 from temporalio.testing import ActivityEnvironment
 
 from fishsense_api_sdk.models.dive_slate_label import DiveSlateLabel
