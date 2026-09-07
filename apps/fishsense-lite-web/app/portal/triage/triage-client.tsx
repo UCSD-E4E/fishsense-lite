@@ -3,15 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProjectOutcome, TriageItem } from "@/lib/triage-queue";
 import { acceptAction, undoAcceptAction } from "./actions";
+import { MAX_SCALE, clampScale, initialView } from "@/lib/triage-view";
 
-/**
- * Deliberately very high. A 4000px-wide frame fitted to a phone screen puts one
- * image pixel at roughly 0.1 CSS px, so reaching a pixel you can actually look
- * at needs a scale near 100. Verified on device: at 120x with dpr 2.81 the
- * frame stays hard-edged, one image pixel covering ~160 device pixels.
- */
-const MAX_SCALE = 120;
-const MIN_SCALE = 0.02;
 
 type Props = {
   items: TriageItem[];
@@ -38,6 +31,17 @@ export function TriageClient({ items, kindLabel, scanned, projects, notWalked }:
    * discarded work.
    */
   const [requeued, setRequeued] = useState<TriageItem[]>([]);
+
+  /**
+   * Magnification carried between frames.
+   *
+   * It lives here rather than in the viewer because the viewer is remounted
+   * per task (`key`), which is what resets the loaded-image state — so
+   * anything it holds is gone by the next frame. Deep zoom is most of the work
+   * at 120x, and re-pinching it for every judgement was the difference the
+   * labeler noticed against the Android app.
+   */
+  const retainedScaleRef = useRef<number | null>(null);
 
   const queue = [...items, ...requeued];
   const item = queue[index] ?? null;
@@ -152,7 +156,7 @@ export function TriageClient({ items, kindLabel, scanned, projects, notWalked }:
 
   return (
     <>
-      <Viewer key={item.taskId} item={item} />
+      <Viewer key={item.taskId} item={item} retainedScaleRef={retainedScaleRef} />
 
       <footer className="flex flex-col gap-2">
         <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
@@ -214,7 +218,13 @@ export function TriageClient({ items, kindLabel, scanned, projects, notWalked }:
  * makes deep zoom useful: at high magnification the ring ends up smaller than
  * a single image pixel, so the pixel being claimed is unambiguous.
  */
-function Viewer({ item }: { item: TriageItem }) {
+function Viewer({
+  item,
+  retainedScaleRef,
+}: {
+  item: TriageItem;
+  retainedScaleRef: React.MutableRefObject<number | null>;
+}) {
   const stageRef = useRef<HTMLDivElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
@@ -246,10 +256,14 @@ function Viewer({ item }: { item: TriageItem }) {
     // Fractional box on purpose: `clientHeight` is integer-rounded, and that
     // rounding is visible once the frame is magnified a hundredfold.
     const r = stage.getBoundingClientRect();
-    const k = Math.min(r.width / W, r.height / H);
-    view.current = { k, tx: (r.width - W * k) / 2, ty: (r.height - H * k) / 2 };
+    view.current = initialView({
+      stage: { width: r.width, height: r.height },
+      image: { width: W, height: H },
+      keypoint: first ?? null,
+      retainedScale: retainedScaleRef.current,
+    });
     paint();
-  }, [W, H, paint]);
+  }, [W, H, first, paint, retainedScaleRef]);
 
   useEffect(() => {
     fit();
@@ -277,8 +291,9 @@ function Viewer({ item }: { item: TriageItem }) {
     const { k, tx, ty } = view.current;
     const ix = (cx - tx) / k;
     const iy = (cy - ty) / k;
-    const clamped = Math.max(MIN_SCALE, Math.min(MAX_SCALE, nextK));
+    const clamped = clampScale(nextK);
     view.current = { k: clamped, tx: cx - ix * clamped, ty: cy - iy * clamped };
+    retainedScaleRef.current = clamped;
     paint();
   }
 
@@ -313,16 +328,14 @@ function Viewer({ item }: { item: TriageItem }) {
           const { k, tx, ty } = view.current;
           const ix = (pinch.current.cx - r.left - tx) / k;
           const iy = (pinch.current.cy - r.top - ty) / k;
-          const nk = Math.max(
-            MIN_SCALE,
-            Math.min(MAX_SCALE, k * (now.dist / pinch.current.dist)),
-          );
+          const nk = clampScale(k * (now.dist / pinch.current.dist));
           view.current = {
             k: nk,
             tx: now.cx - r.left - ix * nk,
             ty: now.cy - r.top - iy * nk,
           };
           pinch.current = now;
+          retainedScaleRef.current = nk;
           paint();
         }
       }}
