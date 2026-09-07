@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.11.5...fishsense-lite-web-v0.12.0) (2026-09-07)
+
+
+### Features
+
+* **web:** carry zoom between triage frames ([#768](https://github.com/UCSD-E4E/fishsense-lite/issues/768)) ([b526e2c](https://github.com/UCSD-E4E/fishsense-lite/commit/b526e2c45871600bfed38104f085d21561d1eafd))
+
 ## [0.11.5](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.11.4...fishsense-lite-web-v0.11.5) (2026-09-07)
 
 
