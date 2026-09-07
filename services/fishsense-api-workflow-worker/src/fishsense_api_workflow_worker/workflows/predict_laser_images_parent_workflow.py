@@ -104,6 +104,16 @@ class PredictLaserImagesParentWorkflow:
             task_queue=_dispatch.DATA_PROCESSING_GPU_TASK_QUEUE,
         )
 
+        if results is _dispatch.CHILD_ALREADY_RUNNING:
+            # Another run owns that child and is still reading the raw scratch
+            # this firing would delete. Leave it alone; that run cleans up.
+            workflow.logger.info(
+                "dive_id=%d already has a predict child running; leaving its "
+                "raw bytes alone",
+                dive_id,
+            )
+            return inputs.dive_id
+
         if results:
             await _dispatch.run_sdk_activity(
                 "persist_laser_predictions_activity", results
