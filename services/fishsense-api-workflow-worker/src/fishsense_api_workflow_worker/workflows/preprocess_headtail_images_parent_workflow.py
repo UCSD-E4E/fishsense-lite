@@ -74,12 +74,23 @@ class PreprocessHeadtailImagesParentWorkflow:
 
         await _dispatch.wake_data_worker()
         await _dispatch.stage_raw(dive_id)
-        await _dispatch.dispatch_child(
+        dispatched = await _dispatch.dispatch_child(
             "PreprocessHeadtailImagesWorkflow",
             inputs,
             child_id=f"preprocess-headtail-{dive_id}",
             execution_timeout=timedelta(hours=1),
         )
+        if dispatched is _dispatch.CHILD_ALREADY_RUNNING:
+            # Another run owns that child and is reading the raw scratch this
+            # firing would delete. It will clean up, and it will clear the
+            # flags for the frames it actually redrew.
+            workflow.logger.info(
+                "dive_id=%d already has a child running; leaving its raw bytes "
+                "and reprocess flags alone",
+                dive_id,
+            )
+            return inputs.dive_id
+
         await _dispatch.cleanup_raw(dive_id)
         # Populate is NOT dispatched here any more. It moved to its own hourly
         # parent at +34, after the +32 head/tail predict parent, because
