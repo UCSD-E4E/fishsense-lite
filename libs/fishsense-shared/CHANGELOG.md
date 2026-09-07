@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.16.0...fishsense-shared-v0.16.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* close five ways the reprocess flag misbehaves ([#775](https://github.com/UCSD-E4E/fishsense-lite/issues/775)) ([#777](https://github.com/UCSD-E4E/fishsense-lite/issues/777)) ([ccdaccc](https://github.com/UCSD-E4E/fishsense-lite/commit/ccdaccc7dd058351ae4483f78bcb479a1d2fcce7))
+
 ## [0.16.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.15.0...fishsense-shared-v0.16.0) (2026-09-05)
 
 
