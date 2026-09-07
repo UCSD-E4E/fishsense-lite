@@ -95,3 +95,33 @@ def test_concurrent_callers_download_once(tmp_path: Path):
     paths = asyncio.run(_race())
     assert len({str(p) for p in paths}) == 1
     assert len(store.calls) == 1
+
+
+def test_version_history_names_the_pinned_checkpoint():
+    """The predictor version must record which checkpoint it was pinned to.
+
+    `HEADTAIL_PREDICTOR_VERSION` is the only staleness gate — the cohort keys
+    on a mismatch, and `headtail_model_version_tag()` is the Label Studio
+    idempotency key. Swapping the checkpoint without bumping it therefore
+    leaves rows produced by the *old* weights reading as current forever, and
+    their seeded tasks keeping the old keypoints.
+
+    Version 1 recorded only "SAM3", which is ambiguous: upstream publishes two
+    non-interchangeable checkpoints (`sam3.pt`, `sam3.1_multiplex.pt`) and the
+    loader accepts either with `strict=False`. This asserts the history names
+    the file the deployment actually pins, so that ambiguity cannot recur.
+    """
+    from fishsense_shared import headtail_predictor
+
+    from fishsense_data_processing_workflow_worker.config import _VALIDATORS
+
+    defaults = {v.names[0]: v.default for v in _VALIDATORS}
+    filename = defaults["sam3.checkpoint_filename"]
+
+    history = headtail_predictor.__doc__ or ""
+    source = Path(headtail_predictor.__file__).read_text(encoding="utf-8")
+    assert filename in history or filename in source, (
+        f"checkpoint {filename!r} is not named in headtail_predictor.py — "
+        "bump HEADTAIL_PREDICTOR_VERSION and record the checkpoint in its "
+        "history when the pinned weights change"
+    )
