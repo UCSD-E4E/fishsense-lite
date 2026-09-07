@@ -32,22 +32,28 @@ async def _upsert_label(session: AsyncSession, model, image_id: int, payload):
     absent**. So a writer that constructs a label with the twelve fields it
     cares about silently wipes the ones it does not.
 
-    CLAUDE.md already records this for `LaserPrediction` -- "the persist
-    activity builds LaserPrediction without the gate fields and the upsert
-    merges the whole model, so re-predicting a dive clears its verdicts". Prod
-    2026-09-07 was the same defect on `LaserLabel`: populate's `_record` omits
-    `needs_reprocess`, and its image set is exactly the one a reprocess flag
-    marks, so dive 442's 259 flags were gone within the hour -- before the
-    render they asked for had started.
+    Prod 2026-09-07: populate omits `needs_reprocess`, and its image set is
+    exactly the one a reprocess flag marks, so a dive lost 259 flags within
+    the hour -- before the render they asked for had started.
 
-    Fixed here rather than in each caller because "restate every field you do
-    not want cleared" has now been got wrong twice, in two tables, and the next
-    writer would have to remember it a third time.
+    **`LaserPrediction` shares the mechanism and must NOT share the fix.**
+    CLAUDE.md records the same merge-clobber there -- re-predicting a dive
+    clears its gate verdicts -- but records it as *correct*: a verdict computed
+    from a dot the row no longer holds is stale, and clearing it is what drops
+    the dive off the landing page until the gate has been back through it.
+    Propagating this helper into `_prediction_upsert.py` would break that.
 
-    `payload.model_fields_set` is the set of keys actually present in the
-    request body, which is why it must be read **before** any re-validation:
-    round-tripping through `jsonable_encoder` serialises defaults too and marks
-    every field as set.
+    **It does not cover read-modify-write callers, and cannot.** It protects a
+    writer that names only the fields it sets; the hourly syncs fetch a label,
+    mutate two fields and PUT the whole model back, so `needs_reprocess` really
+    is in their body, carrying the value they read. A flag raised between that
+    read and that write is still lost. Closing that means making the flag
+    unwritable here -- it has its own PUT/DELETE routes -- a deliberate API
+    change, not a bug fix.
+
+    `payload.model_fields_set` holds the keys actually present in the request
+    body, so it must be read **before** any re-validation: round-tripping
+    through `jsonable_encoder` marks every field as set.
     """
     provided = set(payload.model_fields_set)
     payload = model.model_validate(jsonable_encoder(payload))
