@@ -8,11 +8,19 @@ so neither one gets to own it.
     raw/{checksum}.ORF            # scratch; api-worker PUTs, data-worker GETs
     slate_pdf/{slate_id}.pdf      # scratch; api-worker PUTs, data-worker GETs
     {prefix}/{folder}/{checksum}.JPG   # durable; data-worker PUTs, LS presigns
+    {prefix}/{name}/{version}/{filename}   # durable; data-worker GETs weights
 
 `{folder}` is the per-stage JPEG prefix — `preprocess_jpeg` (0.1),
 `preprocess_groups_jpeg` (2), `preprocess_headtail_jpeg` (5.1),
 `preprocess_slate_images_jpeg` (9). `{prefix}` is the optional
-`labels_prefix` partitioning our objects inside a shared labels bucket.
+`labels_prefix` / `models_prefix` partitioning our objects inside a
+bucket shared with another tenant.
+
+Note what the first two keys have that the last two don't: a content-type
+prefix. `raw/` and `slate_pdf/` share the one scratch bucket and must not
+collide, so the prefix is load-bearing. JPEGs and weights each get their
+own bucket, where a `jpegs/` or `models/` segment would only restate the
+bucket's name in every key.
 
 Each worker subclasses `BaseObjectStoreClient` and exposes only the
 method subset it is allowed to use: the api-worker stages scratch in and
@@ -37,9 +45,6 @@ from botocore.exceptions import ClientError
 
 RAW_PREFIX = "raw"
 SLATE_PDF_PREFIX = "slate_pdf"
-# Model weights too large to ship in a wheel or an image layer. Durable, not
-# scratch — nothing deletes from here. See `model_key`.
-MODEL_PREFIX = "models"
 
 # The per-stage JPEG folders, named here because they are part of the same
 # cross-worker key contract as the prefixes above: populate embeds them in
@@ -58,7 +63,6 @@ NOT_FOUND_CODES = frozenset({"404", "NoSuchKey", "NotFound"})
 __all__ = [
     "HEADTAIL_JPEG_FOLDER",
     "LASER_JPEG_FOLDER",
-    "MODEL_PREFIX",
     "NOT_FOUND_CODES",
     "RAW_PREFIX",
     "SLATE_JPEG_FOLDER",
@@ -84,7 +88,7 @@ def slate_pdf_key(slate_id: int) -> str:
     return f"{SLATE_PDF_PREFIX}/{slate_id}.pdf"
 
 
-def model_key(name: str, version: str, filename: str) -> str:
+def model_key(name: str, version: str, filename: str, prefix: str = "") -> str:
     """Physical Garage key for a stored model checkpoint.
 
     Weights live in the object store rather than in the image because the
@@ -97,8 +101,18 @@ def model_key(name: str, version: str, filename: str) -> str:
     `version` is part of the key on purpose — new weights are a new object, so
     a cached copy can never be silently the wrong one, and the cache key lines
     up with the stage's `predictor_version`.
+
+    There is deliberately no `models/` segment: weights get their own bucket
+    (`models_bucket`), so such a segment would restate the bucket name in
+    every key. `prefix` is the optional `models_prefix`, for the case where
+    that bucket is shared with another tenant — in which case it names the
+    *tenant*, the way `labels_prefix` does, not the content type. Surrounding
+    slashes are stripped so a caller can't produce a double-slash key, which
+    S3 treats as a different object.
     """
-    return f"{MODEL_PREFIX}/{name}/{version}/{filename}"
+    base = f"{name}/{version}/{filename}"
+    prefix = (prefix or "").strip("/")
+    return f"{prefix}/{base}" if prefix else base
 
 
 def jpeg_key(folder: str, checksum: str, prefix: str = "") -> str:
@@ -144,10 +158,12 @@ def open_client(settings, client_cls):
     Both read the identical `[object_store]` section, so the mapping from
     settings to constructor lives here rather than twice.
 
-    `labels_bucket` / `labels_prefix` are optional: a single-bucket
-    deployment sets neither, and `BaseObjectStoreClient` falls back to
-    `bucket` / `""`. `or ""` guards the TOML-empty-string-as-None path,
-    which would otherwise put the literal "None" in every JPEG key.
+    `labels_bucket` / `labels_prefix` and `models_bucket` /
+    `models_prefix` are optional: a single-bucket deployment sets none of
+    them, and `BaseObjectStoreClient` falls back to `bucket` / `""`. The
+    api-worker sets no models keys at all — it never reads weights. `or ""`
+    guards the TOML-empty-string-as-None path, which would otherwise put
+    the literal "None" in every key.
 
     Callers keep their own thin `open_object_store_client()` wrapper so
     the `config` import stays function-local — importing a worker's
@@ -165,6 +181,8 @@ def open_client(settings, client_cls):
         settings.object_store.bucket,
         labels_bucket=settings.object_store.get("labels_bucket", None),
         labels_prefix=settings.object_store.get("labels_prefix", "") or "",
+        models_bucket=settings.object_store.get("models_bucket", None),
+        models_prefix=settings.object_store.get("models_prefix", "") or "",
     )
 
 
@@ -176,17 +194,28 @@ class BaseObjectStoreClient:
     `asyncio.to_thread` because boto3 is synchronous and these run inside
     Temporal activities on the event loop.
 
-    Scratch (raw/slate) lives in `bucket`; the processed JPEGs Label
-    Studio serves live in `labels_bucket` under `labels_prefix`.
-    `labels_bucket` defaults to `bucket`, so single-bucket layouts keep
-    working unchanged.
+    Three destinations, each with its own bucket. Scratch (raw/slate)
+    lives in `bucket`; the processed JPEGs Label Studio serves live in
+    `labels_bucket` under `labels_prefix`; model weights live in
+    `models_bucket` under `models_prefix`. Both of the latter default to
+    `bucket`, so single-bucket layouts keep working unchanged.
     """
 
-    def __init__(self, s3, bucket: str, labels_bucket=None, labels_prefix=""):
+    def __init__(
+        self,
+        s3,
+        bucket: str,
+        labels_bucket=None,
+        labels_prefix="",
+        models_bucket=None,
+        models_prefix="",
+    ):
         self._s3 = s3
         self._bucket = bucket
         self._labels_bucket = labels_bucket or bucket
         self._labels_prefix = labels_prefix or ""
+        self._models_bucket = models_bucket or bucket
+        self._models_prefix = models_prefix or ""
 
     async def _exists(self, key: str, bucket: str | None = None) -> bool:
         """HeadObject, mapping only *not-found* to False.

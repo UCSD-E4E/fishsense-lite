@@ -19,10 +19,18 @@ invisible to any checkpoint:
 
 **Version the behaviour, not the model.** Bump this by hand whenever the
 stage's output would differ for an unchanged image — a different backend, a
-different crop, a different prompt, a changed confidence band. It is a literal
-in a diff rather than a hash computed at runtime so that the bump is a
-judgement made at review time, and so it does not churn on a dependency patch
-release that changes nothing.
+different crop, a different prompt, a changed confidence band, or a different
+*checkpoint release*. It is a literal in a diff rather than a hash computed at
+runtime so that the bump is a judgement made at review time, and so it does
+not churn on a dependency patch release that changes nothing.
+
+That the list has to name checkpoints explicitly is the lesson of version 2.
+"Version the behaviour, not the model" is about not hashing a `.pt` file; it
+was never licence to swap the weights silently. Upstream ships two SAM3
+checkpoints that are not interchangeable, and `build_sam3_image_model`'s
+`_load_checkpoint` loads either with `strict=False` — missing keys are
+*printed*, not raised — so the wrong one degrades every mask without failing
+anything.
 
 `checkpoint` and `core_version` are recorded alongside but never gated on: they
 answer "why did this frame come out that way" months later without deciding
@@ -45,8 +53,20 @@ __all__ = [
 #: unchanged image. History:
 #:   1 — 2026-09-03: initial stage. SAM3 concept prompt ["fish"] on an
 #:       1800x1350 crop centred on the validated laser dot, keypointed by
-#:       `fishsense_core.fish.FishHeadTailDetector`.
-HEADTAIL_PREDICTOR_VERSION = 1
+#:       `fishsense_core.fish.FishHeadTailDetector`. *Which* SAM3 checkpoint
+#:       produced the §0.2b benchmark is recorded nowhere — not here, not in
+#:       the plan, not in the config, which had no checkpoint setting at all.
+#:       Closing that is what version 2 is for.
+#:   2 — 2026-09-07: the checkpoint is pinned by name for the first time —
+#:       `facebook/sam3.1`'s `sam3.1_multiplex.pt`, addressed by the
+#:       data-worker's `[sam3]` `model_version` / `checkpoint_filename`.
+#:       Bumped rather than left at 1 precisely *because* version 1 does not
+#:       say which weights it ran: if it was `facebook/sam3`'s `sam3.pt`,
+#:       every prediction changes here and nothing in the loader would have
+#:       said so. The bump costs nothing to be wrong about — the
+#:       `HeadTailPrediction` migration is unmerged, so there are no rows to
+#:       re-drain — and leaving it at 1 would cost a silent one.
+HEADTAIL_PREDICTOR_VERSION = 2
 
 #: The laser-centred crop fed to the mask backend, in rectified-image pixels.
 #:
