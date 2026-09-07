@@ -222,3 +222,83 @@ def test_slate_not_in_list_is_not_measurable():
 
 def test_slate_not_in_list_is_exported():
     assert "SLATE_NOT_IN_LIST_LEAF" in sut.__all__
+
+
+# --- the calibration-target branch -----------------------------------------
+#
+# `Calibration Targets` has held `Ruler` and `E4E Checkerboard` since #371,
+# but only as a *label*: nothing read the branch. It is now the hook that
+# tells a dive it was shot against a planar calibration target, the way the
+# slate-type leaf tells it which `DiveSlate` it was shot against.
+#
+# The two leaves under that branch mean opposite things to the pipeline, which
+# is the whole reason this parser exists rather than a bare `path[0] ==` test.
+# The checkerboard supplies a *plane* to fit laser extrinsics against. The
+# ruler supplies a known *length* to validate the resulting measurements —
+# it is the validation set, and calibrating against it would make every
+# validation trivially self-confirming.
+
+
+def test_calibration_target_leaf_reads_the_checkerboard():
+    assert (
+        sut.calibration_target_leaf(["Calibration Targets", "E4E Checkerboard"])
+        == "E4E Checkerboard"
+    )
+
+
+def test_calibration_target_leaf_refuses_the_ruler():
+    """The ruler is the validation set, never a calibration source.
+
+    Guarded by name rather than left to "no CalibrationTarget row is called
+    Ruler", for the same reason `SLATE_NOT_IN_LIST_LEAF` is guarded
+    explicitly: seeding such a row later would silently turn every ruler
+    frame in a fish dive into a calibration plane, and a fish dive
+    calibrated against a ruler held at arm's length produces confident
+    wrong lengths.
+    """
+    assert sut.calibration_target_leaf(["Calibration Targets", "Ruler"]) is None
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        [],
+        ["Calibration Targets"],  # parent node, no target picked
+        ["Fish Model", "Weasly Fish"],
+        ["Slate", "Laser on slate"],
+        ["Fish", "Hogfish (Lachnolaimus maximus)"],
+        # The leaf name alone, off its branch. A `SpeciesLabel` whose taxonomy
+        # says nothing about calibration targets must not be read as one.
+        ["E4E Checkerboard"],
+    ],
+)
+def test_calibration_target_leaf_returns_none_off_branch(path):
+    assert sut.calibration_target_leaf(path) is None
+
+
+def test_calibration_target_leaf_ignores_blank_leaves():
+    assert sut.calibration_target_leaf(["Calibration Targets", "   "]) is None
+
+
+def test_the_checkerboard_is_not_measurable():
+    """It is a plane, not a known-length target — stage 14 must skip it."""
+    assert not sut.is_measurable(sut.CHECKERBOARD_CONTENT)
+
+
+def test_checkerboard_content_is_the_branch_joined_to_the_leaf():
+    """`content_of_image` is the ", "-joined path, so these must agree."""
+    assert sut.CHECKERBOARD_CONTENT == (
+        f"{sut.CALIBRATION_TARGETS_BRANCH}, {sut.CHECKERBOARD_NAME}"
+    )
+    assert sut.RULER_CONTENT == f"{sut.CALIBRATION_TARGETS_BRANCH}, {sut.RULER_NAME}"
+
+
+def test_calibration_target_symbols_are_exported():
+    for name in (
+        "CALIBRATION_TARGETS_BRANCH",
+        "CHECKERBOARD_CONTENT",
+        "CHECKERBOARD_NAME",
+        "NON_PLANAR_CALIBRATION_LEAVES",
+        "calibration_target_leaf",
+    ):
+        assert name in sut.__all__

@@ -44,12 +44,43 @@ from __future__ import annotations
 # — the `name` natural key on Fish.
 FISH_MODEL_PREFIX = "Fish Model,"
 
+# The top-level taxonomy branch for the physical targets that are not fish.
+# Two leaves hang off it and they mean opposite things to the pipeline: the
+# ruler is a known *length* (validation), the checkerboard is a known *plane*
+# (calibration). See `calibration_target_leaf`.
+CALIBRATION_TARGETS_BRANCH = "Calibration Targets"
+
 # The ruler is a rigid known-length target like the models, so it measures
 # through the same name-keyed path. Unlike a fish model its endpoints are
 # unambiguous — no tip-vs-fork landmark uncertainty — so it isolates
 # calibration error from labeling convention.
-RULER_CONTENT = "Calibration Targets, Ruler"
 RULER_NAME = "Ruler"
+RULER_CONTENT = f"{CALIBRATION_TARGETS_BRANCH}, {RULER_NAME}"
+
+# The E4E-branded printed checkerboard (15 x 11 squares, 14 x 10 interior
+# corners) the 2023 pool-test `LaserCalibration` folders were shot against.
+# It identifies a dive as calibratable from a *plane* rather than from a
+# `DiveSlate` template - the second producer of `LaserExtrinsics`, see
+# `docs/plans/checkerboard-laser-calibration.md`.
+#
+# The name is the join key: a `CalibrationTarget` row carries this string as
+# its `name`, exactly as `DiveSlate.name` carries the slate-type leaves. So
+# adding a second board means adding a taxonomy choice AND a row whose name
+# matches it, and nothing else.
+CHECKERBOARD_NAME = "E4E Checkerboard"
+CHECKERBOARD_CONTENT = f"{CALIBRATION_TARGETS_BRANCH}, {CHECKERBOARD_NAME}"
+
+# Leaves under `Calibration Targets` that must never resolve to a planar
+# calibration target, listed by name rather than left to "no row happens to be
+# called that".
+#
+# Same posture as `SLATE_NOT_IN_LIST_LEAF`: the ruler is the *validation* set
+# for measurement accuracy (`fishmodelreference`), so calibrating from it
+# would make every validation self-confirming - and worse, a ruler appears in
+# ordinary fish dives, so a `CalibrationTarget` row named "Ruler" seeded later
+# would silently pull those dives into the checkerboard-calibration cohort and
+# fit their extrinsics against a plane nobody intended.
+NON_PLANAR_CALIBRATION_LEAVES = frozenset({RULER_NAME})
 
 # Every `Fish Model, <name>` leaf a labeler can pick, in species-XML order.
 #
@@ -107,16 +138,21 @@ REAL_FISH_LIKE = "%(%)"
 FISH_MODEL_LIKE = f"{FISH_MODEL_PREFIX}%"
 
 __all__ = [
+    "CALIBRATION_TARGETS_BRANCH",
+    "CHECKERBOARD_CONTENT",
+    "CHECKERBOARD_NAME",
     "FISH_MODEL_LIKE",
     "FISH_MODEL_PREFIX",
     "LABELED_FISH_MODELS",
     "MEASURABILITY_CORPUS",
+    "NON_PLANAR_CALIBRATION_LEAVES",
     "REAL_FISH_LIKE",
     "RULER_CONTENT",
     "RULER_NAME",
     "SLATE_CONTENT_MARKER",
     "SLATE_NOT_IN_LIST_LEAF",
     "SQL_BROADER_THAN_PYTHON",
+    "calibration_target_leaf",
     "is_measurable",
     "measurable_species_sql",
     "parse_model_name",
@@ -208,6 +244,36 @@ def parse_model_name(content_of_image: str | None) -> str | None:
     return name or None
 
 
+def calibration_target_leaf(taxonomy_path) -> str | None:
+    """The planar calibration target a Label Studio taxonomy path names.
+
+    `taxonomy_path` is one LS taxonomy selection, e.g.
+    `["Calibration Targets", "E4E Checkerboard"]`. Returns the leaf when that
+    path names a target a plane can be fitted to, else None.
+
+    Reads the whole path rather than the leaf alone, unlike the slate-type
+    scan it is modelled on. A slate leaf ("V-Slate 2") is unambiguous wherever
+    it appears; "E4E Checkerboard" off its branch is not necessarily the
+    calibration target, and this answer sets a dive's calibration source, so
+    it should be the narrow reading.
+
+    The ruler is refused here rather than downstream — see
+    `NON_PLANAR_CALIBRATION_LEAVES`.
+
+    Returning the *name* rather than a row id keeps this package free of the
+    database: the caller matches it against the `CalibrationTarget` rows that
+    exist, and a leaf naming no row simply resolves to nothing, which is the
+    same "refuse rather than guess" direction as `SLATE_NOT_IN_LIST_LEAF`.
+    """
+    path = list(taxonomy_path or [])
+    if len(path) < 2 or path[0] != CALIBRATION_TARGETS_BRANCH:
+        return None
+    leaf = (path[-1] or "").strip()
+    if not leaf or leaf in NON_PLANAR_CALIBRATION_LEAVES:
+        return None
+    return leaf
+
+
 def is_measurable(content_of_image: str | None) -> bool:
     """True iff `measure_fish_activity` can bind this row to a Measurement.
 
@@ -250,6 +316,9 @@ MEASURABILITY_CORPUS: tuple[tuple[str | None, bool], ...] = (
     ("Fish Model,\t", True),  # tab leaf: SQL TRIM removes spaces only
     # Not measurable.
     ("Slate, Laser on slate", False),
+    # A plane, not a known length. The checkerboard identifies a dive as
+    # calibratable; it is never something stage 14 measures.
+    ("Calibration Targets, E4E Checkerboard", False),
     ("Calibration Targets, Slate", False),
     ("Fish Model,", False),  # empty leaf — parent node, no model picked
     ("Fish Model,   ", False),  # whitespace-only leaf
