@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [2.0.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.0.1...fishsense-api-workflow-worker-v2.0.2) (2026-09-07)
+
+
+### Bug Fixes
+
+* a firing that dispatched nothing must not clean up after the run that did ([#784](https://github.com/UCSD-E4E/fishsense-lite/issues/784)) ([02c274f](https://github.com/UCSD-E4E/fishsense-lite/commit/02c274fc9d34c1b712fae3655273bc54bfdc0eaa))
+
 ## [2.0.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.0.0...fishsense-api-workflow-worker-v2.0.1) (2026-09-07)
 
 
