@@ -49,14 +49,42 @@ function jwtLifetimeSeconds(token: string): number | null {
   }
 }
 
+/** Seconds Label Studio asked us to wait, or an exponential fallback. */
+export function retryAfterMs(response: Response, attempt: number): number {
+  const header = response.headers.get("retry-after");
+  if (header) {
+    const seconds = Number(header);
+    if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+    const at = Date.parse(header);
+    if (Number.isFinite(at)) return Math.max(0, at - Date.now());
+  }
+  return RATE_LIMIT_BASE_MS * 2 ** attempt;
+}
+
+const RATE_LIMIT_RETRIES = 3;
+const RATE_LIMIT_BASE_MS = 750;
+
 async function refreshAccessToken(): Promise<string> {
   const url = `${env.labelStudioUrl}/api/token/refresh`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ refresh: env.labelStudioApiKey }),
-    cache: "no-store",
-  });
+  const post = () =>
+    fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ refresh: env.labelStudioApiKey }),
+      cache: "no-store",
+    });
+
+  let response = await post();
+
+  // The token endpoint rate-limits too, and it was the ONLY request without
+  // backoff — the retry logic lived in `authed`, which wraps resource calls
+  // and never sees this one. So a 429 here failed the whole action outright,
+  // and it surfaced as "Accept failed: token refresh failed: 429" on a frame
+  // the labeler had already judged.
+  for (let attempt = 0; response.status === 429 && attempt < RATE_LIMIT_RETRIES; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, retryAfterMs(response, attempt)));
+    response = await post();
+  }
 
   if (!response.ok) {
     throw new Error(
@@ -79,7 +107,15 @@ export async function getAccessToken(forceRefresh = false): Promise<string> {
   if (!forceRefresh && cachedToken && cachedToken.expiresAtMs > Date.now()) {
     return cachedToken.token;
   }
-  if (!forceRefresh && inFlightRefresh) {
+
+  // Share an in-flight refresh even when forced.
+  //
+  // This used to be `!forceRefresh && inFlightRefresh`, so a burst of forced
+  // refreshes each fired its own POST at the token endpoint — the queue and
+  // the image proxy issue many calls at once, and one expired token turned
+  // into N simultaneous refreshes. That is a good way to earn the 429 this
+  // now retries: the stampede caused the rate limit it then failed on.
+  if (inFlightRefresh) {
     return inFlightRefresh;
   }
 

@@ -28,8 +28,19 @@ export function TriageClient({ items, kindLabel, scanned, projects, notWalked }:
   const [skipped, setSkipped] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [undo, setUndo] = useState<{ taskId: number; annotationId: number } | null>(null);
+  /**
+   * Frames whose accept failed, re-queued at the end.
+   *
+   * Accept advances optimistically so the labeler is never waiting on the
+   * network — but a failure then dropped the frame entirely, and the
+   * judgement they had already made was lost with no way to retry it. Putting
+   * it back is the difference between a retryable hiccup and silently
+   * discarded work.
+   */
+  const [requeued, setRequeued] = useState<TriageItem[]>([]);
 
-  const item = items[index] ?? null;
+  const queue = [...items, ...requeued];
+  const item = queue[index] ?? null;
   const startedAt = useRef(0);
 
   useEffect(() => {
@@ -57,7 +68,10 @@ export function TriageClient({ items, kindLabel, scanned, projects, notWalked }:
       // Must roll the count back: without it a failed accept still read as
       // accepted, which is the number a labeler trusts.
       setAccepted((n) => n - 1);
-      setMessage(`Accept failed for task ${current.taskId}: ${res.error}`);
+      setRequeued((q) => (q.some((t) => t.taskId === current.taskId) ? q : [...q, current]));
+      setMessage(
+        `Accept failed for task ${current.taskId} — put back at the end of the queue. ${res.error}`,
+      );
     }
   }
 
@@ -146,7 +160,7 @@ export function TriageClient({ items, kindLabel, scanned, projects, notWalked }:
             {item.diveName} · task {item.taskId}
           </span>
           <span className="tabular-nums">
-            {accepted} accepted · {skipped} skipped · {items.length - index - 1} left
+            {accepted} accepted · {skipped} skipped · {queue.length - index - 1} left
           </span>
         </div>
 
