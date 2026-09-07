@@ -48,6 +48,7 @@ from fishsense_shared.preprocess_contracts import (
     PreprocessLaserImagesInput,
     PreprocessSlateImagesInput,
     PreprocessSpeciesImagesInput,
+    SpeciesClusterMember,
     SlatePredictionResult,
 )
 from fishsense_shared.task_queues import (
@@ -97,6 +98,7 @@ __all__ = [
     "PreprocessLaserImagesInput",
     "PreprocessSlateImagesInput",
     "PreprocessSpeciesImagesInput",
+    "SpeciesClusterMember",
     "SlatePredictionResult",
     "build_tls_config",
     "configure_log_handler",
