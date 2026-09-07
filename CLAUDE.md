@@ -121,6 +121,7 @@ DB (negligible). To add or remove, override
 | 11  | populate_label_studio_project | api-worker | ported |
 | 12  | sync_slate_label | api-worker | ported (hourly) |
 | 13  | perform_laser_calibration | api-worker (parent) + data-worker (child) | ported (hourly, +50min offset) |
+| —   | (new, no notebook) checkerboard laser calibration | api-worker (parent) + data-worker (child) | added 2026-09-07 (hourly, +52min offset) |
 | 14  | measure_fish | api-worker (parent) + data-worker (child) | ported (hourly, +40min offset; idempotent as of 2026-07-17) |
 | —   | (new, no notebook) laser depth per image | api-worker (parent) + data-worker (child) | added 2026-08-18 (hourly, +35min offset) |
 
@@ -341,7 +342,7 @@ species-populate at +20 (the decoupled
 `PopulateSpeciesLabelStudioProjectParentWorkflow`, just after the +15
 species-preprocess writes JPEGs), 5.1 at +30, laser-depth at +35 (the
 slot the retired slate detector vacated), 14 at +40, 9 at +45, 13 at
-+50 min — staggered so their selectors don't all hit `dives.get()` at
++50, checkerboard calibration at +52 min — staggered so their selectors don't all hit `dives.get()` at
 the top of the hour. The scale-to-zero sweeper takes
 +55. `test_schedule_registration.py` pins the stagger (the four
 label-studio sync schedules deliberately share +0 — they select no
@@ -355,6 +356,7 @@ dives). Per-stage cohort:
 | 5.1 | HIGH-priority + at least one image with a *valid* `LaserLabel` whose image carries no non-sentinel `HeadTailLabel` row |
 | 9   | HIGH-priority + `dive_slate_id` set + at least one `SpeciesLabel.content_of_image='Slate, Laser on slate'` whose image carries no `DiveSlateLabel` row at all |
 | 13  | HIGH-priority + `dive_slate_id` set + no `LaserExtrinsics` + ≥2 completed `DiveSlateLabel` rows (matches the data-worker activity's `MIN_LASER_POINTS=2` precondition) |
+| cb  | HIGH-priority + `calibration_target_id` set + no *own* `LaserExtrinsics` + ≥2 canonical images with a live laser dot (checkerboard calibration; deliberately no borrowed-calibration fallback) |
 | 14  | HIGH-priority + has `LaserExtrinsics` (own **or borrowed** via `Dive.calibration_dive_id`) + at least one *measurable* image with no `Measurement` **naming the currently-resolved extrinsics** (same predicate as the view's `measured`; keep the two in step) |
 | depth | HIGH-priority + resolvable `LaserExtrinsics` + at least one canonical laser-labelled image with no `LaserDepth` row naming *one of that image's still-valid labels* and the currently-resolved calibration |
 
@@ -420,6 +422,87 @@ and the "Slate upside down" choice are gone from the new config; the
 species sync activity's laser-keypoint/slate-upside-down extraction
 paths are stripped accordingly. New labels write only the still-
 present columns; historical species rows keep whatever they had.
+
+## Checkerboard laser calibration — the second `LaserExtrinsics` producer
+
+**Added 2026-09-07.** Stage 13 fits `LaserExtrinsics` from a `DiveSlate`. Most
+of the pool-test corpus was shot against a **checkerboard**, and those dives
+could not calibrate — silently, because `perform_laser_calibration_activity`
+returns None (not an error) when `dive_slate_id` is NULL, which is exactly what
+`SLATE_NOT_IN_LIST_LEAF` leaves it as. Design doc:
+`docs/plans/checkerboard-laser-calibration.md`.
+
+**The finding it rests on: the target's only contribution is a plane.**
+`calibration_geometry.plane_from_correspondences` -> `laser_point_on_plane` is
+already target-agnostic, and so is everything after it (`calibrate_laser`,
+`check_fit_self_consistency`, `LaserExtrinsics`, stage 14, laser depth, the
+`calibrated` flag, `calibration_dive_id` borrowing). A checkerboard is a new way
+to obtain `(body_points, image_points)` and **nothing else** — no consumer
+changed.
+
+| Piece | Where |
+|---|---|
+| `CalibrationTarget` + `Dive.calibration_target_id` | api (`models/calibration_target.py`, migration `d92a1f4c78b3`) |
+| identification hook | species sync reads `Calibration Targets -> E4E Checkerboard` |
+| cohort | `GET /api/v1/dives/select-next/checkerboard-laser-calibration/` |
+| corner detection | `checkerboard_detection.py` (data-worker) |
+| per-frame observation | `detect_checkerboard_laser_point` (CPU queue) |
+| fit + persist | `fit_checkerboard_laser_extrinsics` (CPU queue) |
+| parent | `PerformCheckerboardCalibrationParentWorkflow`, hourly +52 |
+
+Five things that are load-bearing:
+
+* **`CalibrationTarget.square_size_m` is NOT NULL, and no row is seeded.** The
+  measured grid pitch is the only thing setting the scale of every length the
+  dive ultimately produces, and scale error is the term reprojection residual
+  provably cannot see (rho = -0.026 over 1109 depths). A nominal pitch off the
+  board's PDF is the `fishmodelreference` Ruler mistake repeated — assumed
+  355.6 mm, actually 342.9. **Until someone calipers a board and PUTs its row,
+  this stage calibrates nothing**, which is the same failure direction those
+  dives are already in. `rows`/`cols` are INTERIOR CORNERS (a 15x11 board has
+  14x10).
+* **The detector is asked for a 3x3 grid and told the real one.** Measured
+  against OpenCV 4.13, asking for the nominal board is worse in both
+  directions: a board with its right third out of frame returns *nothing* for
+  the exact `patternSize` and a clean 10x10 sub-grid for a small one, and a
+  wrong-but-plausible `patternSize` also returns nothing. Reading the grid back
+  from `findChessboardCornersSBWithMeta` is also the safety property — a
+  nominal grid paired against a partial detection mis-pairs every
+  correspondence, and `solvePnP` accepts that silently, with no residual check
+  anywhere between there and `LaserExtrinsics`.
+* **Grid orientation is free and must stay unconstrained.** The detected grid
+  comes back transposed or mirrored depending on how the board sits; a mirrored
+  index assignment is realised by a real rotation (the board flipped about an
+  in-plane axis) which flips the plane normal, and the ray-plane intersection
+  divides one normal by the other, so it cancels. Sub-grid offsets land in the
+  in-plane pose, which nothing reads. Don't "fix" this.
+* **The ruler is refused by name**, in `taxonomy.calibration_target_leaf`, not
+  by relying on no row being called "Ruler". It is the *validation* set for
+  measurement accuracy and it appears in ordinary fish dives, so a row seeded
+  with that name would pull them into this cohort silently.
+* **The cohort is a wider over-approximation than stage 13's.** SQL cannot know
+  whether a board will be detected, so a mis-linked dive is offered, refused by
+  the fit, and re-selected hourly — head-of-line blocking, the dive-347 shape.
+  Remedies are operator-side and already exist: `DELETE
+  /api/v1/dives/{id}/calibration-target/`, or park at `Priority.NONE` with a
+  note.
+
+Unlike stage 13's child this one runs on the **CPU** queue and its parent
+stages raw `.ORF` bytes, because the board is only visible in pixels. That
+staging is ~1 MB/s against ~13 MB frames, so a 133-frame calibration folder is
+close to half an hour — bounded because the cohort excludes dives that already
+have extrinsics, so a dive passes through once. The parent cleans up its
+scratch even when the fit fails, which the preprocess parents do not: here a
+failure is the *expected* shape of "no board in these frames", and the dive
+keeps being re-selected until someone intervenes.
+
+Recompute is free, as of the 2026-08-18 provenance work: `LaserDepth` and
+`Measurement` both record `laser_extrinsics_id` and both cohorts select on
+*mismatch*, so a dive that gains a calibration re-enters them by itself.
+
+Rig 04 of the 2023.08.18 set (dives 508, 510) shot a **real dive slate** and
+calibrates through stage 13; the 2025 board (24x17) is out of scope because
+OpenCV returned five different grids over six frames of it.
 
 ## `content_of_image` taxonomy vocabulary
 
