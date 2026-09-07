@@ -1,6 +1,7 @@
 """Client for interacting with label-related endpoints of the Fishsense API."""
 
 from typing import List
+from urllib.parse import quote
 
 from fishsense_api_sdk.clients.client_base import ClientBase
 from fishsense_api_sdk.models.dive_slate_label import DiveSlateLabel
@@ -327,7 +328,9 @@ class LabelClient(ClientBase):
 
         return response.json()
 
-    async def clear_laser_needs_reprocess(self, dive_id: int) -> int:
+    async def clear_laser_needs_reprocess(
+        self, dive_id: int, checksums: List[str] | None = None
+    ) -> int:
         """Lower the redraw flag once the dive's laser JPEGs are regenerated.
 
         Called by the stage 0.1 parent after its data-worker child completes.
@@ -343,9 +346,19 @@ class LabelClient(ClientBase):
         Returns:
             int: The number of laser labels cleared.
         """
-        response = await self._delete(
-            f"/api/v1/dives/{dive_id}/labels/laser/needs-reprocess"
-        )
+        path = f"/api/v1/dives/{dive_id}/labels/laser/needs-reprocess"
+        if checksums is not None:
+            # Repeated `checksums=` params: an empty list must still reach the
+            # server as an explicit, empty scope, so it cannot be folded into
+            # "no query string" -- that would clear the whole dive.
+            query = "&".join(f"checksums={quote(c)}" for c in checksums)
+            # An empty list still has to arrive as a scope. With no query
+            # string at all the server reads `None` and clears the whole dive
+            # -- the opposite of what an empty scope means -- so send a single
+            # empty value, which matches no checksum and therefore clears
+            # nothing.
+            path = f"{path}?{query}" if query else f"{path}?checksums="
+        response = await self._delete(path)
         response.raise_for_status()
 
         return response.json()
@@ -379,7 +392,9 @@ class LabelClient(ClientBase):
 
         return response.json()
 
-    async def clear_species_needs_reprocess(self, dive_id: int) -> int:
+    async def clear_species_needs_reprocess(
+        self, dive_id: int, checksums: List[str] | None = None
+    ) -> int:
         """Lower the redraw flag once the dive's species JPEGs are regenerated.
 
         Called by the stage 2 parent after its data-worker child completes.
@@ -395,9 +410,14 @@ class LabelClient(ClientBase):
         Returns:
             int: The number of species labels cleared.
         """
-        response = await self._delete(
-            f"/api/v1/dives/{dive_id}/labels/species/needs-reprocess"
-        )
+        path = f"/api/v1/dives/{dive_id}/labels/species/needs-reprocess"
+        if checksums is not None:
+            # Repeated `checksums=` params: an empty list must still reach the
+            # server as an explicit, empty scope, so it cannot be folded into
+            # "no query string" -- that would clear the whole dive.
+            query = "&".join(f"checksums={quote(c)}" for c in checksums)
+            path = f"{path}?{query}" if query else f"{path}?checksums="
+        response = await self._delete(path)
         response.raise_for_status()
 
         return response.json()
@@ -431,7 +451,9 @@ class LabelClient(ClientBase):
 
         return response.json()
 
-    async def clear_headtail_needs_reprocess(self, dive_id: int) -> int:
+    async def clear_headtail_needs_reprocess(
+        self, dive_id: int, checksums: List[str] | None = None
+    ) -> int:
         """Lower the redraw flag once the dive's headtail JPEGs are regenerated.
 
         Called by the stage 5.1 parent after its data-worker child completes.
@@ -447,9 +469,14 @@ class LabelClient(ClientBase):
         Returns:
             int: The number of headtail labels cleared.
         """
-        response = await self._delete(
-            f"/api/v1/dives/{dive_id}/labels/headtail/needs-reprocess"
-        )
+        path = f"/api/v1/dives/{dive_id}/labels/headtail/needs-reprocess"
+        if checksums is not None:
+            # Repeated `checksums=` params: an empty list must still reach the
+            # server as an explicit, empty scope, so it cannot be folded into
+            # "no query string" -- that would clear the whole dive.
+            query = "&".join(f"checksums={quote(c)}" for c in checksums)
+            path = f"{path}?{query}" if query else f"{path}?checksums="
+        response = await self._delete(path)
         response.raise_for_status()
 
         return response.json()
@@ -483,7 +510,9 @@ class LabelClient(ClientBase):
 
         return response.json()
 
-    async def clear_dive_slate_needs_reprocess(self, dive_id: int) -> int:
+    async def clear_dive_slate_needs_reprocess(
+        self, dive_id: int, checksums: List[str] | None = None
+    ) -> int:
         """Lower the redraw flag once the dive's dive-slate JPEGs are regenerated.
 
         Called by the stage 9 parent after its data-worker child completes.
@@ -499,9 +528,14 @@ class LabelClient(ClientBase):
         Returns:
             int: The number of dive-slate labels cleared.
         """
-        response = await self._delete(
-            f"/api/v1/dives/{dive_id}/labels/dive-slate/needs-reprocess"
-        )
+        path = f"/api/v1/dives/{dive_id}/labels/dive-slate/needs-reprocess"
+        if checksums is not None:
+            # Repeated `checksums=` params: an empty list must still reach the
+            # server as an explicit, empty scope, so it cannot be folded into
+            # "no query string" -- that would clear the whole dive.
+            query = "&".join(f"checksums={quote(c)}" for c in checksums)
+            path = f"{path}?{query}" if query else f"{path}?checksums="
+        response = await self._delete(path)
         response.raise_for_status()
 
         return response.json()

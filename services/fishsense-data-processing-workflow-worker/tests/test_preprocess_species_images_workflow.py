@@ -20,7 +20,7 @@ from fishsense_data_processing_workflow_worker.workflows.preprocess_species_imag
     PreprocessSpeciesImageInput,
     PreprocessSpeciesImagesWorkflow,
 )
-from fishsense_shared import PreprocessSpeciesImagesInput
+from fishsense_shared import PreprocessSpeciesImagesInput, SpeciesClusterMember
 
 
 # A small but realistic intrinsics shape (3x3 matrix, 5-element distortion
@@ -149,3 +149,55 @@ async def test_workflow_with_no_clusters_makes_no_activity_calls():
             )
 
     assert not calls
+
+
+@pytest.mark.asyncio
+async def test_partial_redraw_keeps_each_frame_position_in_the_whole_cluster():
+    """The reprocess case: 2 frames of a 7-image cluster are redrawn.
+
+    They must come out "3 of 7" and "6 of 7" -- the positions their four
+    untouched siblings' JPEGs already encode -- not "1 of 2" and "2 of 2".
+    Numbering the emitted batch instead overwrites the same object-store keys
+    with a different, wrong answer, and nothing errors.
+    """
+    calls: List[PreprocessSpeciesImageInput] = []
+
+    @activity.defn(name="preprocess_species_image")
+    async def stub_preprocess_species_image(
+        payload: PreprocessSpeciesImageInput,
+    ) -> None:
+        calls.append(payload)
+
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
+            task_queue="test-stage2-partial",
+            workflows=[PreprocessSpeciesImagesWorkflow],
+            activities=[stub_preprocess_species_image],
+        ):
+            await env.client.execute_workflow(
+                PreprocessSpeciesImagesWorkflow.run,
+                PreprocessSpeciesImagesInput(
+                    dive_id=384,
+                    clusters=[["cs3", "cs6"]],
+                    cluster_members=[
+                        [
+                            SpeciesClusterMember(
+                                checksum="cs3", cluster_index=3, cluster_size=7
+                            ),
+                            SpeciesClusterMember(
+                                checksum="cs6", cluster_index=6, cluster_size=7
+                            ),
+                        ]
+                    ],
+                    camera_matrix=_K,
+                    distortion_coefficients=_D,
+                ),
+                id=f"test-stage2-partial-{uuid.uuid4()}",
+                task_queue="test-stage2-partial",
+            )
+
+    by_checksum = {c.checksum: c for c in calls}
+    assert set(by_checksum) == {"cs3", "cs6"}, "only the flagged frames are redrawn"
+    assert (by_checksum["cs3"].cluster_index, by_checksum["cs3"].cluster_size) == (3, 7)
+    assert (by_checksum["cs6"].cluster_index, by_checksum["cs6"].cluster_size) == (6, 7)

@@ -2,9 +2,9 @@
 """Label Controller for FishSense API."""
 
 import logging
-from typing import List
+from typing import Annotated, List
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import alias, or_
 from sqlmodel import select
@@ -529,28 +529,19 @@ async def get_laser_labels_for_dive(
     return labels
 
 
-#: The four label kinds that carry `needs_reprocess`, keyed by the URL segment
-#: their endpoints use. One flag per kind rather than one on `Image`, because an
-#: image carries a different JPEG per stage — `preprocess_jpeg`,
-#: `preprocess_groups_jpeg`, `preprocess_headtail_jpeg`,
-#: `preprocess_slate_images_jpeg` — and a change to one stage's overlay says
-#: nothing about the other three.
-_REPROCESS_MODELS = {
-    "laser": LaserLabel,
-    "species": SpeciesLabel,
-    "headtail": HeadTailLabel,
-    "dive-slate": DiveSlateLabel,
-}
-
-
 async def _set_needs_reprocess(
     session: AsyncSession,
     dive_id: int,
     model,
     value: bool,
     only_incomplete: bool = True,
+    checksums: list[str] | None = None,
 ) -> int:
     """Set `needs_reprocess` on a dive's labels of one kind. Returns rows touched.
+
+    The flag lives on the label, one per kind, rather than once on `Image`: an
+    image carries a different JPEG per stage, and a change to one stage's
+    overlay says nothing about the other three.
 
     Written once and parameterised by model rather than copied per kind. The
     four `put_*_label` handlers were near-identical for a long time and scored
@@ -565,12 +556,22 @@ async def _set_needs_reprocess(
     keeps a dive-wide flag from costing hours of NAS staging to redraw frames
     nobody will look at again.
 
-    Clearing deliberately ignores the scope and lowers every canonical flag. If
-    it inherited the filter, a label completed *between* the flag being raised
-    and the redraw finishing would keep its flag up — and a flag nothing lowers
-    holds its dive in the cohort forever, re-staging raw `.ORF`s from the NAS
-    every hour and starving every higher-id dive behind it (prod dive 60 did
-    exactly that to dives 84/465/471 until 2026-08-04).
+    Clearing deliberately ignores `only_incomplete` and lowers the flag whatever
+    the label's state. If it inherited that filter, a label completed *between*
+    the flag being raised and the redraw finishing would keep its flag up — and
+    a flag nothing lowers holds its dive in the cohort forever, re-staging raw
+    `.ORF`s from the NAS every hour and starving every higher-id dive behind it
+    (prod dive 60 did exactly that to dives 84/465/471 until 2026-08-04).
+
+    **`checksums` scopes the clear to named frames**, and is how the parents
+    avoid discarding a request they never acted on: their child can run for two
+    hours, so a flag raised inside that window would otherwise be lowered by a
+    run that redrew nothing for it. The success path passes what it redrew.
+
+    `None` means "no scope" and clears the whole dive — the no-work backstop,
+    where the flag reached no image and nothing will ever lower it. `[]` is a
+    real, empty scope and clears nothing; a falsy check would collapse the two
+    and turn the commonest no-work payload into a dive-wide clear.
 
     Canonical images only, both directions: the same physical frame lives under
     several dive rows and only the canonical copy is ever preprocessed, so
@@ -587,36 +588,48 @@ async def _set_needs_reprocess(
         )  # noqa: E712  pylint: disable=singleton-comparison
     )
     if value:
-        # Never raise a flag on a dead-lettered row. `get_<kind>_labels_for_dive`
-        # -- the per-dive getter every resolver reads -- filters
-        # `superseded == False`, so a flag here would be visible to the cohort
-        # selector and invisible to the resolver: the dive is picked, its raw
-        # `.ORF`s are staged from the NAS, nothing resolves, and it happens
-        # again next hour. Clearing is deliberately not filtered, so a row
-        # superseded *after* being flagged still gets its flag lowered.
+        # Never raise a flag on a row the resolver cannot see.
+        # `get_<kind>_labels_for_dive` -- the per-dive getter every resolver
+        # reads -- filters `superseded == False`, so a flag on anything else
+        # would be visible to the cohort selector and invisible to the
+        # resolver: the dive is picked, its raw `.ORF`s are staged from the
+        # NAS, nothing resolves, and it happens again next hour.
+        #
+        # `== False`, not "not superseded", and it must stay byte-identical to
+        # the getter's filter. `laserlabel` and `headtaillabel` gained this
+        # column nullable with no backfill (b3a78115ba3d, 06886d4ca175 --
+        # unlike the species/dive-slate pair in 7934e62a12c0), so prod holds
+        # NULL rows, and `NULL == False` is NULL in SQL. Reading NULL as live
+        # would flag exactly the rows the resolver drops. The cost: a legacy
+        # NULL row cannot be redrawn, and the endpoint returns 0 for it.
+        #
+        # Clearing is deliberately wider -- unfiltered -- so a row superseded
+        # *after* being flagged still gets its flag lowered.
         query = query.where(
-            or_(
-                model.superseded == False, model.superseded.is_(None)
-            )  # noqa: E712  pylint: disable=singleton-comparison
-        )
+            model.superseded == False
+        )  # noqa: E712  pylint: disable=singleton-comparison
         if only_incomplete:
             query = query.where(
                 or_(
                     model.completed == False, model.completed.is_(None)
                 )  # noqa: E712  pylint: disable=singleton-comparison
             )
+    if checksums is not None:
+        query = query.where(Image.checksum.in_(checksums))  # pylint: disable=no-member
     labels = (await session.exec(query)).all()
     for label in labels:
         label.needs_reprocess = value
         session.add(label)
     await session.flush()
     logger.info(
-        "set needs_reprocess=%s on %d %s labels for dive_id=%d (only_incomplete=%s)",
+        "set needs_reprocess=%s on %d %s labels for dive_id=%d "
+        "(only_incomplete=%s scoped_to=%s)",
         value,
         len(labels),
         model.__name__,
         dive_id,
         only_incomplete,
+        "whole dive" if checksums is None else f"{len(checksums)} frames",
     )
     return len(labels)
 
@@ -645,15 +658,22 @@ async def set_laser_labels_needs_reprocess(
 
 @app.delete("/api/v1/dives/{dive_id}/labels/laser/needs-reprocess")
 async def clear_laser_labels_needs_reprocess(
-    dive_id: int, session: AsyncSession = Depends(get_async_session)
+    dive_id: int,
+    checksums: Annotated[list[str] | None, Query()] = None,
+    session: AsyncSession = Depends(get_async_session),
 ) -> int:
     """Lower the flag once this dive's laser JPEGs have been redrawn.
 
     Called by the stage 0.1 parent after its data-worker child completes. This is
-    the half that keeps the cohort drainable. A dive with no laser labels
+    the half that keeps the cohort drainable.
+
+    `checksums` scopes the clear to the frames actually redrawn; omitting it
+    clears the whole dive. See `_set_needs_reprocess`. A dive with no laser labels
     returns 0 rather than 404: the parent calls it unconditionally.
     """
-    return await _set_needs_reprocess(session, dive_id, LaserLabel, False)
+    return await _set_needs_reprocess(
+        session, dive_id, LaserLabel, False, checksums=checksums
+    )
 
 
 @app.put("/api/v1/dives/{dive_id}/labels/species/needs-reprocess")
@@ -680,15 +700,22 @@ async def set_species_labels_needs_reprocess(
 
 @app.delete("/api/v1/dives/{dive_id}/labels/species/needs-reprocess")
 async def clear_species_labels_needs_reprocess(
-    dive_id: int, session: AsyncSession = Depends(get_async_session)
+    dive_id: int,
+    checksums: Annotated[list[str] | None, Query()] = None,
+    session: AsyncSession = Depends(get_async_session),
 ) -> int:
     """Lower the flag once this dive's species JPEGs have been redrawn.
 
     Called by the stage 2 parent after its data-worker child completes. This is
-    the half that keeps the cohort drainable. A dive with no species labels
+    the half that keeps the cohort drainable.
+
+    `checksums` scopes the clear to the frames actually redrawn; omitting it
+    clears the whole dive. See `_set_needs_reprocess`. A dive with no species labels
     returns 0 rather than 404: the parent calls it unconditionally.
     """
-    return await _set_needs_reprocess(session, dive_id, SpeciesLabel, False)
+    return await _set_needs_reprocess(
+        session, dive_id, SpeciesLabel, False, checksums=checksums
+    )
 
 
 @app.put("/api/v1/dives/{dive_id}/labels/headtail/needs-reprocess")
@@ -715,15 +742,22 @@ async def set_headtail_labels_needs_reprocess(
 
 @app.delete("/api/v1/dives/{dive_id}/labels/headtail/needs-reprocess")
 async def clear_headtail_labels_needs_reprocess(
-    dive_id: int, session: AsyncSession = Depends(get_async_session)
+    dive_id: int,
+    checksums: Annotated[list[str] | None, Query()] = None,
+    session: AsyncSession = Depends(get_async_session),
 ) -> int:
     """Lower the flag once this dive's headtail JPEGs have been redrawn.
 
     Called by the stage 5.1 parent after its data-worker child completes. This is
-    the half that keeps the cohort drainable. A dive with no headtail labels
+    the half that keeps the cohort drainable.
+
+    `checksums` scopes the clear to the frames actually redrawn; omitting it
+    clears the whole dive. See `_set_needs_reprocess`. A dive with no headtail labels
     returns 0 rather than 404: the parent calls it unconditionally.
     """
-    return await _set_needs_reprocess(session, dive_id, HeadTailLabel, False)
+    return await _set_needs_reprocess(
+        session, dive_id, HeadTailLabel, False, checksums=checksums
+    )
 
 
 @app.put("/api/v1/dives/{dive_id}/labels/dive-slate/needs-reprocess")
@@ -750,15 +784,22 @@ async def set_dive_slate_labels_needs_reprocess(
 
 @app.delete("/api/v1/dives/{dive_id}/labels/dive-slate/needs-reprocess")
 async def clear_dive_slate_labels_needs_reprocess(
-    dive_id: int, session: AsyncSession = Depends(get_async_session)
+    dive_id: int,
+    checksums: Annotated[list[str] | None, Query()] = None,
+    session: AsyncSession = Depends(get_async_session),
 ) -> int:
     """Lower the flag once this dive's dive-slate JPEGs have been redrawn.
 
     Called by the stage 9 parent after its data-worker child completes. This is
-    the half that keeps the cohort drainable. A dive with no dive-slate labels
+    the half that keeps the cohort drainable.
+
+    `checksums` scopes the clear to the frames actually redrawn; omitting it
+    clears the whole dive. See `_set_needs_reprocess`. A dive with no dive-slate labels
     returns 0 rather than 404: the parent calls it unconditionally.
     """
-    return await _set_needs_reprocess(session, dive_id, DiveSlateLabel, False)
+    return await _set_needs_reprocess(
+        session, dive_id, DiveSlateLabel, False, checksums=checksums
+    )
 
 
 @app.put("/api/v1/labels/laser/{image_id}", status_code=201)

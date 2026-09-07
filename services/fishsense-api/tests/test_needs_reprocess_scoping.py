@@ -22,36 +22,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlmodel import SQLModel
-from sqlmodel.ext.asyncio.session import AsyncSession
-
-
-@pytest.fixture
-async def session():
-    import fishsense_api.database  # noqa: F401  pylint: disable=unused-import
-
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
-    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    async with factory() as s:
-        yield s
-    await engine.dispose()
-
-
-def _kinds():
-    from fishsense_api.models.dive_slate_label import DiveSlateLabel
-    from fishsense_api.models.head_tail_label import HeadTailLabel
-    from fishsense_api.models.laser_label import LaserLabel
-    from fishsense_api.models.species_label import SpeciesLabel
-
-    return [
-        pytest.param(LaserLabel, id="laser"),
-        pytest.param(SpeciesLabel, id="species"),
-        pytest.param(HeadTailLabel, id="headtail"),
-        pytest.param(DiveSlateLabel, id="dive-slate"),
-    ]
+from tests_support.db import reprocess_label_kinds
 
 
 async def _seed(session, model):
@@ -85,7 +56,7 @@ async def _seed(session, model):
     return rows
 
 
-@pytest.mark.parametrize("model", _kinds())
+@pytest.mark.parametrize("model", reprocess_label_kinds())
 class TestScoping:
     async def test_default_flags_only_incomplete_canonical_labels(self, session, model):
         from fishsense_api.controllers.label_controller import _set_needs_reprocess
@@ -144,7 +115,7 @@ class TestScoping:
         assert await _set_needs_reprocess(session, 999, model, False) == 0
 
 
-@pytest.mark.parametrize("model", _kinds())
+@pytest.mark.parametrize("model", reprocess_label_kinds())
 class TestSupersededRowsAreNeverFlagged:
     """A superseded row is dead-lettered: no labeler will ever see it again.
 

@@ -77,6 +77,23 @@ class PreprocessLaserImagesInput(BaseModel):
     laser_region: Optional[List[List[int]]] = None
 
 
+class SpeciesClusterMember(BaseModel):
+    """One image to redraw, carrying its position in the FULL cluster.
+
+    The position has to travel with the image because it cannot be recovered
+    from the batch. The resolver emits only images that need work, so a partial
+    redraw -- which is the normal case once `needs_reprocess` exists, and
+    already happens whenever an image becomes eligible after its cluster was
+    first processed -- would otherwise be numbered against the emitted subset:
+    3 images out of a cluster of 7 rendered "1 of 3".."3 of 3" while their
+    four siblings still read "4 of 7".."7 of 7", at the same object-store keys.
+    """
+
+    checksum: str
+    cluster_index: int  # 1-based, within the whole PREDICTION cluster
+    cluster_size: int  # size of the whole PREDICTION cluster
+
+
 class PreprocessSpeciesImagesInput(BaseModel):
     """Stage 2 (species preprocess) workflow-level input.
 
@@ -85,12 +102,21 @@ class PreprocessSpeciesImagesInput(BaseModel):
     can render "image i of N" for each cluster. Cluster image_ids are
     pre-filtered by the api-worker resolver to images with a valid
     laser label and no non-sentinel species label.
+
+    `cluster_members` is the field to read: it names the same images as
+    `clusters` and adds each one's true position. `clusters` is kept, carrying
+    exactly the same checksums, so a data-worker running the previous image
+    during a rolling deploy still redraws the right set -- with the i/N it
+    always computed, which is no worse than before. Optional for the same
+    reason, in the other direction: a new data-worker must tolerate a payload
+    written by an older api-worker.
     """
 
     dive_id: int
     clusters: List[List[str]]  # each inner list is a PREDICTION cluster of checksums
     camera_matrix: List[List[float]]
     distortion_coefficients: List[float]
+    cluster_members: Optional[List[List[SpeciesClusterMember]]] = None
 
 
 class PreprocessHeadtailImagesInput(BaseModel):
