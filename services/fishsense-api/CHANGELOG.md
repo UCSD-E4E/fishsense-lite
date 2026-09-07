@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## [3.0.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v2.1.0...fishsense-api-v3.0.0) (2026-09-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** `PUT /api/v1/labels/{kind}/{image_id}` no longer resets omitted fields to their defaults. A caller relying on a partial body to clear a field must send it explicitly. No in-tree caller does.
+
+### Features
+
+* add Box as a measurable species calibration target ([#795](https://github.com/UCSD-E4E/fishsense-lite/issues/795)) ([d57a65f](https://github.com/UCSD-E4E/fishsense-lite/commit/d57a65f07bef0eb74a70dde613a38e2af8e8bc95))
+
+
+### Bug Fixes
+
+* **api:** a label PUT no longer clears fields the caller never mentioned ([#797](https://github.com/UCSD-E4E/fishsense-lite/issues/797)) ([11a30cc](https://github.com/UCSD-E4E/fishsense-lite/commit/11a30ccda16b686fba1e9db567832bc37f818254))
+
 ## [2.1.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v2.0.1...fishsense-api-v2.1.0) (2026-09-07)
 
 
