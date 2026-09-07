@@ -151,6 +151,37 @@ def _slate_type_choice(results: list[dict], valid_slate_names: set[str]) -> str 
     return None
 
 
+def _calibration_target_choice(
+    results: list[dict], valid_target_names: set[str]
+) -> str | None:
+    """The `CalibrationTarget` name a labeler picked, or None.
+
+    The planar-target counterpart of `_slate_type_choice`: the species
+    Taxonomy carries `Calibration Targets -> Ruler | E4E Checkerboard`, and a
+    checkerboard is how the pool-test calibration dives say what supplies
+    their plane. `content_of_image` keeps only `taxonomy[0]`, so as with the
+    slate type, the answer has to be read off the full set of paths.
+
+    Two guards, both in `taxonomy.calibration_target_leaf`: the whole path is
+    matched (not the bare leaf), and the ruler is refused by name. The ruler
+    is the *validation* set for measurement accuracy and it appears in
+    ordinary fish dives, so resolving it here would fit their extrinsics
+    against a plane nobody intended.
+
+    A leaf naming no `CalibrationTarget` row resolves to nothing rather than
+    guessing — the same direction as `SLATE_NOT_IN_LIST_LEAF`. That is the
+    state this ships in: the choice is already labelable, and a dive stays
+    uncalibrated until the board's measured row exists.
+    """
+    for r in results:
+        if r.get("from_name") == "species":
+            for path in r.get("value", {}).get("taxonomy") or []:
+                leaf = taxonomy.calibration_target_leaf(path)
+                if leaf is not None and leaf in valid_target_names:
+                    return leaf
+    return None
+
+
 def _slate_not_in_list(results: list[dict]) -> bool:
     """Did the labeler explicitly say the slate isn't one of the templates?
 
@@ -166,15 +197,19 @@ def _slate_not_in_list(results: list[dict]) -> bool:
     return False
 
 
-def _reduce_slate_winners(
+def _reduce_winners(
     votes: list[tuple[int, datetime | None, int]],
 ) -> dict[int, int]:
-    """Collapse per-image slate votes to one `dive_slate_id` per dive.
+    """Collapse per-image votes to one winning row id per dive.
 
-    `votes` is `(dive_id, updated_at, dive_slate_id)`. Most-recent
-    completed annotation wins (a re-label with a newer timestamp
-    overrides an older one); a vote with no timestamp never displaces
-    one that has a timestamp.
+    `votes` is `(dive_id, updated_at, row_id)`. Most-recent completed
+    annotation wins (a re-label with a newer timestamp overrides an older
+    one); a vote with no timestamp never displaces one that has a timestamp.
+
+    Shared by the slate-type and calibration-target passes rather than
+    written twice. The two differ only in which id they carry, which is a
+    systematic rename — the shape `duplicate-code` is textually blind to, per
+    the note in CLAUDE.md.
     """
     best: dict[int, tuple[datetime | None, int]] = {}
     for dive_id, ts, slate_id in votes:
@@ -210,20 +245,33 @@ async def _update_species_label(fs: Client, task: Any) -> int | None:
     return species_label.image_id
 
 
-async def _collect_slate_votes(
+async def _collect_target_votes(
     fs,
     completed: list[tuple[int, datetime | None, list[dict]]],
     valid_names: set[str],
     name_to_id: dict[str, int],
-) -> tuple[list[tuple[int, datetime | None, int]], set[int]]:
-    """Split completed tasks into slate votes and unidentifiable-slate dives.
+    target_name_to_id: dict[str, int],
+) -> tuple[
+    list[tuple[int, datetime | None, int]],
+    set[int],
+    list[tuple[int, datetime | None, int]],
+]:
+    """Read the slate type and the planar calibration target off each frame.
 
-    Returns `(votes, unidentified)`. A frame contributes to at most one:
+    Returns `(slate_votes, unidentified, calibration_target_votes)`. One pass
+    and one `image_id -> dive_id` memo for both answers: they are read from
+    the same taxonomy paths on the same frames, and splitting them into two
+    collectors would double the `images.get` traffic for no gain.
+
+    A frame contributes to at most one of `slate_votes` / `unidentified` —
     naming a real template is an answer, and the sentinel is only consulted
-    when there is no answer on that frame.
+    when there is no answer on that frame. The calibration target is
+    independent of both: a frame can show a slate and a board, and the two
+    links gate different stages.
     """
     votes: list[tuple[int, datetime | None, int]] = []
     unidentified: set[int] = set()
+    target_votes: list[tuple[int, datetime | None, int]] = []
     dive_by_image: dict[int, int | None] = {}
 
     async def _dive_for(image_id: int) -> int | None:
@@ -243,20 +291,34 @@ async def _collect_slate_votes(
             if dive_id is not None:
                 unidentified.add(dive_id)
 
-    return votes, unidentified
+        target_name = _calibration_target_choice(results, set(target_name_to_id))
+        if target_name is not None:
+            dive_id = await _dive_for(image_id)
+            if dive_id is not None:
+                target_votes.append((dive_id, ts, target_name_to_id[target_name]))
+
+    return votes, unidentified, target_votes
 
 
-async def _resolve_dive_slates(
+async def _resolve_dive_targets(
     completed: list[tuple[int, datetime | None, list[dict]]],
 ) -> None:
-    """Set `dive_slate_id` from the slate type labelers picked.
+    """Set `dive_slate_id` and `calibration_target_id` from what labelers picked.
 
     `completed` is `(image_id, updated_at, annotation_results)` for every
-    completed task this sync processed. Maps each slate-type choice to a
-    DiveSlate id, resolves the image's dive, and writes the most-recent
-    winner per dive. No-op when nothing was completed or no slate type was
-    chosen — so it never touches a dive whose labelers didn't identify a
-    slate this run.
+    completed task this sync processed. Maps each choice to a row id, resolves
+    the image's dive, and writes the most-recent winner per dive. No-op when
+    nothing was completed or nothing was chosen — so it never touches a dive
+    whose labelers didn't identify a target this run.
+
+    Both links, because this activity is the only thing in the pipeline that
+    writes either from labeler input: stages 9/12/13 read `dive_slate_id`, and
+    the checkerboard calibration cohort reads `calibration_target_id`, but
+    nothing else sets them.
+
+    They are written independently. A dive can carry both — the two name
+    different physical objects and gate different stages — and a dive whose
+    board resolves to no row simply keeps whatever it had.
     """
     if not completed:
         return
@@ -266,17 +328,28 @@ async def _resolve_dive_slates(
         name_to_id = {slate.name: slate.id for slate in slates}
         valid_names = set(name_to_id)
 
-        votes, unidentified = await _collect_slate_votes(
-            fs, completed, valid_names, name_to_id
+        targets = await fs.calibration_targets.get() or []
+        target_name_to_id = {target.name: target.id for target in targets}
+
+        votes, unidentified, target_votes = await _collect_target_votes(
+            fs, completed, valid_names, name_to_id, target_name_to_id
         )
 
-        winners = _reduce_slate_winners(votes)
+        winners = _reduce_winners(votes)
         for dive_id, slate_id in winners.items():
             await fs.dives.set_dive_slate(dive_id, slate_id)
             activity.logger.info(
                 "species sync set dive_slate dive_id=%d dive_slate_id=%d",
                 dive_id,
                 slate_id,
+            )
+
+        for dive_id, target_id in _reduce_winners(target_votes).items():
+            await fs.dives.set_calibration_target(dive_id, target_id)
+            activity.logger.info(
+                "species sync set calibration_target dive_id=%d target_id=%d",
+                dive_id,
+                target_id,
             )
 
         # A dive that got a real slate on some *other* frame is identified;
@@ -319,11 +392,12 @@ async def _note_unidentified_slates(fs, dive_ids: set[int]) -> None:
 async def sync_species_labels_for_label_studio_project_activity(project_id: int):
     """Activity to sync species labels for a Label Studio project.
 
-    Besides writing each SpeciesLabel, this collects the slate-type
-    choice from every *completed* task and, after the sync, sets each
-    dive's `dive_slate_id` (most-recent-completed wins). That's the only
-    thing in the pipeline that populates `dive_slate_id` from labeler
-    input — stages 9/12/13 read it but nothing else writes it.
+    Besides writing each SpeciesLabel, this collects two identification
+    choices from every *completed* task and, after the sync, sets each dive's
+    `dive_slate_id` and `calibration_target_id` (most-recent-completed wins).
+    That's the only thing in the pipeline that populates either from labeler
+    input — stages 9/12/13 read the slate and the checkerboard calibration
+    cohort reads the target, but nothing else writes them.
     """
     completed: list[tuple[int, datetime | None, list[dict]]] = []
     lock = asyncio.Lock()
@@ -342,4 +416,4 @@ async def sync_species_labels_for_label_studio_project_activity(project_id: int)
 
     await sync_label_studio_project(project_id, _update, kind="species")
 
-    await _resolve_dive_slates(completed)
+    await _resolve_dive_targets(completed)

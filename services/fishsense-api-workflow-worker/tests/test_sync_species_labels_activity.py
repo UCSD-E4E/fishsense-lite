@@ -78,6 +78,13 @@ def _make_fs_client(label_lookup, *, cursor=None, dive_slates=None, image_to_div
     fs.dive_slates = MagicMock()
     fs.dive_slates.get = AsyncMock(return_value=slates)
 
+    # CalibrationTarget rows for the planar-target pass. Names must match the
+    # species Taxonomy's `Calibration Targets` leaves.
+    fs.calibration_targets = MagicMock()
+    fs.calibration_targets.get = AsyncMock(
+        return_value=[SimpleNamespace(id=4, name="E4E Checkerboard")]
+    )
+
     img_map = image_to_dive or {}
 
     async def _get_image(dive_id=None, image_id=None, checksum=None):
@@ -89,6 +96,7 @@ def _make_fs_client(label_lookup, *, cursor=None, dive_slates=None, image_to_div
 
     fs.dives = MagicMock()
     fs.dives.set_dive_slate = AsyncMock()
+    fs.dives.set_calibration_target = AsyncMock()
     fs.dives.set_notes = AsyncMock()
     # Default: the dive carries no operator note, so the sentinel pass is
     # free to write one.
@@ -417,19 +425,19 @@ def test_slate_type_choice_empty_results():
     assert sut._slate_type_choice([], {"H-Slate"}) is None  # pylint: disable=protected-access
 
 
-def test_reduce_slate_winners_most_recent_per_dive():
+def test_reduce_winners_most_recent_per_dive():
     votes = [
         (7, datetime(2026, 5, 1, tzinfo=timezone.utc), 9),
         (7, datetime(2026, 5, 3, tzinfo=timezone.utc), 1),  # newer -> wins for dive 7
         (8, datetime(2026, 5, 2, tzinfo=timezone.utc), 5),
     ]
-    assert sut._reduce_slate_winners(votes) == {7: 1, 8: 5}  # pylint: disable=protected-access
+    assert sut._reduce_winners(votes) == {7: 1, 8: 5}  # pylint: disable=protected-access
 
 
-def test_reduce_slate_winners_timestamp_beats_none_either_order():
+def test_reduce_winners_timestamp_beats_none_either_order():
     ts = datetime(2026, 5, 1, tzinfo=timezone.utc)
-    assert sut._reduce_slate_winners([(7, None, 9), (7, ts, 1)]) == {7: 1}  # pylint: disable=protected-access
-    assert sut._reduce_slate_winners([(7, ts, 1), (7, None, 9)]) == {7: 1}  # pylint: disable=protected-access
+    assert sut._reduce_winners([(7, None, 9), (7, ts, 1)]) == {7: 1}  # pylint: disable=protected-access
+    assert sut._reduce_winners([(7, ts, 1), (7, None, 9)]) == {7: 1}  # pylint: disable=protected-access
 
 
 @pytest.mark.asyncio
@@ -672,3 +680,184 @@ async def test_sync_does_not_clobber_an_existing_note(monkeypatch):
     )
 
     fs.dives.set_notes.assert_not_awaited()
+
+
+# --------------- the calibration-target pass (checkerboard) ---------------
+#
+# The same shape as the slate pass above, and for the same reason: nothing
+# else in the pipeline writes `Dive.calibration_target_id`, so without this a
+# checkerboard-calibrated dive has no way to say what it was shot against.
+# See `docs/plans/checkerboard-laser-calibration.md`.
+
+
+def _checkerboard_annotation(*, extra: List[list] | None = None) -> dict:
+    return {
+        "result": [
+            {
+                "from_name": "species",
+                "value": {
+                    "taxonomy": [
+                        ["Calibration Targets", "E4E Checkerboard"],
+                        *(extra or []),
+                    ]
+                },
+            }
+        ]
+    }
+
+
+def test_calibration_target_choice_finds_the_board():
+    results = _checkerboard_annotation()["result"]
+    assert (
+        sut._calibration_target_choice(  # pylint: disable=protected-access
+            results, {"E4E Checkerboard"}
+        )
+        == "E4E Checkerboard"
+    )
+
+
+def test_calibration_target_choice_refuses_the_ruler():
+    """The ruler is the validation set, never a calibration source.
+
+    Refused even when a `CalibrationTarget` row is called "Ruler" — which is
+    the whole point of guarding it by name. A ruler appears in ordinary fish
+    dives, so resolving it here would pull them into the calibration cohort
+    and fit their extrinsics against a plane nobody intended.
+    """
+    results = [
+        {
+            "from_name": "species",
+            "value": {"taxonomy": [["Calibration Targets", "Ruler"]]},
+        }
+    ]
+    assert (
+        sut._calibration_target_choice(  # pylint: disable=protected-access
+            results, {"Ruler", "E4E Checkerboard"}
+        )
+        is None
+    )
+
+
+def test_calibration_target_choice_none_for_an_unseeded_board():
+    """A leaf naming no row resolves to nothing rather than guessing.
+
+    This is the state the pipeline ships in until the board's square size has
+    been measured: labelers can already pick the choice, and the dive simply
+    stays uncalibrated. Same direction as `SLATE_NOT_IN_LIST_LEAF`.
+    """
+    results = _checkerboard_annotation()["result"]
+    assert (
+        sut._calibration_target_choice(results, set())  # pylint: disable=protected-access
+        is None
+    )
+
+
+def test_calibration_target_choice_none_for_fish():
+    results = [{"from_name": "species", "value": {"taxonomy": [["Fish", "Hogfish"]]}}]
+    assert (
+        sut._calibration_target_choice(  # pylint: disable=protected-access
+            results, {"E4E Checkerboard"}
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_sync_sets_calibration_target_from_the_board_choice(monkeypatch):
+    task = _make_task(101, annotations=[_checkerboard_annotation()])
+    task.is_labeled = True
+    task.updated_at = "2026-05-02T10:00:00Z"
+    label = _empty_species_label(image_id=42)
+    fs = _make_fs_client(label_lookup={101: label}, image_to_dive={42: 7})
+    ls = _make_ls_client([task])
+
+    monkeypatch.setattr(sut_utils, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "get_ls_client", lambda: ls)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    await ActivityEnvironment().run(
+        sut.sync_species_labels_for_label_studio_project_activity, 1
+    )
+
+    # E4E Checkerboard -> CalibrationTarget id 4, image 42 -> dive 7.
+    fs.dives.set_calibration_target.assert_awaited_once_with(7, 4)
+
+
+@pytest.mark.asyncio
+async def test_sync_does_not_touch_the_link_without_a_board_choice(monkeypatch):
+    task = _make_task(
+        101,
+        annotations=[
+            {
+                "result": [
+                    {
+                        "from_name": "species",
+                        "value": {"taxonomy": [["Fish", "Hogfish"]]},
+                    }
+                ]
+            }
+        ],
+    )
+    task.is_labeled = True
+    label = _empty_species_label(image_id=42)
+    fs = _make_fs_client(label_lookup={101: label}, image_to_dive={42: 7})
+    ls = _make_ls_client([task])
+
+    monkeypatch.setattr(sut_utils, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "get_ls_client", lambda: ls)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    await ActivityEnvironment().run(
+        sut.sync_species_labels_for_label_studio_project_activity, 1
+    )
+
+    fs.dives.set_calibration_target.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sync_ignores_an_incomplete_board_choice(monkeypatch):
+    """Only completed annotations vote — a labeler mid-task has not decided."""
+    task = _make_task(101, annotations=[_checkerboard_annotation()])
+    task.is_labeled = False
+    label = _empty_species_label(image_id=42)
+    fs = _make_fs_client(label_lookup={101: label}, image_to_dive={42: 7})
+    ls = _make_ls_client([task])
+
+    monkeypatch.setattr(sut_utils, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "get_ls_client", lambda: ls)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    await ActivityEnvironment().run(
+        sut.sync_species_labels_for_label_studio_project_activity, 1
+    )
+
+    fs.dives.set_calibration_target.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_slate_pass_and_the_target_pass_are_independent(monkeypatch):
+    """A frame showing both writes both links.
+
+    They answer different questions and gate different stages; neither should
+    suppress the other. Rig 04 of the 2023.08.18 set is the case that makes
+    this concrete in the opposite direction — a real slate, no board.
+    """
+    task = _make_task(
+        101,
+        annotations=[_checkerboard_annotation(extra=[["Slate", "V-Slate 2"]])],
+    )
+    task.is_labeled = True
+    label = _empty_species_label(image_id=42)
+    fs = _make_fs_client(label_lookup={101: label}, image_to_dive={42: 7})
+    ls = _make_ls_client([task])
+
+    monkeypatch.setattr(sut_utils, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "get_ls_client", lambda: ls)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    await ActivityEnvironment().run(
+        sut.sync_species_labels_for_label_studio_project_activity, 1
+    )
+
+    fs.dives.set_dive_slate.assert_awaited_once_with(7, 9)
+    fs.dives.set_calibration_target.assert_awaited_once_with(7, 4)
