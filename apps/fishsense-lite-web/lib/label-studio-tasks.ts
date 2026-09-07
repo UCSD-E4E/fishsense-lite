@@ -178,9 +178,44 @@ export async function deleteAnnotation(annotationId: number): Promise<void> {
  *     project has no storage connected, and no amount of fetching will help.
  *     Reported as such rather than retried.
  */
+/**
+ * Hosts this server is allowed to fetch a frame from.
+ *
+ * The resolved URL comes out of Label Studio task data, and a portal user
+ * chooses which task — so without this the route is a server-side request
+ * forgery: ask for a task whose `data.image` points at `fishsense-api:8000`,
+ * or at a cloud metadata endpoint, and this server fetches it from inside the
+ * private network and streams the body back.
+ *
+ * Label Studio is trusted, but task data is writable by anyone who can create
+ * a task, so "it came from Label Studio" is not the same as "it is safe to
+ * fetch". The previous implementation was accidentally safe here because it
+ * only ever hit a fixed path on a fixed host; resolving properly removed that
+ * accident and had to replace it deliberately.
+ *
+ * Defaults to the Label Studio host. `TRIAGE_IMAGE_HOSTS` adds others —
+ * production presigns against the object store, whose host is not otherwise
+ * known here, and the rejection message names the host so it can be added
+ * rather than guessed.
+ */
+function allowedImageHosts(): Set<string> {
+  const hosts = new Set<string>();
+  try {
+    hosts.add(new URL(env.labelStudioUrl).host);
+  } catch {
+    // A malformed base is reported elsewhere; do not widen the allowlist.
+  }
+  for (const extra of (process.env.TRIAGE_IMAGE_HOSTS ?? "").split(",")) {
+    const host = extra.trim();
+    if (host) hosts.add(host);
+  }
+  return hosts;
+}
+
 export type ResolvedImage =
   | { kind: "response"; response: Response; url: string }
-  | { kind: "unresolved"; uri: string };
+  | { kind: "unresolved"; uri: string }
+  | { kind: "blocked"; uri: string; host: string };
 
 export async function fetchTaskImage(taskId: number): Promise<ResolvedImage> {
   const task = await getTask(taskId, { resolveUri: true });
@@ -191,6 +226,15 @@ export async function fetchTaskImage(taskId: number): Promise<ResolvedImage> {
   }
 
   if (/^https?:\/\//i.test(uri)) {
+    let host: string;
+    try {
+      host = new URL(uri).host;
+    } catch {
+      return { kind: "blocked", uri, host: "(unparseable)" };
+    }
+    if (!allowedImageHosts().has(host)) {
+      return { kind: "blocked", uri, host };
+    }
     // Presigned: the signature IS the credential, and adding ours can trip
     // S3's "only one auth mechanism" rule.
     return { kind: "response", response: await fetch(uri, { cache: "no-store" }), url: uri };
