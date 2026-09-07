@@ -158,29 +158,58 @@ export async function deleteAnnotation(annotationId: number): Promise<void> {
 }
 
 /**
- * Stream a task's image through this server.
+ * Fetch a task's frame, letting Label Studio say where it lives.
  *
- * Tasks hold `s3://` URIs. With `resolve_uri=true` Label Studio does not hand
- * back a presigned S3 URL — it returns a path on its own API server, which is
- * **relative** and **authenticated**. Requiring `https://` rejected every task
- * in the Android app and reported "queue empty" against a project holding 283.
+ * The URL is NOT constructed here any more. It used to be built by hand as
+ * `/tasks/{id}/resolve/?fileuri={base64}`, copied from a note about hosted
+ * Label Studio — and every fetch came back non-OK, which the route turned into
+ * a bare 502 with nothing to diagnose from.
  *
- * Proxying is what keeps that off the client: the browser asks this server for
- * the bytes and never needs a Label Studio credential, which also sidesteps
- * the five-minute bearer expiring mid-session.
+ * The supported route is to ask: request the task with `resolve_uri=true` and
+ * read whatever `data.image` becomes. What comes back varies by deployment and
+ * by how the project's storage is configured, so all three shapes are handled:
+ *
+ *   * an absolute `http(s)` URL — a presigned link, fetched WITHOUT our
+ *     Authorization header, because sending a bearer to S3 can itself be
+ *     rejected;
+ *   * a root-relative path on Label Studio's own server — fetched WITH auth,
+ *     since that endpoint is authenticated;
+ *   * still `s3://` — Label Studio could not resolve it, which means the
+ *     project has no storage connected, and no amount of fetching will help.
+ *     Reported as such rather than retried.
  */
-export async function fetchTaskImage(taskId: number, imageUri: string): Promise<Response> {
-  return authed(`/tasks/${taskId}/resolve/?fileuri=${encodeURIComponent(base64(imageUri))}`);
-}
+export type ResolvedImage =
+  | { kind: "response"; response: Response; url: string }
+  | { kind: "unresolved"; uri: string };
 
-/** `fileuri` is the base64 of the stored `s3://` URI, URL-encoded. */
-export function base64(value: string): string {
-  return Buffer.from(value, "utf8").toString("base64");
+export async function fetchTaskImage(taskId: number): Promise<ResolvedImage> {
+  const task = await getTask(taskId, { resolveUri: true });
+  const uri = typeof task?.data?.image === "string" ? task.data.image : "";
+
+  if (!uri || uri.startsWith("s3://") || uri.startsWith("gs://")) {
+    return { kind: "unresolved", uri };
+  }
+
+  if (/^https?:\/\//i.test(uri)) {
+    // Presigned: the signature IS the credential, and adding ours can trip
+    // S3's "only one auth mechanism" rule.
+    return { kind: "response", response: await fetch(uri, { cache: "no-store" }), url: uri };
+  }
+
+  const path = uri.startsWith("/") ? uri : `/${uri}`;
+  return { kind: "response", response: await authed(path), url: path };
 }
 
 /** One task, with its predictions and annotations. */
-export async function getTask(taskId: number): Promise<LsTask | null> {
-  const response = await authed(`/api/tasks/${taskId}/`);
+export async function getTask(
+  taskId: number,
+  { resolveUri = false }: { resolveUri?: boolean } = {},
+): Promise<LsTask | null> {
+  // `resolve_uri=true` asks Label Studio to rewrite storage URIs in `data`
+  // into something fetchable. It is off by default because the queue only
+  // needs predictions, and resolving costs the server work per task.
+  const query = resolveUri ? "?resolve_uri=true" : "";
+  const response = await authed(`/api/tasks/${taskId}/${query}`);
   if (response.status === 404) return null;
   if (!response.ok) {
     throw new Error(
