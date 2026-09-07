@@ -27,8 +27,14 @@ from fishsense_api_workflow_worker.activities import (
 )
 
 
-def _laser_label(image_id, *, x=600.0, y=500.0, superseded=False):
-    return SimpleNamespace(image_id=image_id, x=x, y=y, superseded=superseded)
+def _laser_label(image_id, *, label_id=None, x=600.0, y=500.0, superseded=False):
+    return SimpleNamespace(
+        id=image_id if label_id is None else label_id,
+        image_id=image_id,
+        x=x,
+        y=y,
+        superseded=superseded,
+    )
 
 
 def _image(image_id, *, is_canonical=True):
@@ -157,6 +163,57 @@ async def test_resolver_drops_non_canonical_frames(monkeypatch):
     )
 
     assert [image.image_id for image in resolved.images] == [101]
+
+
+@pytest.mark.asyncio
+async def test_one_frame_per_image_when_an_image_has_two_live_labels(monkeypatch):
+    """The cohort counts IMAGES with a live dot; the resolver must agree.
+
+    461 prod images carry two valid laser labels — the multiplicity that wedged
+    dive 279 in the laser-depth stage. Emitting one frame per *label* would
+    decode the same `.ORF` twice on a queue whose two activity slots exist
+    because each decode peaks at 1-3 GB, and would double-weight that frame's
+    observation in the least-squares fit relative to every single-labelled
+    frame.
+
+    Lowest label id wins — an arbitrary choice, but a deterministic one, so a
+    re-dispatch of the same dive fits the same points.
+    """
+    resolved = await _resolve(
+        _make_fs(
+            laser_labels=[
+                _laser_label(101, label_id=9, x=610.0),
+                _laser_label(101, label_id=4, x=600.0),
+                _laser_label(102, label_id=7),
+            ],
+            images=[_image(101), _image(102)],
+        ),
+        monkeypatch,
+    )
+
+    assert [image.image_id for image in resolved.images] == [101, 102]
+    assert resolved.images[0].laser_x == 600.0
+
+
+@pytest.mark.asyncio
+async def test_a_superseded_label_does_not_shadow_a_live_one(monkeypatch):
+    """Dead-lettered labels are filtered before the per-image choice.
+
+    Otherwise a superseded label with a lower id would win its image and the
+    frame would be dropped, losing an observation the cohort counted.
+    """
+    resolved = await _resolve(
+        _make_fs(
+            laser_labels=[
+                _laser_label(101, label_id=1, superseded=True, x=999.0),
+                _laser_label(101, label_id=5, x=600.0),
+            ],
+            images=[_image(101)],
+        ),
+        monkeypatch,
+    )
+
+    assert [image.laser_x for image in resolved.images] == [600.0]
 
 
 @pytest.mark.asyncio

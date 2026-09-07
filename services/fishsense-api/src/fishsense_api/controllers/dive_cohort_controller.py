@@ -839,6 +839,65 @@ async def select_next_for_slate_preprocessing(
     return (await session.exec(query)).first()
 
 
+def _has_live_laser_dot():
+    """EXISTS a non-superseded laser label with both coordinates set.
+
+    Correlated to `Image`, so it is a per-image test. This is exactly what
+    `get_laser_label` filters on — nothing about `completed`, because a
+    populate-seeded placeholder is excluded by its NULL x/y rather than by its
+    completion state.
+    """
+    return (
+        select(LaserLabel.id)
+        .where(LaserLabel.image_id == Image.id)
+        .where(LaserLabel.superseded == False)
+        .where(LaserLabel.x != None)
+        .where(LaserLabel.y != None)
+        .correlate(Image)
+        .exists()
+    )
+
+
+def _usable_slate_observation_count():
+    """How many slate-laser observations stage 13 would actually get.
+
+    A completed, non-superseded `DiveSlateLabel` on a canonical image that also
+    carries a live laser dot — what `perform_laser_calibration_activity`
+    counts when it walks the dive's slate labels.
+
+    Extracted because two cohorts now depend on it and they must not drift:
+    stage 13 selects dives at or above `MIN_SLATE_LASER_POINTS`, and the
+    checkerboard cohort excludes exactly those. A second copy that diverged
+    would either leave a dive in both cohorts (two producers racing to upsert
+    one `LaserExtrinsics` row) or in neither (calibratable by nobody, silently).
+    `duplicate-code` would not catch the clone — swapping the model names is a
+    systematic rename, which is textually invisible.
+    """
+    return (
+        select(func.count(DiveSlateLabel.id))  # pylint: disable=not-callable
+        .join(Image, Image.id == DiveSlateLabel.image_id)
+        .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
+        .where(DiveSlateLabel.completed == True)
+        # A dead-lettered slate label doesn't count toward the calibration
+        # readiness gate — same validity convention laser calibration uses.
+        .where(DiveSlateLabel.superseded == False)
+        .where(_has_live_laser_dot())
+        .correlate(Dive)
+        .scalar_subquery()
+    )
+
+
+def _stage_13_can_calibrate():
+    """Whether the SLATE path can fit this dive: a slate link plus enough
+    observations. The exact condition `select_next_for_laser_calibration`
+    admits on, so the two calibration cohorts partition rather than overlap."""
+    return and_(
+        Dive.dive_slate_id != None,
+        _usable_slate_observation_count() >= MIN_SLATE_LASER_POINTS,
+    )
+
+
 @app.get("/api/v1/dives/select-next/laser-calibration/")
 async def select_next_for_laser_calibration(
     session: AsyncSession = Depends(get_async_session),
@@ -879,37 +938,17 @@ async def select_next_for_laser_calibration(
     in prod does (checked), but it is why this counts EXISTS rather than trying
     to reproduce `.first()`.
     """
-    has_live_laser_dot = (
-        select(LaserLabel.id)
-        .where(LaserLabel.image_id == Image.id)
-        .where(LaserLabel.superseded == False)
-        .where(LaserLabel.x != None)
-        .where(LaserLabel.y != None)
-        .correlate(Image)
-        .exists()
-    )
-    usable_laser_point_count = (
-        select(func.count(DiveSlateLabel.id))  # pylint: disable=not-callable
-        .join(Image, Image.id == DiveSlateLabel.image_id)
-        .where(Image.dive_id == Dive.id)
-        .where(Image.is_canonical == True)
-        .where(DiveSlateLabel.completed == True)
-        # A dead-lettered slate label doesn't count toward the calibration
-        # readiness gate — same validity convention laser calibration uses.
-        .where(DiveSlateLabel.superseded == False)
-        .where(has_live_laser_dot)
-        .scalar_subquery()
-    )
     query = (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
-        .where(Dive.dive_slate_id != None)
         .where(
             ~select(LaserExtrinsics.id)
             .where(LaserExtrinsics.dive_id == Dive.id)
             .exists()
         )
-        .where(usable_laser_point_count >= MIN_SLATE_LASER_POINTS)
+        # The slate link and the observation floor together — shared with the
+        # checkerboard cohort, which excludes exactly this.
+        .where(_stage_13_can_calibrate())
         .order_by(Dive.id)
         .limit(1)
     )
@@ -938,6 +977,23 @@ async def select_next_for_checkerboard_laser_calibration(
     populate-seeded placeholder is excluded by its NULL x/y, not by its
     completion state.
 
+    **Stage 13 keeps precedence, and that is what makes the two cohorts
+    disjoint.** `dive_slate_id` and `calibration_target_id` are independent by
+    design — a frame can show a slate and a board, and species sync writes both
+    links — so without this a dive could sit in stage 13's cohort (+50) and
+    this one (+52) at once. Each parent drains one dive per firing, so which
+    reached it first was a matter of timing, and both would fit and upsert the
+    *same* `LaserExtrinsics` row from different targets; the dive then dropped
+    out of both cohorts with nothing recording which target produced the
+    calibration that stuck.
+
+    The exclusion is on stage-13 **eligibility**, not on the slate link
+    existing. A checkerboard dive can pick up a `dive_slate_id` from one frame
+    where a labeler saw a slate in shot; with no slate labels, stage 9 never
+    fires and stage 13 returns None, so excluding on the bare link would leave
+    that dive calibratable by neither path — silently, which is the exact
+    failure this producer exists to end.
+
     **No borrowed-calibration fallback, deliberately.** Stage 14's cohort
     accepts `calibration_dive_id` because it only needs *some* extrinsics to
     measure with. This one must not: a dive that can fit its own is exactly
@@ -954,20 +1010,11 @@ async def select_next_for_checkerboard_laser_calibration(
     deliberate: clear the link (`DELETE /dives/{id}/calibration-target/`) or
     park the dive at `Priority.NONE` with a note. Both drop it immediately.
     """
-    has_live_laser_dot = (
-        select(LaserLabel.id)
-        .where(LaserLabel.image_id == Image.id)
-        .where(LaserLabel.superseded == False)
-        .where(LaserLabel.x != None)
-        .where(LaserLabel.y != None)
-        .correlate(Image)
-        .exists()
-    )
     usable_observation_count = (
         select(func.count(Image.id))  # pylint: disable=not-callable
         .where(Image.dive_id == Dive.id)
         .where(Image.is_canonical == True)
-        .where(has_live_laser_dot)
+        .where(_has_live_laser_dot())
         .correlate(Dive)
         .scalar_subquery()
     )
@@ -981,6 +1028,10 @@ async def select_next_for_checkerboard_laser_calibration(
             .correlate(Dive)
             .exists()
         )
+        # Stage 13 keeps precedence over a dive it can actually fit. See the
+        # docstring: the two links are independent, so this is what makes the
+        # cohorts partition instead of racing.
+        .where(~_stage_13_can_calibrate())
         .where(usable_observation_count >= MIN_SLATE_LASER_POINTS)
         .order_by(Dive.id)
         .limit(1)

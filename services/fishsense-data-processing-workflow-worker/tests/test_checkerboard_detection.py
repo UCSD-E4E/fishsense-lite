@@ -299,6 +299,51 @@ def test_refuses_a_grid_larger_than_the_declared_board():
     assert _detect(fine_board) is None
 
 
+@pytest.mark.parametrize(
+    ("detected", "why"),
+    [
+        ((9, 20), "one side fits, the other overruns"),
+        ((8, 15), "the overrun is a single corner"),
+        ((17, 24), "the whole 2025 board"),
+    ],
+)
+def test_a_grid_that_overruns_either_side_is_refused(detected, why):
+    """"Fits inside the declared board" is elementwise, both sides.
+
+    A lexicographic compare of the sorted pairs passes 9 x 20 against a
+    10 x 14 board — 9 < 10 decides it and the 20 is never looked at. That is
+    not a hypothetical shape: it is a partial view of the 2025 pool board
+    (24 x 17), which would then be fitted at the E4E board's 4.2 cm pitch. A
+    wrong pitch is a wrong scale, and scale is the one error term reprojection
+    residual provably cannot see — so it would calibrate cleanly and measure
+    every fish in the dive wrong.
+
+    Asserted on the predicate rather than through an image because rendering a
+    board that detects at exactly 9 x 20 is not something a test can pin down;
+    the predicate is the part that has to be right.
+    """
+    assert not sut._fits_declared_board(  # pylint: disable=protected-access
+        detected[0], detected[1], BOARD_ROWS, BOARD_COLS
+    ), why
+
+
+@pytest.mark.parametrize(
+    "detected",
+    [
+        (10, 14),  # the whole board
+        (14, 10),  # the whole board, transposed
+        (10, 10),  # a sub-grid
+        (3, 3),  # the smallest accepted sub-grid
+        (10, 3),
+    ],
+)
+def test_a_grid_that_fits_either_way_round_is_accepted(detected):
+    """Orientation is free, so the comparison is on unordered pairs."""
+    assert sut._fits_declared_board(  # pylint: disable=protected-access
+        detected[0], detected[1], BOARD_ROWS, BOARD_COLS
+    )
+
+
 def test_accepts_the_declared_board_at_its_own_size():
     """The refusal above must be about the geometry, not about strictness."""
     fine_board = _render(cols_sq=25, rows_sq=18)

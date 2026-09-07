@@ -199,9 +199,11 @@ async def test_checkerboard_calibration_is_scheduled_hourly_at_52(registered):
     """Straight after stage 13 at +50, and before the +55 sweeper.
 
     The two calibration parents are siblings producing the same
-    `LaserExtrinsics` row from different targets, and their cohorts are
-    disjoint — one needs a `dive_slate_id`, the other a
-    `calibration_target_id` — so they cannot race for a dive.
+    `LaserExtrinsics` row from different targets. They cannot race for a dive,
+    but the reason is NOT that the two links are different — `dive_slate_id`
+    and `calibration_target_id` are independent and a dive can carry both. It
+    is that the checkerboard cohort explicitly excludes any dive stage 13 can
+    fit; `test_checkerboard_calibration_cohort.py` is where that is pinned.
     """
     schedule = registered["perform-checkerboard-calibration-workflow-schedule"]
     assert schedule.spec.intervals[0].every == timedelta(hours=1)

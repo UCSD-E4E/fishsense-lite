@@ -153,7 +153,43 @@ async def _run_parent(task_queue: str, *, dive_id=488, frames=2):
 @pytest.mark.asyncio
 async def test_parent_stages_dispatches_and_cleans_up():
     assert await _run_parent("test-checkerboard-happy") == 488
-    assert _CALLS == ["select", "resolve", "wake", "stage", "child", "cleanup"]
+    assert _CALLS == [
+        "select",
+        "resolve",
+        "wake",
+        "stage",
+        "wake",
+        "child",
+        "cleanup",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_parent_wakes_the_worker_again_after_staging():
+    """Staging outlasts the scale-to-zero sweeper, so one early wake is not enough.
+
+    This parent stages a dive's raw `.ORF`s before dispatching — ~30 minutes
+    for a 133-frame folder over the ~1 MB/s NAS link — and staging runs on the
+    *api-worker's* queue, so `fishsense_data_processing_queue` has nothing
+    Running the whole time. The +55 sweeper therefore sees an idle queue and
+    scales the CPU worker to 0, and the child then lands on an unserved queue:
+    it does not fail, it hangs until its 2h execution timeout, and SKIP overlap
+    suppresses the next firings behind it.
+
+    It is likeliest exactly when these dives get their turn — the sweeper only
+    scales down once the preprocess backlog has drained, which is when nothing
+    else is keeping the queue warm.
+
+    The wake is idempotent (an absolute target, never an increment), so calling
+    it twice costs one cheap activity and closes the window however long
+    staging takes. The early one is kept so the pod's cold start still overlaps
+    staging.
+    """
+    await _run_parent("test-checkerboard-double-wake")
+
+    assert _CALLS.count("wake") == 2
+    # The second one is what matters: nothing may sit between it and the child.
+    assert _CALLS.index("child") == _CALLS.index("wake", _CALLS.index("stage")) + 1
 
 
 @pytest.mark.asyncio

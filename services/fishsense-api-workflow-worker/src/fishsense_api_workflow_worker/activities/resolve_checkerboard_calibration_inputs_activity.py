@@ -39,6 +39,35 @@ def _has_live_dot(label) -> bool:
     return bool(not label.superseded and label.x is not None and label.y is not None)
 
 
+def _one_label_per_image(laser_labels, checksum_by_id) -> list:
+    """One usable observation per image, in image order.
+
+    **Per image, not per label**, because that is what the cohort counted: it
+    counts canonical images carrying at least one live dot. 461 prod images
+    carry *two* valid laser labels — the same multiplicity that wedged dive
+    279 in the laser-depth stage — so emitting one frame per label would
+    diverge from the cohort in two ways that both cost something real. The
+    dive's `.ORF` would be downloaded and decoded twice on a queue whose two
+    activity slots exist precisely because each decode peaks at 1-3 GB, and
+    the frame's observation would be double-weighted in the least-squares fit
+    relative to every single-labelled frame.
+
+    Lowest label id wins. That is arbitrary — nothing distinguishes two live
+    labels on one image, and `get_laser_label` itself takes `.first()` with no
+    ordering — but it is *deterministic*, so a re-dispatch of the same dive
+    fits the same points. Unusable labels are filtered first, so a superseded
+    label with a lower id cannot shadow the live one and lose the frame.
+    """
+    best: dict[int, object] = {}
+    for label in laser_labels:
+        if not _has_live_dot(label) or label.image_id not in checksum_by_id:
+            continue
+        current = best.get(label.image_id)
+        if current is None or label.id < current.id:
+            best[label.image_id] = label
+    return [best[image_id] for image_id in sorted(best)]
+
+
 @activity.defn
 async def resolve_checkerboard_calibration_inputs_activity(
     dive_id: int,
@@ -83,8 +112,7 @@ async def resolve_checkerboard_calibration_inputs_activity(
                 laser_x=float(label.x),
                 laser_y=float(label.y),
             )
-            for label in laser_labels
-            if _has_live_dot(label) and label.image_id in checksum_by_id
+            for label in _one_label_per_image(laser_labels, checksum_by_id)
         ]
 
         activity.logger.info(

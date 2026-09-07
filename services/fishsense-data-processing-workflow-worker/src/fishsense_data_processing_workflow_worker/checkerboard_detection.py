@@ -110,8 +110,17 @@ def _fits_declared_board(rows: int, cols: int, max_rows: int, max_cols: int) -> 
     does not apply, and a wrong pitch is a wrong scale — the one error term
     the reprojection residual provably cannot see. The 2025 pool-test board
     (24 x 17) against the E4E board (14 x 10) is exactly that case.
+
+    **Elementwise, on both sides.** Comparing the sorted pairs with `<=`
+    directly is a lexicographic list compare, not a "fits inside" test: it
+    accepts 9 x 20 against a 10 x 14 board, because 9 < 10 settles the
+    comparison and the 20 is never looked at. A partial view of the 2025 board
+    lands in exactly that shape and would then be fitted at the E4E board's
+    pitch.
     """
-    return sorted((rows, cols)) <= sorted((max_rows, max_cols))
+    short, long = sorted((rows, cols))
+    max_short, max_long = sorted((max_rows, max_cols))
+    return short <= max_short and long <= max_long
 
 
 def detect_checkerboard(

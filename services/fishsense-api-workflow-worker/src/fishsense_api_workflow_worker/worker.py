@@ -698,9 +698,15 @@ async def schedule_workflows(client: Client):
             )
             # Checkerboard calibration: hourly at +52, straight after stage 13
             # at +50 — the two are siblings producing the same
-            # `LaserExtrinsics` row from different targets, and their cohorts
-            # are disjoint (one needs a `dive_slate_id`, the other a
-            # `calibration_target_id`).
+            # `LaserExtrinsics` row from different targets.
+            #
+            # Their cohorts partition, but NOT because the two links are
+            # different: `dive_slate_id` and `calibration_target_id` are
+            # independent, so a dive can carry both. The checkerboard cohort
+            # explicitly excludes any dive stage 13 can fit, which is what
+            # stops the two parents racing to upsert one dive's extrinsics
+            # from different targets. See
+            # `select_next_for_checkerboard_laser_calibration`.
             #
             # It stages raw `.ORF`s from the NAS, so it does contend with the
             # preprocess parents at :00/:15/:30/:45 for FileStation's single
@@ -708,6 +714,12 @@ async def schedule_workflows(client: Client):
             # the cohort excludes any dive that already has extrinsics, so a
             # dive passes through once and the standing corpus is eleven
             # dives — about eleven hours of contention, once.
+            #
+            # Staging also runs straight through the +55 scale-to-zero
+            # sweeper, which reads `fishsense_data_processing_queue` as idle
+            # because staging happens on THIS worker's queue. The parent
+            # re-wakes the data-worker after staging for exactly that reason;
+            # see `PerformCheckerboardCalibrationParentWorkflow`.
             #
             # SKIP overlap, like every other selector-driven parent: a run
             # still staging when the next firing arrives must not let a second

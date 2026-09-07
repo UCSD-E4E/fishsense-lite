@@ -83,8 +83,24 @@ class PerformCheckerboardCalibrationParentWorkflow:
             )
             return inputs.dive_id
 
+        # Woken twice, on purpose. The first call overlaps the pod's cold start
+        # with staging, as every preprocess parent does.
         await _dispatch.wake_data_worker()
         await _dispatch.stage_raw(dive_id)
+        # The second call is the one this stage needs. Staging here runs for
+        # ~30 minutes on a 133-frame folder and happens on the *api-worker's*
+        # queue, so `fishsense_data_processing_queue` has nothing Running the
+        # whole time — and the +55 scale-to-zero sweeper reads exactly that as
+        # idle. It would scale the CPU worker to 0 mid-staging and the child
+        # would then land on an unserved queue: not a failure, a hang until the
+        # 2h execution timeout, with SKIP overlap suppressing the firings
+        # behind it. Likeliest precisely when these dives get their turn, since
+        # the sweeper only scales down once the preprocess backlog has drained.
+        #
+        # The wake is an idempotent absolute target, so the extra call is a
+        # no-op when the worker is already up and closes the window however
+        # long staging took.
+        await _dispatch.wake_data_worker()
         try:
             await _dispatch.dispatch_child(
                 "PerformCheckerboardCalibrationWorkflow",

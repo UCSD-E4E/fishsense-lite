@@ -235,6 +235,108 @@ async def test_a_dive_whose_frames_hide_the_board_is_still_offered(session):
     assert await select_next_for_checkerboard_laser_calibration(session=session) == 1
 
 
+async def test_a_dive_stage_13_can_calibrate_is_left_to_stage_13(session):
+    """The two calibration cohorts must be disjoint, not merely different.
+
+    `dive_slate_id` and `calibration_target_id` are independent by design — a
+    frame can show a slate and a board, and species sync writes both links —
+    so nothing stopped a dive from sitting in stage 13's cohort (+50) and this
+    one (+52) at the same time. Each parent drains one dive per firing, so
+    which one reached it first was a matter of timing, and both would fit and
+    upsert the *same* `LaserExtrinsics` row from different targets. First
+    writer wins, arbitrarily, and the dive then drops out of both cohorts with
+    no record of which target produced the calibration that stuck.
+
+    Stage 13 keeps precedence: it is the established, validated path, and this
+    producer is new. An operator who wants the board instead clears the slate
+    link.
+    """
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_checkerboard_laser_calibration,
+        select_next_for_laser_calibration,
+    )
+    from fishsense_api.models.dive_slate import DiveSlate
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel
+
+    session.add(_target(1))
+    session.add(DiveSlate(id=3, name="H-Slate", path="/dev/null/h", dpi=300))
+    session.add(_dive(1, calibration_target_id=1, dive_slate_id=3))
+    await session.flush()
+    for image_id in (101, 102):
+        session.add(_image(image_id, 1))
+        await session.flush()
+        session.add(_dot(image_id))
+        session.add(
+            DiveSlateLabel(image_id=image_id, completed=True, superseded=False)
+        )
+    await session.flush()
+
+    # Stage 13 can calibrate it, so it is stage 13's.
+    assert await select_next_for_laser_calibration(session=session) == 1
+    assert await select_next_for_checkerboard_laser_calibration(session=session) is None
+
+
+async def test_a_slate_link_that_stage_13_cannot_use_does_not_block_the_board(
+    session,
+):
+    """Exclusion is on stage-13 *eligibility*, not on the link existing.
+
+    A checkerboard dive can pick up a `dive_slate_id` from one frame where a
+    labeler saw a slate in shot. With no slate labels, stage 9 never fires and
+    stage 13 returns None — so excluding on the bare link would leave the dive
+    calibratable by neither path, silently, which is the exact failure this
+    stage was built to end.
+    """
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_checkerboard_laser_calibration,
+        select_next_for_laser_calibration,
+    )
+    from fishsense_api.models.dive_slate import DiveSlate
+
+    session.add(_target(1))
+    session.add(DiveSlate(id=3, name="H-Slate", path="/dev/null/h", dpi=300))
+    session.add(_dive(1, calibration_target_id=1, dive_slate_id=3))
+    await session.flush()
+    for image_id in (101, 102):
+        session.add(_image(image_id, 1))
+        await session.flush()
+        session.add(_dot(image_id))
+    await session.flush()
+
+    # No slate labels at all: stage 13 has nothing to fit.
+    assert await select_next_for_laser_calibration(session=session) is None
+    assert await select_next_for_checkerboard_laser_calibration(session=session) == 1
+
+
+async def test_a_slate_dive_below_the_threshold_falls_through_to_the_board(session):
+    """One usable slate observation is not enough for stage 13 (`MIN` is 2).
+
+    Dive 347 is the standing example of a dive that clears "has slate labels"
+    and not "has observations". Excluding on the weaker test would park such a
+    dive between the two cohorts.
+    """
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_checkerboard_laser_calibration,
+        select_next_for_laser_calibration,
+    )
+    from fishsense_api.models.dive_slate import DiveSlate
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel
+
+    session.add(_target(1))
+    session.add(DiveSlate(id=3, name="H-Slate", path="/dev/null/h", dpi=300))
+    session.add(_dive(1, calibration_target_id=1, dive_slate_id=3))
+    await session.flush()
+    for image_id in (101, 102):
+        session.add(_image(image_id, 1))
+        await session.flush()
+        session.add(_dot(image_id))
+    session.add(DiveSlateLabel(image_id=101, completed=True, superseded=False))
+    await session.flush()
+
+    assert await select_next_for_laser_calibration(session=session) is None
+    assert await select_next_for_checkerboard_laser_calibration(session=session) == 1
+
+
 async def test_drains_in_dive_id_order(session):
     from fishsense_api.controllers.dive_cohort_controller import (
         select_next_for_checkerboard_laser_calibration,
