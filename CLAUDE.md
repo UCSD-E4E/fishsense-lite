@@ -435,6 +435,7 @@ cohort. The markers and parsers live **once**, in
 | `"Fish, Hogfish (Lachnolaimus maximus)"` | real fish — `Common (Scientific)` leaf |
 | `"Fish Model, Weasly Fish"` | rigid model, name-keyed |
 | `"Calibration Targets, Ruler"` | the ruler, name-keyed |
+| `"Calibration Targets, Box"` | the 0.15 m box, name-keyed (added 2026-09-07) |
 | `"Slate, Laser on slate"` | stage-9 slate frame (not measurable) |
 | `"Slate not in list"` | slate-type sentinel — see below (not measurable) |
 
@@ -490,11 +491,22 @@ labeler picking the parent node and no model), which
 forever. Fixed by the `AND TRIM(...) <> 'Fish Model,'` guard in
 `rigid_target_sql` (migration `a2f7c31d9e64`).
 
+`Calibration Targets` is a **mixed** branch, which is why membership is an
+explicit allowlist (`taxonomy.MEASURABLE_CALIBRATION_TARGETS`) rather than the
+`LIKE` prefix the `Fish Model` half uses. Ruler and Box span a single known
+distance a head/tail pair marks; `E4E Checkerboard` sits in the same branch and
+does not. A prefix rule would sweep the checkerboard in, it would have no
+`fishmodelreference` row, and the stage-14 cohort would offer frames
+`measure_fish_activity` always skips — the never-goes-false wedge.
+
 **When adding a taxonomy branch**: add the literal + any parser to
 `fishsense_shared.taxonomy`, add a row to `MEASURABILITY_CORPUS`, and
 let the parity test tell you whether the SQL approximation still
 holds. Do not spell a marker inline in a controller, a view, or an
-activity.
+activity. A new *measurable* leaf additionally needs the species labeling XML
+choice and a `views.KNOWN_FISH_MODELS` row with its length — without the
+latter the accuracy view inner-joins its measurements away silently, which is
+what `Weasly Fish` did for months.
 
 ## `dive_pipeline_status` view
 

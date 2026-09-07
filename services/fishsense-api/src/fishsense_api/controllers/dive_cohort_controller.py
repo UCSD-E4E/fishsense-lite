@@ -115,9 +115,10 @@ def _measurable_species_conditions():
                                                    (Scientific)` leaf
         "Fish Model, Weasly Fish"               -> rigid model, name-keyed
         "Calibration Targets, Ruler"            -> the ruler, name-keyed
+        "Calibration Targets, Box"              -> the box, name-keyed
 
-    Everything else — `"Slate, Laser on slate"`, other Calibration Targets —
-    is not measurable. (An earlier version of this docstring listed the
+    Everything else — `"Slate, Laser on slate"`, the E4E Checkerboard — is not
+    measurable. (An earlier version of this docstring listed the
     bottom two branches as *skipped*, six lines above the code matching them.
     It was written when only the first branch existed and never updated when
     models and the ruler were added; the ruler clause in particular looks
@@ -142,7 +143,7 @@ def _measurable_species_conditions():
 
 
 def _is_fish_model_condition():
-    """A rigid known-length target (fish model or the ruler).
+    """A rigid known-length target (fish model, ruler, or box).
 
     These carry no grouping labels and thus no LABEL_STUDIO cluster, so the
     stage-14 cohort waives the cluster requirement for them: identity is the
@@ -157,7 +158,9 @@ def _is_fish_model_condition():
             # `taxonomy.rigid_target_sql` for why that one matters.
             func.trim(SpeciesLabel.content_of_image) != taxonomy.FISH_MODEL_PREFIX,
         ),
-        SpeciesLabel.content_of_image == taxonomy.RULER_CONTENT,
+        SpeciesLabel.content_of_image.in_(
+            tuple(taxonomy.MEASURABLE_CALIBRATION_TARGETS)
+        ),
     )
 
 
