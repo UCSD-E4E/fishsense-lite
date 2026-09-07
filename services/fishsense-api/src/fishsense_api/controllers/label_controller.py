@@ -24,6 +24,58 @@ from fishsense_api.server import app
 logger = logging.getLogger(__name__)
 
 
+async def _upsert_label(session: AsyncSession, model, image_id: int, payload):
+    """Upsert a label without clearing fields the caller never mentioned.
+
+    `session.merge` writes every column of the model it is handed, and FastAPI
+    builds that model from the request body with **defaults for anything
+    absent**. So a writer that constructs a label with the twelve fields it
+    cares about silently wipes the ones it does not.
+
+    CLAUDE.md already records this for `LaserPrediction` -- "the persist
+    activity builds LaserPrediction without the gate fields and the upsert
+    merges the whole model, so re-predicting a dive clears its verdicts". Prod
+    2026-09-07 was the same defect on `LaserLabel`: populate's `_record` omits
+    `needs_reprocess`, and its image set is exactly the one a reprocess flag
+    marks, so dive 442's 259 flags were gone within the hour -- before the
+    render they asked for had started.
+
+    Fixed here rather than in each caller because "restate every field you do
+    not want cleared" has now been got wrong twice, in two tables, and the next
+    writer would have to remember it a third time.
+
+    `payload.model_fields_set` is the set of keys actually present in the
+    request body, which is why it must be read **before** any re-validation:
+    round-tripping through `jsonable_encoder` serialises defaults too and marks
+    every field as set.
+    """
+    provided = set(payload.model_fields_set)
+    payload = model.model_validate(jsonable_encoder(payload))
+    payload.image_id = image_id
+    provided.add("image_id")
+
+    if payload.id is None:
+        # Natural-key upsert — see `_resolve_label_natural_key` for why
+        # merge alone duplicates, including the NULL-project case.
+        payload.id = await _resolve_label_natural_key(
+            session, model, image_id, payload.label_studio_project_id
+        )
+
+    if payload.id is not None:
+        existing = await session.get(model, payload.id)
+        if existing is not None:
+            for name in provided:
+                if name != "id":
+                    setattr(existing, name, getattr(payload, name))
+            session.add(existing)
+            await session.flush()
+            return existing.id
+
+    merged = await session.merge(payload)
+    await session.flush()
+    return merged.id
+
+
 async def _resolve_label_natural_key(
     session: AsyncSession, model, image_id: int, project_id: int | None
 ) -> int | None:
@@ -138,22 +190,7 @@ async def put_dive_slate_label(
 ) -> int:
     """Create or update slate label for a given image ID."""
     logger.debug("Creating or updating dive slate label for image with id=%d", image_id)
-    label = DiveSlateLabel.model_validate(jsonable_encoder(label))
-    label.image_id = image_id
-
-    # Natural-key upsert — see `_resolve_label_natural_key` for why
-    # merge alone duplicates, including the NULL-project case.
-    if label.id is None:
-        label.id = await _resolve_label_natural_key(
-            session, DiveSlateLabel, image_id, label.label_studio_project_id
-        )
-
-    label = await session.merge(label)
-    await session.flush()
-
-    label_id = label.id
-
-    return label_id
+    return await _upsert_label(session, DiveSlateLabel, image_id, label)
 
 
 @app.get("/api/v1/labels/dive-slate/label-studio/{label_studio_id}")
@@ -265,23 +302,8 @@ async def put_headtail_label(
     session: AsyncSession = Depends(get_async_session),
 ) -> int:
     """Create or update a head-tail label for a given image ID."""
-    logger.debug("Creating or updating head-tail label for image with id=%d", image_id)
-    label = HeadTailLabel.model_validate(jsonable_encoder(label))
-    label.image_id = image_id
-
-    # Natural-key upsert — see `_resolve_label_natural_key` for why
-    # merge alone duplicates, including the NULL-project case.
-    if label.id is None:
-        label.id = await _resolve_label_natural_key(
-            session, HeadTailLabel, image_id, label.label_studio_project_id
-        )
-
-    label = await session.merge(label)
-    await session.flush()
-
-    label_id = label.id
-
-    return label_id
+    logger.debug("Creating or updating headtail label for image with id=%d", image_id)
+    return await _upsert_label(session, HeadTailLabel, image_id, label)
 
 
 @app.get("/api/v1/labels/headtail/label-studio/{label_studio_id}")
@@ -810,22 +832,7 @@ async def put_laser_label(
 ) -> int:
     """Create or update a laser label for a given image ID."""
     logger.debug("Creating or updating laser label for image with id=%d", image_id)
-    label = LaserLabel.model_validate(jsonable_encoder(label))
-    label.image_id = image_id
-
-    # Natural-key upsert — see `_resolve_label_natural_key` for why
-    # merge alone duplicates, including the NULL-project case.
-    if label.id is None:
-        label.id = await _resolve_label_natural_key(
-            session, LaserLabel, image_id, label.label_studio_project_id
-        )
-
-    label = await session.merge(label)
-    await session.flush()
-
-    label_id = label.id
-
-    return label_id
+    return await _upsert_label(session, LaserLabel, image_id, label)
 
 
 @app.get("/api/v1/dives/{dive_id}/labels/species")
@@ -912,22 +919,7 @@ async def put_species_label(
 ) -> int:
     """Create or update a species label for a given image ID."""
     logger.debug("Creating or updating species label for image with id=%d", image_id)
-    label = SpeciesLabel.model_validate(jsonable_encoder(label))
-    label.image_id = image_id
-
-    # Natural-key upsert — see `_resolve_label_natural_key` for why
-    # merge alone duplicates, including the NULL-project case.
-    if label.id is None:
-        label.id = await _resolve_label_natural_key(
-            session, SpeciesLabel, image_id, label.label_studio_project_id
-        )
-
-    label = await session.merge(label)
-    await session.flush()
-
-    label_id = label.id
-
-    return label_id
+    return await _upsert_label(session, SpeciesLabel, image_id, label)
 
 
 @app.get("/api/v1/labels/species/label-studio/{label_studio_id}")
