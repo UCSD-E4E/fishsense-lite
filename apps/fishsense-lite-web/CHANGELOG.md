@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.11.2...fishsense-lite-web-v0.11.3) (2026-09-07)
+
+
+### Bug Fixes
+
+* **web:** hydrate tasks before judging them — the list omits predictions ([#756](https://github.com/UCSD-E4E/fishsense-lite/issues/756)) ([7c944a8](https://github.com/UCSD-E4E/fishsense-lite/commit/7c944a8edb9a78aff3ca17854087b504e70207d1))
+* **web:** report the triage scan per project, not as a flat sample ([#755](https://github.com/UCSD-E4E/fishsense-lite/issues/755)) ([a70f724](https://github.com/UCSD-E4E/fishsense-lite/commit/a70f724d2cf9b861feedbadd9f714b0d31cac739))
+
 ## [0.11.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.11.1...fishsense-lite-web-v0.11.2) (2026-09-05)
 
 
