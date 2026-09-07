@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [3.0.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v3.0.0...fishsense-api-v3.0.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* address the four review findings on the label-PUT fix ([#802](https://github.com/UCSD-E4E/fishsense-lite/issues/802)) ([1e2dfaf](https://github.com/UCSD-E4E/fishsense-lite/commit/1e2dfaff0f428b62cae70a490b2c2f4e1068ee5d))
+
 ## [3.0.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v2.1.0...fishsense-api-v3.0.0) (2026-09-07)
 
 
