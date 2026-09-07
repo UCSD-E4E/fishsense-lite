@@ -244,11 +244,13 @@ async def populate_headtail_label_studio_project_activity(
                 images_by_id[image.id] = image
             activity.heartbeat()
 
-        targets = _select_target_images(laser_labels, images_by_id, existing_headtail)
+        candidates = _select_target_images(
+            laser_labels, images_by_id, existing_headtail
+        )
         # Prediction-gated: seeding a sentinel row for an unpredicted image
         # would drop it out of the predict cohort before the detector ever ran.
         # See `select_predicted_image_ids`.
-        targets = [image for image in targets if image.id in predicted_ids]
+        targets = [image for image in candidates if image.id in predicted_ids]
         # Never seed a task for an image the data-worker hasn't rendered.
         targets = await _gate_on_jpeg_presence(targets)
 
@@ -290,7 +292,19 @@ async def populate_headtail_label_studio_project_activity(
                 dive_id,
             )
 
-        refreshed_image_ids = {image.id for image in targets}
+        # Exempt on CANDIDATES, not on what survived the deferral gates.
+        #
+        # The prediction gate and the JPEG gate both mean "not yet" — the image
+        # is still laser-valid and still wanted, it just isn't ready to import
+        # this run. The GC below is for images that are no longer wanted (their
+        # laser stopped being valid), and `candidates` is exactly that
+        # population. Keying it on `targets` instead dead-lettered rows whose
+        # LS task an earlier run had already imported and which are still
+        # sitting in a labeler's queue; because
+        # `GET /labels/headtail/label-studio-project-ids` filters
+        # `superseded == False`, that also erased the project from the landing
+        # page while its work was outstanding.
+        refreshed_image_ids = {image.id for image in candidates}
 
         # Supersede pass: dead-letter incomplete rows that this project no
         # longer owns, so its own rows are canonical. Two kinds qualify:
