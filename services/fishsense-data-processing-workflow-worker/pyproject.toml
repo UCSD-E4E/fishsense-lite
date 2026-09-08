@@ -45,7 +45,7 @@ dependencies = [
     # is actually required. Revisit when sam3 stops importing
     # `pkg_resources`; this is a ceiling on a dependency we do not otherwise
     # use, so it should not outlive that.
-    "setuptools>=80.9.0,<82",
+    "setuptools>=80.9.0,<84",
     # Three more that sam3's import chain reaches but its `[project]` block
     # never declares -- it lists only timm/numpy/tqdm/ftfy/regex/iopath/
     # typing_extensions/huggingface_hub. `pycocotools` is the surprising one:
