@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [3.1.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v3.1.0...fishsense-api-v3.1.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* **api:** a label PUT must update the row it means, or refuse ([#825](https://github.com/UCSD-E4E/fishsense-lite/issues/825)) ([6c6c94a](https://github.com/UCSD-E4E/fishsense-lite/commit/6c6c94a8812a419891385efc4ea21d8aca243b46))
+
 ## [3.1.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v3.0.1...fishsense-api-v3.1.0) (2026-09-08)
 
 
