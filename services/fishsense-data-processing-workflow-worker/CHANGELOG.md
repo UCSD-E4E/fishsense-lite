@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.4.0...fishsense-data-processing-workflow-worker-v3.4.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* **data-worker:** give the runtime image a C compiler for triton ([#851](https://github.com/UCSD-E4E/fishsense-lite/issues/851)) ([2613c17](https://github.com/UCSD-E4E/fishsense-lite/commit/2613c1768e7719d6cc997dea86409ddd187fae6e))
+
 ## [3.4.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.3.0...fishsense-data-processing-workflow-worker-v3.4.0) (2026-09-08)
 
 
