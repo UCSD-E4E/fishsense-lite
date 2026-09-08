@@ -61,15 +61,37 @@ async def _upsert_label(session: AsyncSession, model, image_id: int, payload):
     provided.add("image_id")
 
     if payload.id is None:
-        # Natural-key upsert — see `_resolve_label_natural_key` for why
-        # merge alone duplicates, including the NULL-project case.
-        payload.id = await _resolve_label_natural_key(
-            session, model, image_id, payload.label_studio_project_id
-        )
+        if "label_studio_project_id" in provided:
+            # Natural-key upsert — see `_resolve_label_natural_key` for why
+            # merge alone duplicates, including the NULL-project case.
+            payload.id = await _resolve_label_natural_key(
+                session, model, image_id, payload.label_studio_project_id
+            )
+        else:
+            # An absent project id is not a null one. Both arrive here as
+            # `None`, but only `provided` can tell them apart, and resolving
+            # the natural key on the default would look for a project-less row,
+            # miss the real one, and INSERT a second. That stray row is a
+            # sentinel — `completed` false — so it pins
+            # `dive_pipeline_status.*_labeling_complete` false for the dive
+            # until someone deletes it by hand.
+            payload.id = await _resolve_sole_label_for_image(session, model, image_id)
 
     if payload.id is not None:
         existing = await session.get(model, payload.id)
         if existing is not None:
+            if existing.image_id != image_id:
+                # The id came from the request body and names another image's
+                # row. Writing it would move that row onto this image —
+                # `image_id` is always in `provided` — so one image silently
+                # loses its label and this one gains the other's coordinates.
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"label id={payload.id} belongs to image "
+                        f"{existing.image_id}, not {image_id}"
+                    ),
+                )
             for name in provided:
                 if name != "id":
                     setattr(existing, name, getattr(payload, name))
@@ -80,6 +102,32 @@ async def _upsert_label(session: AsyncSession, model, image_id: int, payload):
     merged = await session.merge(payload)
     await session.flush()
     return merged.id
+
+
+async def _resolve_sole_label_for_image(
+    session: AsyncSession, model, image_id: int
+) -> int | None:
+    """The image's only label id, None if it has none, 409 if it has several.
+
+    Used when the body names no project, so the natural key cannot be formed.
+    An image legitimately carries one label per Label Studio project, and with
+    more than one there is no fact in the request saying which was meant —
+    picking one would be a coin flip over whose data gets overwritten. Refusing
+    is the only answer that cannot corrupt, and the caller can always say which
+    by sending `label_studio_project_id`.
+    """
+    rows = (await session.exec(select(model).where(model.image_id == image_id))).all()
+    if not rows:
+        return None
+    if len(rows) > 1:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"image {image_id} has {len(rows)} {model.__name__} rows; send "
+                "label_studio_project_id to say which one this updates"
+            ),
+        )
+    return rows[0].id
 
 
 async def _resolve_label_natural_key(
