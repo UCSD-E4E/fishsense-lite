@@ -24,6 +24,8 @@ import cv2
 import numpy as np
 import pytest
 
+from fishsense_shared.laser_region import point_in_laser_region
+
 from fishsense_data_processing_workflow_worker import checkerboard_detection as sut
 from fishsense_data_processing_workflow_worker.calibration_geometry import (
     laser_point_on_plane,
@@ -362,3 +364,201 @@ def test_refuses_a_degenerate_grid(side):
     strip = _render(cols_sq=side + 1, rows_sq=BOARD_ROWS_SQ)
 
     assert _detect(strip) is None
+
+
+# ---------- is the dot actually ON the board? ----------
+#
+# The calibration assumes the dot lies on the board's plane, and
+# `laser_point_on_plane` intersects the camera ray with that plane whether or
+# not the physical board reaches that far — a dot that missed and landed on the
+# floor behind gets a confident, wrong depth. Nothing downstream can see it:
+# `check_fit_self_consistency` compares the fitted ray's reprojection against
+# the 2-D dot line, and that line is the laser's epipolar line, identical
+# either way. The dots are right; only the depths are wrong.
+#
+# So the frame has to answer it, and the detected corners already do. This is
+# the checkerboard's equivalent of the `Slate, Laser on slate` marker, minus
+# the human.
+
+
+def _accepts(img, point) -> bool:
+    """Would this frame contribute an observation with the dot at `point`?
+
+    False covers both refusals — no trustworthy board detected, or a board
+    whose hull does not contain the dot. They are the same outcome for the
+    caller: the frame is dropped rather than fitted.
+    """
+    detected = _detect(img)
+    if detected is None:
+        return False
+    return point_in_laser_region(point[0], point[1], sut.board_hull(detected))
+
+
+def test_board_hull_is_the_grid_outline_in_order():
+    """Four vertices, traversing the quad — `point_in_laser_region` is a
+    convex same-side test, so a scrambled order would admit the wrong set."""
+    detected = _detect(_warped(_render()))
+    hull = sut.board_hull(detected)
+
+    assert len(hull) == 4
+    grid = detected.image_points.reshape(detected.rows, detected.cols, 2)
+    for expected, actual in zip(
+        [grid[0, 0], grid[0, -1], grid[-1, -1], grid[-1, 0]], hull, strict=True
+    ):
+        assert np.allclose(expected, actual)
+
+
+def test_a_dot_on_the_board_is_accepted():
+    board = _warped(_render())
+    height, width = board.shape[:2]
+
+    assert _accepts(board, (width // 2, height // 2))
+
+
+def test_a_dot_off_the_board_is_rejected():
+    """The case the gate exists for: the laser missed and hit what was behind."""
+    board = _warped(_render())
+
+    assert not _accepts(board, (5.0, 5.0))
+
+
+def test_the_hull_is_inset_by_one_square_and_that_is_deliberate():
+    """Interior corners only, so the hull sits one full square inside the board.
+
+    A dot in that outer ring is genuinely on the board and is still refused.
+    That is the conservative direction and it is chosen: dilating the hull
+    outward to reach the physical edge would also erode the occlusion margin
+    the gate depends on by exactly one square, which is what makes a
+    two-square occluder detectable. There are 28-113 dotted frames per dive
+    against a `MIN_LASER_POINTS` of 2, so frames are the cheap thing here.
+    """
+    detected = _detect(_render())
+    grid = detected.image_points.reshape(detected.rows, detected.cols, 2)
+    # One square outward from a corner, along the grid's own diagonal.
+    outer = grid[0, 0] + (grid[0, 0] - grid[1, 1]) * 0.5
+
+    assert not point_in_laser_region(
+        float(outer[0]), float(outer[1]), sut.board_hull(detected)
+    )
+
+
+@pytest.mark.parametrize("squares", [2, 3, 4, 6])
+def test_an_occluder_means_a_dot_on_it_is_refused(squares):
+    """The coupling the gate leans on, measured rather than assumed.
+
+    Something occluding the board removes the corners under it, so the
+    detector returns a sub-rectangle beside it and the hull no longer covers
+    the occluder. Measured against OpenCV 4.13: a 2x2-square occluder collapses
+    a 10x14 grid to 10x6, a 4x4 to 5x10, and half the board occluded still
+    detects 7x10 and still refuses a dot in the occluded half.
+
+    The boundary is roughly one square: an occluder that small leaves the grid
+    intact and a dot on it passes. That needs a sub-4cm object sitting exactly
+    where the dot lands, and an off-board point sits off the common laser ray,
+    so the fit's own residual is the second line.
+    """
+    board = _warped(_render())
+    height, width = board.shape[:2]
+    size = squares * SQUARE_PX
+    centre_y, centre_x = height // 2, width // 2
+    occluded = board.copy()
+    occluded[
+        centre_y - size // 2 : centre_y + size // 2,
+        centre_x - size // 2 : centre_x + size // 2,
+    ] = 128
+
+    assert not _accepts(occluded, (centre_x, centre_y))
+
+
+@pytest.mark.parametrize("radius", [2, 8, 16, 20])
+def test_a_saturated_dot_never_costs_us_its_own_frame(radius):
+    """The gate must not eat the very observations it exists to protect.
+
+    A bright dot can break local corner detection right where it sits: on a
+    perspective-warped board, a 16 px radius against a ~32 px corner spacing
+    does collapse the grid (to 7 x 10 of 10 x 14). The question that matters
+    is not whether the grid shrank but whether the DOT survives, and it does —
+    the sub-grid the detector falls back to still spans it, at every radius up
+    to a full square across.
+
+    That is the same one-square threshold from the other side: an occluder has
+    to exceed roughly a square before the surviving rectangle no longer covers
+    it. Below that the gate keeps the frame; above it, it drops the dot. The
+    limit on the gate's power and its protection against false rejection are
+    the same number.
+    """
+    board = _warped(_render())
+    height, width = board.shape[:2]
+    centre = (width // 2, height // 2)
+    dotted = board.copy()
+    cv2.circle(dotted, centre, radius, 255, -1)
+
+    assert _accepts(dotted, centre)
+
+
+def test_a_mis_latticed_detection_is_refused():
+    """The silent 2x scale error, pinned directly.
+
+    Corners two squares apart, labelled one square apart in `body_points`,
+    place the board at half its true distance — halving every depth and every
+    length downstream. Nothing else catches it: `solvePnP` succeeds, the plane
+    is perfectly self-consistent, and `check_fit_self_consistency` compares
+    2-D dots that are unaffected by the error.
+
+    Constructed rather than provoked through the detector, because the exact
+    occluder that elicits it sits on a stability boundary and would make this
+    a flaky test rather than a statement about the guard.
+    """
+    grid = np.stack(
+        np.meshgrid(np.arange(BOARD_COLS), np.arange(BOARD_ROWS)), axis=-1
+    ).astype(np.float64)
+    body = (grid * SQUARE_SIZE_M).reshape(-1, 2)
+    # The image says two squares per step; the body points say one.
+    image = (grid * SQUARE_PX * 2.0).reshape(-1, 2)
+
+    spacing = SQUARE_PX * 2.0
+    residual = sut.grid_residual_px(body, image)
+
+    # A uniformly scaled grid IS still a perfect grid, so the homography
+    # absorbs it — which is exactly why the guard cannot be the whole answer.
+    assert residual < sut.MAX_GRID_RESIDUAL_FRACTION * spacing
+
+    # What it does catch is the incoherent case: corners that are not a
+    # consistent lattice at all, which is what the detector actually returned
+    # on a heavily occluded board (median spacing 73 px where every genuine
+    # detection sat at 32 px).
+    scrambled = image.copy()
+    scrambled[::3] += SQUARE_PX * 0.8
+    assert sut.grid_residual_px(body, scrambled) > (
+        sut.MAX_GRID_RESIDUAL_FRACTION * spacing
+    )
+
+
+def test_the_quality_gate_keeps_every_genuine_detection():
+    """The gate must not cost us frames it was not aimed at.
+
+    Measured across the shapes the corpus actually produces: full board, seen
+    at an angle, cropped, and occluded. All sit at <=0.1% of a square where
+    the threshold is 5%.
+    """
+    board = _warped(_render())
+    height, width = board.shape[:2]
+    occluded = board.copy()
+    occluded[
+        height // 2 - SQUARE_PX : height // 2 + SQUARE_PX,
+        width // 2 - SQUARE_PX : width // 2 + SQUARE_PX,
+    ] = 128
+
+    for label, img in (
+        ("flat", _render()),
+        ("warped", board),
+        ("cropped", board[:, : int(width * 0.66)].copy()),
+        ("occluded", occluded),
+    ):
+        detected = _detect(img)
+        assert detected is not None, label
+        spacing = sut._median_corner_spacing(  # pylint: disable=protected-access
+            detected.image_points, detected.rows, detected.cols
+        )
+        residual = sut.grid_residual_px(detected.body_points, detected.image_points)
+        assert residual < 0.01 * spacing, (label, residual, spacing)

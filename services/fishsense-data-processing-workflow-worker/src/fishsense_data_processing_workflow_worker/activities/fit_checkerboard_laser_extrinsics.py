@@ -17,6 +17,7 @@ written, dive re-selected hourly forever.
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import List
 
 import numpy as np
@@ -83,17 +84,23 @@ async def fit_checkerboard_laser_extrinsics(payload) -> int:
         payload = payload_cls.model_validate(payload)
 
     points, dots = _usable(payload.observations)
+    skipped = Counter(
+        o.skip_reason or "unknown" for o in payload.observations if o.point is None
+    )
     activity.logger.info(
-        "checkerboard calibration dive_id=%d usable=%d of %d observations",
+        "checkerboard calibration dive_id=%d usable=%d of %d observations "
+        "skipped=%s",
         payload.dive_id,
         len(points),
         len(payload.observations),
+        dict(sorted(skipped.items())) or "{}",
     )
     if len(points) < MIN_LASER_POINTS:
         raise ValueError(
             f"dive_id={payload.dive_id}: insufficient checkerboard laser points "
             f"({len(points)} < {MIN_LASER_POINTS}) from "
-            f"{len(payload.observations)} frames"
+            f"{len(payload.observations)} frames; skipped="
+            f"{dict(sorted(skipped.items()))}"
         )
 
     origin, orientation = _calibrate_laser(np.array(points).astype(np.float32))

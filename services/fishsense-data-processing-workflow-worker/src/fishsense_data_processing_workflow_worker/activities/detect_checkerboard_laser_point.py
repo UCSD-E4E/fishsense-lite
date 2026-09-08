@@ -33,6 +33,7 @@ from fishsense_api_sdk.models.camera_intrinsics import CameraIntrinsics
 from fishsense_core.image.raw_image import RawImage
 from fishsense_core.image.rectified_image import RectifiedImage
 from fishsense_shared import CheckerboardObservation
+from fishsense_shared.laser_region import point_in_laser_region
 from temporalio import activity
 
 from fishsense_data_processing_workflow_worker.calibration_geometry import (
@@ -40,6 +41,7 @@ from fishsense_data_processing_workflow_worker.calibration_geometry import (
     plane_from_correspondences,
 )
 from fishsense_data_processing_workflow_worker.checkerboard_detection import (
+    board_hull,
     detect_checkerboard,
 )
 from fishsense_data_processing_workflow_worker.object_store import (
@@ -70,12 +72,14 @@ def _observe(
     # pose and no error.
     rectified = RectifiedImage(RawImage(raw_bytes), intrinsics)
 
-    unusable = CheckerboardObservation(
-        image_id=payload.image_id,
-        point=None,
-        laser_x=payload.laser_x,
-        laser_y=payload.laser_y,
-    )
+    def unusable(reason: str) -> CheckerboardObservation:
+        return CheckerboardObservation(
+            image_id=payload.image_id,
+            point=None,
+            laser_x=payload.laser_x,
+            laser_y=payload.laser_y,
+            skip_reason=reason,
+        )
 
     detected = detect_checkerboard(
         rectified.data,
@@ -84,7 +88,24 @@ def _observe(
         square_size_m=payload.square_size_m,
     )
     if detected is None:
-        return unusable
+        return unusable("no_usable_board")
+
+    # **Was the dot actually ON the board?** Everything downstream assumes so
+    # and none of it can check: `laser_point_on_plane` intersects the camera
+    # ray with the board's *infinite* plane, so a dot that missed and landed
+    # on whatever was behind gets a confident, wrong depth, and
+    # `check_fit_self_consistency` compares 2-D dots that are identical either
+    # way. This is the checkerboard's equivalent of the `Slate, Laser on
+    # slate` marker, decided from the frame rather than by a labeler.
+    #
+    # The hull is the detected grid's outline, so occlusion helps: an object
+    # in front of the board removes the corners under it, the detector falls
+    # back to a rectangle beside it, and a dot on the object lands outside.
+    # Measured to hold for occluders of about two squares and up.
+    if not point_in_laser_region(
+        float(payload.laser_x), float(payload.laser_y), board_hull(detected)
+    ):
+        return unusable("dot_off_board")
 
     plane = plane_from_correspondences(
         detected.body_points,
@@ -92,7 +113,7 @@ def _observe(
         intrinsics.camera_matrix,
     )
     if plane is None:
-        return unusable
+        return unusable("no_pose")
 
     point = laser_point_on_plane(
         plane,
@@ -100,7 +121,7 @@ def _observe(
         intrinsics.camera_matrix,
     )
     if point is None:
-        return unusable
+        return unusable("no_ray_plane_intersection")
 
     return CheckerboardObservation(
         image_id=payload.image_id,
@@ -133,9 +154,10 @@ async def detect_checkerboard_laser_point(payload) -> CheckerboardObservation:
 
     if observation.point is None:
         activity.logger.info(
-            "no usable checkerboard observation image_id=%d checksum=%s",
+            "no usable checkerboard observation image_id=%d checksum=%s reason=%s",
             payload.image_id,
             payload.checksum,
+            observation.skip_reason,
         )
     else:
         activity.logger.info(
