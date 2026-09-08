@@ -94,6 +94,14 @@ jobs:
           # would.
           - package: fishsense-api-workflow-worker
             module: fishsense_api_workflow_worker.worker
+            # `k8s_scaling.apps_v1_api` imports the kubernetes client inside
+            # the function, so a deployment with no `[kubernetes]` config
+            # never pays for it -- and so `import ...worker` never reaches
+            # it. Same blind spot as sam3, and a worse blast radius: a
+            # dep-group slip there ships green and then kills every
+            # data-worker scale-up and the idle sweeper at first invocation,
+            # which is how NRP GPUs end up held around the clock.
+            lazy_modules: kubernetes
           - package: fishsense-backup-worker
             module: fishsense_backup_worker.worker
           - package: fishsense-data-processing-workflow-worker
@@ -101,24 +109,35 @@ jobs:
             # opencv-python needs libgl1 + libglib2.0-0 to import cv2,
             # mirroring this service's Dockerfile system-libs install.
             apt: libgl1 libglib2.0-0
-            # Every heavy third-party module the activities import *lazily*,
-            # inside the function that needs it, so that the cpu-role worker
-            # never pays for torch. `import ...worker` reaches none of them,
-            # which is exactly how a missing runtime dep got to prod: sam3's
-            # `model_builder` imports `pkg_resources` at module scope, the
-            # image had no setuptools, and every predict activity died on its
-            # first frame while this job stayed green.
+            # The heavy third-party modules the activities reach. Several
+            # are imported *lazily*, inside the function that needs them, so
+            # the cpu-role worker never pays for torch -- and those the
+            # entry-point import above cannot see. That is how a missing
+            # runtime dep got to prod: sam3's `model_builder` imports
+            # `pkg_resources` at module scope, the image had no setuptools,
+            # and every predict activity died on its first frame while this
+            # job stayed green.
             #
-            # The list is the whole class, not just the one that broke. Nine
-            # of these eleven are invisible to the entry-point import above,
-            # and `fishsense_core` alone went 3.0.0 -> 4.0.0 in #760 -- the
-            # same gap can open under any of them and would again surface
-            # only when a stage fired in prod. Importing them costs seconds
-            # in a job that already builds this exact environment.
+            # Six of the eleven are new coverage: `torch`, both `sam3`
+            # entries, `fishsense_core.fish`, `.slate` and
+            # `.image.linear_raw_image`. The other five (`cv2`,
+            # `fishsense_core.laser`, `.world_point`, `.image.raw_image`,
+            # `.image.rectified_image`) are already reached today, because
+            # `worker` imports `roles`, which eagerly imports 13 activity
+            # modules that import them at module scope.
             #
-            # Keep in step with the function-local imports under
-            # `src/**/activities/`; grepping that tree for `from
-            # fishsense_core` / `from sam3` is how this list was derived.
+            # They are listed anyway, deliberately. That reachability is a
+            # property of where an import happens to sit right now: moving
+            # one into a function -- the same optimisation that hid sam3 --
+            # would silently drop it from this job with nothing to say so.
+            # Listing them makes the coverage explicit rather than
+            # incidental, and `fishsense_core` is not hypothetical here: it
+            # went 3.0.0 -> 4.0.0 in #760.
+            #
+            # Keep in step with the imports under `src/**/activities/`;
+            # grepping that tree for `from fishsense_core` / `from sam3` /
+            # `import torch` is how this list was derived. There is no
+            # tripwire, so it can rot.
             lazy_modules: >-
               cv2
               torch

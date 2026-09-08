@@ -27,12 +27,23 @@ dependencies = [
     # predict activity died on its first frame in prod (2026-09-07).
     #
     # The upper bound is the load-bearing half. setuptools **removed**
-    # `pkg_resources` in 81 -- it is not merely deprecated -- so an unbounded
-    # `setuptools` resolves to 83 and fails exactly as if it were absent.
-    # 80.9.0 still ships it, warning "pin to Setuptools<81", which is what
-    # this is. Revisit when sam3 stops importing it; this pin is a ceiling on
-    # a dependency we do not otherwise use, so it should not outlive that.
-    "setuptools>=80.9.0,<81",
+    # `pkg_resources` in 82.0.0 -- not merely deprecated it -- so an
+    # unbounded `setuptools` resolves to 83 and fails exactly as if it were
+    # absent. Measured rather than read off a changelog: a clean venv per
+    # version shows 80.9.0 / 80.10.2 / 81.0.0 shipping `pkg_resources`, and
+    # 82.0.0 / 82.0.1 / 83.0.0 not.
+    #
+    # `uv run --with setuptools==X python -c "import pkg_resources"` cannot
+    # answer this and will tell you every version is fine -- it layers the
+    # pinned version on a base interpreter that already has `pkg_resources`.
+    # Install into an empty venv and look for the directory.
+    #
+    # `<82` rather than the `<81` upstream's own deprecation text suggests,
+    # because 81.0.0 measurably still ships it and a bound should state what
+    # is actually required. Revisit when sam3 stops importing
+    # `pkg_resources`; this is a ceiling on a dependency we do not otherwise
+    # use, so it should not outlive that.
+    "setuptools>=80.9.0,<82",
     # Three more that sam3's import chain reaches but its `[project]` block
     # never declares -- it lists only timm/numpy/tqdm/ftfy/regex/iopath/
     # typing_extensions/huggingface_hub. `pycocotools` is the surprising one:
