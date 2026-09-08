@@ -111,7 +111,7 @@ async def test_flag_on_a_non_canonical_image_does_not_select(session):
 
 
 async def test_clearing_the_flag_drains_the_dive(session):
-    from fishsense_api.controllers.label_controller import (
+    from fishsense_api.controllers.label_reprocess_controller import (
         clear_laser_labels_needs_reprocess,
     )
 

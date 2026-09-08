@@ -90,7 +90,7 @@ async def _flags(session, image_ids):
 
 
 async def test_put_flags_the_dives_canonical_labels(session):
-    from fishsense_api.controllers.label_controller import (
+    from fishsense_api.controllers.label_reprocess_controller import (
         set_laser_labels_needs_reprocess,
     )
 
@@ -105,7 +105,7 @@ async def test_put_flags_the_dives_canonical_labels(session):
 
 
 async def test_put_skips_non_canonical_images(session):
-    from fishsense_api.controllers.label_controller import (
+    from fishsense_api.controllers.label_reprocess_controller import (
         set_laser_labels_needs_reprocess,
     )
 
@@ -119,7 +119,7 @@ async def test_put_skips_non_canonical_images(session):
 
 
 async def test_put_does_not_touch_other_dives(session):
-    from fishsense_api.controllers.label_controller import (
+    from fishsense_api.controllers.label_reprocess_controller import (
         set_laser_labels_needs_reprocess,
     )
 
@@ -133,7 +133,7 @@ async def test_put_does_not_touch_other_dives(session):
 
 
 async def test_delete_clears_the_flag(session):
-    from fishsense_api.controllers.label_controller import (
+    from fishsense_api.controllers.label_reprocess_controller import (
         clear_laser_labels_needs_reprocess,
         set_laser_labels_needs_reprocess,
     )
@@ -154,7 +154,7 @@ async def test_delete_clears_the_flag(session):
 async def test_both_are_idempotent(session):
     """The parent workflow clears on every firing, including firings where
     nothing was flagged -- that must be a cheap no-op, not an error."""
-    from fishsense_api.controllers.label_controller import (
+    from fishsense_api.controllers.label_reprocess_controller import (
         clear_laser_labels_needs_reprocess,
         set_laser_labels_needs_reprocess,
     )
@@ -182,7 +182,7 @@ async def test_both_are_idempotent(session):
 async def test_unknown_dive_is_a_no_op_not_a_404(session):
     """Called unconditionally by the parent workflow on every firing; a 404
     would fail the workflow for a dive that simply has no laser labels."""
-    from fishsense_api.controllers.label_controller import (
+    from fishsense_api.controllers.label_reprocess_controller import (
         clear_laser_labels_needs_reprocess,
     )
 
