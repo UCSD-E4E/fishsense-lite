@@ -236,13 +236,23 @@ class TestSam3AdapterAutocast:
     """
 
     class _RecordingProcessor:
-        """Records the autocast state at the moment inference runs."""
+        """A stand-in with `Sam3Processor`'s REAL signatures.
+
+        The shape matters as much as the autocast assertion. `set_image`
+        returns the state, `set_text_prompt(prompt, state)` takes it back and
+        *is* the inference call, the result is a dict, and there is no
+        `predict()`. An earlier version of this adapter called a `predict()`
+        that does not exist and read `.masks` off what is really a dict --
+        which no stub with invented signatures could ever have caught.
+        """
 
         def __init__(self, device_type):
             self._device_type = device_type
             self.enabled_at_set_image = None
             self.enabled_at_predict = None
             self.dtype_at_predict = None
+            self.image_type = None
+            self.state_round_tripped = False
 
         def _sample(self):
             import torch
@@ -252,15 +262,16 @@ class TestSam3AdapterAutocast:
                 torch.get_autocast_dtype(self._device_type),
             )
 
-        def set_image(self, _image):
+        def set_image(self, image, _state=None):
             self.enabled_at_set_image = self._sample()[0]
+            self.image_type = type(image).__name__
+            return {"sentinel": object()}
 
-        def set_text_prompt(self, _prompt):
-            pass
-
-        def predict(self):
+        def set_text_prompt(self, _prompt, state):
             self.enabled_at_predict, self.dtype_at_predict = self._sample()
-            return type("_Out", (), {"masks": []})()
+            self.state_round_tripped = "sentinel" in state
+            state["masks"] = []
+            return state
 
     def _adapter(self, processor):
         from fishsense_data_processing_workflow_worker.activities.predict_headtail_image import (  # noqa: E501  pylint: disable=line-too-long
@@ -285,6 +296,27 @@ class TestSam3AdapterAutocast:
         )
         assert processor.enabled_at_predict is True
         assert processor.dtype_at_predict is torch.bfloat16
+
+    def test_state_is_carried_from_set_image_into_the_prompt_call(self):
+        """`set_text_prompt` raises without the state `set_image` returned."""
+        import torch
+
+        device_type = "cuda" if torch.cuda.is_available() else "cpu"
+        processor = self._RecordingProcessor(device_type)
+        self._adapter(processor).segment(np.zeros((32, 32, 3), dtype=np.uint8))
+        assert processor.state_round_tripped is True
+
+    def test_the_model_is_handed_a_pil_image_not_the_raw_array(self):
+        """`set_image` reads `image.shape[-2:]` for an ndarray, which is
+        (width, 3) on an HWC frame -- and those numbers are what every mask is
+        interpolated to. A numpy frame yields three-pixel-wide masks, silently.
+        """
+        import torch
+
+        device_type = "cuda" if torch.cuda.is_available() else "cpu"
+        processor = self._RecordingProcessor(device_type)
+        self._adapter(processor).segment(np.zeros((32, 32, 3), dtype=np.uint8))
+        assert processor.image_type == "Image", processor.image_type
 
     def test_autocast_does_not_leak_past_the_call(self):
         """Entered as a context manager, not `__enter__()` as the notebooks
