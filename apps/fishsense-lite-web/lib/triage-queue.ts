@@ -1,4 +1,4 @@
-import { isPublished, liveProjectIds } from "./label-projects";
+import { hasOutstandingTasks, isPublished, liveProjectIds } from "./label-projects";
 import { getProject } from "./label-studio";
 import { getTask, listTasks } from "./label-studio-tasks";
 import {
@@ -76,8 +76,15 @@ export function reasonKey(reason: string): string {
  */
 const MAX_HYDRATIONS_PER_LOAD = 30;
 
-/** How many projects to walk before giving up on filling a batch. */
-const MAX_PROJECTS_PER_LOAD = 12;
+/** How many projects to WALK — page the task list of — before giving up on
+ *  filling a batch. */
+const MAX_PROJECTS_WALKED_PER_LOAD = 12;
+
+/** How many projects to RESOLVE — one `getProject` each — while looking for
+ *  those twelve. Unpublished and finished projects cost a resolution and no
+ *  walk, so this is the bound that keeps a page load from fanning out over
+ *  Label Studio when a long run of them sits at the front of the list. */
+const MAX_PROJECTS_RESOLVED_PER_LOAD = 24;
 
 /**
  * The next batch of triageable tasks for a kind, newest dive first.
@@ -122,10 +129,19 @@ export async function loadQueue(
   const items: TriageItem[] = [];
   const projects: ProjectOutcome[] = [];
   let scanned = 0;
+  let walked = 0;
   let hydrations = 0;
 
-  for (const projectId of candidates.slice(0, MAX_PROJECTS_PER_LOAD)) {
+  for (const projectId of candidates) {
     if (items.length >= want) break;
+    // Two separate budgets, because a project can be resolved and then not
+    // walked. Capping only the walks would let a long run of unpublished or
+    // finished projects fan out over Label Studio on one page load; capping
+    // only the resolutions is what used to happen, and a run of them at the
+    // front of the list consumed the whole budget so triage reported an empty
+    // queue while older projects held work.
+    if (walked >= MAX_PROJECTS_WALKED_PER_LOAD) break;
+    if (scanned >= MAX_PROJECTS_RESOLVED_PER_LOAD) break;
     scanned += 1;
 
     const outcome: ProjectOutcome = { projectId, tasks: 0, taken: 0, reasons: {} };
@@ -144,7 +160,16 @@ export async function loadQueue(
       outcome.error = "unpublished in Label Studio";
       continue;
     }
+    // The same narrowing the landing page applies, from the same fetch — see
+    // `hasOutstandingTasks`. Walking a finished project is not wrong, just
+    // wasted: every task refuses on `is_labeled`, at the cost of a request and
+    // a slot in the walk budget.
+    if (!hasOutstandingTasks(project)) {
+      outcome.error = "finished in Label Studio";
+      continue;
+    }
 
+    walked += 1;
     const page = await listTasks(project.id, 1);
     outcome.tasks = page.tasks.length;
     for (const listed of page.tasks) {

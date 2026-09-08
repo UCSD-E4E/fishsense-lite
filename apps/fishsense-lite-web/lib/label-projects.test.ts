@@ -82,9 +82,12 @@ describe("hasOutstandingTasks", () => {
     expect(hasOutstandingTasks(project(56, 56))).toBe(false);
   });
 
-  // Defensive: a count that overshoots must not read as "work left".
-  it("drops one reporting more finished than it holds", () => {
-    expect(hasOutstandingTasks(project(56, 57))).toBe(false);
+  // An incoherent pair is an unusable answer, not a strong one. Hiding on it
+  // would bury real labeling work on the strength of a reply we already know
+  // is wrong — the same reasoning that keeps a project whose counts are
+  // missing or non-numeric.
+  it("keeps one reporting more finished than it holds", () => {
+    expect(hasOutstandingTasks(project(56, 57))).toBe(true);
   });
 
   // Fails open, like `isPublished`: an absent count means we did not ask
