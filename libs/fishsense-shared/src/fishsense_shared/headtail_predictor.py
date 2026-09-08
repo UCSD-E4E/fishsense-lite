@@ -113,8 +113,17 @@ HEADTAIL_CROP_WIDTH = 1800
 HEADTAIL_CROP_HEIGHT = 1350
 
 
-def headtail_model_version_tag() -> str:
+def headtail_model_version_tag(predictor_version: int | None = None) -> str:
     """The Label Studio `model_version` stamped on every pre-annotation.
+
+    **Pass the row's own `predictor_version`.** It defaults to the current one
+    only for callers that have no row in hand. Reading the constant instead
+    would tag a fallback-tier prediction as if SAM 3.1 had produced it -- and
+    since the backfill dedupes on `(task_id, model_version)`, the later SAM 3.1
+    upgrade would then be skipped as already attached. The database would
+    upgrade and the labeler would keep the Mask R-CNN keypoints forever, which
+    is the one way the upgrade queue could look like it worked while doing
+    nothing anyone can see.
 
     **This is an idempotency key, not a log line.** The backfill activity keys
     on `(task_id, model_version)` to decide whether a task already carries this
@@ -132,7 +141,7 @@ def headtail_model_version_tag() -> str:
     in a key. `HEADTAIL_PREDICTOR_VERSION` is the thing that changes when the
     output changes, and it is now the only thing in here that can vary.
     """
-    return (
-        f"v{HEADTAIL_PREDICTOR_VERSION}"
-        f" crop={HEADTAIL_CROP_WIDTH}x{HEADTAIL_CROP_HEIGHT}"
+    version = (
+        HEADTAIL_PREDICTOR_VERSION if predictor_version is None else predictor_version
     )
+    return f"v{version} crop={HEADTAIL_CROP_WIDTH}x{HEADTAIL_CROP_HEIGHT}"

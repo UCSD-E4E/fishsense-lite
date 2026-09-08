@@ -197,7 +197,13 @@ def prediction_annotations(prediction) -> list:
 
     return [
         {
-            "model_version": headtail_model_version_tag(),
+            # The row's own tier, not the current constant: a fallback-tier
+            # prediction tagged as SAM 3.1 would make the backfill treat the
+            # later upgrade as already attached, and the labeler would keep
+            # the Mask R-CNN keypoints for good.
+            "model_version": headtail_model_version_tag(
+                getattr(prediction, "predictor_version", None)
+            ),
             "result": [
                 _point(head_x, head_y, _SNOUT_LABEL),
                 _point(tail_x, tail_y, _FORK_LABEL),

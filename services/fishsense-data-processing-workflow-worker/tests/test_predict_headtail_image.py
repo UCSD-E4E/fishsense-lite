@@ -7,6 +7,9 @@ weights, no network. That seam exists precisely so these paths are reachable.
 
 from __future__ import annotations
 
+import sys
+import types
+
 import cv2
 import numpy as np
 import pytest
@@ -420,3 +423,111 @@ class TestSam3RequiresAGpu:
 
         assert excinfo.value.non_retryable is True
         assert excinfo.value.type == "NoGpuForSam3"
+
+
+class TestFallbackSegmenterIsLoaded:
+    """`FishSegmentation()` is constructed unloaded.
+
+    `inference` then raises `ValueError: model has not been loaded -- call
+    load_model() first`, which is retryable and uncapped, so the fallback
+    would loop until the child's 6h timeout: the exact failure this backend
+    exists to remove. The other tests stub `inference`, so only this one can
+    see it.
+    """
+
+    def test_load_model_is_called_before_the_segmenter_is_published(
+        self, monkeypatch
+    ):
+        from fishsense_data_processing_workflow_worker.activities import (
+            predict_headtail_image as sut,
+        )
+
+        class _Segmentation:
+            def __init__(self):
+                self.loaded = False
+
+            def load_model(self):
+                self.loaded = True
+
+            def inference(self, _image):
+                if not self.loaded:
+                    raise ValueError(
+                        "inference failed: model has not been loaded — "
+                        "call load_model() first"
+                    )
+                return np.zeros((4, 8), dtype=np.int32)
+
+        built = _Segmentation()
+        fake_module = types.SimpleNamespace(FishSegmentation=lambda: built)
+        monkeypatch.setitem(sys.modules, "fishsense_core", types.ModuleType("x"))
+        monkeypatch.setitem(sys.modules, "fishsense_core.fish", fake_module)
+        monkeypatch.setattr(sut, "_FALLBACK_SEGMENTER", None)
+
+        got = sut.get_fallback_segmenter()
+
+        assert got is built
+        assert built.loaded is True, "load_model() was never called"
+        # And the seam works end to end on it, which is what would have failed.
+        assert sut._FishialAdapter(got).segment(  # pylint: disable=protected-access
+            np.zeros((4, 8, 3), dtype=np.uint8)
+        ) == []
+
+
+class TestNoGpuLeavesExistingRowsAlone:
+    """What a GPU-less worker may and may not overwrite.
+
+    Keyed on *whether a row exists*, not on which tier produced it. Keying on
+    the tier invites two mistakes: skipping only an exact fallback match, so a
+    GPU-less worker downgrades a SAM 3.1 row the moment
+    `HEADTAIL_PREDICTOR_VERSION` is bumped during an outage; and ignoring a
+    superseded laser, so a row of the wrong fish is never redrawn.
+    """
+
+    def _payload(self, **kw):
+        from fishsense_shared.preprocess_contracts import PredictHeadtailImage
+
+        base = {
+            "image_id": 1,
+            "checksum": "abc",
+            "laser_points": [[10.0, 10.0]],
+            "laser_label_ids": [5],
+        }
+        base.update(kw)
+        return PredictHeadtailImage(**base)
+
+    def test_defaults_mean_first_prediction(self):
+        p = self._payload()
+        assert p.has_existing_prediction is False
+        assert p.existing_laser_superseded is False
+
+    def test_an_existing_row_with_a_live_laser_is_left_alone(self):
+        p = self._payload(has_existing_prediction=True)
+        assert p.has_existing_prediction and not p.existing_laser_superseded
+
+    def test_a_superseded_laser_is_worth_redrawing_on_any_backend(self):
+        p = self._payload(has_existing_prediction=True, existing_laser_superseded=True)
+        assert p.existing_laser_superseded
+
+
+class TestLabelStudioTagFollowsTheRow:
+    """The tag is the backfill's idempotency key, so it must name the tier
+    that actually produced the row.
+
+    Tagging a fallback prediction as SAM 3.1 makes the later upgrade look
+    already-attached, and the labeler keeps the Mask R-CNN keypoints for good
+    -- the one way the upgrade queue could upgrade the database while
+    changing nothing anyone sees.
+    """
+
+    def test_the_two_tiers_get_different_tags(self):
+        from fishsense_shared.headtail_predictor import (
+            HEADTAIL_FALLBACK_PREDICTOR_VERSION,
+            HEADTAIL_PREDICTOR_VERSION,
+            headtail_model_version_tag,
+        )
+
+        sam3 = headtail_model_version_tag(HEADTAIL_PREDICTOR_VERSION)
+        fallback = headtail_model_version_tag(HEADTAIL_FALLBACK_PREDICTOR_VERSION)
+
+        assert sam3 != fallback
+        assert headtail_model_version_tag() == sam3, "default is the current tier"

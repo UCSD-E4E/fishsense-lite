@@ -30,6 +30,34 @@ from fishsense_api_workflow_worker.activities.utils import get_fs_client
 from fishsense_api_workflow_worker.object_store import open_object_store_client
 
 
+def _existing_row_state(predictions, dots_by_image):
+    """`(images with a prediction, images whose prediction's dot is dead)`.
+
+    This is what the activity needs to tell an *upgrade* from a repeat. Only
+    the activity knows whether it has a GPU, and so which backend it can run;
+    only the resolver can see what is already on the row.
+
+    Deliberately not the row's version. The rule the activity applies does not
+    depend on which tier produced the row, only on whether one exists and
+    whether the dot behind it is still live. Carrying the version instead
+    invited two mistakes: skipping only on an exact fallback match, so a
+    GPU-less worker would downgrade a SAM 3.1 row the moment
+    `HEADTAIL_PREDICTOR_VERSION` was bumped during an outage; and ignoring a
+    superseded laser, so a row of the wrong fish would never be redrawn.
+    """
+    predicted_ids: set[int] = set()
+    laser_dead_ids: set[int] = set()
+    for prediction in predictions:
+        predicted_ids.add(prediction.image_id)
+        label_id = getattr(prediction, "laser_label_id", None)
+        if label_id is None:
+            continue
+        live_ids = {dot.id for dot in dots_by_image.get(prediction.image_id, [])}
+        if label_id not in live_ids:
+            laser_dead_ids.add(prediction.image_id)
+    return predicted_ids, laser_dead_ids
+
+
 def select_images_needing_prediction(
     images, lasers, headtail_labels, predictions
 ) -> List[PredictHeadtailImage]:
@@ -73,25 +101,14 @@ def select_images_needing_prediction(
     # from a repeat. Only the activity knows whether it has a GPU, and
     # therefore which backend it can run -- a GPU-less worker must not rewrite
     # a fallback row with an identical one every hour.
-    # Coerced to int-or-None rather than passed through: the field is typed,
-    # and anything unrecognisable must read as "unknown". Unknown is the safe
-    # answer -- it is not the fallback version, so the activity re-predicts
-    # rather than skipping, which risks a wasted inference and never a lost
-    # upgrade.
-    version_by_image: dict[int, int | None] = {}
-    for prediction in predictions:
-        raw = getattr(prediction, "predictor_version", None)
-        version_by_image[prediction.image_id] = raw if isinstance(raw, int) else None
+    predicted_ids, laser_dead_ids = _existing_row_state(predictions, dots_by_image)
 
     fresh_ids = set()
     for prediction in predictions:
         if getattr(prediction, "predictor_version", None) != HEADTAIL_PREDICTOR_VERSION:
             continue
-        label_id = getattr(prediction, "laser_label_id", None)
-        if label_id is not None:
-            live_ids = {dot.id for dot in dots_by_image.get(prediction.image_id, [])}
-            if label_id not in live_ids:
-                continue  # the dot that chose the fish is gone
+        if prediction.image_id in laser_dead_ids:
+            continue  # the dot that chose the fish is gone
         fresh_ids.add(prediction.image_id)
 
     out: List[PredictHeadtailImage] = []
@@ -109,7 +126,8 @@ def select_images_needing_prediction(
                 checksum=image.checksum,
                 laser_points=[[float(d.x), float(d.y)] for d in dots],
                 laser_label_ids=[int(d.id) for d in dots],
-                existing_predictor_version=version_by_image.get(image.id),
+                has_existing_prediction=image.id in predicted_ids,
+                existing_laser_superseded=image.id in laser_dead_ids,
             )
         )
     return out

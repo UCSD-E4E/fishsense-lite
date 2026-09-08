@@ -389,7 +389,17 @@ def get_fallback_segmenter() -> Any:
             from fishsense_core.fish import FishSegmentation
 
             _log.info("loading fishsense-core FishSegmentation (fallback backend)")
-            _FALLBACK_SEGMENTER = FishSegmentation()
+            segmentation = FishSegmentation()
+            # `load_model()` is not optional and not lazy: without it
+            # `inference` raises `ValueError: model has not been loaded`, which
+            # is retryable and has no ceiling -- so the fallback would loop
+            # until the child's 6h timeout, which is the exact failure this
+            # backend exists to remove.
+            #
+            # Published only after loading, inside the lock, so a concurrent
+            # caller can never see a constructed-but-unloaded segmenter.
+            segmentation.load_model()
+            _FALLBACK_SEGMENTER = segmentation
     return _FALLBACK_SEGMENTER
 
 
@@ -518,16 +528,22 @@ async def predict_headtail_image(payload):  # type: ignore[no-untyped-def]
     client = open_object_store_client()
     on_gpu = cuda_available()
 
-    if not on_gpu and payload.existing_predictor_version == (
-        HEADTAIL_FALLBACK_PREDICTOR_VERSION
+    if (
+        not on_gpu
+        and payload.has_existing_prediction
+        and not (payload.existing_laser_superseded)
     ):
-        # This row is already fallback-tier and this worker has no GPU, so
-        # re-running would write an identical row. Skipping is what keeps the
-        # upgrade queue from becoming a treadmill: a fallback row is
-        # permanently stale by design, so the cohort re-offers it every hour
-        # until a GPU can actually improve it.
+        # A GPU-less worker leaves every existing row alone. Rewriting a
+        # fallback row produces an identical one -- the treadmill the upgrade
+        # queue would otherwise cause every hour, since a fallback row is
+        # permanently stale by design. Rewriting a SAM 3.1 row would be worse
+        # still: a *downgrade*, reachable just by bumping
+        # `HEADTAIL_PREDICTOR_VERSION` while no GPU is available.
+        #
+        # The exception is a superseded laser: the row may be of the wrong
+        # fish entirely, and re-running even this backend fixes that.
         activity.logger.info(
-            "skipping image_id=%d: already fallback-tier and no GPU to upgrade it",
+            "skipping image_id=%d: already predicted and no GPU to improve on it",
             payload.image_id,
         )
         return HeadtailPredictionResult(

@@ -283,6 +283,18 @@ async def select_next_for_headtail_prediction(
         # from a different direction.
         #
         # Booleans sort False < True, so `.desc()` puts never-predicted first.
+        #
+        # It trades one starvation shape for another, and that is deliberate.
+        # A dive whose unpredicted images have no stage-5.1 JPEG yet is
+        # deferred by `_only_with_rendered_jpeg`, resolves to nothing, and is
+        # re-selected next firing -- and it now outranks *every* upgrade,
+        # rather than only higher-id dives. That case is transient by design
+        # (it clears when stage 5.1 renders the frame), whereas the case this
+        # ordering prevents is not: a fallback-only dive is permanently stale
+        # for as long as no GPU exists, which is precisely when the fallback
+        # is carrying the stage. If deferred dives are ever found to wedge
+        # here, the fix is to exclude un-rendered images from the cohort
+        # rather than to restore id order.
         .order_by(has_image_never_predicted.desc(), Dive.id)
         .limit(1)
     )

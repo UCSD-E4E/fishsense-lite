@@ -370,18 +370,21 @@ class PredictHeadtailImage(BaseModel):
     # `fishsense_shared.object_store` and the activity never hard-codes a
     # prefix or reaches into worker config for one.
     jpeg_folder: str = ""
-    # What is already on the row, or None if the image has never been
-    # predicted. The activity is the only thing that knows whether it has a
-    # GPU, and therefore which backend it can actually run -- so it is the
-    # only thing that can decide whether re-predicting this image would be an
-    # *upgrade* or the same fallback output again.
+    # Whether a prediction row already exists for this image, whatever tier
+    # produced it. The activity is the only thing that knows whether it has a
+    # GPU -- and therefore which backend it can run -- so it is the only thing
+    # that can decide whether re-predicting would be an *upgrade* or a repeat.
     #
-    # Without this the CPU fallback churns: a `HEADTAIL_FALLBACK_PREDICTOR_VERSION`
-    # row is permanently stale by design (that is the upgrade queue), so the
-    # cohort re-selects it every hour and a GPU-less worker recomputes an
-    # identical row forever. Carrying the existing version lets the activity
-    # skip what it cannot improve.
-    existing_predictor_version: Optional[int] = None
+    # A GPU-less worker must not touch an existing row at all: rewriting a
+    # fallback row produces an identical one (the churn the upgrade queue
+    # would otherwise cause every hour), and rewriting a SAM 3.1 row would be
+    # a *downgrade* -- which is reachable simply by bumping
+    # `HEADTAIL_PREDICTOR_VERSION` while no GPU is available.
+    has_existing_prediction: bool = False
+    # ...unless the dot that chose the fish has since been superseded. Then
+    # the existing row may be of the wrong fish entirely, and re-running even
+    # the same backend fixes it, so it is worth doing on any worker.
+    existing_laser_superseded: bool = False
 
 
 #: `HeadtailPredictionResult.status` for an image this worker cannot improve
