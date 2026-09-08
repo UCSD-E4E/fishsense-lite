@@ -19,7 +19,6 @@ from fishsense_shared import (
     PerformCheckerboardCalibrationInput,
 )
 from temporalio import activity
-from temporalio.client import WorkflowFailureError
 from temporalio.testing import ActivityEnvironment, WorkflowEnvironment
 from temporalio.worker import Worker
 
@@ -86,7 +85,7 @@ async def test_every_frame_is_dispatched_with_the_board_geometry():
         )
 
     @activity.defn(name="fit_checkerboard_laser_extrinsics")
-    async def _fit(payload: FitCheckerboardExtrinsicsInput) -> int:
+    async def _fit(_payload: FitCheckerboardExtrinsicsInput) -> int:
         return 77
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
@@ -171,6 +170,15 @@ def _observation(image_id: int, point, *, laser_x=600.0, laser_y=500.0):
     )
 
 
+def _fake_calibrate_laser(_points):
+    """Stand in for the Rust Atanasov kernel.
+
+    Returns the 2-vector origin it really returns — z is implicit — so the
+    padding the activity does stays under test rather than being assumed.
+    """
+    return np.array([0.01, 0.02]), np.array([0.0, 0.0, 1.0])
+
+
 def _fit_input(observations):
     return FitCheckerboardExtrinsicsInput(
         dive_id=488,
@@ -181,7 +189,7 @@ def _fit_input(observations):
 
 
 @pytest.mark.asyncio
-async def test_fit_refuses_below_the_shared_threshold(monkeypatch):
+async def test_fit_refuses_below_the_shared_threshold():
     """One threshold, imported from stage 13 rather than restated.
 
     A third copy that drifts from the cohort's `MIN_SLATE_LASER_POINTS` is the
@@ -206,9 +214,7 @@ async def test_fit_persists_the_extrinsics_it_computed(monkeypatch):
     fs.dives = MagicMock()
     fs.dives.put_laser_extrinsics = AsyncMock(return_value=31)
     monkeypatch.setattr(fit_module, "get_fs_client", lambda: fs)
-    monkeypatch.setattr(
-        fit_module, "_calibrate_laser", lambda points: (np.array([0.01, 0.02]), np.array([0.0, 0.0, 1.0]))
-    )
+    monkeypatch.setattr(fit_module, "_calibrate_laser", _fake_calibrate_laser)
     monkeypatch.setattr(fit_module, "check_fit_self_consistency", lambda *a, **k: None)
 
     payload = _fit_input(
@@ -246,9 +252,7 @@ async def test_fit_does_not_persist_when_the_gate_rejects(monkeypatch):
     fs.dives = MagicMock()
     fs.dives.put_laser_extrinsics = AsyncMock()
     monkeypatch.setattr(fit_module, "get_fs_client", lambda: fs)
-    monkeypatch.setattr(
-        fit_module, "_calibrate_laser", lambda points: (np.array([0.01, 0.02]), np.array([0.0, 0.0, 1.0]))
-    )
+    monkeypatch.setattr(fit_module, "_calibrate_laser", _fake_calibrate_laser)
 
     def _reject(*_args, **_kwargs):
         raise ValueError("fit disagrees with its own dots")

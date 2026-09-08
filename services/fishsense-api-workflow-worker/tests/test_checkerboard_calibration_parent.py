@@ -124,7 +124,7 @@ def _stub_activities(*, dive_id: int | None, frames: int):
 
 
 @activity.defn(name="_record_child_dispatch")
-async def _record_child_dispatch(dive_id: int, frames: int) -> None:
+async def _record_child_dispatch(_dive_id: int, _frames: int) -> None:
     _CALLS.append("child")
     if _CHILD_FAILS:
         raise ValueError("insufficient checkerboard laser points (0 < 2)")
