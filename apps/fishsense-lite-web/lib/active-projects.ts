@@ -1,4 +1,4 @@
-import { isPublished, liveProjectIds } from "./label-projects";
+import { hasOutstandingTasks, isPublished, liveProjectIds } from "./label-projects";
 import { getProjects, type LabelStudioProject } from "./label-studio";
 
 /** The four labeling kinds. Separate from `ActiveProjects` so `buildSections`
@@ -50,11 +50,18 @@ export async function getActiveProjects(revalidate = 300): Promise<ActiveProject
     resolve(slateIds),
   ]);
 
+  // Two narrowings, both from Label Studio's own answer about the project:
+  // drafts are not ready for a labeler, and a fully-labeled project has
+  // nothing left for one. The second is what keeps a card from outliving the
+  // work by up to a sync cycle — see `hasOutstandingTasks`.
+  const live = (resolved: LabelStudioProject[]) =>
+    resolved.filter(isPublished).filter(hasOutstandingTasks);
+
   return {
-    laser: laser.projects.filter(isPublished),
-    species: species.projects.filter(isPublished),
-    headtail: headtail.projects.filter(isPublished),
-    slate: slate.projects.filter(isPublished),
+    laser: live(laser.projects),
+    species: live(species.projects),
+    headtail: live(headtail.projects),
+    slate: live(slate.projects),
     degraded:
       laser.degraded + species.degraded + headtail.degraded + slate.degraded,
   };

@@ -120,6 +120,34 @@ describe("getProject", () => {
 
     await expect(getProject(99, 60)).rejects.toThrow(/Label Studio project 99.*404/);
   });
+
+  // Label Studio's own task counts. They are what makes a card disappear the
+  // moment a labeler finishes, rather than at the next hourly sync — see
+  // `hasOutstandingTasks`.
+  it("carries Label Studio's task counts through", async () => {
+    stubFetch(async () =>
+      jsonResponse({ id: 42, title: "p", task_number: 56, finished_task_number: 56 }),
+    );
+
+    expect(await getProject(42, 60)).toEqual({
+      id: 42,
+      title: "p",
+      isPublished: true,
+      taskCount: 56,
+      finishedTaskCount: 56,
+    });
+  });
+
+  // Absent counts must stay absent rather than becoming 0 — `hasOutstandingTasks`
+  // reads 0/0 as "finished", and a coerced zero would hide every card.
+  it("leaves the counts undefined when Label Studio omits them", async () => {
+    stubFetch(async () => jsonResponse({ id: 42, title: "p" }));
+
+    const project = await getProject(42, 60);
+
+    expect(project.taskCount).toBeUndefined();
+    expect(project.finishedTaskCount).toBeUndefined();
+  });
 });
 
 describe("getProjects", () => {

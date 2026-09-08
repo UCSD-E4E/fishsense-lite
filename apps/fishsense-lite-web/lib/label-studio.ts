@@ -15,6 +15,14 @@ export type LabelStudioProject = {
    *  render id/title (e.g. `buildSections`) shouldn't have to carry it.
    *  Absent is treated as published, so filtering fails open. */
   isPublished?: boolean;
+  /** Label Studio's `task_number` — every task in the project. */
+  taskCount?: number;
+  /** Label Studio's `finished_task_number` — tasks it considers labeled,
+   *  the same `is_labeled` our sync copies into `<kind>Label.completed`.
+   *
+   *  Optional for the same reason as `isPublished`, and absent is treated as
+   *  "unknown" rather than zero — see `hasOutstandingTasks`. */
+  finishedTaskCount?: number;
 };
 
 // Hosted Label Studio (app.heartex.com) does NOT accept the configured key
@@ -167,14 +175,22 @@ export async function getProject(
     id: number;
     title: string;
     is_published?: boolean;
+    task_number?: number;
+    finished_task_number?: number;
   };
   // A missing `is_published` counts as published: the landing page should
   // fail OPEN (show the card) rather than silently hide real labeling work
   // if LS ever stops returning the field.
+  //
+  // The counts get no such default. They are passed through exactly as given
+  // — a missing one stays `undefined`, because `hasOutstandingTasks` reads a
+  // zero as a real answer and would hide the card.
   return {
     id: data.id,
     title: data.title,
     isPublished: data.is_published !== false,
+    taskCount: data.task_number,
+    finishedTaskCount: data.finished_task_number,
   };
 }
 

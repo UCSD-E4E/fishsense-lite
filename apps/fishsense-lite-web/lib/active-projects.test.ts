@@ -215,3 +215,68 @@ describe("getActiveProjects — publish filtering", () => {
     expect(result.species.map((p) => p.id)).toEqual([100]);
   });
 });
+
+describe("getActiveProjects — completion filtering", () => {
+  // Prod, 2026-09-08: dive 516's species project (285759) had its last task
+  // annotated at 05:47 UTC and stayed on the landing page until the hourly
+  // sync ran just after 06:00. fishsense-api derives "outstanding" from our
+  // own `SpeciesLabel.completed`, which only that sync writes — so the card
+  // list lagged Label Studio by up to a full sync cycle. Label Studio's own
+  // counts arrive on the same project fetch that resolves the title, so the
+  // page can just ask.
+  it("hides a project Label Studio says is fully labeled", async () => {
+    idsMock.mockImplementation(async (kind) =>
+      ({ "laser": [], "species": [285759, 285676], "headtail": [], "dive-slate": [] } as Record<string, number[]>)[kind] ?? [],
+    );
+    projectsMock.mockImplementation(async (ids) => ({
+      projects: ids.map((id) => ({
+        id,
+        title: `p-${id}`,
+        isPublished: true,
+        taskCount: id === 285759 ? 56 : 47,
+        finishedTaskCount: id === 285759 ? 56 : 12,
+      })),
+      degraded: 0,
+    }));
+
+    const result = await getActiveProjects(60);
+
+    expect(result.species.map((p) => p.id)).toEqual([285676]);
+  });
+
+  it("filters every kind, not just species", async () => {
+    idsMock.mockImplementation(async (kind) =>
+      ({ "laser": [1], "species": [2], "headtail": [3], "dive-slate": [4] } as Record<string, number[]>)[kind] ?? [],
+    );
+    projectsMock.mockImplementation(async (ids) => ({
+      projects: ids.map((id) => ({
+        id,
+        title: `p-${id}`,
+        isPublished: true,
+        taskCount: 10,
+        finishedTaskCount: 10,
+      })),
+      degraded: 0,
+    }));
+
+    const result = await getActiveProjects(60);
+
+    expect(result).toEqual({ laser: [], species: [], headtail: [], slate: [], degraded: 0 });
+  });
+
+  // Fails open: a Label Studio that stops returning counts must not blank the
+  // page. The api-derived list stays the floor.
+  it("keeps every project when Label Studio reports no counts", async () => {
+    idsMock.mockImplementation(async (kind) =>
+      ({ "laser": [], "species": [1, 2], "headtail": [], "dive-slate": [] } as Record<string, number[]>)[kind] ?? [],
+    );
+    projectsMock.mockImplementation(async (ids) => ({
+      projects: ids.map((id) => ({ id, title: `p-${id}`, isPublished: true })),
+      degraded: 0,
+    }));
+
+    const result = await getActiveProjects(60);
+
+    expect(result.species.map((p) => p.id)).toEqual([1, 2]);
+  });
+});
