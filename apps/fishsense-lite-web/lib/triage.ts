@@ -48,7 +48,7 @@ export type Keypoint = {
 };
 
 export type QueueKind = {
-  key: "laser";
+  key: "laser" | "headtail";
   label: string;
   /**
    * Suffix of the per-dive project title.
@@ -66,16 +66,34 @@ export type QueueKind = {
   fromNames: string[];
   /** Regions a complete prediction carries. Used only to flag a partial one. */
   expectedKeypoints: number;
+  /**
+   * Keypoint labels the sync activity requires before it writes anything.
+   *
+   * Empty means "any point on the right control will do" — laser labels vary
+   * (`Red Laser` / `Green Laser`) and the sync reads whichever it finds.
+   *
+   * Head/tail is the opposite, and this is why the field exists.
+   * `sync_headtail_labels_for_label_studio_project_activity` picks its two
+   * regions out by label and writes x/y only when it found BOTH — while
+   * `completed = task.is_labeled` flips true regardless, and
+   * `_select_unlabeled_images` then excludes that image for good. So a half
+   * prediction is the same permanent-exclusion trap that is the reason Skip
+   * writes nothing, and it has to be refused rather than offered as partial.
+   */
+  requiredLabels: string[];
 };
 
 /**
- * Laser only, deliberately.
+ * The kinds a human can triage.
  *
- * Head/tail belongs here too — the screen is the same and the machinery is
- * parameterised for it — but its pre-annotations come from the head/tail
- * predict stage, which is not on main. Shipping the tab now would give a
- * labeler a queue that can only ever be empty, and would make this feature
- * wait on that one. Adding a kind here is additive when that stage lands.
+ * Head/tail joined laser once its predict stage reached prod: the screen is
+ * the same and the machinery was already parameterised, so this is the whole
+ * of what the second queue needed.
+ *
+ * Each entry re-spells vocabulary that belongs to the api-worker — the project
+ * title suffix, the control name, the keypoint labels. Renaming one side
+ * silently empties the queue on this side, which is why the parity is stated
+ * as tests rather than left to a comment.
  */
 export const QUEUE_KINDS: Record<QueueKind["key"], QueueKind> = {
   laser: {
@@ -84,6 +102,17 @@ export const QUEUE_KINDS: Record<QueueKind["key"], QueueKind> = {
     titleSuffix: "Laser Calibration Labeling",
     fromNames: ["laser", "kp-1"],
     expectedKeypoints: 1,
+    requiredLabels: [],
+  },
+  headtail: {
+    key: "headtail",
+    label: "Head/tail",
+    titleSuffix: "HeadTail Labeling",
+    // One `KeyPointLabels name="kp-1"` control carries both choices, and the
+    // sync filters on exactly that control.
+    fromNames: ["kp-1"],
+    expectedKeypoints: 2,
+    requiredLabels: ["Snout", "Fork"],
   },
 };
 
@@ -164,6 +193,16 @@ export function rejectionReason(
   if (wrongControl.length > 0) {
     return `task ${task.id}: from_name ${wrongControl.join(",")} not in ${kind.fromNames.join(",")}`;
   }
+
+  // Presence, not count. Two snouts is two keypoints and no fish, and a count
+  // check would wave it through into the exclusion trap described on
+  // `requiredLabels`.
+  const present = new Set(keypoints.map((k) => k.label));
+  const missing = kind.requiredLabels.filter((label) => !present.has(label));
+  if (missing.length > 0) {
+    return `task ${task.id}: prediction is missing ${missing.join(",")}`;
+  }
+
   return null;
 }
 
