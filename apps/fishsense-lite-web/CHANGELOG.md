@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.12.3...fishsense-lite-web-v0.13.0) (2026-09-08)
+
+
+### Features
+
+* **web:** make /portal a hub over its own pages ([#823](https://github.com/UCSD-E4E/fishsense-lite/issues/823)) ([70ed32c](https://github.com/UCSD-E4E/fishsense-lite/commit/70ed32cbe1056e366d21f5cf7710ca01e3a75d77))
+* **web:** triage head/tail predictions alongside laser ([#840](https://github.com/UCSD-E4E/fishsense-lite/issues/840)) ([8ed7900](https://github.com/UCSD-E4E/fishsense-lite/commit/8ed790000e2e9e8b5b53b91c349131c0db52e7ff))
+
 ## [0.12.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.12.2...fishsense-lite-web-v0.12.3) (2026-09-08)
 
 
