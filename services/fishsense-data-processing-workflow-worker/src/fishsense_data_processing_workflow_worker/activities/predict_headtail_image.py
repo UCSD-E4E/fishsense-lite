@@ -294,12 +294,36 @@ class _Sam3Adapter:
         self._prompt = prompt
 
     def segment(self, image_bgr: np.ndarray) -> List[np.ndarray]:
+        """Run one concept-prompted segmentation, under autocast.
+
+        The autocast context is required, not an optimisation. SAM 3.1's
+        weights are bfloat16 and `Sam3Processor` sets up no autocast of its
+        own, so without it fp32 activations meet bf16 weights and every frame
+        raises `mat1 and mat2 must have the same dtype, but got BFloat16 and
+        Float` inside `vitdet.forward`. It is a plain retryable
+        `RuntimeError`, so in prod it looped on all 356 images of dive 94
+        holding a GPU. Every upstream example enters the same context before
+        inference.
+
+        `device_type` is resolved per call rather than pinned to "cuda"
+        because this stage's queue is served by either the GPU deployment or
+        the CPU-fallback one, and `torch.autocast("cuda", ...)` on a CPU-only
+        pod is a no-op that warns -- which would put the fallback straight
+        back into the dtype mismatch this exists to prevent.
+
+        Entered as a context manager, not `__enter__()` as the notebooks do:
+        activities share a `ThreadPoolExecutor`, so leaking autocast would
+        change the dtype regime of whatever ran next on this thread.
+        """
         # pylint: disable=import-outside-toplevel
         import cv2
+        import torch
 
-        self._processor.set_image(cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB))
-        self._processor.set_text_prompt(self._prompt)
-        output = self._processor.predict()
+        device_type = "cuda" if torch.cuda.is_available() else "cpu"
+        with torch.autocast(device_type, dtype=torch.bfloat16):
+            self._processor.set_image(cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB))
+            self._processor.set_text_prompt(self._prompt)
+            output = self._processor.predict()
         masks = getattr(output, "masks", None)
         if masks is None:
             return []

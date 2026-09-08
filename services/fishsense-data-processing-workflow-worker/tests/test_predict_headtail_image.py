@@ -217,3 +217,82 @@ class TestMaskConversion:
         )
 
         assert _to_numpy(np.zeros((2, 2))).shape == (2, 2)
+
+
+class TestSam3AdapterAutocast:
+    """SAM 3.1's weights are bfloat16, and nothing in `Sam3Processor` sets up
+    autocast for you.
+
+    Without a context, fp32 activations meet bf16 weights and every frame dies
+    in `vitdet.forward` with `mat1 and mat2 must have the same dtype, but got
+    BFloat16 and Float`. That is a plain retryable `RuntimeError`, so in prod
+    it looped on all 356 images of dive 94 while holding a GPU (2026-09-08),
+    and it is invisible to every other test in this module because they all
+    stub the very seam this adapter implements.
+
+    Every upstream example opens with
+    `torch.autocast("cuda", dtype=torch.bfloat16).__enter__()`; this pins that
+    the adapter does the same around both model calls.
+    """
+
+    class _RecordingProcessor:
+        """Records the autocast state at the moment inference runs."""
+
+        def __init__(self, device_type):
+            self._device_type = device_type
+            self.enabled_at_set_image = None
+            self.enabled_at_predict = None
+            self.dtype_at_predict = None
+
+        def _sample(self):
+            import torch
+
+            return (
+                torch.is_autocast_enabled(self._device_type),
+                torch.get_autocast_dtype(self._device_type),
+            )
+
+        def set_image(self, _image):
+            self.enabled_at_set_image = self._sample()[0]
+
+        def set_text_prompt(self, _prompt):
+            pass
+
+        def predict(self):
+            self.enabled_at_predict, self.dtype_at_predict = self._sample()
+            return type("_Out", (), {"masks": []})()
+
+    def _adapter(self, processor):
+        from fishsense_data_processing_workflow_worker.activities.predict_headtail_image import (  # noqa: E501  pylint: disable=line-too-long
+            _Sam3Adapter,
+        )
+
+        return _Sam3Adapter(processor)
+
+    def test_inference_runs_under_bfloat16_autocast(self):
+        import torch
+
+        device_type = "cuda" if torch.cuda.is_available() else "cpu"
+        processor = self._RecordingProcessor(device_type)
+
+        assert not self._adapter(processor).segment(
+            np.zeros((32, 32, 3), dtype=np.uint8)
+        )
+
+        assert processor.enabled_at_set_image is True, (
+            "the vision backbone runs inside set_image -- that is where the "
+            "dtype mismatch was raised"
+        )
+        assert processor.enabled_at_predict is True
+        assert processor.dtype_at_predict is torch.bfloat16
+
+    def test_autocast_does_not_leak_past_the_call(self):
+        """Entered as a context manager, not `__enter__()` as the notebooks
+        do -- an activity thread is reused for the next image."""
+        import torch
+
+        device_type = "cuda" if torch.cuda.is_available() else "cpu"
+        self._adapter(self._RecordingProcessor(device_type)).segment(
+            np.zeros((32, 32, 3), dtype=np.uint8)
+        )
+        assert torch.is_autocast_enabled(device_type) is False
