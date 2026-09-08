@@ -38,10 +38,15 @@ import numpy as np
 from fishsense_shared.headtail_predictor import (
     HEADTAIL_CROP_HEIGHT,
     HEADTAIL_CROP_WIDTH,
+    HEADTAIL_FALLBACK_PREDICTOR_VERSION,
     HEADTAIL_PREDICTOR_VERSION,
 )
-from fishsense_shared.preprocess_contracts import HeadtailPredictionResult
+from fishsense_shared.preprocess_contracts import (
+    HEADTAIL_STATUS_NO_UPGRADE_AVAILABLE,
+    HeadtailPredictionResult,
+)
 from temporalio import activity
+from temporalio.exceptions import ApplicationError
 
 from fishsense_data_processing_workflow_worker.headtail_geometry import (
     crop_origin,
@@ -59,6 +64,34 @@ _log = logging.getLogger(__name__)
 # multi-gigabyte model.
 _SEGMENTER: Any = None
 _SEGMENTER_LOCK = threading.Lock()
+_FALLBACK_SEGMENTER: Any = None
+_FALLBACK_LOCK = threading.Lock()
+
+#: Re-exported: the status this activity emits for an image it cannot improve
+#: on. Defined in `preprocess_contracts` because the api-worker parent has to
+#: recognise it too -- see the note there.
+#:
+#: Not an abstention. An abstention is a statement about the *image* ("no fish
+#: under the dot") and overwrites the row. This is a statement about the
+#: *worker*, and overwriting would replace a fallback row with an identical
+#: fallback row every hour for as long as the GPU is gone.
+STATUS_NO_UPGRADE_AVAILABLE = HEADTAIL_STATUS_NO_UPGRADE_AVAILABLE
+
+
+def cuda_available() -> bool:
+    """Whether this process has a usable CUDA device.
+
+    Wrapped rather than inlined because it decides which backend runs, and
+    because a broken CUDA runtime should read as "no GPU" rather than escape
+    as an import error. Same shape as `predict_slate_image._preferred_device`.
+    """
+    try:
+        import torch  # pylint: disable=import-outside-toplevel,import-error
+
+        return bool(torch.cuda.is_available())
+    except Exception:  # pylint: disable=broad-except
+        _log.debug("no usable CUDA device; head/tail predict will use fallback")
+        return False
 
 
 def _load_segmenter(checkpoint_path: str) -> Any:
@@ -90,6 +123,30 @@ def _load_segmenter(checkpoint_path: str) -> Any:
     # pylint: disable=import-outside-toplevel,import-error
     from sam3.model.sam3_image_processor import Sam3Processor
     from sam3.model_builder import build_sam3_image_model
+
+    if not cuda_available():
+        # Fail fast and *non-retryably*. SAM 3.1 cannot be built without a GPU
+        # at all: `build_sam3_image_model` reaches `PositionEmbeddingSine`,
+        # which precomputes its cache with `torch.zeros(..., device="cuda")` --
+        # hardcoded, no availability check -- so construction raises
+        # `RuntimeError: No CUDA GPUs are available` before any of our device
+        # handling is consulted.
+        #
+        # Retrying cannot help: the pod will not grow a GPU. Left retryable it
+        # loops until the workflow times out while holding the pod, which is
+        # what happened to all 356 activities of dive 94 on 2026-09-08.
+        #
+        # Reaching here at all is a bug now, not an environment: the caller
+        # picks the fallback backend when there is no GPU. It stays as a guard
+        # because "the pod lost its card" and "we chose wrong" both land here,
+        # and both want to stop rather than spin.
+        raise ApplicationError(
+            "SAM 3.1 requires a GPU: build_sam3_image_model allocates its "
+            "position-encoding cache on a hardcoded device='cuda'. This "
+            "worker has no usable CUDA device.",
+            type="NoGpuForSam3",
+            non_retryable=True,
+        )
 
     model = build_sam3_image_model(checkpoint_path=checkpoint_path)
     model.eval()
@@ -127,6 +184,12 @@ class PredictOptions:
     crop_h: int = HEADTAIL_CROP_HEIGHT
     checkpoint: Optional[str] = None
     core_version: Optional[str] = None
+    # Which tier produced this row. `HEADTAIL_PREDICTOR_VERSION` for SAM 3.1,
+    # `HEADTAIL_FALLBACK_PREDICTOR_VERSION` for the Mask R-CNN fallback -- and
+    # it is a parameter rather than the constant because the backend is chosen
+    # at run time from whether this worker has a GPU. Stamping the fallback
+    # value is what puts the row in the upgrade queue.
+    predictor_version: int = HEADTAIL_PREDICTOR_VERSION
 
 
 def _laser_label_for_mask(
@@ -168,7 +231,7 @@ def predict_from_jpeg(
         return HeadtailPredictionResult(
             image_id=image_id,
             status=status,
-            predictor_version=HEADTAIL_PREDICTOR_VERSION,
+            predictor_version=options.predictor_version,
             checkpoint=options.checkpoint,
             core_version=options.core_version,
             **extra,
@@ -258,7 +321,7 @@ def _keypoint(
         "height": frame_size[1],
         "crop_x": origin_x,
         "crop_y": origin_y,
-        "predictor_version": HEADTAIL_PREDICTOR_VERSION,
+        "predictor_version": options.predictor_version,
         "checkpoint": options.checkpoint,
         "core_version": options.core_version,
     }
@@ -307,6 +370,65 @@ def _to_numpy(mask) -> np.ndarray:
     if to_cpu is not None:
         mask = mask.detach().cpu()
     return np.asarray(mask)
+
+
+def get_fallback_segmenter() -> Any:
+    """Process-wide `FishSegmentation`, loaded on first use.
+
+    Same double-checked locking as `get_segmenter`, for the same reason. No
+    checkpoint argument: `fishsense_core.fish` ships in the base wheel with
+    ONNX Runtime statically linked and the weights embedded in the `.so`,
+    which is exactly why it can serve a GPU-less pod.
+    """
+    global _FALLBACK_SEGMENTER  # pylint: disable=global-statement
+    if _FALLBACK_SEGMENTER is not None:
+        return _FALLBACK_SEGMENTER
+    with _FALLBACK_LOCK:
+        if _FALLBACK_SEGMENTER is None:
+            # pylint: disable=import-outside-toplevel,import-error,no-name-in-module
+            from fishsense_core.fish import FishSegmentation
+
+            _log.info("loading fishsense-core FishSegmentation (fallback backend)")
+            _FALLBACK_SEGMENTER = FishSegmentation()
+    return _FALLBACK_SEGMENTER
+
+
+class _FishialAdapter:
+    """Adapts `fishsense_core.fish.FishSegmentation` to the same seam.
+
+    The fallback backend, used when this worker has no GPU. Three things
+    differ from `_Sam3Adapter`, and each of them fails *silently* if got
+    wrong, which is why they are asserted rather than assumed:
+
+    * **BGR, not RGB.** `inference` expects the frame as `RectifiedImage.data`
+      hands it over. Converting to RGB measurably degrades it and raises
+      nothing.
+    * **Landscape only.** `FishSegmentation` returns an empty mask, with no
+      error, whenever width <= height. The 1800x1350 crop is landscape, so
+      this holds today -- but it holds by arithmetic, not by contract, so it
+      is checked rather than trusted.
+    * **An instance label map, not per-instance masks.** `inference` returns
+      one `(H, W)` array where each fish is a distinct non-zero integer, so
+      it is split here to fit a seam whose contract is a list of binary masks.
+    """
+
+    def __init__(self, segmentation: Any):
+        self._segmentation = segmentation
+
+    def segment(self, image_bgr: np.ndarray) -> List[np.ndarray]:
+        height, width = image_bgr.shape[:2]
+        if width <= height:
+            _log.warning(
+                "fallback segmenter given a %dx%d (non-landscape) crop; "
+                "FishSegmentation returns an empty mask for these",
+                width,
+                height,
+            )
+            return []
+
+        labels = np.asarray(self._segmentation.inference(image_bgr))
+        ids = [int(i) for i in np.unique(labels) if int(i) != 0]
+        return [(labels == i) for i in ids]
 
 
 class _Sam3Adapter:
@@ -393,20 +515,56 @@ async def predict_headtail_image(payload):  # type: ignore[no-untyped-def]
     if not isinstance(payload, PredictHeadtailImage):
         payload = PredictHeadtailImage.model_validate(payload)
 
-    sam3_cfg = _settings().sam3
     client = open_object_store_client()
+    on_gpu = cuda_available()
 
-    checkpoint = await ensure_checkpoint(
-        client,
-        sam3_cfg.cache_dir,
-        sam3_cfg.model_name,
-        sam3_cfg.model_version,
-        sam3_cfg.checkpoint_filename,
-    )
-    # Off the loop for the same reason the download is: loading a multi-GB
-    # checkpoint onto the GPU takes seconds, and this worker serves other
-    # activities while it happens.
-    segmenter = _Sam3Adapter(await asyncio.to_thread(get_segmenter, str(checkpoint)))
+    if not on_gpu and payload.existing_predictor_version == (
+        HEADTAIL_FALLBACK_PREDICTOR_VERSION
+    ):
+        # This row is already fallback-tier and this worker has no GPU, so
+        # re-running would write an identical row. Skipping is what keeps the
+        # upgrade queue from becoming a treadmill: a fallback row is
+        # permanently stale by design, so the cohort re-offers it every hour
+        # until a GPU can actually improve it.
+        activity.logger.info(
+            "skipping image_id=%d: already fallback-tier and no GPU to upgrade it",
+            payload.image_id,
+        )
+        return HeadtailPredictionResult(
+            image_id=payload.image_id,
+            status=STATUS_NO_UPGRADE_AVAILABLE,
+            predictor_version=HEADTAIL_FALLBACK_PREDICTOR_VERSION,
+        )
+
+    if on_gpu:
+        sam3_cfg = _settings().sam3
+        checkpoint = await ensure_checkpoint(
+            client,
+            sam3_cfg.cache_dir,
+            sam3_cfg.model_name,
+            sam3_cfg.model_version,
+            sam3_cfg.checkpoint_filename,
+        )
+        # Off the loop for the same reason the download is: loading a multi-GB
+        # checkpoint onto the GPU takes seconds, and this worker serves other
+        # activities while it happens.
+        segmenter = _Sam3Adapter(
+            await asyncio.to_thread(get_segmenter, str(checkpoint))
+        )
+        options = PredictOptions(
+            checkpoint=str(checkpoint),
+            predictor_version=HEADTAIL_PREDICTOR_VERSION,
+        )
+    else:
+        # No GPU: SAM 3.1 cannot even be constructed here (see
+        # `_load_segmenter`), so run the backend that can. Worse than SAM 3.1,
+        # far better than the empty task a labeler would otherwise get -- and
+        # it is the backend the stage's original validation was measured on.
+        segmenter = _FishialAdapter(await asyncio.to_thread(get_fallback_segmenter))
+        options = PredictOptions(
+            checkpoint="fishsense_core.fish.FishSegmentation",
+            predictor_version=HEADTAIL_FALLBACK_PREDICTOR_VERSION,
+        )
 
     jpeg = await client.download_processed_jpeg(payload.jpeg_folder, payload.checksum)
 
@@ -417,7 +575,7 @@ async def predict_headtail_image(payload):  # type: ignore[no-untyped-def]
         segmenter,
         payload.image_id,
         payload.laser_label_ids,
-        PredictOptions(checkpoint=str(checkpoint)),
+        options,
     )
     activity.logger.info(
         "predicted headtail image_id=%d status=%s crop=(%s,%s) ratio=%s",

@@ -184,3 +184,86 @@ async def test_returns_the_lowest_dive_id_first(session):
     )
     await session.flush()
     assert await _select(session) == 1
+
+
+async def test_first_prediction_is_preferred_over_an_upgrade(session):
+    """A dive needing a *first* prediction outranks one needing only an
+    upgrade, even with a higher id.
+
+    This is what stops the upgrade queue starving new work. A fallback-tier
+    row (`HEADTAIL_FALLBACK_PREDICTOR_VERSION`) is permanently stale by
+    design, so while no GPU is available such a dive never leaves the cohort.
+    Ordered by id alone it would be selected every firing, the GPU-less worker
+    would skip every image as unimprovable, and every dive behind it with
+    genuinely unpredicted images would wait -- the dive-60 stall shape,
+    reached from a different direction.
+    """
+    from fishsense_shared.headtail_predictor import (
+        HEADTAIL_FALLBACK_PREDICTOR_VERSION,
+    )
+
+    session.add_all(
+        [
+            _dive(1),
+            _image(11, 1),
+            _laser(101, 11),
+            # dive 1 is fully fallback-predicted: stale, but not improvable
+            # without a GPU.
+            _prediction(1001, 11, version=HEADTAIL_FALLBACK_PREDICTOR_VERSION),
+            _dive(2),
+            _image(22, 2),
+            _laser(102, 22),  # never predicted
+        ]
+    )
+    await session.flush()
+
+    assert await _select(session) == 2
+
+
+async def test_an_upgrade_only_dive_is_still_selected_when_nothing_else_needs_one(
+    session,
+):
+    """Preference, not exclusion. Once every first prediction is done the
+    upgrade queue must still drain, or a GPU coming back would change
+    nothing."""
+    from fishsense_shared.headtail_predictor import (
+        HEADTAIL_FALLBACK_PREDICTOR_VERSION,
+    )
+
+    session.add_all(
+        [
+            _dive(1),
+            _image(11, 1),
+            _laser(101, 11),
+            _prediction(1001, 11, version=HEADTAIL_FALLBACK_PREDICTOR_VERSION),
+        ]
+    )
+    await session.flush()
+
+    assert await _select(session) == 1
+
+
+async def test_a_fallback_row_is_permanently_stale(session):
+    """The upgrade queue itself: a fallback-tier row must never read as
+    current, whatever `HEADTAIL_PREDICTOR_VERSION` is bumped to."""
+    from fishsense_shared.headtail_predictor import (
+        HEADTAIL_FALLBACK_PREDICTOR_VERSION,
+        HEADTAIL_PREDICTOR_VERSION,
+    )
+
+    assert HEADTAIL_FALLBACK_PREDICTOR_VERSION != HEADTAIL_PREDICTOR_VERSION
+    assert HEADTAIL_FALLBACK_PREDICTOR_VERSION < 0, (
+        "negative so it cannot collide with any future forward bump"
+    )
+
+    session.add_all(
+        [
+            _dive(1),
+            _image(11, 1),
+            _laser(101, 11),
+            _prediction(1001, 11, version=HEADTAIL_FALLBACK_PREDICTOR_VERSION),
+        ]
+    )
+    await session.flush()
+
+    assert await _select(session) == 1, "fallback rows must re-enter the cohort"

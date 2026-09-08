@@ -43,6 +43,7 @@ and then drains.
 from __future__ import annotations
 
 __all__ = [
+    "HEADTAIL_FALLBACK_PREDICTOR_VERSION",
     "HEADTAIL_PREDICTOR_VERSION",
     "HEADTAIL_CROP_HEIGHT",
     "HEADTAIL_CROP_WIDTH",
@@ -67,6 +68,34 @@ __all__ = [
 #:       `HeadTailPrediction` migration is unmerged, so there are no rows to
 #:       re-drain — and leaving it at 1 would cost a silent one.
 HEADTAIL_PREDICTOR_VERSION = 2
+
+#: The version stamped on a prediction produced by the **fallback** backend,
+#: `fishsense_core.fish` (Mask R-CNN), when no GPU is available.
+#:
+#: SAM 3.1 cannot run without one: `build_sam3_image_model` reaches
+#: `PositionEmbeddingSine`, which allocates on a hardcoded `device="cuda"`, so
+#: the model cannot even be *constructed* on a CPU-only pod. That breaks the
+#: GPU queue's "prefer a GPU, don't require one" contract, and on the
+#: CPU-fallback Deployment it failed every frame and retried forever.
+#:
+#: Falling back to Mask R-CNN is not a consolation prize. It is the backend the
+#: stage was validated on — 58% of labelled images predicted, p50 3.2% length
+#: error — and the comparison that matters when there is no GPU is not "worse
+#: than SAM 3.1" but "better than an empty task", since labelers review every
+#: pre-annotation anyway.
+#:
+#: **Negative on purpose.** It must never equal a real
+#: `HEADTAIL_PREDICTOR_VERSION`, now or after any future bump, because the
+#: cohort selects `IS DISTINCT FROM HEADTAIL_PREDICTOR_VERSION` — so a row
+#: carrying this is *permanently* stale and re-enters the moment a GPU is
+#: available again. That mismatch is the upgrade queue: no new column, no
+#: migration, no hand-run backfill. `checkpoint` / `core_version` on the row
+#: record which backend actually ran, for the human reading the table.
+#:
+#: It is a single value rather than one per Mask R-CNN generation because
+#: nothing decides on *which* fallback produced a row — only on the fact that
+#: a better one is now possible.
+HEADTAIL_FALLBACK_PREDICTOR_VERSION = -1
 
 #: The laser-centred crop fed to the mask backend, in rectified-image pixels.
 #:

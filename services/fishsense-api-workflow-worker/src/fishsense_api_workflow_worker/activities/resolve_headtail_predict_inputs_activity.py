@@ -69,6 +69,20 @@ def select_images_needing_prediction(
             continue
         dots_by_image.setdefault(laser.image_id, []).append(laser)
 
+    # What each image already carries, so the activity can tell an upgrade
+    # from a repeat. Only the activity knows whether it has a GPU, and
+    # therefore which backend it can run -- a GPU-less worker must not rewrite
+    # a fallback row with an identical one every hour.
+    # Coerced to int-or-None rather than passed through: the field is typed,
+    # and anything unrecognisable must read as "unknown". Unknown is the safe
+    # answer -- it is not the fallback version, so the activity re-predicts
+    # rather than skipping, which risks a wasted inference and never a lost
+    # upgrade.
+    version_by_image: dict[int, int | None] = {}
+    for prediction in predictions:
+        raw = getattr(prediction, "predictor_version", None)
+        version_by_image[prediction.image_id] = raw if isinstance(raw, int) else None
+
     fresh_ids = set()
     for prediction in predictions:
         if getattr(prediction, "predictor_version", None) != HEADTAIL_PREDICTOR_VERSION:
@@ -95,6 +109,7 @@ def select_images_needing_prediction(
                 checksum=image.checksum,
                 laser_points=[[float(d.x), float(d.y)] for d in dots],
                 laser_label_ids=[int(d.id) for d in dots],
+                existing_predictor_version=version_by_image.get(image.id),
             )
         )
     return out

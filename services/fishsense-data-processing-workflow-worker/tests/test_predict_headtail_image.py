@@ -328,3 +328,95 @@ class TestSam3AdapterAutocast:
             np.zeros((32, 32, 3), dtype=np.uint8)
         )
         assert torch.is_autocast_enabled(device_type) is False
+
+
+class TestFishialFallbackAdapter:
+    """The CPU-only backend, used when no GPU is available.
+
+    All three of these fail *silently* if got wrong -- an empty mask, a worse
+    mask, or a crash -- which is why each is pinned rather than assumed.
+    """
+
+    def _adapter(self, segmentation):
+        from fishsense_data_processing_workflow_worker.activities.predict_headtail_image import (  # noqa: E501  pylint: disable=line-too-long
+            _FishialAdapter,
+        )
+
+        return _FishialAdapter(segmentation)
+
+    class _Recording:
+        def __init__(self, labels):
+            self._labels = labels
+            self.seen = None
+
+        def inference(self, image):
+            self.seen = image
+            return self._labels
+
+    def test_splits_the_instance_label_map_into_binary_masks(self):
+        """`FishSegmentation.inference` returns one array with a distinct
+        non-zero integer per fish, not a list of masks."""
+        labels = np.zeros((40, 60), dtype=np.int32)
+        labels[5:10, 5:15] = 1
+        labels[20:25, 30:50] = 7  # ids are arbitrary, not contiguous
+
+        masks = self._adapter(self._Recording(labels)).segment(
+            np.zeros((40, 60, 3), dtype=np.uint8)
+        )
+
+        assert len(masks) == 2
+        assert sorted(int(np.asarray(m).sum()) for m in masks) == [50, 100]
+        assert all(np.asarray(m).dtype == bool for m in masks)
+
+    def test_background_is_not_returned_as_a_mask(self):
+        labels = np.zeros((20, 40), dtype=np.int32)
+        assert self._adapter(self._Recording(labels)).segment(
+            np.zeros((20, 40, 3), dtype=np.uint8)
+        ) == []
+
+    def test_the_frame_is_passed_through_as_bgr(self):
+        """`inference` expects the frame as `RectifiedImage.data` hands it
+        over. Converting to RGB measurably degrades it and raises nothing --
+        the opposite of what the SAM3 adapter must do."""
+        frame = np.zeros((20, 40, 3), dtype=np.uint8)
+        frame[:, :, 0] = 255  # blue channel only, in BGR
+        recorder = self._Recording(np.zeros((20, 40), dtype=np.int32))
+
+        self._adapter(recorder).segment(frame)
+
+        assert np.array_equal(recorder.seen, frame), "frame was converted"
+
+    def test_a_non_landscape_crop_is_refused_rather_than_silently_empty(self):
+        """`FishSegmentation` returns an empty mask, with no error, whenever
+        width <= height. The 1800x1350 crop is landscape so this holds today,
+        but it holds by arithmetic rather than by contract."""
+        recorder = self._Recording(np.ones((40, 20), dtype=np.int32))
+
+        masks = self._adapter(recorder).segment(np.zeros((40, 20, 3), dtype=np.uint8))
+
+        assert masks == []
+        assert recorder.seen is None, "the model should not have been called"
+
+
+class TestSam3RequiresAGpu:
+    def test_load_segmenter_fails_non_retryably_without_cuda(self, monkeypatch):
+        """SAM 3.1 cannot be *built* without a GPU: `build_sam3_image_model`
+        allocates its position-encoding cache on a hardcoded `device="cuda"`.
+
+        Retrying cannot help, and left retryable it loops holding the pod --
+        which is what all 356 activities of dive 94 did on 2026-09-08.
+        """
+        from temporalio.exceptions import ApplicationError
+
+        from fishsense_data_processing_workflow_worker.activities import (
+            predict_headtail_image as sut,
+        )
+
+        monkeypatch.setattr(sut, "cuda_available", lambda: False)
+
+        with pytest.raises(ApplicationError) as excinfo:
+            # pylint: disable-next=protected-access
+            sut._load_segmenter("/nonexistent.pt")
+
+        assert excinfo.value.non_retryable is True
+        assert excinfo.value.type == "NoGpuForSam3"

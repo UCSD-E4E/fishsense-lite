@@ -370,6 +370,29 @@ class PredictHeadtailImage(BaseModel):
     # `fishsense_shared.object_store` and the activity never hard-codes a
     # prefix or reaches into worker config for one.
     jpeg_folder: str = ""
+    # What is already on the row, or None if the image has never been
+    # predicted. The activity is the only thing that knows whether it has a
+    # GPU, and therefore which backend it can actually run -- so it is the
+    # only thing that can decide whether re-predicting this image would be an
+    # *upgrade* or the same fallback output again.
+    #
+    # Without this the CPU fallback churns: a `HEADTAIL_FALLBACK_PREDICTOR_VERSION`
+    # row is permanently stale by design (that is the upgrade queue), so the
+    # cohort re-selects it every hour and a GPU-less worker recomputes an
+    # identical row forever. Carrying the existing version lets the activity
+    # skip what it cannot improve.
+    existing_predictor_version: Optional[int] = None
+
+
+#: `HeadtailPredictionResult.status` for an image this worker cannot improve
+#: on -- a fallback-tier row on a worker with no GPU. The parent drops these
+#: before persisting, so the existing row is left untouched.
+#:
+#: Here rather than in the activity because it is a cross-worker agreement:
+#: the data-worker emits it and the api-worker parent has to recognise it.
+#: Anything that does not recognise it would overwrite a good fallback row
+#: with an empty one, which is the failure this exists to prevent.
+HEADTAIL_STATUS_NO_UPGRADE_AVAILABLE = "skipped_no_upgrade_available"
 
 
 class PredictHeadtailImagesInput(BaseModel):

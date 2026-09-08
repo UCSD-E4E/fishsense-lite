@@ -21,6 +21,7 @@ from fishsense_shared.laser_predictor import (
 from fishsense_shared.headtail_predictor import (
     HEADTAIL_CROP_HEIGHT,
     HEADTAIL_CROP_WIDTH,
+    HEADTAIL_FALLBACK_PREDICTOR_VERSION,
     HEADTAIL_PREDICTOR_VERSION,
 )
 from fishsense_shared.laser_region import (
@@ -79,6 +80,7 @@ __all__ = [
     "DEFAULT_LASER_BBOX",
     "HEADTAIL_CROP_HEIGHT",
     "HEADTAIL_CROP_WIDTH",
+    "HEADTAIL_FALLBACK_PREDICTOR_VERSION",
     "HEADTAIL_PREDICTOR_VERSION",
     "LASER_PREDICTOR_VERSION",
     "laser_model_version_tag",

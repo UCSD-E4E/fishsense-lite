@@ -30,6 +30,7 @@ from datetime import timedelta
 from typing import List
 
 from fishsense_shared.preprocess_contracts import (
+    HEADTAIL_STATUS_NO_UPGRADE_AVAILABLE,
     HeadtailPredictionResult,
     PredictHeadtailImagesInput,
 )
@@ -92,6 +93,16 @@ class PredictHeadtailImagesParentWorkflow:
             result_type=List[HeadtailPredictionResult],
             task_queue=_dispatch.DATA_PROCESSING_GPU_TASK_QUEUE,
         )
+
+        # Drop the images this worker could not improve on. A GPU-less worker
+        # returns these for rows that are already fallback-tier, because
+        # rewriting them would replace a row with an identical one -- and a
+        # fallback row is permanently stale by design, so the cohort re-offers
+        # it every hour until a GPU can actually upgrade it. Persisting the
+        # skip marker instead would blank a perfectly good prediction.
+        results = [
+            r for r in results if r.status != HEADTAIL_STATUS_NO_UPGRADE_AVAILABLE
+        ]
 
         if results:
             await _dispatch.run_sdk_activity(
