@@ -84,7 +84,7 @@ async def _flag_in_db(session, model) -> int:
 @pytest.mark.parametrize("model", reprocess_label_kinds())
 class TestNullSuperseded:
     async def test_raising_skips_a_null_superseded_row(self, session, model):
-        from fishsense_api.controllers.label_controller import _set_needs_reprocess
+        from fishsense_api.controllers.label_reprocess_controller import _set_needs_reprocess
 
         await _seed_null_superseded(session, model)
         n = await _set_needs_reprocess(session, 1, model, True)
@@ -98,7 +98,7 @@ class TestNullSuperseded:
         A row superseded *after* being flagged has to be able to give its flag
         back, or it holds its dive in the cohort forever.
         """
-        from fishsense_api.controllers.label_controller import _set_needs_reprocess
+        from fishsense_api.controllers.label_reprocess_controller import _set_needs_reprocess
 
         label = await _seed_null_superseded(session, model)
         label.needs_reprocess = True

@@ -28,6 +28,13 @@ import fishsense_api.controllers.fish_controller
 import fishsense_api.controllers.head_tail_prediction_controller
 import fishsense_api.controllers.image_controller
 import fishsense_api.controllers.label_controller
+
+# Immediately after `label_controller`, whose routes these used to sit among.
+# The reprocess verbs share a path prefix with that module's per-dive label
+# GETs, so their relative registration order is worth keeping deliberate even
+# though the paths do not currently overlap.
+# Guarded by test_label_route_registration.py.
+import fishsense_api.controllers.label_reprocess_controller
 import fishsense_api.controllers.laser_depth_controller
 import fishsense_api.controllers.laser_prediction_controller
 import fishsense_api.controllers.slate_prediction_controller

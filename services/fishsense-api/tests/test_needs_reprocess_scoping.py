@@ -59,7 +59,7 @@ async def _seed(session, model):
 @pytest.mark.parametrize("model", reprocess_label_kinds())
 class TestScoping:
     async def test_default_flags_only_incomplete_canonical_labels(self, session, model):
-        from fishsense_api.controllers.label_controller import _set_needs_reprocess
+        from fishsense_api.controllers.label_reprocess_controller import _set_needs_reprocess
 
         rows = await _seed(session, model)
         n = await _set_needs_reprocess(session, 1, model, True)
@@ -70,7 +70,7 @@ class TestScoping:
         assert rows[12].needs_reprocess is False, "non-canonical is never preprocessed"
 
     async def test_only_incomplete_false_flags_completed_too(self, session, model):
-        from fishsense_api.controllers.label_controller import _set_needs_reprocess
+        from fishsense_api.controllers.label_reprocess_controller import _set_needs_reprocess
 
         rows = await _seed(session, model)
         n = await _set_needs_reprocess(session, 1, model, True, only_incomplete=False)
@@ -87,7 +87,7 @@ class TestScoping:
         inherited the incomplete-only scope, a label completed *between* the
         flag being raised and the redraw finishing would keep its flag up and
         hold the dive in the cohort forever."""
-        from fishsense_api.controllers.label_controller import _set_needs_reprocess
+        from fishsense_api.controllers.label_reprocess_controller import _set_needs_reprocess
 
         rows = await _seed(session, model)
         await _set_needs_reprocess(session, 1, model, True, only_incomplete=False)
@@ -98,7 +98,7 @@ class TestScoping:
         assert rows[11].needs_reprocess is False
 
     async def test_is_idempotent_in_both_directions(self, session, model):
-        from fishsense_api.controllers.label_controller import _set_needs_reprocess
+        from fishsense_api.controllers.label_reprocess_controller import _set_needs_reprocess
 
         rows = await _seed(session, model)
         assert await _set_needs_reprocess(session, 1, model, True) == 1
@@ -110,7 +110,7 @@ class TestScoping:
 
     async def test_dive_with_no_labels_returns_zero_not_404(self, session, model):
         """The parent calls clear unconditionally; a 404 would fail the workflow."""
-        from fishsense_api.controllers.label_controller import _set_needs_reprocess
+        from fishsense_api.controllers.label_reprocess_controller import _set_needs_reprocess
 
         assert await _set_needs_reprocess(session, 999, model, False) == 0
 
@@ -127,7 +127,7 @@ class TestSupersededRowsAreNeverFlagged:
     """
 
     async def test_superseded_incomplete_row_is_not_flagged(self, session, model):
-        from fishsense_api.controllers.label_controller import _set_needs_reprocess
+        from fishsense_api.controllers.label_reprocess_controller import _set_needs_reprocess
         from fishsense_api.models.dive import Dive
         from fishsense_api.models.image import Image
         from fishsense_api.models.priority import Priority

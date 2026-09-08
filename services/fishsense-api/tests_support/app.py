@@ -59,13 +59,17 @@ async def seed_camera_with_intrinsics(session) -> None:
     await session.flush()
 
 
-def resolve_route(app, path: str) -> str | None:
+def resolve_route(app, path: str, method: str = "GET") -> str | None:
     """The name of the endpoint function `path` matches, in declaration order.
 
     Returns the endpoint's `__name__`, not the route template: the assertion
     these tests want to make is "this URL reaches THAT handler", and the
     template alone would not distinguish two handlers registered on the same
     path.
+
+    `method` matters for routes that share a path across verbs: a PUT-only
+    route answers `Match.PARTIAL` to a GET scope, so asking with the wrong
+    verb reports "no route" for one that is registered.
 
     The question the disambiguation tests exist to ask: `/dives/select-next/...`
     must win over `/dives/{dive_id}`, and across modules that ordering is
@@ -76,7 +80,7 @@ def resolve_route(app, path: str) -> str | None:
 
     scope = {
         "type": "http",
-        "method": "GET",
+        "method": method,
         "path": path,
         "path_params": {},
         "route_path": path,

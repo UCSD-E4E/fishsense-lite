@@ -85,7 +85,7 @@ class TestClearScope:
     async def test_scoped_clear_leaves_a_flag_raised_during_the_run(
         self, session, model
     ):
-        from fishsense_api.controllers.label_controller import _set_needs_reprocess
+        from fishsense_api.controllers.label_reprocess_controller import _set_needs_reprocess
 
         await _seed_two_flagged_images(session, model)
         n = await _set_needs_reprocess(
@@ -97,7 +97,7 @@ class TestClearScope:
 
     async def test_unscoped_clear_still_lowers_everything(self, session, model):
         """The no-work backstop. Without this the dive can never drain."""
-        from fishsense_api.controllers.label_controller import _set_needs_reprocess
+        from fishsense_api.controllers.label_reprocess_controller import _set_needs_reprocess
 
         await _seed_two_flagged_images(session, model)
         n = await _set_needs_reprocess(session, 1, model, False)
@@ -112,7 +112,7 @@ class TestClearScope:
         payload into a dive-wide clear -- the exact thing the scope exists to
         prevent, reached by accident.
         """
-        from fishsense_api.controllers.label_controller import _set_needs_reprocess
+        from fishsense_api.controllers.label_reprocess_controller import _set_needs_reprocess
 
         await _seed_two_flagged_images(session, model)
         n = await _set_needs_reprocess(session, 1, model, False, checksums=[])
