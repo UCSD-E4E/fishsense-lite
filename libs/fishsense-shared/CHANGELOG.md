@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.19.0...fishsense-shared-v0.20.0) (2026-09-08)
+
+
+### Features
+
+* **headtail-predict:** fall back to Mask R-CNN when no GPU, queue the upgrade ([#835](https://github.com/UCSD-E4E/fishsense-lite/issues/835)) ([6671295](https://github.com/UCSD-E4E/fishsense-lite/commit/6671295ba55e168bd911b60a5ddd18596758e4e2))
+
 ## [0.19.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.18.0...fishsense-shared-v0.19.0) (2026-09-08)
 
 
