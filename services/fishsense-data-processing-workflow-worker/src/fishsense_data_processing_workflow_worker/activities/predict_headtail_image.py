@@ -63,7 +63,30 @@ _SEGMENTER_LOCK = threading.Lock()
 
 def _load_segmenter(checkpoint_path: str) -> Any:
     """Build the SAM3 concept segmenter. Imported lazily so torch/sam3 are only
-    required at run time."""
+    required at run time.
+
+    **Loading prints four missing keys, and they are benign.** Expect:
+
+        missing_keys=['backbone.vision_backbone.convs.3.conv_1x1.weight',
+                      ...conv_1x1.bias, ...conv_3x3.weight, ...conv_3x3.bias']
+
+    `Sam3DualViTDetNeck` builds one conv per entry in
+    `scale_factors=(4.0, 2.0, 1.0, 0.5)` and runs all four, but
+    `SAM3VLBackbone.forward` then does `sam3_features[:-scalp]` with
+    `scalp=1`, discarding the lowest-resolution level -- which is exactly
+    `convs.3`. Upstream trained with the same slice, so that conv was never
+    trained and is not in the checkpoint. Its output cannot reach the
+    encoder.
+
+    Verified, not inferred: replacing all four `convs.3` tensors with
+    `N(0, 50)` garbage leaves the returned masks bit-identical (8 masks,
+    areas unchanged to the pixel).
+
+    This matters because `_load_checkpoint` uses `strict=False` and only
+    *prints* -- a genuinely wrong checkpoint would load just as quietly. So
+    these four are the known-good baseline: if the set ever differs, that is
+    the signal, and it is worth investigating rather than dismissing.
+    """
     # pylint: disable=import-outside-toplevel,import-error
     from sam3.model.sam3_image_processor import Sam3Processor
     from sam3.model_builder import build_sam3_image_model
@@ -317,16 +340,30 @@ class _Sam3Adapter:
         """
         # pylint: disable=import-outside-toplevel
         import cv2
+        import PIL.Image
         import torch
 
+        # `set_image` returns the state, `set_text_prompt` *is* the inference
+        # call and needs that state back, and the result is a dict rather than
+        # an object. There is no `predict()`. Verified against a live model:
+        # 8 masks at 0.78-0.95 confidence in 0.45 s warm.
+        #
+        # PIL, not the raw BGR array, and that is load-bearing rather than
+        # tidiness: `set_image` does `height, width = image.shape[-2:]`, which
+        # for an HWC numpy frame reads (1800, 3) -- and those numbers are what
+        # every mask is finally interpolated to. Handing it the array yields
+        # three-pixel-wide masks, silently and with no error.
+        rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
         device_type = "cuda" if torch.cuda.is_available() else "cpu"
         with torch.autocast(device_type, dtype=torch.bfloat16):
-            self._processor.set_image(cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB))
-            self._processor.set_text_prompt(self._prompt)
-            output = self._processor.predict()
-        masks = getattr(output, "masks", None)
+            state = self._processor.set_image(PIL.Image.fromarray(rgb))
+            state = self._processor.set_text_prompt(self._prompt, state)
+        masks = state.get("masks") if hasattr(state, "get") else None
         if masks is None:
             return []
+        # (N, 1, H, W) bool; `squeeze` drops the channel axis. Bool survives
+        # autocast untouched -- it is produced by a `> 0.5` comparison -- so
+        # `_to_numpy` never sees a bfloat16 tensor numpy could not represent.
         return [_to_numpy(m).squeeze() for m in masks]
 
 
