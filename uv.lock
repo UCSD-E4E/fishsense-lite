@@ -970,7 +970,7 @@ requires-dist = [
     { name = "sam3", git = "https://github.com/facebookresearch/sam3.git?rev=8e451d5eb43c817b64ae7577fb7b9ae223db88a9" },
     { name = "scikit-image", specifier = ">=0.25.2" },
     { name = "scikit-learn" },
-    { name = "setuptools", specifier = ">=80.9.0,<81" },
+    { name = "setuptools", specifier = ">=80.9.0,<82" },
     { name = "sqlmodel", specifier = ">=0.0.25" },
     { name = "synology-api", specifier = ">=0.8.1" },
     { name = "temporalio", specifier = ">=1.17.0" },
