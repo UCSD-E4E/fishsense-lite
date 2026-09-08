@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.2.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.2.2...fishsense-data-processing-workflow-worker-v3.2.3) (2026-09-08)
+
+
+### Bug Fixes
+
+* **headtail-predict:** call Sam3Processor's real API ([#831](https://github.com/UCSD-E4E/fishsense-lite/issues/831)) ([0404cce](https://github.com/UCSD-E4E/fishsense-lite/commit/0404cceec3ba6da2afeac468658e495a3181ef1f))
+
 ## [3.2.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.2.1...fishsense-data-processing-workflow-worker-v3.2.2) (2026-09-08)
 
 
