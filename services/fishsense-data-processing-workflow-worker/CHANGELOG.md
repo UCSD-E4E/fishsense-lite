@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.2.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.2.0...fishsense-data-processing-workflow-worker-v3.2.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* **ci:** correct three claims in the sam3 runtime-dep guard ([#818](https://github.com/UCSD-E4E/fishsense-lite/issues/818)) ([ce01fd2](https://github.com/UCSD-E4E/fishsense-lite/commit/ce01fd224d6289f04c6d54a3d1aa30aa4be66913))
+
 ## [3.2.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.1.0...fishsense-data-processing-workflow-worker-v3.2.0) (2026-09-08)
 
 
