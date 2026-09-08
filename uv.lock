@@ -671,7 +671,7 @@ wheels = [
 
 [[package]]
 name = "fishsense-api"
-version = "3.0.1"
+version = "3.1.0"
 source = { editable = "services/fishsense-api" }
 dependencies = [
     { name = "alembic" },
@@ -724,7 +724,7 @@ dev = [
 
 [[package]]
 name = "fishsense-api-sdk"
-version = "2.1.0"
+version = "2.2.0"
 source = { editable = "libs/fishsense-api-sdk" }
 dependencies = [
     { name = "httpx" },
@@ -751,7 +751,7 @@ dev = [
 
 [[package]]
 name = "fishsense-api-workflow-worker"
-version = "2.2.0"
+version = "2.3.0"
 source = { editable = "services/fishsense-api-workflow-worker" }
 dependencies = [
     { name = "boto3" },
@@ -894,7 +894,7 @@ provides-extras = ["denoise", "laser-detector", "rectified", "slate"]
 
 [[package]]
 name = "fishsense-data-processing-workflow-worker"
-version = "3.1.0"
+version = "3.2.0"
 source = { editable = "services/fishsense-data-processing-workflow-worker" }
 dependencies = [
     { name = "boto3" },
@@ -970,7 +970,7 @@ requires-dist = [
     { name = "sam3", git = "https://github.com/facebookresearch/sam3.git?rev=8e451d5eb43c817b64ae7577fb7b9ae223db88a9" },
     { name = "scikit-image", specifier = ">=0.25.2" },
     { name = "scikit-learn" },
-    { name = "setuptools", specifier = ">=80.9.0,<81" },
+    { name = "setuptools", specifier = ">=80.9.0,<82" },
     { name = "sqlmodel", specifier = ">=0.0.25" },
     { name = "synology-api", specifier = ">=0.8.1" },
     { name = "temporalio", specifier = ">=1.17.0" },
@@ -1023,7 +1023,7 @@ dev = [
 
 [[package]]
 name = "fishsense-shared"
-version = "0.18.0"
+version = "0.19.0"
 source = { editable = "libs/fishsense-shared" }
 dependencies = [
     { name = "dynaconf" },
