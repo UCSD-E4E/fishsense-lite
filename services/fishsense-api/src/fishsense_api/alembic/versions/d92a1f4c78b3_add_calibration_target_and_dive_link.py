@@ -17,7 +17,7 @@ table means those dives simply stay uncalibrated, which is the failure
 direction they are already in.
 
 Revision ID: d92a1f4c78b3
-Revises: c4f8a2e60b17
+Revises: a1c6d0f483b7
 Create Date: 2026-09-07 00:00:00.000000
 
 """
@@ -31,7 +31,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "d92a1f4c78b3"
-down_revision: Union[str, Sequence[str], None] = "c4f8a2e60b17"
+down_revision: Union[str, Sequence[str], None] = "a1c6d0f483b7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -28,6 +28,8 @@ from typing import List
 from fishsense_api_sdk.models.headtail_label import HeadTailLabel
 from fishsense_api_sdk.models.image import Image
 from fishsense_api_sdk.models.laser_label import LaserLabel
+from fishsense_shared.headtail_predictor import headtail_model_version_tag
+from fishsense_shared.object_store import HEADTAIL_JPEG_FOLDER
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.populate_utils import (
@@ -38,9 +40,12 @@ from fishsense_api_workflow_worker.activities.populate_utils import (
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
 from fishsense_api_workflow_worker.object_store import open_object_store_client
 
-# Physical Garage prefix the data-worker writes head/tail JPEGs to
-# (stage 5.1). Was the nginx virtual name "headtail_jpeg".
-HEADTAIL_FOLDER = "preprocess_headtail_jpeg"
+# Physical Garage prefix the data-worker writes head/tail JPEGs to (stage 5.1).
+# Re-exported from the shared key contract rather than spelled again: the
+# predict stage now *reads* this same folder, and two copies of the string are
+# two chances for a task URI and an inference to disagree about which image is
+# being labelled.
+HEADTAIL_FOLDER = HEADTAIL_JPEG_FOLDER
 
 
 def _is_valid_laser(label: LaserLabel) -> bool:
@@ -109,14 +114,106 @@ async def _gate_on_jpeg_presence(images: List[Image]) -> List[Image]:
     return present
 
 
-def _build_task(image: Image) -> dict:
+# The head/tail project's labeling config declares `KeyPointLabels name="kp-1"`
+# with `Snout` and `Fork`. Both literals must match it exactly:
+# `sync_headtail_labels_for_label_studio_project_activity` filters annotations
+# on `from_name == "kp-1"` and picks the two points out by label, so a mismatch
+# seeds tasks whose labels never come back.
+_KEYPOINT_FROM_NAME = "kp-1"
+_KEYPOINT_TO_NAME = "image"
+_SNOUT_LABEL = "Snout"
+_FORK_LABEL = "Fork"
+
+# A real fish silhouette's mask-area / length**2 runs ~0.15-0.30. Applied here,
+# at seed time, rather than in the predictor: every prediction is stored either
+# way, so the band can be retuned against rows already collected instead of
+# requiring a re-predict. Measured effect on the corpus: keeping 0.18-0.32 drops
+# ~24% of predictions and moves p90 length error from 17.1% to 12.7%.
+_MIN_SILHOUETTE_RATIO = 0.18
+_MAX_SILHOUETTE_RATIO = 0.32
+
+
+def select_predicted_image_ids(predictions) -> set:
+    """Image ids the detector has already visited.
+
+    Populate is **prediction-gated**, for the same reason the laser populate is:
+    it seeds sentinel `HeadTailLabel` rows, and the predict cohort requires "no
+    live label" — so populating an image before the detector ran would remove
+    it from that cohort permanently and starve it of a prediction forever.
+
+    An abstention counts as visited. The image *was* looked at, and holding it
+    back from populate on that basis would strand it in the opposite direction:
+    never predicted usefully, and never labelled by a human either.
+    """
+    return {p.image_id for p in predictions}
+
+
+def prediction_annotations(prediction) -> list:
+    """Build the LS `predictions` list — two keypoints — from a model
+    `HeadTailPrediction`, or [] when there is nothing placeable.
+
+    Label Studio keypoints are percentages, so the stored rectified pixels are
+    converted with the prediction's own recorded frame dims. Returning [] still
+    creates the task; it just arrives unseeded, which is the right outcome for
+    an abstention, a low-confidence shape, or a row with no dims to convert by.
+    """
+    if prediction is None:
+        return []
+    if getattr(prediction, "rejected_low_confidence", False):
+        return []
+    if getattr(prediction, "status", None) != "predicted":
+        return []
+
+    head_x, head_y = prediction.head_x, prediction.head_y
+    tail_x, tail_y = prediction.tail_x, prediction.tail_y
+    width, height = prediction.width, prediction.height
+    if None in (head_x, head_y, tail_x, tail_y) or not width or not height:
+        return []
+
+    ratio = getattr(prediction, "silhouette_ratio", None)
+    # None means "not recorded", not "out of band" — it must not suppress every
+    # row written before the column existed.
+    if (
+        ratio is not None
+        and not _MIN_SILHOUETTE_RATIO <= ratio <= _MAX_SILHOUETTE_RATIO
+    ):
+        return []
+
+    def _point(x, y, label):
+        return {
+            "from_name": _KEYPOINT_FROM_NAME,
+            "to_name": _KEYPOINT_TO_NAME,
+            "type": "keypointlabels",
+            "original_width": width,
+            "original_height": height,
+            "image_rotation": 0,
+            "value": {
+                "x": x / width * 100,
+                "y": y / height * 100,
+                "width": 0.5,
+                "keypointlabels": [label],
+            },
+        }
+
+    return [
+        {
+            "model_version": headtail_model_version_tag(),
+            "result": [
+                _point(head_x, head_y, _SNOUT_LABEL),
+                _point(tail_x, tail_y, _FORK_LABEL),
+            ],
+        }
+    ]
+
+
+def _build_task(image: Image, prediction=None) -> dict:
     """Build an LS task. Emits both `image` and `img` keys to satisfy
     legacy LS labeling-config XML across prod projects — see
     `populate_laser_label_studio_project_activity._build_task`."""
     url = build_image_url(HEADTAIL_FOLDER, image.checksum)
     return {
         "data": {"image": url, "img": url},
-        "predictions": [],
+        "predictions": prediction_annotations(prediction),
         "annotations": [],
     }
 
@@ -132,6 +229,9 @@ async def populate_headtail_label_studio_project_activity(
     async with get_fs_client() as fs:
         laser_labels = await fs.labels.get_laser_labels(dive_id) or []
         existing_headtail = await fs.labels.get_headtail_labels(dive_id) or []
+        predictions = await fs.labels.get_headtail_predictions(dive_id) or []
+        predictions_by_image = {p.image_id: p for p in predictions}
+        predicted_ids = select_predicted_image_ids(predictions)
 
         # Hydrate Image rows by id for the laser-valid candidates.
         target_image_ids = {
@@ -145,12 +245,19 @@ async def populate_headtail_label_studio_project_activity(
             activity.heartbeat()
 
         targets = _select_target_images(laser_labels, images_by_id, existing_headtail)
+        # Prediction-gated: seeding a sentinel row for an unpredicted image
+        # would drop it out of the predict cohort before the detector ever ran.
+        # See `select_predicted_image_ids`.
+        targets = [image for image in targets if image.id in predicted_ids]
         # Never seed a task for an image the data-worker hasn't rendered.
         targets = await _gate_on_jpeg_presence(targets)
 
         new_count = 0
         if targets:
-            tasks = [_build_task(image) for image in targets]
+            tasks = [
+                _build_task(image, predictions_by_image.get(image.id))
+                for image in targets
+            ]
 
             async def _record(image: Image, task_id: int) -> None:
                 label = HeadTailLabel(

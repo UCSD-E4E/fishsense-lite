@@ -6,6 +6,7 @@ Label Studio writes the labeler's taxonomy selection into
     "Fish, Hogfish (Lachnolaimus maximus)"  -> a real (wild) fish
     "Fish Model, Weasly Fish"               -> a rigid model
     "Calibration Targets, Ruler"            -> the ruler
+    "Calibration Targets, Box"              -> the 0.15 m box
     "Slate, Laser on slate"                 -> a slate frame (stage 9)
 
 Four consumers read that string, and they used to spell the markers
@@ -45,9 +46,11 @@ from __future__ import annotations
 FISH_MODEL_PREFIX = "Fish Model,"
 
 # The top-level taxonomy branch for the physical targets that are not fish.
-# Two leaves hang off it and they mean opposite things to the pipeline: the
-# ruler is a known *length* (validation), the checkerboard is a known *plane*
-# (calibration). See `calibration_target_leaf`.
+# Its leaves mean two opposite things to the pipeline: a known *length* to
+# validate against (the ruler, the box) or a known *plane* to calibrate from
+# (the checkerboard). `MEASURABLE_CALIBRATION_TARGETS` and
+# `NON_PLANAR_CALIBRATION_LEAVES` are the two halves of that split, and the
+# second is derived from the first. See `calibration_target_leaf`.
 CALIBRATION_TARGETS_BRANCH = "Calibration Targets"
 
 # The ruler is a rigid known-length target like the models, so it measures
@@ -70,17 +73,52 @@ RULER_CONTENT = f"{CALIBRATION_TARGETS_BRANCH}, {RULER_NAME}"
 CHECKERBOARD_NAME = "E4E Checkerboard"
 CHECKERBOARD_CONTENT = f"{CALIBRATION_TARGETS_BRANCH}, {CHECKERBOARD_NAME}"
 
-# Leaves under `Calibration Targets` that must never resolve to a planar
-# calibration target, listed by name rather than left to "no row happens to be
-# called that".
+# A rigid box carrying a duct-tape patch on one face, added to the taxonomy
+# 2026-09-07. The known span is 0.15 m between two corners of that TAPE — not a
+# box edge — so the reference cannot be re-derived from the box's dimensions;
+# it lives in `views.KNOWN_FISH_MODELS` with the rest of the reference lengths.
+# Measures through the same name-keyed path as the ruler.
+BOX_CONTENT = "Calibration Targets, Box"
+BOX_NAME = "Box"
+
+# `Calibration Targets, <leaf>` -> the `Fish.name` it measures as.
 #
-# Same posture as `SLATE_NOT_IN_LIST_LEAF`: the ruler is the *validation* set
-# for measurement accuracy (`fishmodelreference`), so calibrating from it
-# would make every validation self-confirming - and worse, a ruler appears in
-# ordinary fish dives, so a `CalibrationTarget` row named "Ruler" seeded later
-# would silently pull those dives into the checkerboard-calibration cohort and
-# fit their extrinsics against a plane nobody intended.
-NON_PLANAR_CALIBRATION_LEAVES = frozenset({RULER_NAME})
+# An explicit allowlist, NOT a prefix rule, and that is the whole design of
+# this constant. The `Fish Model` branch can use a prefix because every leaf
+# under it is a model with a length; `Calibration Targets` is mixed — the
+# ruler and the box span a single known distance a head/tail pair marks, while
+# `E4E Checkerboard` does not. A `LIKE 'Calibration Targets,%'` rule would
+# sweep the checkerboard in, it would have no `fishmodelreference` row, and
+# the stage-14 cohort would offer frames `measure_fish_activity` skips —
+# the never-goes-false wedge, reachable the moment a labeler picks it.
+#
+# Adding a target here means adding it to the species labeling XML and to
+# `views.KNOWN_FISH_MODELS`; the parity tests on both sides name whichever you
+# forget.
+MEASURABLE_CALIBRATION_TARGETS: dict[str, str] = {
+    RULER_CONTENT: RULER_NAME,
+    BOX_CONTENT: BOX_NAME,
+}
+
+# Leaves under `Calibration Targets` that must never resolve to a planar
+# calibration target.
+#
+# **Derived from `MEASURABLE_CALIBRATION_TARGETS`, not listed again**, because
+# the two answer the same question from opposite ends and the branch is mixed:
+# a leaf that measures as a known LENGTH (the ruler, the box) is a validation
+# object, and a leaf that supplies a known PLANE (the checkerboard) is a
+# calibration source. Nothing is both, so deriving one from the other means
+# adding a fifth leaf lands on the safe side by default — excluded from
+# calibration until someone deliberately says otherwise — rather than becoming
+# a calibration source the moment a matching `CalibrationTarget` row exists.
+#
+# Same posture as `SLATE_NOT_IN_LIST_LEAF`, and the ruler shows why it is not
+# theoretical: it appears in ordinary fish dives, so a `CalibrationTarget` row
+# named "Ruler" seeded later would silently pull those dives into the
+# checkerboard-calibration cohort and fit their extrinsics against a plane
+# nobody intended. Calibrating from a validation object would also make every
+# accuracy number self-confirming.
+NON_PLANAR_CALIBRATION_LEAVES = frozenset(MEASURABLE_CALIBRATION_TARGETS.values())
 
 # Every `Fish Model, <name>` leaf a labeler can pick, in species-XML order.
 #
@@ -138,6 +176,8 @@ REAL_FISH_LIKE = "%(%)"
 FISH_MODEL_LIKE = f"{FISH_MODEL_PREFIX}%"
 
 __all__ = [
+    "BOX_CONTENT",
+    "BOX_NAME",
     "CALIBRATION_TARGETS_BRANCH",
     "CHECKERBOARD_CONTENT",
     "CHECKERBOARD_NAME",
@@ -145,6 +185,7 @@ __all__ = [
     "FISH_MODEL_PREFIX",
     "LABELED_FISH_MODELS",
     "MEASURABILITY_CORPUS",
+    "MEASURABLE_CALIBRATION_TARGETS",
     "NON_PLANAR_CALIBRATION_LEAVES",
     "REAL_FISH_LIKE",
     "RULER_CONTENT",
@@ -153,6 +194,7 @@ __all__ = [
     "SLATE_NOT_IN_LIST_LEAF",
     "SQL_BROADER_THAN_PYTHON",
     "calibration_target_leaf",
+    "calibration_target_name_sql",
     "is_measurable",
     "measurable_species_sql",
     "parse_model_name",
@@ -162,7 +204,7 @@ __all__ = [
 
 
 def rigid_target_sql(col: str) -> str:
-    """SQL for "this row is a fish model or the ruler".
+    """SQL for "this row is a fish model or a measurable calibration target".
 
     The `TRIM(...) <> prefix` half is not decoration. `LIKE 'Fish Model,%'`
     matches the *empty leaf* `"Fish Model,"` — a labeler selecting the parent
@@ -180,12 +222,43 @@ def rigid_target_sql(col: str) -> str:
     `parse_model_name` strips spaces only too, rather than calling bare
     `.strip()`. Both `TRIM` and the comparison behave identically on Postgres
     (prod) and SQLite (tests).
+
+    The calibration-target half is an `IN` over the literal keys of
+    `MEASURABLE_CALIBRATION_TARGETS` rather than a second `LIKE`, because that
+    branch is mixed — see that constant for why the checkerboard must stay out.
     """
+    targets = ", ".join(f"'{c}'" for c in MEASURABLE_CALIBRATION_TARGETS)
     return (
         f"(({col} LIKE '{FISH_MODEL_LIKE}' "
         f"AND TRIM({col}) <> '{FISH_MODEL_PREFIX}') "
-        f"OR {col} = '{RULER_CONTENT}')"
+        f"OR {col} IN ({targets}))"
     )
+
+
+def calibration_target_name_sql(col: str) -> str:
+    """SQL for "this `fishmodelreference.name` is a calibration target".
+
+    `fish_model_species_mislabel_suspects` asks "does this frame's length fit
+    some OTHER model better than its own label?", and negates this predicate on
+    both sides of that question. A ruler and a box are not candidate species
+    labels — nobody mislabels a grouper as a ruler — so offering one as the
+    better fit produces a relabel prompt no labeler can act on.
+
+    Latent until 2026-09-07 and then not: the smallest reference used to be
+    Purple Angel at 0.192 m, above the band that foreshortened frames of the
+    ~0.195 m models land in. The box at 0.150 m sits squarely inside it, so a
+    correctly-labelled Gray Anthias measuring 0.160 m (own error -17.9%, box
+    fit 6.7%) clears both of the view's gates and is flagged against the box.
+
+    Note this is deliberately NOT `is_provisional`. That flag means the length
+    is an estimate rather than a caliper reading, and both the column and
+    `views.KNOWN_FISH_MODELS` say in as many words not to reach for it to
+    suppress mislabel noise. The box's 0.150 m is a real measurement; the
+    reason it does not belong in that search is what it IS, not how well the
+    number is known.
+    """
+    names = ", ".join(f"'{n}'" for n in MEASURABLE_CALIBRATION_TARGETS.values())
+    return f"{col} IN ({names})"
 
 
 def measurable_species_sql(col: str) -> str:
@@ -225,16 +298,18 @@ def parse_species_names(content_of_image: str | None) -> tuple[str, str] | None:
 def parse_model_name(content_of_image: str | None) -> str | None:
     """Return the target name for a rigid known-length target, else None.
 
-    Covers `"Fish Model, <name>"` and the ruler
-    (`"Calibration Targets, Ruler"` -> `"Ruler"`). Real fish and every other
-    branch return None. An empty leaf (`"Fish Model,"` with nothing after)
+    Covers `"Fish Model, <name>"` and the measurable calibration targets
+    (`"Calibration Targets, Ruler"` -> `"Ruler"`,
+    `"Calibration Targets, Box"` -> `"Box"`). Real fish, the checkerboard, and
+    every other branch return None. An empty leaf (`"Fish Model,"` with nothing after)
     returns None — nothing to identify — matching the "skip rather than write
     a malformed row" posture of `parse_species_names`.
     """
     if not content_of_image:
         return None
-    if content_of_image.strip() == RULER_CONTENT:
-        return RULER_NAME
+    target = MEASURABLE_CALIBRATION_TARGETS.get(content_of_image.strip())
+    if target is not None:
+        return target
     if not content_of_image.startswith(FISH_MODEL_PREFIX):
         return None
     # `.strip(" ")`, not `.strip()`: the SQL guard is `TRIM(col)`, which removes
@@ -305,6 +380,7 @@ MEASURABILITY_CORPUS: tuple[tuple[str | None, bool], ...] = (
     ("Fish Model, Snook", True),
     ("Fish Model, Purple Angel", True),
     ("Calibration Targets, Ruler", True),
+    ("Calibration Targets, Box", True),
     # Shapes the taxonomy cannot emit, kept because they are where the SQL
     # approximation and the Python parser are most likely to drift apart. All
     # of these parse into junk names — that is accepted deliberately: the two
@@ -320,6 +396,9 @@ MEASURABILITY_CORPUS: tuple[tuple[str | None, bool], ...] = (
     # calibratable; it is never something stage 14 measures.
     ("Calibration Targets, E4E Checkerboard", False),
     ("Calibration Targets, Slate", False),
+    # Same branch as the ruler and the box; deliberately not a known-length
+    # target — see `MEASURABLE_CALIBRATION_TARGETS`.
+    ("Calibration Targets, E4E Checkerboard", False),
     ("Fish Model,", False),  # empty leaf — parent node, no model picked
     ("Fish Model,   ", False),  # whitespace-only leaf
     ("", False),

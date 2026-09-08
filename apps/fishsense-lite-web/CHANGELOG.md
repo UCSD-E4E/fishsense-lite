@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.12.0...fishsense-lite-web-v0.12.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **web:** throttle Label Studio requests through one shared limiter ([#796](https://github.com/UCSD-E4E/fishsense-lite/issues/796)) ([7b52d41](https://github.com/UCSD-E4E/fishsense-lite/commit/7b52d41695f09756782d8c63416b4a26713c2e31))
+
 ## [0.12.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.11.5...fishsense-lite-web-v0.12.0) (2026-09-07)
 
 

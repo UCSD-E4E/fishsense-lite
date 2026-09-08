@@ -101,8 +101,14 @@ class PerformCheckerboardCalibrationParentWorkflow:
         # no-op when the worker is already up and closes the window however
         # long staging took.
         await _dispatch.wake_data_worker()
+        # Whether the raw scratch is OURS to delete. It is, unless another run
+        # already owns the child for this dive — deleting it then would pull
+        # the `.ORF`s out from under a child that is still reading them, which
+        # is the prod dive 442 incident (2026-09-07) the `CHILD_ALREADY_RUNNING`
+        # sentinel exists to prevent.
+        owns_scratch = True
         try:
-            await _dispatch.dispatch_child(
+            dispatched = await _dispatch.dispatch_child(
                 "PerformCheckerboardCalibrationWorkflow",
                 inputs,
                 child_id=f"perform-checkerboard-calibration-{dive_id}",
@@ -110,14 +116,26 @@ class PerformCheckerboardCalibrationParentWorkflow:
                 # search per frame, two at a time, over as many as 133 frames.
                 execution_timeout=timedelta(hours=2),
             )
+            owns_scratch = dispatched is not _dispatch.CHILD_ALREADY_RUNNING
+            if not owns_scratch:
+                workflow.logger.info(
+                    "dive_id=%d already has a calibration child running; "
+                    "leaving its raw bytes alone",
+                    dive_id,
+                )
         finally:
-            # Cleanup on failure too, which the preprocess parents do not do.
-            # For them a child failure is unusual; here it is the *expected*
-            # shape of "this dive cannot be calibrated from a board" — the fit
-            # raises below `MIN_LASER_POINTS` — and the dive then stays in the
-            # cohort and is re-selected hourly until an operator intervenes.
-            # Leaving a dive's worth of `.ORF` scratch in Garage on each of
-            # those firings buys nothing: it is reproducible from the NAS, and
-            # the next firing re-stages it (cheaply, via the HEAD check) anyway.
-            await _dispatch.cleanup_raw(dive_id)
+            # Cleanup runs even when the child FAILED, which the preprocess
+            # parents do not do. For them a child failure is unusual; here it
+            # is the *expected* shape of "these frames hold no detectable
+            # board" — the fit raises below `MIN_LASER_POINTS` — and the dive
+            # then stays in the cohort and is re-selected hourly until an
+            # operator intervenes. Leaving a dive's worth of `.ORF` scratch in
+            # Garage on each of those firings buys nothing: it is reproducible
+            # from the NAS, and the next firing re-stages it cheaply via the
+            # HEAD check.
+            #
+            # A failed dispatch still leaves the scratch ours, so `owns_scratch`
+            # stays True through the raise and the cleanup happens.
+            if owns_scratch:
+                await _dispatch.cleanup_raw(dive_id)
         return inputs.dive_id

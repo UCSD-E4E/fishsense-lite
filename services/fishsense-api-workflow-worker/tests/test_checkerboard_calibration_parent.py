@@ -130,7 +130,9 @@ async def _record_child_dispatch(dive_id: int, frames: int) -> None:
         raise ValueError("insufficient checkerboard laser points (0 < 2)")
 
 
-async def _run_parent(task_queue: str, *, dive_id=488, frames=2):
+async def _run_parent(
+    task_queue: str, *, dive_id=488, frames=2, child_already_running=False
+):
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
             env.client,
@@ -143,6 +145,19 @@ async def _run_parent(task_queue: str, *, dive_id=488, frames=2):
             workflows=[_StubChildWorkflow],
             activities=[_record_child_dispatch],
         ):
+            if child_already_running:
+                # Occupy the deterministic child id, which is what makes the
+                # real dispatch raise `WorkflowAlreadyStartedError` and return
+                # the sentinel. Started on a queue NOBODY serves so it stays
+                # Running for the whole test — a workflow id is claimed
+                # namespace-wide, so it blocks the parent's dispatch regardless
+                # of which queue holds it.
+                await env.client.start_workflow(
+                    _StubChildWorkflow.run,
+                    _payload(frames),
+                    id=f"perform-checkerboard-calibration-{dive_id}",
+                    task_queue="no-worker-serves-this-queue",
+                )
             return await env.client.execute_workflow(
                 PerformCheckerboardCalibrationParentWorkflow.run,
                 id=f"wf-{task_queue}",
@@ -204,6 +219,26 @@ async def test_parent_does_not_stage_when_the_resolver_finds_no_frames():
     is the expensive way to discover a selector/resolver disagreement."""
     assert await _run_parent("test-checkerboard-no-frames", frames=0) == 488
     assert _CALLS == ["select", "resolve"]
+
+
+@pytest.mark.asyncio
+async def test_parent_leaves_the_scratch_alone_when_a_child_already_owns_it():
+    """Another run's child is still reading those `.ORF`s.
+
+    `dispatch_child` returns `CHILD_ALREADY_RUNNING` when a prior child with
+    this dive's id is still running — a manual run overlapping the schedule.
+    Cleaning up then deletes the staged raw bytes out from under it, which is
+    the prod dive 442 incident (2026-09-07): a manual stage-0.1 parent's child
+    had scheduled all 259 per-image activities when the next scheduled firing
+    swept its scratch away.
+
+    This parent's cleanup is in a `finally`, so it is *more* exposed to that
+    than the preprocess parents were — it would clean up on the
+    already-running path too.
+    """
+    await _run_parent("test-checkerboard-already-running", child_already_running=True)
+
+    assert "cleanup" not in _CALLS
 
 
 @pytest.mark.asyncio

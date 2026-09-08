@@ -1,4 +1,9 @@
 import { env } from "./env";
+import { lsFetch } from "./label-studio-limiter";
+
+// Re-exported: the backoff arithmetic moved into the shared throttle, but the
+// name is part of this module's surface.
+export { retryAfterMs } from "./label-studio-limiter";
 
 export type LabelStudioProject = {
   id: number;
@@ -49,42 +54,18 @@ function jwtLifetimeSeconds(token: string): number | null {
   }
 }
 
-/** Seconds Label Studio asked us to wait, or an exponential fallback. */
-export function retryAfterMs(response: Response, attempt: number): number {
-  const header = response.headers.get("retry-after");
-  if (header) {
-    const seconds = Number(header);
-    if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
-    const at = Date.parse(header);
-    if (Number.isFinite(at)) return Math.max(0, at - Date.now());
-  }
-  return RATE_LIMIT_BASE_MS * 2 ** attempt;
-}
-
-const RATE_LIMIT_RETRIES = 3;
-const RATE_LIMIT_BASE_MS = 750;
-
 async function refreshAccessToken(): Promise<string> {
   const url = `${env.labelStudioUrl}/api/token/refresh`;
-  const post = () =>
-    fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ refresh: env.labelStudioApiKey }),
-      cache: "no-store",
-    });
-
-  let response = await post();
-
-  // The token endpoint rate-limits too, and it was the ONLY request without
-  // backoff — the retry logic lived in `authed`, which wraps resource calls
-  // and never sees this one. So a 429 here failed the whole action outright,
-  // and it surfaced as "Accept failed: token refresh failed: 429" on a frame
-  // the labeler had already judged.
-  for (let attempt = 0; response.status === 429 && attempt < RATE_LIMIT_RETRIES; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, retryAfterMs(response, attempt)));
-    response = await post();
-  }
+  // Through the shared throttle like everything else. The token endpoint
+  // spends from the same per-account budget as the resource calls, so a
+  // refresh issued during a rate-limit window is what turns a slow page into
+  // "Accept failed: token refresh failed: 429" on a frame already judged.
+  const response = await lsFetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ refresh: env.labelStudioApiKey }),
+    cache: "no-store",
+  });
 
   if (!response.ok) {
     throw new Error(
@@ -142,11 +123,15 @@ export async function getProject(
 ): Promise<LabelStudioProject> {
   const url = `${env.labelStudioUrl}/api/projects/${id}`;
 
+  // Through the shared throttle: this is the call that was 429ing in prod.
+  // `getProjects` fetches every id at once, and a rate-limited response used
+  // to throw straight out of here -- where `getProjects` could not tell it
+  // apart from a dead legacy id and silently dropped the card.
   const attempt = async (token: string) =>
-    fetch(url, {
+    lsFetch(url, {
       headers: { Authorization: `Bearer ${token}` },
       next: { revalidate },
-    });
+    } as RequestInit);
 
   let response = await attempt(await getAccessToken());
   if (response.status === 401 || response.status === 403) {

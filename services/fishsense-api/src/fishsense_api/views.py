@@ -487,6 +487,18 @@ KNOWN_FISH_MODELS = [
     # without re-instructing labelers to click a physical 0 that the scale does
     # not print.
     {"name": "Ruler", "known_length_m": 0.3429},
+    # 0.15 m is corner to corner across the top edge of the middle band of an
+    # H-shaped DUCT-TAPE pattern on one face — NOT a box edge and not a face
+    # diagonal. The tape is the target; the box is just what it is stuck to, so
+    # the box's own geometry says nothing about this number. The span is
+    # written on the object itself in marker with arrows to both corners.
+    # Operator-supplied 2026-09-07 with a reference photo.
+    #
+    # Like the ruler it is a calibration-target leaf rather than a fish model,
+    # and like the ruler it grades through the same `Fish.name` join — see
+    # `taxonomy.MEASURABLE_CALIBRATION_TARGETS`, which is what makes it
+    # measurable at all.
+    {"name": "Box", "known_length_m": 0.15},
     # 0.310 m = 31 cm, the fork length used in a prior publication. Adopted so
     # the two agree: a reference that disagrees with an already-published number
     # turns every future comparison into something a reader reconciles by hand.
@@ -594,6 +606,28 @@ KNOWN_CALIBRATION_TARGETS = [
 PROVISIONAL_FISH_MODELS: frozenset[str] = frozenset()
 
 FISH_MODEL_NOTES = {
+    "Box": (
+        "0.150 m corner to corner across the DUCT-TAPE pattern on one face. "
+        "The tape forms an H — a vertical strip down each side joined by a "
+        "horizontal middle band — and the span is that middle band's top "
+        "edge, left corner to right corner. Operator-supplied 2026-09-07 "
+        "with a reference photo. "
+        "The landmark is the TAPE. This is NOT A BOX EDGE and not a face "
+        "diagonal, so the box's own dimensions cannot reproduce the number "
+        "and anyone who tries will read the difference as calibration error. "
+        "The convention travels with the object: '15 cm corner to corner' is "
+        "written on the face in marker with an arrow to each corner, so it is "
+        "legible in the very frame the labeler is clicking — better "
+        "provenance than any fish model has, and the reason this row does not "
+        "have to hedge about which pair of corners is meant. "
+        "A rigid calibration target rather than a fish model — no fork-vs-tip "
+        "ambiguity — so like the Ruler it grades calibration error rather "
+        "than labeling convention. "
+        "ENGINEERING HARDWARE, not a general labeling target — it is handled "
+        "by engineering and is not expected in ordinary dive frames, which is "
+        "why the tape pattern's resemblance to the printed `H-Slate` "
+        "dive-slate template is noted here rather than guarded against."
+    ),
     "Weasly Fish": (
         "Fork length 0.310 m (31 cm) — the measurement used in a PRIOR "
         "PUBLICATION, adopted here so the two agree. length_range_mm=300-310 "
@@ -768,6 +802,26 @@ FISH_MODEL_MISLABEL_SUSPECTS_VIEW_NAME = "fish_model_species_mislabel_suspects"
 # Deliberately NOT a filter on the accuracy view: a suspect frame is still a
 # real measurement until a human re-labels it in Label Studio (which is
 # authoritative — the hourly species sync overwrites the DB).
+# Calibration targets (the Ruler, the Box) are graded like models but are not
+# candidate *species* labels, so they are excluded from both sides of this
+# view's question. Nobody mislabels a grouper as a ruler, and a badly-measured
+# ruler is a calibration problem the accuracy view already reports — neither
+# direction yields a prompt a labeler can act on.
+#
+# Latent until the Box landed. The smallest reference was Purple Angel at
+# 0.192 m, above the band foreshortened frames of the ~0.195 m models fall
+# into; the Box at 0.150 m is inside it, so a correct Gray Anthias measuring
+# 0.160 m (own -17.9%, box fit 6.7%) cleared both gates and was flagged
+# against a box.
+#
+# NOT expressed as `is_provisional` — see that column: the flag means the
+# length is an estimate, and the Box's 0.150 m is a measurement. What
+# disqualifies it here is what it is, not how well its length is known.
+_NOT_A_CALIBRATION_TARGET_SQL = f"NOT {taxonomy.calibration_target_name_sql('r.name')}"
+_SUSPECT_IS_NOT_A_CALIBRATION_TARGET_SQL = (
+    f"NOT {taxonomy.calibration_target_name_sql('a.model_name')}"
+)
+
 _MISLABEL_MIN_OWN_PCT_ERROR = 15.0
 _MISLABEL_MAX_OTHER_PCT_ERROR = 10.0
 
@@ -791,6 +845,7 @@ WITH frame_fit AS (
     -- fully graded in the accuracy view — they just aren't offered as an
     -- alternative label here.
     WHERE NOT r.is_provisional
+      AND {_NOT_A_CALIBRATION_TARGET_SQL}
 )
 SELECT
     a.image_id,
@@ -808,6 +863,7 @@ SELECT
 FROM {FISH_MODEL_ACCURACY_VIEW_NAME} a
 JOIN frame_fit f ON f.image_id = a.image_id AND f.rk = 1
 WHERE f.best_fit_model <> a.model_name
+  AND {_SUSPECT_IS_NOT_A_CALIBRATION_TARGET_SQL}
   AND ABS(a.pct_error) > {_MISLABEL_MIN_OWN_PCT_ERROR}
   AND ABS(f.best_fit_pct_error) < {_MISLABEL_MAX_OTHER_PCT_ERROR}
 """

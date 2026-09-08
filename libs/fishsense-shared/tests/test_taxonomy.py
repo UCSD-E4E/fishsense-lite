@@ -26,7 +26,29 @@ def test_markers_match_the_label_studio_config():
     assert sut.FISH_MODEL_PREFIX == "Fish Model,"
     assert sut.RULER_CONTENT == "Calibration Targets, Ruler"
     assert sut.RULER_NAME == "Ruler"
+    assert sut.BOX_CONTENT == "Calibration Targets, Box"
+    assert sut.BOX_NAME == "Box"
     assert sut.SLATE_CONTENT_MARKER == "Slate, Laser on slate"
+
+
+def test_measurable_calibration_targets_is_an_allowlist_not_a_prefix():
+    """`Calibration Targets` is a mixed branch, so membership has to be named.
+
+    The ruler and the box are rigid known-length targets and measure through
+    the name-keyed path; `E4E Checkerboard` sits in the same branch and has no
+    single length a head/tail pair spans. A `LIKE 'Calibration Targets,%'`
+    rule — the shape the fish-model half uses — would sweep the checkerboard
+    in, and it would then have no `fishmodelreference` row, so the cohort
+    would offer frames `measure_fish_activity` skips forever. Hence a literal
+    allowlist, which is also what `rigid_target_sql` renders.
+    """
+    assert set(sut.MEASURABLE_CALIBRATION_TARGETS) == {
+        sut.RULER_CONTENT,
+        sut.BOX_CONTENT,
+    }
+    assert "Calibration Targets, E4E Checkerboard" not in (
+        sut.MEASURABLE_CALIBRATION_TARGETS
+    )
 
 
 # --------------------------------------------------------------------
@@ -88,6 +110,8 @@ def test_parse_species_names_returns_none_off_shape(content):
         # The ruler is a rigid known-length target like the models, so it
         # resolves through the same name-keyed path.
         ("Calibration Targets, Ruler", "Ruler"),
+        # So is the box (0.15 m), added 2026-09-07.
+        ("Calibration Targets, Box", "Box"),
     ],
 )
 def test_parse_model_name(content, expected):
@@ -102,7 +126,10 @@ def test_parse_model_name(content, expected):
         "Fish Model,",  # empty leaf — nothing to identify
         "Fish Model,   ",
         "Fish, Hogfish (Lachnolaimus maximus)",  # a real fish
-        "Calibration Targets, Slate",  # not the ruler
+        "Calibration Targets, Slate",  # not a known-length target
+        # Same branch as the ruler and the box, deliberately NOT measurable:
+        # no single span a head/tail pair marks.
+        "Calibration Targets, E4E Checkerboard",
         "Slate, Laser on slate",
     ],
 )
@@ -164,7 +191,16 @@ def test_rigid_target_sql_excludes_the_empty_leaf():
     sql = sut.rigid_target_sql("sl.content_of_image")
     assert "LIKE 'Fish Model,%'" in sql
     assert "TRIM(sl.content_of_image) <> 'Fish Model,'" in sql
-    assert "sl.content_of_image = 'Calibration Targets, Ruler'" in sql
+    assert "'Calibration Targets, Ruler'" in sql
+    assert "'Calibration Targets, Box'" in sql
+
+
+def test_rigid_target_sql_leaves_the_unmeasurable_calibration_targets_out():
+    """The checkerboard shares the branch and must not be swept in — a row the
+    cohort offers and `parse_model_name` rejects is the never-drains wedge."""
+    sql = sut.rigid_target_sql("sl.content_of_image")
+
+    assert "E4E Checkerboard" not in sql
 
 
 def test_measurable_species_sql_is_real_fish_or_rigid_target():
@@ -246,17 +282,34 @@ def test_calibration_target_leaf_reads_the_checkerboard():
     )
 
 
-def test_calibration_target_leaf_refuses_the_ruler():
-    """The ruler is the validation set, never a calibration source.
+@pytest.mark.parametrize("leaf", ["Ruler", "Box"])
+def test_calibration_target_leaf_refuses_a_measurable_target(leaf):
+    """A known-LENGTH target is a validation object, never a calibration source.
 
     Guarded by name rather than left to "no CalibrationTarget row is called
-    Ruler", for the same reason `SLATE_NOT_IN_LIST_LEAF` is guarded
-    explicitly: seeding such a row later would silently turn every ruler
-    frame in a fish dive into a calibration plane, and a fish dive
-    calibrated against a ruler held at arm's length produces confident
-    wrong lengths.
+    that", for the same reason `SLATE_NOT_IN_LIST_LEAF` is guarded explicitly:
+    seeding such a row later would silently turn every ruler frame in an
+    ordinary fish dive into a calibration plane. Calibrating from a validation
+    object would also make every accuracy number self-confirming.
     """
-    assert sut.calibration_target_leaf(["Calibration Targets", "Ruler"]) is None
+    assert sut.calibration_target_leaf(["Calibration Targets", leaf]) is None
+
+
+def test_the_two_halves_of_the_branch_do_not_overlap():
+    """`Calibration Targets` is mixed, and the split has to be exhaustive.
+
+    A leaf is either a known length to validate against or a known plane to
+    calibrate from — never both, and never neither by accident. The exclusion
+    set is DERIVED from the measurable allowlist rather than restated, so a
+    fifth leaf added to that branch lands on the safe side by default:
+    excluded from calibration until someone deliberately says otherwise,
+    rather than becoming a calibration source the moment a matching
+    `CalibrationTarget` row exists.
+    """
+    assert sut.NON_PLANAR_CALIBRATION_LEAVES == frozenset(
+        sut.MEASURABLE_CALIBRATION_TARGETS.values()
+    )
+    assert sut.CHECKERBOARD_NAME not in sut.NON_PLANAR_CALIBRATION_LEAVES
 
 
 @pytest.mark.parametrize(
@@ -302,3 +355,27 @@ def test_calibration_target_symbols_are_exported():
         "calibration_target_leaf",
     ):
         assert name in sut.__all__
+def test_calibration_target_name_sql_lists_every_target_name():
+    """The mislabel view uses this to keep calibration targets out of the
+    "which model is this really?" search.
+
+    They are not candidate species labels: nobody mislabels a grouper as a
+    ruler. Before the box existed the smallest reference was 0.192 m, so no
+    calibration target sat in the band foreshortened frames land in; the box
+    at 0.15 m does, which is what made this predicate necessary rather than
+    merely tidy.
+    """
+    sql = sut.calibration_target_name_sql("r.name")
+
+    assert "'Ruler'" in sql
+    assert "'Box'" in sql
+    assert "r.name" in sql
+
+
+def test_calibration_target_name_sql_names_no_fish_models():
+    """It must select the targets and nothing else — a fish model swept in
+    here would silently stop being offered as an alternative label."""
+    sql = sut.calibration_target_name_sql("r.name")
+
+    for model in sut.LABELED_FISH_MODELS:
+        assert f"'{model}'" not in sql
