@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { __resetTokenCache, getAccessToken, getProject, getProjects } from "./label-studio";
+import { __resetLimiter } from "./label-studio-limiter";
 
 beforeEach(() => {
   vi.stubEnv("FISHSENSE_API_URL", "http://api.test");
@@ -8,12 +9,16 @@ beforeEach(() => {
   vi.stubEnv("LABEL_STUDIO_URL", "http://ls.test");
   vi.stubEnv("LABEL_STUDIO_API_KEY", "ls-refresh-token");
   __resetTokenCache();
+  // The limiter's cooldown is module-level and shared by every request, so a
+  // case that provokes a 429 would otherwise hold back the cases after it.
+  __resetLimiter();
 });
 
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   __resetTokenCache();
+  __resetLimiter();
 });
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
@@ -122,9 +127,9 @@ describe("getProjects", () => {
     const fetchMock = vi.fn<FetchSig>();
     vi.stubGlobal("fetch", fetchMock);
 
-    const projects = await getProjects([], 60);
+    const result = await getProjects([], 60);
 
-    expect(projects).toEqual([]);
+    expect(result).toEqual({ projects: [], degraded: 0 });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -140,7 +145,7 @@ describe("getProjects", () => {
       return jsonResponse({ id, title: `project-${id}` });
     });
 
-    const projects = await getProjects([1, 2, 3], 60);
+    const { projects } = await getProjects([1, 2, 3], 60);
 
     expect(projects).toEqual([
       { id: 1, title: "project-1", isPublished: true },
@@ -150,24 +155,73 @@ describe("getProjects", () => {
     expect(maxInFlight).toBe(3);
   });
 
-  it("drops unresolvable IDs instead of failing the whole page", async () => {
+  it("drops dead IDs silently instead of failing the whole page", async () => {
     // The prod shape: fishsense-api still hands out legacy ids (57-117) from
     // the retired self-hosted instance and every one 404s. Under Promise.all
-    // one of these 500'd the entire landing page.
+    // one of these 500'd the entire landing page. A 404 really is gone, so
+    // dropping it is the whole answer and `degraded` stays 0.
     stubFetch(async (url) => {
       const id = Number(url.split("/").pop());
       if (id === 73) return new Response("gone", { status: 404, statusText: "Not Found" });
       return jsonResponse({ id, title: `project-${id}` });
     });
 
-    const projects = await getProjects([73, 274558], 60);
+    const result = await getProjects([73, 274558], 60);
 
-    expect(projects).toEqual([{ id: 274558, title: "project-274558", isPublished: true }]);
+    expect(result).toEqual({
+      projects: [{ id: 274558, title: "project-274558", isPublished: true }],
+      degraded: 0,
+    });
   });
 
   it("returns an empty list rather than throwing when every ID is dead", async () => {
     stubFetch(async () => new Response("gone", { status: 404, statusText: "Not Found" }));
 
-    await expect(getProjects([57, 73, 117], 60)).resolves.toEqual([]);
+    await expect(getProjects([57, 73, 117], 60)).resolves.toEqual({
+      projects: [],
+      degraded: 0,
+    });
+  });
+
+  it("counts an unreachable ID as degraded rather than treating it as gone", async () => {
+    // The throttle (#796) makes a 429 rare, not impossible -- and a 5xx or a
+    // dropped connection lands here too. Whatever the reason, "Label Studio
+    // would not answer" is not "this project does not exist": reporting it as
+    // absence is what rendered an empty Head/Tail section on 2026-09-07 while
+    // labelers had 45 projects of outstanding work.
+    // The status that actually bit. `retry-after: 0` spends the limiter's
+    // retry budget without real sleeps, and `__resetLimiter` in afterEach
+    // keeps the cooldown this provokes out of the following cases.
+    stubFetch(async (url) => {
+      const id = Number(url.split("/").pop());
+      if (id === 285990) {
+        return new Response("slow down", {
+          status: 429,
+          statusText: "Too Many Requests",
+          headers: { "retry-after": "0" },
+        });
+      }
+      return jsonResponse({ id, title: `project-${id}` });
+    });
+
+    const result = await getProjects([285990, 274558], 60);
+
+    expect(result.projects).toEqual([
+      { id: 274558, title: "project-274558", isPublished: true },
+    ]);
+    expect(result.degraded).toBe(1);
+  });
+
+  it("counts a transport failure as degraded too", async () => {
+    stubFetch(async (url) => {
+      const id = Number(url.split("/").pop());
+      if (id === 1) throw new TypeError("network down");
+      return jsonResponse({ id, title: `project-${id}` });
+    });
+
+    const result = await getProjects([1, 2], 60);
+
+    expect(result.projects).toHaveLength(1);
+    expect(result.degraded).toBe(1);
   });
 });

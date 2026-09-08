@@ -1,5 +1,6 @@
 import { env } from "./env";
-import { getAccessToken, retryAfterMs } from "./label-studio";
+import { getAccessToken } from "./label-studio";
+import { lsFetch } from "./label-studio-limiter";
 import type { LsRegion, LsTask } from "./triage";
 
 export type TaskPage = {
@@ -18,12 +19,10 @@ export type TaskPage = {
  * it here rather than per-caller is why nothing above this layer knows the
  * token exists.
  */
-const RATE_LIMIT_RETRIES = 3;
-
 async function authed(path: string, init: RequestInit = {}): Promise<Response> {
   const url = `${env.labelStudioUrl}${path}`;
   const send = async (token: string) =>
-    fetch(url, {
+    lsFetch(url, {
       ...init,
       headers: {
         ...(init.headers ?? {}),
@@ -32,18 +31,12 @@ async function authed(path: string, init: RequestInit = {}): Promise<Response> {
       cache: "no-store",
     });
 
-  let response = await send(await getAccessToken());
+  // 429s are handled by the shared throttle, which also holds back the
+  // requests queued behind this one. Retrying here as well would restore the
+  // amplification that throttle exists to remove.
+  const response = await send(await getAccessToken());
   if (response.status === 401 || response.status === 403) {
-    response = await send(await getAccessToken(true));
-  }
-
-  // 429 is a "come back shortly", not a failure — surfacing it aborts the
-  // whole queue load over a condition that clears on its own. Honour
-  // `Retry-After` when the server sends one; it knows the window and we do
-  // not.
-  for (let attempt = 0; response.status === 429 && attempt < RATE_LIMIT_RETRIES; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, retryAfterMs(response, attempt)));
-    response = await send(await getAccessToken());
+    return send(await getAccessToken(true));
   }
 
   return response;
