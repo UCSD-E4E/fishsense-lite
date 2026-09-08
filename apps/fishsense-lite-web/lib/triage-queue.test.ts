@@ -123,3 +123,22 @@ describe("loadQueue — projects Label Studio reports finished", () => {
     expect(listTasksMock.mock.calls.map(([id]) => id)).toEqual([200]);
   });
 });
+
+describe("the queue asks for its own kind's projects", () => {
+  /**
+   * This was hardcoded to "laser". With a second queue that is not a cosmetic
+   * bug: the head/tail tab would walk the LASER projects, judge their tasks
+   * against head/tail's rules, and report an empty queue while head/tail work
+   * sat untouched — or, worse, offer a laser task under a head/tail heading.
+   *
+   * The key doubles as the api's URL segment, so this also pins that the two
+   * vocabularies are the same string.
+   */
+  it.each(["laser", "headtail"] as const)("requests %s", async (kind) => {
+    idsMock.mockResolvedValue([]);
+
+    await loadQueue(kind);
+
+    expect(idsMock).toHaveBeenCalledWith(kind, expect.any(Number));
+  });
+});

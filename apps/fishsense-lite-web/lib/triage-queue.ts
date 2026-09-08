@@ -110,7 +110,10 @@ export async function loadQueue(
   // treating "cannot ask" as "nothing to do" reports a drained queue while
   // Label Studio is full of work, and looks identical to the legitimate empty
   // state. A failure here should reach the page and be read.
-  const outstanding = await liveProjectIds("laser", revalidate);
+  // `kindKey`, not a literal: the key doubles as the api's URL segment, and
+  // hardcoding "laser" here would have made a second queue silently walk the
+  // laser projects while labelling itself head/tail.
+  const outstanding = await liveProjectIds(kindKey, revalidate);
   if (outstanding.length === 0) {
     return { items: [], scanned: 0, projects: [], notWalked: 0 };
   }
