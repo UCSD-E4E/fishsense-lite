@@ -9,6 +9,8 @@ dive, and that the fit refuses the same cases stage 13 refuses.
 
 from __future__ import annotations
 
+import logging
+
 from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
@@ -277,3 +279,78 @@ def test_the_threshold_is_the_stage_13_one():
     )
 
     assert fit_module.MIN_LASER_POINTS is stage13.MIN_LASER_POINTS
+
+
+# ---------- the skip tally ----------
+#
+# A dive fitted from half its frames and one fitted from all of them look
+# identical afterwards, and the first is telling you something. Same reason
+# the laser-depth stage counts `skipped_invalid_geometry`.
+
+
+@pytest.mark.asyncio
+async def test_the_fit_tallies_why_frames_were_dropped(monkeypatch, caplog):
+    """The reasons reach the log, not just the count."""
+    fs = MagicMock()
+    fs.__aenter__ = AsyncMock(return_value=fs)
+    fs.__aexit__ = AsyncMock(return_value=None)
+    fs.dives = MagicMock()
+    fs.dives.put_laser_extrinsics = AsyncMock(return_value=7)
+    monkeypatch.setattr(fit_module, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(fit_module, "_calibrate_laser", _fake_calibrate_laser)
+    monkeypatch.setattr(fit_module, "check_fit_self_consistency", lambda *a, **k: None)
+
+    def _skipped(image_id: int, reason: str) -> CheckerboardObservation:
+        return CheckerboardObservation(
+            image_id=image_id,
+            point=None,
+            laser_x=1.0,
+            laser_y=1.0,
+            skip_reason=reason,
+        )
+
+    payload = _fit_input(
+        [
+            _observation(100, [0.0, 0.0, 1.40]),
+            _observation(101, [0.0, 0.0, 1.60], laser_x=620.0),
+            _skipped(102, "dot_off_board"),
+            _skipped(103, "dot_off_board"),
+            _skipped(104, "no_usable_board"),
+        ]
+    )
+
+    with caplog.at_level(logging.INFO):
+        result = await ActivityEnvironment().run(
+            fit_module.fit_checkerboard_laser_extrinsics, payload
+        )
+
+    assert result == 7
+    logged = " ".join(r.getMessage() for r in caplog.records)
+    assert "usable=2 of 5" in logged
+    assert "'dot_off_board': 2" in logged
+    assert "'no_usable_board': 1" in logged
+
+
+@pytest.mark.asyncio
+async def test_the_refusal_says_why_the_frames_went():
+    """A dive that falls short must not just say "not enough points".
+
+    The remedy differs entirely by reason: every frame `dot_off_board` means
+    the laser was not on the board and the capture is the problem, while
+    `no_usable_board` means the board was not found and the target link or the
+    frames are. Without the tally an operator sees the same message for both.
+    """
+    payload = _fit_input(
+        [
+            _observation(100, [0.0, 0.0, 1.4]),
+            CheckerboardObservation(
+                image_id=101, point=None, laser_x=1.0, laser_y=1.0,
+                skip_reason="dot_off_board",
+            ),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="dot_off_board"):
+        await ActivityEnvironment().run(
+            fit_module.fit_checkerboard_laser_extrinsics, payload
+        )

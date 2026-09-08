@@ -196,6 +196,13 @@ class CheckerboardObservation(BaseModel):
     laser_y: float
     detected_rows: Optional[int] = None
     detected_cols: Optional[int] = None
+    # Why the frame produced no point, for the per-dive tally. Absent on a
+    # usable observation. Counted rather than merely logged because these
+    # populations are otherwise invisible: a dive fitted from half its frames
+    # and a dive fitted from all of them look identical afterwards, and the
+    # first one is telling you something (see `skipped_invalid_geometry` in
+    # the laser-depth stage, which exists for the same reason).
+    skip_reason: Optional[str] = None
 
 
 class PredictLaserImage(BaseModel):

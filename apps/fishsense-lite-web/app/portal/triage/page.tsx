@@ -1,9 +1,7 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { auth } from "@/auth";
-import { isPortalAuthorized } from "@/lib/authz";
 import { QUEUE_KINDS } from "@/lib/triage";
 import { loadQueue } from "@/lib/triage-queue";
+import { requirePortalUser } from "../guard";
 import { TriageClient } from "./triage-client";
 
 export const dynamic = "force-dynamic";
@@ -26,13 +24,7 @@ export default async function TriagePage({
 }: {
   searchParams: Promise<{ kind?: string | string[] }>;
 }) {
-  const session = await auth();
-  if (!session?.user) {
-    redirect(`/api/auth/signin?callbackUrl=${encodeURIComponent("/portal/triage")}`);
-  }
-  if (!isPortalAuthorized(session)) {
-    redirect("/portal");
-  }
+  await requirePortalUser("/portal/triage");
 
   const kind = resolveKind((await searchParams).kind);
 
