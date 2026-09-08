@@ -2,6 +2,45 @@
 
 <!-- version list -->
 
+## [2.2.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.1.0...fishsense-api-workflow-worker-v2.2.0) (2026-09-07)
+
+
+### Features
+
+* add Box as a measurable species calibration target ([#795](https://github.com/UCSD-E4E/fishsense-lite/issues/795)) ([d57a65f](https://github.com/UCSD-E4E/fishsense-lite/commit/d57a65f07bef0eb74a70dde613a38e2af8e8bc95))
+
+## [2.1.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.0.2...fishsense-api-workflow-worker-v2.1.0) (2026-09-07)
+
+
+### Features
+
+* model-assisted head/tail labeling (SAM 3.1 on a laser-centred crop) ([#787](https://github.com/UCSD-E4E/fishsense-lite/issues/787)) ([7720404](https://github.com/UCSD-E4E/fishsense-lite/commit/77204040d8877a1b24beba62c41a53cb66c54cf9))
+
+## [2.0.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.0.1...fishsense-api-workflow-worker-v2.0.2) (2026-09-07)
+
+
+### Bug Fixes
+
+* a firing that dispatched nothing must not clean up after the run that did ([#784](https://github.com/UCSD-E4E/fishsense-lite/issues/784)) ([02c274f](https://github.com/UCSD-E4E/fishsense-lite/commit/02c274fc9d34c1b712fae3655273bc54bfdc0eaa))
+
+## [2.0.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.0.0...fishsense-api-workflow-worker-v2.0.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* close five ways the reprocess flag misbehaves ([#775](https://github.com/UCSD-E4E/fishsense-lite/issues/775)) ([#777](https://github.com/UCSD-E4E/fishsense-lite/issues/777)) ([ccdaccc](https://github.com/UCSD-E4E/fishsense-lite/commit/ccdaccc7dd058351ae4483f78bcb479a1d2fcce7))
+
+## [2.0.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.59.0...fishsense-api-workflow-worker-v2.0.0) (2026-09-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** `RawImage`'s default decode changed (use `DecodeConfig.production()` for the old chain), and `set_laser_needs_reprocess` now flags only incomplete labels by default (pass `only_incomplete=False` for the old wholesale behaviour).
+
+### Features
+
+* **api:** adopt fishsense-core 4.0.0 and honour needs-reprocess in every stage ([#760](https://github.com/UCSD-E4E/fishsense-lite/issues/760)) ([d64a5bd](https://github.com/UCSD-E4E/fishsense-lite/commit/d64a5bd55128c8c8123808dc908ddc90a469728c))
+
 ## [1.59.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.58.2...fishsense-api-workflow-worker-v1.59.0) (2026-09-05)
 
 

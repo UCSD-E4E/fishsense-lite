@@ -41,6 +41,9 @@ from datetime import timedelta
 from fishsense_shared import PreprocessLaserImagesInput
 from temporalio import workflow
 
+from fishsense_api_workflow_worker.activities.reprocess_scope import (
+    ClearReprocessFlagsInput,
+)
 from fishsense_api_workflow_worker.workflows import _dispatch
 
 
@@ -76,19 +79,51 @@ class PreprocessLaserImagesParentWorkflow:
         )
 
         if not inputs.image_checksums:
+            # A flag that reached no image still has to come down. It is the
+            # one term in the cohort predicate that does not go false on its
+            # own, so leaving it up re-selects this dive every hour forever,
+            # re-staging its raw `.ORF`s from the NAS and starving every
+            # higher-id dive behind it. Losing the operator's request is the
+            # lesser harm -- it can be raised again, a wedge cannot be undone
+            # without an operator noticing it -- so it is lowered and logged.
+            # Stage 0.1 was the only preprocess parent missing this backstop.
+            workflow.logger.warning(
+                "reprocess flag resolved to no work; lowering it dive_id=%d",
+                dive_id,
+            )
+            await _dispatch.run_sdk_activity(
+                "clear_laser_reprocess_flags_activity",
+                ClearReprocessFlagsInput(dive_id=dive_id),
+            )
             return inputs.dive_id
 
         await _dispatch.wake_data_worker()
         await _dispatch.stage_raw(dive_id)
-        await _dispatch.dispatch_child(
+        dispatched = await _dispatch.dispatch_child(
             "PreprocessLaserImagesWorkflow",
             inputs,
             child_id=f"preprocess-laser-{dive_id}",
             execution_timeout=timedelta(hours=1),
         )
+        if dispatched is _dispatch.CHILD_ALREADY_RUNNING:
+            # Another run owns that child and is reading the raw scratch this
+            # firing would delete. It will clean up, and it will clear the
+            # flags for the frames it actually redrew.
+            workflow.logger.info(
+                "dive_id=%d already has a child running; leaving its raw bytes "
+                "and reprocess flags alone",
+                dive_id,
+            )
+            return inputs.dive_id
+
         await _dispatch.cleanup_raw(dive_id)
+        # Scoped to what this run actually redrew. The child can run for two
+        # hours, so an unscoped clear would silently discard a flag raised
+        # while it was working -- a request that redrew nothing, lost with no
+        # error. Anything flagged since stays flagged for the next firing.
         await _dispatch.run_sdk_activity(
-            "clear_laser_reprocess_flags_activity", dive_id
+            "clear_laser_reprocess_flags_activity",
+            ClearReprocessFlagsInput(dive_id=dive_id, checksums=inputs.image_checksums),
         )
 
         return inputs.dive_id

@@ -18,6 +18,11 @@ from fishsense_shared.laser_predictor import (
     LASER_PREDICTOR_VERSION,
     laser_model_version_tag,
 )
+from fishsense_shared.headtail_predictor import (
+    HEADTAIL_CROP_HEIGHT,
+    HEADTAIL_CROP_WIDTH,
+    HEADTAIL_PREDICTOR_VERSION,
+)
 from fishsense_shared.laser_region import (
     DEFAULT_LASER_BBOX,
     LASER_REGION_POLYGON,
@@ -48,6 +53,7 @@ from fishsense_shared.preprocess_contracts import (
     PreprocessLaserImagesInput,
     PreprocessSlateImagesInput,
     PreprocessSpeciesImagesInput,
+    SpeciesClusterMember,
     SlatePredictionResult,
 )
 from fishsense_shared.task_queues import (
@@ -68,6 +74,9 @@ __all__ = [
     "GATE_EXECUTION_TIMEOUT",
     "GATE_QUEUE_WAIT_TIMEOUT",
     "DEFAULT_LASER_BBOX",
+    "HEADTAIL_CROP_HEIGHT",
+    "HEADTAIL_CROP_WIDTH",
+    "HEADTAIL_PREDICTOR_VERSION",
     "LASER_PREDICTOR_VERSION",
     "laser_model_version_tag",
     "LASER_REGION_POLYGON",
@@ -97,6 +106,7 @@ __all__ = [
     "PreprocessLaserImagesInput",
     "PreprocessSlateImagesInput",
     "PreprocessSpeciesImagesInput",
+    "SpeciesClusterMember",
     "SlatePredictionResult",
     "build_tls_config",
     "configure_log_handler",

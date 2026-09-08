@@ -1,4 +1,4 @@
-import type { ActiveProjects } from "./active-projects";
+import type { ProjectsByKind } from "./active-projects";
 import type { StaticLink } from "./static-links";
 
 // User-facing base for Label Studio project links. Derived from the LS
@@ -24,7 +24,7 @@ export type Section = {
   links: SectionLink[];
 };
 
-const LABELING_KINDS: { key: keyof ActiveProjects; title: string }[] = [
+const LABELING_KINDS: { key: keyof ProjectsByKind; title: string }[] = [
   { key: "laser", title: "Laser Labeling" },
   { key: "headtail", title: "Head/Tail Labeling" },
   { key: "species", title: "Species Labeling" },
@@ -32,7 +32,7 @@ const LABELING_KINDS: { key: keyof ActiveProjects; title: string }[] = [
 ];
 
 export function buildSections(
-  active: ActiveProjects,
+  active: ProjectsByKind,
   staticLinks: { results: StaticLink[]; admin: StaticLink[] },
 ): Section[] {
   const sections: Section[] = [];

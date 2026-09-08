@@ -98,10 +98,31 @@ def test_build_task_emits_dual_image_and_img_keys(monkeypatch):
     assert not task["predictions"]
 
 
+class _StubPrediction:  # pylint: disable=too-many-instance-attributes
+    """Minimal `HeadTailPrediction` stand-in.
+
+    Defaults to an *abstention*: it passes populate's prediction gate (the
+    detector visited the image) while seeding no keypoints, so these tests keep
+    asserting task import and supersede behaviour rather than annotation
+    content. Annotation content has its own file.
+    """
+
+    def __init__(self, image_id, status="no_detections"):
+        self.image_id = image_id
+        self.status = status
+        self.head_x = self.head_y = self.tail_x = self.tail_y = None
+        self.width = self.height = None
+        self.silhouette_ratio = None
+        self.rejected_low_confidence = False
+        self.checkpoint = None
+        self.core_version = None
+
+
 def _make_fs_client(
     laser_labels: List[LaserLabel],
     existing_headtail: List[HeadTailLabel],
     images_by_id: dict,
+    predictions=None,
 ):
     fs = MagicMock()
     fs.__aenter__ = AsyncMock(return_value=fs)
@@ -117,6 +138,11 @@ def _make_fs_client(
     fs.labels.get_laser_labels = AsyncMock(return_value=laser_labels)
     fs.labels.get_headtail_labels = AsyncMock(return_value=existing_headtail)
     fs.labels.put_headtail_label = AsyncMock()
+    # Populate is prediction-gated, so by default every candidate counts as
+    # already visited; a test that cares passes its own list.
+    if predictions is None:
+        predictions = [_StubPrediction(image_id) for image_id in images_by_id]
+    fs.labels.get_headtail_predictions = AsyncMock(return_value=predictions)
     return fs
 
 
@@ -335,6 +361,115 @@ async def test_defers_images_whose_jpeg_is_not_in_garage(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_deferred_image_keeps_its_live_row_in_this_project(monkeypatch):
+    """A deferral must not retire an image's EXISTING live row.
+
+    The JPEG and prediction gates both drop an image from `targets`. Keying
+    the same-project supersede exemption on `targets` therefore dead-lettered
+    rows whose LS task an earlier run had already imported and which are still
+    in a labeler's queue -- and because
+    `GET /labels/headtail/label-studio-project-ids` filters
+    `superseded == False`, that erased the whole project from the landing page
+    while its work was outstanding. Prod 2026-09-07: project 285990.
+
+    The exemption is keyed on *candidates* (laser-valid, not yet completed),
+    so a gate that says "not yet" defers the import and nothing else.
+    """
+    laser = [_laser(1), _laser(2)]
+    images_by_id = {1: _image(1, "a"), 2: _image(2, "b")}
+    existing = [
+        _headtail_label(1, completed=False, has_id=True),
+        _headtail_label(2, completed=False, has_id=True),
+    ]
+
+    fs = _make_fs_client(laser, existing, images_by_id)
+    ls = _make_ls_client(returned_task_ids=[6001])
+
+    class _Store:
+        async def has_processed_jpeg(self, folder, checksum):
+            assert folder == sut.HEADTAIL_FOLDER
+            return checksum == "a"  # image 2's JPEG is not there yet
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+    store = _Store()
+    monkeypatch.setattr(sut, "open_object_store_client", lambda: store)
+
+    await ActivityEnvironment().run(
+        sut.populate_headtail_label_studio_project_activity, 42, 71
+    )
+
+    written = [c.args[1] for c in fs.labels.put_headtail_label.await_args_list]
+    superseded = {w.image_id for w in written if w.id is not None and w.superseded}
+    assert 2 not in superseded
+
+
+@pytest.mark.asyncio
+async def test_an_unpredicted_image_keeps_its_live_row(monkeypatch):
+    """Same rule for the prediction gate: 'the detector hasn't been here yet'
+    is not 'this task is stale'."""
+    laser = [_laser(1), _laser(2)]
+    images_by_id = {1: _image(1, "a"), 2: _image(2, "b")}
+    existing = [
+        _headtail_label(1, completed=False, has_id=True),
+        _headtail_label(2, completed=False, has_id=True),
+    ]
+
+    # Only image 1 has been predicted.
+    fs = _make_fs_client(
+        laser, existing, images_by_id, predictions=[_StubPrediction(1)]
+    )
+    ls = _make_ls_client(returned_task_ids=[6002])
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    await ActivityEnvironment().run(
+        sut.populate_headtail_label_studio_project_activity, 42, 71
+    )
+
+    written = [c.args[1] for c in fs.labels.put_headtail_label.await_args_list]
+    superseded = {w.image_id for w in written if w.id is not None and w.superseded}
+    assert 2 not in superseded
+
+
+@pytest.mark.asyncio
+async def test_all_images_deferred_does_not_wipe_the_project(monkeypatch):
+    """Whole-dive version: every JPEG late -> `targets` empty -> the supersede
+    pass (which runs even when nothing imported) retired every pending row for
+    the dive, emptying the Head/Tail section of the landing page."""
+    laser = [_laser(1), _laser(2)]
+    images_by_id = {1: _image(1, "a"), 2: _image(2, "b")}
+    existing = [
+        _headtail_label(1, completed=False, has_id=True),
+        _headtail_label(2, completed=False, has_id=True),
+    ]
+
+    fs = _make_fs_client(laser, existing, images_by_id)
+    ls = _make_ls_client(returned_task_ids=[])
+
+    class _Store:
+        async def has_processed_jpeg(self, folder, _checksum):
+            assert folder == sut.HEADTAIL_FOLDER
+            return False  # nothing rendered yet for this dive
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+    store = _Store()
+    monkeypatch.setattr(sut, "open_object_store_client", lambda: store)
+
+    await ActivityEnvironment().run(
+        sut.populate_headtail_label_studio_project_activity, 42, 71
+    )
+
+    written = [c.args[1] for c in fs.labels.put_headtail_label.await_args_list]
+    superseded = {w.image_id for w in written if w.id is not None and w.superseded}
+    assert not superseded, (
+        f"deferred images dead-lettered every pending row: {sorted(superseded)}"
+    )
+
+
+@pytest.mark.asyncio
 async def test_legacy_other_project_rows_are_superseded_even_when_refreshed(monkeypatch):
     """A legacy-project row must be dead-lettered even if this run re-imported
     its image.
@@ -376,3 +511,32 @@ async def test_legacy_other_project_rows_are_superseded_even_when_refreshed(monk
     assert [w.label_studio_project_id for w in superseded] == [66], (
         "only the legacy-project row should be dead-lettered"
     )
+
+
+@pytest.mark.asyncio
+async def test_unpredicted_images_are_deferred(monkeypatch):
+    """Populate must not seed a sentinel row before the detector has run.
+
+    The predict cohort requires "no live head/tail label", so an image
+    populated first would leave that cohort permanently and never be predicted
+    — the same starvation the laser side hit on dive 84.
+    """
+    laser = [_laser(1), _laser(2)]
+    images_by_id = {1: _image(1, "a"), 2: _image(2, "b")}
+
+    # Only image 2 has been visited by the detector.
+    fs = _make_fs_client(
+        laser, [], images_by_id, predictions=[_StubPrediction(2)]
+    )
+    ls = _make_ls_client(returned_task_ids=[3001])
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    n = await ActivityEnvironment().run(
+        sut.populate_headtail_label_studio_project_activity, 42, 71
+    )
+
+    assert n == 1, "only the predicted image should be seeded"
+    written = [c.args[1] for c in fs.labels.put_headtail_label.await_args_list]
+    assert [row.image_id for row in written] == [2]

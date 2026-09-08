@@ -86,8 +86,38 @@ _VALIDATORS = [
     Validator("object_store.bucket", required=True, cast=str),
     Validator("object_store.labels_bucket", cast=str),
     Validator("object_store.labels_prefix", cast=str, default=""),
+    # `models_bucket` = model weights (read here, by the head/tail predict
+    # stage). Its own bucket because weights are durable, are written by an
+    # operator rather than by any worker, and want a narrower grant than
+    # scratch. Defaults to `bucket`; `models_prefix` defaults to "" and is
+    # only needed if the bucket is shared with another tenant.
+    Validator("object_store.models_bucket", cast=str),
+    Validator("object_store.models_prefix", cast=str, default=""),
     Validator("object_store.access_key", required=True, cast=str),
     Validator("object_store.secret_key", required=True, cast=str),
+    # SAM3 checkpoint, for the head/tail predict stage.
+    #
+    # Defaults rather than `required=True` on purpose: Dynaconf validates every
+    # Validator on first attribute access of `settings`, not lazily per key, so
+    # requiring these would make the cpu-role worker and every test that
+    # imports any activity module plumb SAM3 config it never uses.
+    #
+    # `cache_dir` must sit on the `cache` volume the Deployments mount — the
+    # container filesystem is ephemeral and this Deployment scales to zero, so
+    # anything cached elsewhere is re-downloaded on every cold start.
+    #
+    # `model_version` / `checkpoint_filename` name the SAM 3.1 release, which
+    # is the checkpoint that was uploaded. Upstream publishes two, and they are
+    # not interchangeable: `facebook/sam3` ships `sam3.pt`, `facebook/sam3.1`
+    # ships `sam3.1_multiplex.pt`. Both load through `build_sam3_image_model`,
+    # whose `_load_checkpoint` uses `strict=False` and merely *prints* missing
+    # keys — so naming the wrong one yields a partially-initialised model that
+    # segments badly and raises nothing. Change these only alongside a
+    # re-measurement and a `HEADTAIL_PREDICTOR_VERSION` bump.
+    Validator("sam3.cache_dir", cast=str, default="/e4efs/cache/sam3"),
+    Validator("sam3.model_name", cast=str, default="sam3"),
+    Validator("sam3.model_version", cast=str, default="3.1"),
+    Validator("sam3.checkpoint_filename", cast=str, default="sam3.1_multiplex.pt"),
     # --- laser auto-accept gate -------------------------------------------
     # Which of the laser detector's predictions may skip human review. Every
     # knob lives here rather than in code because the two operations that

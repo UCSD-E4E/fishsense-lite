@@ -1,12 +1,14 @@
 """Client for interacting with label-related endpoints of the Fishsense API."""
 
-from typing import List
+from typing import List, Optional
+from urllib.parse import quote
 
 from fishsense_api_sdk.clients.client_base import ClientBase
 from fishsense_api_sdk.models.dive_slate_label import DiveSlateLabel
 from fishsense_api_sdk.models.headtail_label import HeadTailLabel
 from fishsense_api_sdk.models.label_studio_sync_cursor import LabelStudioSyncCursor
 from fishsense_api_sdk.models.laser_label import LaserLabel
+from fishsense_api_sdk.models.head_tail_prediction import HeadTailPrediction
 from fishsense_api_sdk.models.laser_prediction import LaserPrediction
 from fishsense_api_sdk.models.slate_prediction import SlatePrediction
 from fishsense_api_sdk.models.species_label import SpeciesLabel
@@ -298,34 +300,46 @@ class LabelClient(ClientBase):
 
         raise NotImplementedError("Fetching without a parameter is not supported")
 
-    async def set_laser_needs_reprocess(self, dive_id: int) -> int:
+    async def set_laser_needs_reprocess(
+        self, dive_id: int, only_incomplete: bool = True
+    ) -> int:
         """Flag a dive's laser labels so stage 0.1 redraws its overlay JPEGs.
 
-        Puts the dive back in the stage-0.1 cohort even though every image
-        already carries a label row. Use after changing what the overlay
-        draws; the JPEGs are rewritten at the same object-store keys, which
-        Label Studio presigns at serve time, so existing tasks pick the new
-        image up without a re-import.
+        Puts the dive back in the stage 0.1 cohort even though its images already
+        carry label rows. The JPEGs are rewritten at the same object-store keys
+        (`preprocess_jpeg/<checksum>.JPG`), which Label Studio presigns at serve
+        time, so existing tasks pick the new image up without a re-import and
+        without losing labels already on them.
 
         Args:
             dive_id (int): The dive to flag.
+            only_incomplete (bool): Flag only labels nobody has answered yet.
+                Defaults to True — redrawing a frame that is already labelled
+                costs NAS staging and rectification and buys nothing. Pass
+                False only when the completed frames genuinely need redrawing.
 
         Returns:
             int: The number of laser labels flagged.
         """
         response = await self._put(
             f"/api/v1/dives/{dive_id}/labels/laser/needs-reprocess"
+            f"?only_incomplete={str(only_incomplete).lower()}"
         )
         response.raise_for_status()
 
         return response.json()
 
-    async def clear_laser_needs_reprocess(self, dive_id: int) -> int:
-        """Lower the redraw flag once the dive's JPEGs have been regenerated.
+    async def clear_laser_needs_reprocess(
+        self, dive_id: int, checksums: List[str] | None = None
+    ) -> int:
+        """Lower the redraw flag once the dive's laser JPEGs are regenerated.
 
-        Called by the stage-0.1 parent after its data-worker child completes.
-        A dive that was never flagged returns 0 rather than erroring, so this
-        is safe to call unconditionally on every firing.
+        Called by the stage 0.1 parent after its data-worker child completes.
+        Clears every canonical flag regardless of completion — a label answered
+        between the flag going up and the redraw finishing must not keep its
+        flag raised, or the dive never leaves the cohort. A dive that was never
+        flagged returns 0 rather than erroring, so this is safe to call
+        unconditionally on every firing.
 
         Args:
             dive_id (int): The dive to clear.
@@ -333,9 +347,196 @@ class LabelClient(ClientBase):
         Returns:
             int: The number of laser labels cleared.
         """
-        response = await self._delete(
-            f"/api/v1/dives/{dive_id}/labels/laser/needs-reprocess"
+        path = f"/api/v1/dives/{dive_id}/labels/laser/needs-reprocess"
+        if checksums is not None:
+            # Repeated `checksums=` params: an empty list must still reach the
+            # server as an explicit, empty scope, so it cannot be folded into
+            # "no query string" -- that would clear the whole dive.
+            query = "&".join(f"checksums={quote(c)}" for c in checksums)
+            # An empty list still has to arrive as a scope. With no query
+            # string at all the server reads `None` and clears the whole dive
+            # -- the opposite of what an empty scope means -- so send a single
+            # empty value, which matches no checksum and therefore clears
+            # nothing.
+            path = f"{path}?{query}" if query else f"{path}?checksums="
+        response = await self._delete(path)
+        response.raise_for_status()
+
+        return response.json()
+
+    async def set_species_needs_reprocess(
+        self, dive_id: int, only_incomplete: bool = True
+    ) -> int:
+        """Flag a dive's species labels so stage 2 redraws its overlay JPEGs.
+
+        Puts the dive back in the stage 2 cohort even though its images already
+        carry label rows. The JPEGs are rewritten at the same object-store keys
+        (`preprocess_groups_jpeg/<checksum>.JPG`), which Label Studio presigns at serve
+        time, so existing tasks pick the new image up without a re-import and
+        without losing labels already on them.
+
+        Args:
+            dive_id (int): The dive to flag.
+            only_incomplete (bool): Flag only labels nobody has answered yet.
+                Defaults to True — redrawing a frame that is already labelled
+                costs NAS staging and rectification and buys nothing. Pass
+                False only when the completed frames genuinely need redrawing.
+
+        Returns:
+            int: The number of species labels flagged.
+        """
+        response = await self._put(
+            f"/api/v1/dives/{dive_id}/labels/species/needs-reprocess"
+            f"?only_incomplete={str(only_incomplete).lower()}"
         )
+        response.raise_for_status()
+
+        return response.json()
+
+    async def clear_species_needs_reprocess(
+        self, dive_id: int, checksums: List[str] | None = None
+    ) -> int:
+        """Lower the redraw flag once the dive's species JPEGs are regenerated.
+
+        Called by the stage 2 parent after its data-worker child completes.
+        Clears every canonical flag regardless of completion — a label answered
+        between the flag going up and the redraw finishing must not keep its
+        flag raised, or the dive never leaves the cohort. A dive that was never
+        flagged returns 0 rather than erroring, so this is safe to call
+        unconditionally on every firing.
+
+        Args:
+            dive_id (int): The dive to clear.
+
+        Returns:
+            int: The number of species labels cleared.
+        """
+        path = f"/api/v1/dives/{dive_id}/labels/species/needs-reprocess"
+        if checksums is not None:
+            # Repeated `checksums=` params: an empty list must still reach the
+            # server as an explicit, empty scope, so it cannot be folded into
+            # "no query string" -- that would clear the whole dive.
+            query = "&".join(f"checksums={quote(c)}" for c in checksums)
+            path = f"{path}?{query}" if query else f"{path}?checksums="
+        response = await self._delete(path)
+        response.raise_for_status()
+
+        return response.json()
+
+    async def set_headtail_needs_reprocess(
+        self, dive_id: int, only_incomplete: bool = True
+    ) -> int:
+        """Flag a dive's headtail labels so stage 5.1 redraws its overlay JPEGs.
+
+        Puts the dive back in the stage 5.1 cohort even though its images already
+        carry label rows. The JPEGs are rewritten at the same object-store keys
+        (`preprocess_headtail_jpeg/<checksum>.JPG`), which Label Studio presigns at serve
+        time, so existing tasks pick the new image up without a re-import and
+        without losing labels already on them.
+
+        Args:
+            dive_id (int): The dive to flag.
+            only_incomplete (bool): Flag only labels nobody has answered yet.
+                Defaults to True — redrawing a frame that is already labelled
+                costs NAS staging and rectification and buys nothing. Pass
+                False only when the completed frames genuinely need redrawing.
+
+        Returns:
+            int: The number of headtail labels flagged.
+        """
+        response = await self._put(
+            f"/api/v1/dives/{dive_id}/labels/headtail/needs-reprocess"
+            f"?only_incomplete={str(only_incomplete).lower()}"
+        )
+        response.raise_for_status()
+
+        return response.json()
+
+    async def clear_headtail_needs_reprocess(
+        self, dive_id: int, checksums: List[str] | None = None
+    ) -> int:
+        """Lower the redraw flag once the dive's headtail JPEGs are regenerated.
+
+        Called by the stage 5.1 parent after its data-worker child completes.
+        Clears every canonical flag regardless of completion — a label answered
+        between the flag going up and the redraw finishing must not keep its
+        flag raised, or the dive never leaves the cohort. A dive that was never
+        flagged returns 0 rather than erroring, so this is safe to call
+        unconditionally on every firing.
+
+        Args:
+            dive_id (int): The dive to clear.
+
+        Returns:
+            int: The number of headtail labels cleared.
+        """
+        path = f"/api/v1/dives/{dive_id}/labels/headtail/needs-reprocess"
+        if checksums is not None:
+            # Repeated `checksums=` params: an empty list must still reach the
+            # server as an explicit, empty scope, so it cannot be folded into
+            # "no query string" -- that would clear the whole dive.
+            query = "&".join(f"checksums={quote(c)}" for c in checksums)
+            path = f"{path}?{query}" if query else f"{path}?checksums="
+        response = await self._delete(path)
+        response.raise_for_status()
+
+        return response.json()
+
+    async def set_dive_slate_needs_reprocess(
+        self, dive_id: int, only_incomplete: bool = True
+    ) -> int:
+        """Flag a dive's dive-slate labels so stage 9 redraws its overlay JPEGs.
+
+        Puts the dive back in the stage 9 cohort even though its images already
+        carry label rows. The JPEGs are rewritten at the same object-store keys
+        (`preprocess_slate_images_jpeg/<checksum>.JPG`), which Label Studio presigns at serve
+        time, so existing tasks pick the new image up without a re-import and
+        without losing labels already on them.
+
+        Args:
+            dive_id (int): The dive to flag.
+            only_incomplete (bool): Flag only labels nobody has answered yet.
+                Defaults to True — redrawing a frame that is already labelled
+                costs NAS staging and rectification and buys nothing. Pass
+                False only when the completed frames genuinely need redrawing.
+
+        Returns:
+            int: The number of dive-slate labels flagged.
+        """
+        response = await self._put(
+            f"/api/v1/dives/{dive_id}/labels/dive-slate/needs-reprocess"
+            f"?only_incomplete={str(only_incomplete).lower()}"
+        )
+        response.raise_for_status()
+
+        return response.json()
+
+    async def clear_dive_slate_needs_reprocess(
+        self, dive_id: int, checksums: List[str] | None = None
+    ) -> int:
+        """Lower the redraw flag once the dive's dive-slate JPEGs are regenerated.
+
+        Called by the stage 9 parent after its data-worker child completes.
+        Clears every canonical flag regardless of completion — a label answered
+        between the flag going up and the redraw finishing must not keep its
+        flag raised, or the dive never leaves the cohort. A dive that was never
+        flagged returns 0 rather than erroring, so this is safe to call
+        unconditionally on every firing.
+
+        Args:
+            dive_id (int): The dive to clear.
+
+        Returns:
+            int: The number of dive-slate labels cleared.
+        """
+        path = f"/api/v1/dives/{dive_id}/labels/dive-slate/needs-reprocess"
+        if checksums is not None:
+            # Repeated `checksums=` params: an empty list must still reach the
+            # server as an explicit, empty scope, so it cannot be folded into
+            # "no query string" -- that would clear the whole dive.
+            query = "&".join(f"checksums={quote(c)}" for c in checksums)
+            path = f"{path}?{query}" if query else f"{path}?checksums="
+        response = await self._delete(path)
         response.raise_for_status()
 
         return response.json()
@@ -422,6 +623,55 @@ class LabelClient(ClientBase):
         response.raise_for_status()
         json = response.json()
         return [LaserPrediction.model_validate(row) for row in (json or [])]
+
+    async def put_headtail_prediction(
+        self, image_id: int, prediction: HeadTailPrediction
+    ) -> int:
+        """Upsert the model's head/tail prediction for an image.
+
+        Args:
+            image_id (int): The image the prediction is for.
+            prediction (HeadTailPrediction): The predicted snout/fork keypoints.
+
+        Returns:
+            int: The id of the upserted prediction row.
+        """
+        response = await self._put(
+            f"/api/v1/images/{image_id}/headtail-prediction/",
+            json=prediction.model_dump(exclude_unset=True, mode="json"),
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def get_headtail_prediction(
+        self, image_id: int
+    ) -> Optional[HeadTailPrediction]:
+        """Get the model's head/tail prediction for one image, if any.
+
+        Args:
+            image_id (int): The image to retrieve the prediction for.
+
+        Returns:
+            Optional[HeadTailPrediction]: None when not yet predicted.
+        """
+        response = await self._get(f"/api/v1/images/{image_id}/headtail-prediction/")
+        response.raise_for_status()
+        json = response.json()
+        return HeadTailPrediction.model_validate(json) if json else None
+
+    async def get_headtail_predictions(self, dive_id: int) -> List[HeadTailPrediction]:
+        """Get every model head/tail prediction for a dive's images.
+
+        Args:
+            dive_id (int): The dive to retrieve predictions for.
+
+        Returns:
+            List[HeadTailPrediction]: Predictions (empty when the dive has none).
+        """
+        response = await self._get(f"/api/v1/dives/{dive_id}/headtail-predictions/")
+        response.raise_for_status()
+        json = response.json()
+        return [HeadTailPrediction.model_validate(row) for row in (json or [])]
 
     async def put_slate_prediction(
         self, image_id: int, prediction: SlatePrediction

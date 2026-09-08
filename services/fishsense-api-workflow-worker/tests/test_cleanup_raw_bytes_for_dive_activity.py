@@ -57,6 +57,12 @@ def _moto_store(monkeypatch, *, preexisting: tuple[str, ...] = ()):
             s3.put_object(Bucket=BUCKET, Key=raw_key(checksum), Body=b"raw")
         client = ObjectStoreClient(s3, BUCKET)
         monkeypatch.setattr(sut, "open_object_store_client", lambda: client)
+        # Cleanup now asks Temporal whether another stage's child is still
+        # reading this dive's scratch (see `scratch_in_use`). These tests are
+        # about the delete itself, so the scratch is declared free; the gate has
+        # its own tests below and in
+        # `test_cleanup_raw_respects_other_children.py`.
+        monkeypatch.setattr(sut, "scratch_in_use", AsyncMock(return_value=None))
         yield s3
 
 
@@ -124,3 +130,41 @@ def test_activity_module_imports_no_nas_client():
         "NAS source."
     )
     assert "NasClient" not in source and "NasDownloadClient" not in source
+
+
+@pytest.mark.asyncio
+async def test_does_not_delete_while_another_stage_is_still_reading(monkeypatch):
+    """Scratch is keyed per dive, so a sibling stage's child may still need it.
+
+    Prod dive 442, 2026-09-07: the species parent's cleanup deleted 984 objects
+    while the laser child was mid-render, and that child died with NoSuchKey.
+    """
+    fs = _make_fs([_image(1, checksum="aaa"), _image(2, checksum="bbb")])
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    with _moto_store(monkeypatch, preexisting=("aaa", "bbb")) as s3:
+        monkeypatch.setattr(
+            sut, "scratch_in_use", AsyncMock(return_value="preprocess-laser-42")
+        )
+        result = await ActivityEnvironment().run(
+            sut.cleanup_raw_bytes_for_dive_activity, 42
+        )
+        assert result.deleted == 0
+        assert _raw_keys(s3) == {raw_key("aaa"), raw_key("bbb")}, "nothing deleted"
+
+
+@pytest.mark.asyncio
+async def test_an_unreachable_temporal_reads_as_in_use(monkeypatch):
+    """Fails closed. The two ways of being wrong are not symmetric: deleting
+    under a live child kills a render silently and costs the dive's whole NAS
+    staging to redo, while keeping the scratch costs object-store space until
+    the next firing re-stages -- which reports `skipped_already_present` and
+    reuses what is there.
+
+    Calls the real `scratch_in_use`, not the fixture's stub.
+    """
+    monkeypatch.setattr(
+        sut.Client, "connect", AsyncMock(side_effect=RuntimeError("dns error"))
+    )
+    assert await sut.scratch_in_use(42) is not None, (
+        "an unknown answer must block the delete, not wave it through"
+    )

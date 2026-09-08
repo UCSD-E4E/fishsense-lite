@@ -199,7 +199,8 @@ async def populate_dive_slate_label_studio_project_activity(
                 images.append(image)
             activity.heartbeat()
 
-        images = await _gate_on_jpeg_presence(images)
+        candidates = images
+        images = await _gate_on_jpeg_presence(candidates)
 
         if images:
 
@@ -247,7 +248,12 @@ async def populate_dive_slate_label_studio_project_activity(
                 dive_id,
             )
 
-        refreshed_image_ids = {image.id for image in images}
+        # Exempt on CANDIDATES, not on what survived the JPEG gate — see the
+        # matching comment in the headtail populate activity. A deferred JPEG
+        # means "not yet", not "no longer wanted", and dead-lettering those
+        # rows hides the project from the landing page while its tasks are
+        # still outstanding.
+        refreshed_image_ids = {image.id for image in candidates}
 
         # Supersede pass: dead-letter incomplete rows that this project no
         # longer owns, so its own rows are canonical. Two kinds qualify:
@@ -293,9 +299,10 @@ async def populate_dive_slate_label_studio_project_activity(
             await fs.labels.put_dive_slate_label(old.image_id, old)
             activity.heartbeat()
 
-        # Slate imports its whole selection in one pass (no JPEG deferral),
-        # so the project's task set is complete. Publish iff it actually
-        # holds tasks so an empty project isn't shown to labelers.
+        # Publish iff the project actually holds tasks, so an empty project
+        # isn't shown to labelers. (The old justification here — "imports its
+        # whole selection in one pass (no JPEG deferral)" — stopped being true
+        # when #525 added the gate above, and was never updated.)
         if new_count > 0 or any(
             label.label_studio_project_id == project_id for label in existing_slate
         ):
