@@ -15,6 +15,14 @@ export type LabelStudioProject = {
    *  render id/title (e.g. `buildSections`) shouldn't have to carry it.
    *  Absent is treated as published, so filtering fails open. */
   isPublished?: boolean;
+  /** Label Studio's `task_number` — every task in the project. */
+  taskCount?: number;
+  /** Label Studio's `finished_task_number` — tasks it considers labeled,
+   *  the same `is_labeled` our sync copies into `<kind>Label.completed`.
+   *
+   *  Optional for the same reason as `isPublished`, and absent is treated as
+   *  "unknown" rather than zero — see `hasOutstandingTasks`. */
+  finishedTaskCount?: number;
 };
 
 // Hosted Label Studio (app.heartex.com) does NOT accept the configured key
@@ -167,14 +175,34 @@ export async function getProject(
     id: number;
     title: string;
     is_published?: boolean;
+    task_number?: number;
+    finished_task_number?: number | null;
+    num_tasks_with_annotations?: number | null;
   };
   // A missing `is_published` counts as published: the landing page should
   // fail OPEN (show the card) rather than silently hide real labeling work
   // if LS ever stops returning the field.
+  //
+  // The counts get no such default. They are passed through exactly as given
+  // — a missing one stays `undefined`, because `hasOutstandingTasks` reads a
+  // zero as a real answer and would hide the card.
+  //
+  // Two names, in this order, and the order is the load-bearing part.
+  // `finished_task_number` counts tasks Label Studio calls *labeled* — the
+  // same `is_labeled` our sync copies into `completed`, so the two surfaces
+  // agree by construction. `num_tasks_with_annotations` counts tasks merely
+  // *carrying* an annotation, which under an overlap > 1 or a skipped
+  // annotation is reached earlier; preferring it would hide a project that
+  // still has work. It is here only so a rename cannot silently switch the
+  // filter off. Hosted LS returned BOTH on 2026-09-08 (project 285759:
+  // 56/56/56, project 285676: 47 tasks, 32 and 32).
+  const finished = data.finished_task_number ?? data.num_tasks_with_annotations;
   return {
     id: data.id,
     title: data.title,
     isPublished: data.is_published !== false,
+    taskCount: data.task_number,
+    finishedTaskCount: finished ?? undefined,
   };
 }
 

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("./fishsense-api", () => ({ getProjectIds: vi.fn() }));
 
 import { getProjectIds } from "./fishsense-api";
-import { isPublished, liveProjectIds } from "./label-projects";
+import { hasOutstandingTasks, isPublished, liveProjectIds } from "./label-projects";
 
 const idsMock = vi.mocked(getProjectIds);
 
@@ -60,5 +60,61 @@ describe("isPublished", () => {
   // response change cannot silently blank every surface at once.
   it("keeps one whose publish state is unknown", () => {
     expect(isPublished({ id: 1, title: "p" })).toBe(true);
+  });
+});
+
+describe("hasOutstandingTasks", () => {
+  const project = (taskCount?: number, finishedTaskCount?: number) => ({
+    id: 1,
+    title: "p",
+    taskCount,
+    finishedTaskCount,
+  });
+
+  it("keeps a project with unlabeled tasks left", () => {
+    expect(hasOutstandingTasks(project(47, 12))).toBe(true);
+  });
+
+  // The case this whole filter exists for: fishsense-api still says the
+  // project is outstanding, because our `completed` column only learns
+  // otherwise at the next hourly Label Studio sync.
+  it("drops one Label Studio says is fully labeled", () => {
+    expect(hasOutstandingTasks(project(56, 56))).toBe(false);
+  });
+
+  // An incoherent pair is an unusable answer, not a strong one. Hiding on it
+  // would bury real labeling work on the strength of a reply we already know
+  // is wrong — the same reasoning that keeps a project whose counts are
+  // missing or non-numeric.
+  it("keeps one reporting more finished than it holds", () => {
+    expect(hasOutstandingTasks(project(56, 57))).toBe(true);
+  });
+
+  // Fails open, like `isPublished`: an absent count means we did not ask
+  // Label Studio, not that the work is done.
+  it("keeps one whose counts are unknown", () => {
+    expect(hasOutstandingTasks(project())).toBe(true);
+    expect(hasOutstandingTasks(project(56, undefined))).toBe(true);
+    expect(hasOutstandingTasks(project(undefined, 56))).toBe(true);
+  });
+
+  // Vacuous truth reads as "not complete" here, the same convention
+  // `dive_pipeline_status`'s `*_labeling_complete` flags use: a project with
+  // no tasks at all has not finished anything, and hiding it would bury a
+  // project whose population failed.
+  it("keeps an empty project", () => {
+    expect(hasOutstandingTasks(project(0, 0))).toBe(true);
+  });
+
+  // A non-numeric count is unknown, not zero.
+  it("keeps one whose counts are not numbers", () => {
+    expect(
+      hasOutstandingTasks({
+        id: 1,
+        title: "p",
+        taskCount: Number.NaN,
+        finishedTaskCount: 0,
+      }),
+    ).toBe(true);
   });
 });

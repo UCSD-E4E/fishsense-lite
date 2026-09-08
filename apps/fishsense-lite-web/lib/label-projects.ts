@@ -46,3 +46,56 @@ export async function liveProjectIds(
 export function isPublished(project: LabelStudioProject): boolean {
   return project.isPublished !== false;
 }
+
+/**
+ * Drop projects Label Studio itself reports as fully labeled.
+ *
+ * The ids come from fishsense-api, which answers "outstanding" from our own
+ * `<kind>Label.completed` column — and the ONLY writer of that column is the
+ * hourly Label Studio sync (`sync_<kind>_labels_for_label_studio_project_activity`,
+ * `label.completed = task.is_labeled`). So between a labeler finishing a
+ * project and the next sync run, the api still calls it outstanding and the
+ * card stays up. Measured in prod on 2026-09-08: dive 516's species project
+ * (285759) took its last annotation at 05:47 UTC and was still listed until
+ * the sync just after 06:00.
+ *
+ * Syncing more often would narrow that window without closing it. Both
+ * surfaces already fetch every project from Label Studio to resolve its title,
+ * and that response carries the counts, so this asks the authority instead of
+ * a copy of its answer. What remains is each caller's own cache — the landing
+ * page reads it through a 300s `revalidate`, so a finished project can still
+ * show for up to five minutes. An hour, bounded by a sync we do not control,
+ * becomes five minutes bounded by one we do.
+ *
+ * This does NOT make the api's list redundant: it is what decides which
+ * projects are worth asking about at all (and, for laser, applies the
+ * auto-accept gate filter). Label Studio only ever narrows it.
+ *
+ * Fails open in four ways, all deliberate. Only a coherent "everything here
+ * is labeled" hides anything:
+ *
+ * * Either count missing -> kept. An absent field means we did not learn the
+ *   answer, not that the work is done; the same reasoning as `isPublished`.
+ * * A non-numeric count -> kept, for the same reason.
+ * * More finished than the project holds -> kept. That pair is incoherent, so
+ *   it is an unusable answer rather than an emphatic one, and burying real
+ *   labeling work on the strength of a reply we know is wrong is the one
+ *   outcome this filter must not produce.
+ * * Zero tasks -> kept. Vacuous truth reads as "not complete", the convention
+ *   `dive_pipeline_status`'s `*_labeling_complete` flags already use, and a
+ *   project with no tasks is a populate that has not happened rather than a
+ *   labeling job that is finished.
+ */
+export function hasOutstandingTasks(project: LabelStudioProject): boolean {
+  const total = project.taskCount;
+  const finished = project.finishedTaskCount;
+  if (!isCount(total) || !isCount(finished)) return true;
+  if (total <= 0) return true;
+  if (finished > total) return true;
+  return finished < total;
+}
+
+/** A usable count: present, a number, and not NaN/Infinity. */
+function isCount(value: number | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}

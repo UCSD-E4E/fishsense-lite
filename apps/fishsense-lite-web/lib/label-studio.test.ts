@@ -120,6 +120,77 @@ describe("getProject", () => {
 
     await expect(getProject(99, 60)).rejects.toThrow(/Label Studio project 99.*404/);
   });
+
+  // Label Studio's own task counts. They are what makes a card disappear the
+  // moment a labeler finishes, rather than at the next hourly sync — see
+  // `hasOutstandingTasks`.
+  it("carries Label Studio's task counts through", async () => {
+    stubFetch(async () =>
+      jsonResponse({ id: 42, title: "p", task_number: 56, finished_task_number: 56 }),
+    );
+
+    expect(await getProject(42, 60)).toEqual({
+      id: 42,
+      title: "p",
+      isPublished: true,
+      taskCount: 56,
+      finishedTaskCount: 56,
+    });
+  });
+
+  // `finished_task_number` is the count of tasks Label Studio considers
+  // labeled — the same `is_labeled` our sync copies — so it is what we want.
+  // `num_tasks_with_annotations` merely counts tasks carrying an annotation,
+  // which under an overlap > 1 or a skipped annotation is reached EARLIER.
+  // Preferring the loose one would hide a project that still has work.
+  it("prefers finished_task_number over num_tasks_with_annotations", async () => {
+    stubFetch(async () =>
+      jsonResponse({
+        id: 42,
+        title: "p",
+        task_number: 56,
+        finished_task_number: 40,
+        num_tasks_with_annotations: 56,
+      }),
+    );
+
+    expect((await getProject(42, 60)).finishedTaskCount).toBe(40);
+  });
+
+  // ...but take the other name when that is all the instance sends, so a
+  // rename cannot silently turn the filter off.
+  it("falls back to num_tasks_with_annotations when the preferred name is absent", async () => {
+    stubFetch(async () =>
+      jsonResponse({ id: 42, title: "p", task_number: 56, num_tasks_with_annotations: 56 }),
+    );
+
+    expect((await getProject(42, 60)).finishedTaskCount).toBe(56);
+  });
+
+  it("falls back past an explicit null, not just an absent key", async () => {
+    stubFetch(async () =>
+      jsonResponse({
+        id: 42,
+        title: "p",
+        task_number: 56,
+        finished_task_number: null,
+        num_tasks_with_annotations: 56,
+      }),
+    );
+
+    expect((await getProject(42, 60)).finishedTaskCount).toBe(56);
+  });
+
+  // Absent counts must stay absent rather than becoming 0 — `hasOutstandingTasks`
+  // reads 0/0 as "finished", and a coerced zero would hide every card.
+  it("leaves the counts undefined when Label Studio omits them", async () => {
+    stubFetch(async () => jsonResponse({ id: 42, title: "p" }));
+
+    const project = await getProject(42, 60);
+
+    expect(project.taskCount).toBeUndefined();
+    expect(project.finishedTaskCount).toBeUndefined();
+  });
 });
 
 describe("getProjects", () => {
