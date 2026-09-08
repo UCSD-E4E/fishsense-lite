@@ -39,14 +39,37 @@ FROM python:3.13-slim-trixie AS runtime
 # curl to fetch the baked laser-detector checkpoint. torch's CUDA runtime is
 # vendored inside the wheel, so no CUDA base image is needed — the NRP GPU
 # node supplies only the driver.
+#
+# `gcc` + `libc6-dev` are a **runtime** requirement, not a build one, which is
+# why they are in this stage rather than the builder. Triton — torch's kernel
+# compiler — builds a launcher stub with a real C compiler the first time it
+# JITs a kernel, and `python:3.13-slim-trixie` ships no toolchain. Without them
+# a frame that reaches a not-yet-compiled kernel dies with
+# `RuntimeError: Failed to find C compiler`, retryably, so it loops for the
+# whole parent timeout while holding a GPU.
+#
+# It is shape-dependent, which is what makes it nasty: head/tail predict ran
+# two dives (94, 356 frames; 103, 214 frames) to completion on this image and
+# then failed all 408 frames of dive 107 on 2026-09-08. Passing runs prove
+# nothing about the next dive, so this is not "add it when we see it again" --
+# any torch runtime image needs a compiler available.
 RUN apt-get update && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
         libgl1 \
         libglib2.0-0 \
         libgomp1 \
+        gcc \
+        libc6-dev \
         ca-certificates \
         curl \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Assert the JIT toolchain at build time, so a regression in the package set
+# above fails here rather than on one frame of one dive hours later. Triton
+# resolves `$CC`, then `clang`, then `gcc` (triton/runtime/build.py), and
+# compiles a launcher stub against `Python.h` -- so both halves are checked.
+RUN gcc --version >/dev/null \
+    && test -f "$(python -c 'import sysconfig; print(sysconfig.get_paths(scheme="posix_prefix")["include"])')/Python.h"
 
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
