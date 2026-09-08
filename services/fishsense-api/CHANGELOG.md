@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [3.2.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v3.1.1...fishsense-api-v3.2.0) (2026-09-08)
+
+
+### Features
+
+* **headtail-predict:** fall back to Mask R-CNN when no GPU, queue the upgrade ([#835](https://github.com/UCSD-E4E/fishsense-lite/issues/835)) ([6671295](https://github.com/UCSD-E4E/fishsense-lite/commit/6671295ba55e168bd911b60a5ddd18596758e4e2))
+
 ## [3.1.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v3.1.0...fishsense-api-v3.1.1) (2026-09-08)
 
 
