@@ -1,4 +1,9 @@
 import { env } from "./env";
+import { lsFetch } from "./label-studio-limiter";
+
+// Re-exported: the backoff arithmetic moved into the shared throttle, but the
+// name is part of this module's surface.
+export { retryAfterMs } from "./label-studio-limiter";
 
 export type LabelStudioProject = {
   id: number;
@@ -49,42 +54,18 @@ function jwtLifetimeSeconds(token: string): number | null {
   }
 }
 
-/** Seconds Label Studio asked us to wait, or an exponential fallback. */
-export function retryAfterMs(response: Response, attempt: number): number {
-  const header = response.headers.get("retry-after");
-  if (header) {
-    const seconds = Number(header);
-    if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
-    const at = Date.parse(header);
-    if (Number.isFinite(at)) return Math.max(0, at - Date.now());
-  }
-  return RATE_LIMIT_BASE_MS * 2 ** attempt;
-}
-
-const RATE_LIMIT_RETRIES = 3;
-const RATE_LIMIT_BASE_MS = 750;
-
 async function refreshAccessToken(): Promise<string> {
   const url = `${env.labelStudioUrl}/api/token/refresh`;
-  const post = () =>
-    fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ refresh: env.labelStudioApiKey }),
-      cache: "no-store",
-    });
-
-  let response = await post();
-
-  // The token endpoint rate-limits too, and it was the ONLY request without
-  // backoff — the retry logic lived in `authed`, which wraps resource calls
-  // and never sees this one. So a 429 here failed the whole action outright,
-  // and it surfaced as "Accept failed: token refresh failed: 429" on a frame
-  // the labeler had already judged.
-  for (let attempt = 0; response.status === 429 && attempt < RATE_LIMIT_RETRIES; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, retryAfterMs(response, attempt)));
-    response = await post();
-  }
+  // Through the shared throttle like everything else. The token endpoint
+  // spends from the same per-account budget as the resource calls, so a
+  // refresh issued during a rate-limit window is what turns a slow page into
+  // "Accept failed: token refresh failed: 429" on a frame already judged.
+  const response = await lsFetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ refresh: env.labelStudioApiKey }),
+    cache: "no-store",
+  });
 
   if (!response.ok) {
     throw new Error(
@@ -136,17 +117,33 @@ export function __resetTokenCache(): void {
   inFlightRefresh = null;
 }
 
+/** A project fetch that failed, carrying the status so the caller can tell
+ *  "this id is gone" (404) from "Label Studio would not answer" (429, 5xx). */
+export class ProjectFetchError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ProjectFetchError";
+    this.status = status;
+  }
+}
+
 export async function getProject(
   id: number,
   revalidate: number,
 ): Promise<LabelStudioProject> {
   const url = `${env.labelStudioUrl}/api/projects/${id}`;
 
+  // Through the shared throttle: this is the call that was 429ing in prod.
+  // `getProjects` fetches every id at once, and a rate-limited response used
+  // to throw straight out of here -- where `getProjects` could not tell it
+  // apart from a dead legacy id and silently dropped the card.
   const attempt = async (token: string) =>
-    fetch(url, {
+    lsFetch(url, {
       headers: { Authorization: `Bearer ${token}` },
       next: { revalidate },
-    });
+    } as RequestInit);
 
   let response = await attempt(await getAccessToken());
   if (response.status === 401 || response.status === 403) {
@@ -160,8 +157,9 @@ export async function getProject(
       status: response.status,
       statusText: response.statusText,
     });
-    throw new Error(
+    throw new ProjectFetchError(
       `Label Studio project ${id} fetch failed: ${response.status} ${response.statusText}`,
+      response.status,
     );
   }
 
@@ -180,33 +178,62 @@ export async function getProject(
   };
 }
 
+export type ResolvedProjects = {
+  projects: LabelStudioProject[];
+  /** Ids Label Studio would not answer for — rate limit, outage, transport.
+   *  NOT 404s: those ids really are gone. Non-zero means the list below is
+   *  short, and the page has to say so instead of passing it off as the
+   *  answer. */
+  degraded: number;
+};
+
 export async function getProjects(
   ids: number[],
   revalidate: number,
-): Promise<LabelStudioProject[]> {
+): Promise<ResolvedProjects> {
   // Tolerate individual failures. fishsense-api still stores legacy project
   // ids (57-117) from the retired self-hosted instance, and every one of
   // them 404s on the hosted one. Under `Promise.all` a single dead id
   // rejected out of the server component and 500'd the entire landing page,
   // which is the other half of why this integration got kill-switched off.
-  // Drop what we can't resolve and render the rest.
+  //
+  // But "drop what we can't resolve" covered a rate limit as well as a dead
+  // id, and those mean opposite things: ask again versus gone. Conflating
+  // them is what emptied the Head/Tail section on 2026-09-07 — all 45
+  // projects 429'd, all 45 silently dropped, and the page reported no
+  // head/tail work while labelers had a full queue. The throttle makes that
+  // burst unlikely now; this makes it impossible for it to be *silent*.
+  // Same principle `triage-queue.ts` states for its own discovery: treating
+  // "cannot ask" as "nothing to do" is the failure to avoid.
   const settled = await Promise.allSettled(ids.map((id) => getProject(id, revalidate)));
 
   const projects: LabelStudioProject[] = [];
-  const failedIds: number[] = [];
+  const goneIds: number[] = [];
+  const unreachableIds: number[] = [];
   settled.forEach((result, index) => {
     if (result.status === "fulfilled") {
       projects.push(result.value);
+    } else if (
+      result.reason instanceof ProjectFetchError &&
+      result.reason.status === 404
+    ) {
+      goneIds.push(ids[index]);
     } else {
-      failedIds.push(ids[index]);
+      unreachableIds.push(ids[index]);
     }
   });
 
-  if (failedIds.length > 0) {
+  if (goneIds.length > 0) {
     console.warn(
-      `[label-studio] skipped ${failedIds.length} unresolvable project id(s): ${failedIds.join(", ")}`,
+      `[label-studio] skipped ${goneIds.length} dead project id(s): ${goneIds.join(", ")}`,
+    );
+  }
+  if (unreachableIds.length > 0) {
+    console.error(
+      `[label-studio] ${unreachableIds.length} project id(s) UNREACHABLE — the page is ` +
+        `showing a short list: ${unreachableIds.join(", ")}`,
     );
   }
 
-  return projects;
+  return { projects, degraded: unreachableIds.length };
 }

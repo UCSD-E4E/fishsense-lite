@@ -99,12 +99,23 @@ class PreprocessLaserImagesParentWorkflow:
 
         await _dispatch.wake_data_worker()
         await _dispatch.stage_raw(dive_id)
-        await _dispatch.dispatch_child(
+        dispatched = await _dispatch.dispatch_child(
             "PreprocessLaserImagesWorkflow",
             inputs,
             child_id=f"preprocess-laser-{dive_id}",
             execution_timeout=timedelta(hours=1),
         )
+        if dispatched is _dispatch.CHILD_ALREADY_RUNNING:
+            # Another run owns that child and is reading the raw scratch this
+            # firing would delete. It will clean up, and it will clear the
+            # flags for the frames it actually redrew.
+            workflow.logger.info(
+                "dive_id=%d already has a child running; leaving its raw bytes "
+                "and reprocess flags alone",
+                dive_id,
+            )
+            return inputs.dive_id
+
         await _dispatch.cleanup_raw(dive_id)
         # Scoped to what this run actually redrew. The child can run for two
         # hours, so an unscoped clear would silently discard a flag raised

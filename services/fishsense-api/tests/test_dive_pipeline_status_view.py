@@ -965,6 +965,51 @@ async def test_measured_counts_a_ruler_image_like_a_fish_model(session):
     assert (await _row(session, 1))["measured"] is True
 
 
+async def test_measured_counts_a_box_image_like_the_ruler(session):
+    """The box (0.15 m) joined the ruler as a rigid known-length target on
+    2026-09-07, so a box frame is measurable and holds `measured` false until
+    it is measured."""
+    session.add(_dive(1))
+    await session.flush()
+    _fish_model_measurable_image(
+        session, 11, 1, content_of_image="Calibration Targets, Box"
+    )
+    await session.flush()
+
+    assert (await _row(session, 1))["measured"] is False
+
+    session.add_all([_calibration(1), _measurement(11)])
+    await session.flush()
+    assert (await _row(session, 1))["measured"] is True
+
+
+async def test_measured_ignores_the_checkerboard(session):
+    """Widening `Calibration Targets` to the box must not sweep in its
+    unmeasurable sibling: the checkerboard has no single head/tail span, so
+    `parse_model_name` rejects it and a cohort that offered it would never
+    drain.
+
+    Asserted as `measured is True` against a dive that ALSO holds a measured
+    fish-model image, not as `False` against the checkerboard alone. The
+    negative form cannot fail: `measured` requires an existing measurement, so
+    a lone unmeasured image reads False whether or not it is measurable, and
+    the test stays green even with the checkerboard added to the allowlist.
+    Here the checkerboard image is unmeasured, so if it were measurable it
+    would drag `measured` to False and this flips.
+    """
+    session.add(_dive(1))
+    await session.flush()
+    _fish_model_measurable_image(session, 11, 1)
+    _fish_model_measurable_image(
+        session, 12, 1, content_of_image="Calibration Targets, E4E Checkerboard"
+    )
+    await session.flush()
+    session.add_all([_calibration(1), _measurement(11)])
+    await session.flush()
+
+    assert (await _row(session, 1))["measured"] is True
+
+
 async def test_measured_ignores_the_slate_marker(session):
     """Promoting the ruler must not promote its sibling slate branches — the
     stage-9 marker stays unmeasurable, so it can never hold a dive in the

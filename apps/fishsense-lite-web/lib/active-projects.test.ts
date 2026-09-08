@@ -32,9 +32,10 @@ describe("getActiveProjects", () => {
     idsMock.mockImplementation(async (kind) =>
       ({ "laser": [42, 43], "species": [70], "headtail": [44], "dive-slate": [66] } as Record<string, number[]>)[kind] ?? [],
     );
-    projectsMock.mockImplementation(async (ids) =>
-      ids.map((id) => ({ id, title: `p-${id}`, isPublished: true })),
-    );
+    projectsMock.mockImplementation(async (ids) => ({
+      projects: ids.map((id) => ({ id, title: `p-${id}`, isPublished: true })),
+      degraded: 0,
+    }));
 
     const result = await getActiveProjects(60);
 
@@ -60,14 +61,33 @@ describe("getActiveProjects", () => {
       species: [{ id: 70, title: "p-70", isPublished: true }],
       headtail: [{ id: 44, title: "p-44", isPublished: true }],
       slate: [{ id: 66, title: "p-66", isPublished: true }],
+      degraded: 0,
     });
+  });
+
+  it("sums degraded counts across kinds so the page can say the list is short", async () => {
+    // Prod 2026-09-07: hosted LS 429'd 45 head/tail and 42 species project
+    // lookups on one render. Both sections rendered short -- head/tail
+    // vanished entirely -- with nothing on the page admitting it.
+    idsMock.mockImplementation(async (kind) =>
+      ({ "laser": [1], "species": [2], "headtail": [3], "dive-slate": [] } as Record<string, number[]>)[kind] ?? [],
+    );
+    projectsMock.mockImplementation(async (ids) => ({
+      projects: ids.map((id) => ({ id, title: `p-${id}`, isPublished: true })),
+      // One unreachable id in each of species and headtail; laser is clean.
+      degraded: ids[0] === 1 ? 0 : 1,
+    }));
+
+    const result = await getActiveProjects(60);
+
+    expect(result.degraded).toBe(2);
   });
 
   it("defaults revalidate to 300 seconds", async () => {
     idsMock.mockImplementation(async (kind) =>
       ({ "laser": [], "species": [], "headtail": [], "dive-slate": [] } as Record<string, number[]>)[kind] ?? [],
     );
-    projectsMock.mockResolvedValue([]);
+    projectsMock.mockResolvedValue({ projects: [], degraded: 0 });
 
     await getActiveProjects();
 
@@ -82,11 +102,11 @@ describe("getActiveProjects", () => {
     idsMock.mockImplementation(async (kind) =>
       ({ "laser": [], "species": [], "headtail": [], "dive-slate": [] } as Record<string, number[]>)[kind] ?? [],
     );
-    projectsMock.mockResolvedValue([]);
+    projectsMock.mockResolvedValue({ projects: [], degraded: 0 });
 
     const result = await getActiveProjects(60);
 
-    expect(result).toEqual({ laser: [], species: [], headtail: [], slate: [] });
+    expect(result).toEqual({ laser: [], species: [], headtail: [], slate: [], degraded: 0 });
   });
 });
 
@@ -103,7 +123,7 @@ describe("getActiveProjects (Label Studio disabled)", () => {
   it("returns an empty four-bucket map", async () => {
     const result = await getActiveProjects(60);
 
-    expect(result).toEqual({ laser: [], species: [], headtail: [], slate: [] });
+    expect(result).toEqual({ laser: [], species: [], headtail: [], slate: [], degraded: 0 });
   });
 
   it("does not call Label Studio", async () => {
@@ -128,6 +148,7 @@ describe("getActiveProjects (Label Studio disabled)", () => {
       species: [],
       headtail: [],
       slate: [],
+      degraded: 0,
     });
   });
 
@@ -150,13 +171,14 @@ describe("getActiveProjects — publish filtering", () => {
     idsMock.mockImplementation(async (kind) =>
       ({ "laser": [274728, 73], "species": [], "headtail": [], "dive-slate": [] } as Record<string, number[]>)[kind] ?? [],
     );
-    projectsMock.mockImplementation(async (ids) =>
-      ids.map((id) => ({
+    projectsMock.mockImplementation(async (ids) => ({
+      projects: ids.map((id) => ({
         id,
         title: `p-${id}`,
         isPublished: id !== 274728,
       })),
-    );
+      degraded: 0,
+    }));
 
     const result = await getActiveProjects(60);
 
@@ -167,13 +189,14 @@ describe("getActiveProjects — publish filtering", () => {
     idsMock.mockImplementation(async (kind) =>
       ({ "laser": [1], "species": [2], "headtail": [3], "dive-slate": [4] } as Record<string, number[]>)[kind] ?? [],
     );
-    projectsMock.mockImplementation(async (ids) =>
-      ids.map((id) => ({ id, title: `p-${id}`, isPublished: false })),
-    );
+    projectsMock.mockImplementation(async (ids) => ({
+      projects: ids.map((id) => ({ id, title: `p-${id}`, isPublished: false })),
+      degraded: 0,
+    }));
 
     const result = await getActiveProjects(60);
 
-    expect(result).toEqual({ laser: [], species: [], headtail: [], slate: [] });
+    expect(result).toEqual({ laser: [], species: [], headtail: [], slate: [], degraded: 0 });
   });
 
   it("keeps drafts out while a project is still being populated", async () => {
@@ -182,9 +205,10 @@ describe("getActiveProjects — publish filtering", () => {
     idsMock.mockImplementation(async (kind) =>
       ({ "laser": [], "species": [100, 101], "headtail": [], "dive-slate": [] } as Record<string, number[]>)[kind] ?? [],
     );
-    projectsMock.mockImplementation(async (ids) =>
-      ids.map((id) => ({ id, title: `p-${id}`, isPublished: id === 100 })),
-    );
+    projectsMock.mockImplementation(async (ids) => ({
+      projects: ids.map((id) => ({ id, title: `p-${id}`, isPublished: id === 100 })),
+      degraded: 0,
+    }));
 
     const result = await getActiveProjects(60);
 
