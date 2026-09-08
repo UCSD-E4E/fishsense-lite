@@ -7,6 +7,9 @@ weights, no network. That seam exists precisely so these paths are reachable.
 
 from __future__ import annotations
 
+import sys
+import types
+
 import cv2
 import numpy as np
 import pytest
@@ -328,3 +331,203 @@ class TestSam3AdapterAutocast:
             np.zeros((32, 32, 3), dtype=np.uint8)
         )
         assert torch.is_autocast_enabled(device_type) is False
+
+
+class TestFishialFallbackAdapter:
+    """The CPU-only backend, used when no GPU is available.
+
+    All three of these fail *silently* if got wrong -- an empty mask, a worse
+    mask, or a crash -- which is why each is pinned rather than assumed.
+    """
+
+    def _adapter(self, segmentation):
+        from fishsense_data_processing_workflow_worker.activities.predict_headtail_image import (  # noqa: E501  pylint: disable=line-too-long
+            _FishialAdapter,
+        )
+
+        return _FishialAdapter(segmentation)
+
+    class _Recording:
+        def __init__(self, labels):
+            self._labels = labels
+            self.seen = None
+
+        def inference(self, image):
+            self.seen = image
+            return self._labels
+
+    def test_splits_the_instance_label_map_into_binary_masks(self):
+        """`FishSegmentation.inference` returns one array with a distinct
+        non-zero integer per fish, not a list of masks."""
+        labels = np.zeros((40, 60), dtype=np.int32)
+        labels[5:10, 5:15] = 1
+        labels[20:25, 30:50] = 7  # ids are arbitrary, not contiguous
+
+        masks = self._adapter(self._Recording(labels)).segment(
+            np.zeros((40, 60, 3), dtype=np.uint8)
+        )
+
+        assert len(masks) == 2
+        assert sorted(int(np.asarray(m).sum()) for m in masks) == [50, 100]
+        assert all(np.asarray(m).dtype == bool for m in masks)
+
+    def test_background_is_not_returned_as_a_mask(self):
+        labels = np.zeros((20, 40), dtype=np.int32)
+        assert self._adapter(self._Recording(labels)).segment(
+            np.zeros((20, 40, 3), dtype=np.uint8)
+        ) == []
+
+    def test_the_frame_is_passed_through_as_bgr(self):
+        """`inference` expects the frame as `RectifiedImage.data` hands it
+        over. Converting to RGB measurably degrades it and raises nothing --
+        the opposite of what the SAM3 adapter must do."""
+        frame = np.zeros((20, 40, 3), dtype=np.uint8)
+        frame[:, :, 0] = 255  # blue channel only, in BGR
+        recorder = self._Recording(np.zeros((20, 40), dtype=np.int32))
+
+        self._adapter(recorder).segment(frame)
+
+        assert np.array_equal(recorder.seen, frame), "frame was converted"
+
+    def test_a_non_landscape_crop_is_refused_rather_than_silently_empty(self):
+        """`FishSegmentation` returns an empty mask, with no error, whenever
+        width <= height. The 1800x1350 crop is landscape so this holds today,
+        but it holds by arithmetic rather than by contract."""
+        recorder = self._Recording(np.ones((40, 20), dtype=np.int32))
+
+        masks = self._adapter(recorder).segment(np.zeros((40, 20, 3), dtype=np.uint8))
+
+        assert masks == []
+        assert recorder.seen is None, "the model should not have been called"
+
+
+class TestSam3RequiresAGpu:
+    def test_load_segmenter_fails_non_retryably_without_cuda(self, monkeypatch):
+        """SAM 3.1 cannot be *built* without a GPU: `build_sam3_image_model`
+        allocates its position-encoding cache on a hardcoded `device="cuda"`.
+
+        Retrying cannot help, and left retryable it loops holding the pod --
+        which is what all 356 activities of dive 94 did on 2026-09-08.
+        """
+        from temporalio.exceptions import ApplicationError
+
+        from fishsense_data_processing_workflow_worker.activities import (
+            predict_headtail_image as sut,
+        )
+
+        monkeypatch.setattr(sut, "cuda_available", lambda: False)
+
+        with pytest.raises(ApplicationError) as excinfo:
+            # pylint: disable-next=protected-access
+            sut._load_segmenter("/nonexistent.pt")
+
+        assert excinfo.value.non_retryable is True
+        assert excinfo.value.type == "NoGpuForSam3"
+
+
+class TestFallbackSegmenterIsLoaded:
+    """`FishSegmentation()` is constructed unloaded.
+
+    `inference` then raises `ValueError: model has not been loaded -- call
+    load_model() first`, which is retryable and uncapped, so the fallback
+    would loop until the child's 6h timeout: the exact failure this backend
+    exists to remove. The other tests stub `inference`, so only this one can
+    see it.
+    """
+
+    def test_load_model_is_called_before_the_segmenter_is_published(
+        self, monkeypatch
+    ):
+        from fishsense_data_processing_workflow_worker.activities import (
+            predict_headtail_image as sut,
+        )
+
+        class _Segmentation:
+            def __init__(self):
+                self.loaded = False
+
+            def load_model(self):
+                self.loaded = True
+
+            def inference(self, _image):
+                if not self.loaded:
+                    raise ValueError(
+                        "inference failed: model has not been loaded — "
+                        "call load_model() first"
+                    )
+                return np.zeros((4, 8), dtype=np.int32)
+
+        built = _Segmentation()
+        fake_module = types.SimpleNamespace(FishSegmentation=lambda: built)
+        monkeypatch.setitem(sys.modules, "fishsense_core", types.ModuleType("x"))
+        monkeypatch.setitem(sys.modules, "fishsense_core.fish", fake_module)
+        monkeypatch.setattr(sut, "_FALLBACK_SEGMENTER", None)
+
+        got = sut.get_fallback_segmenter()
+
+        assert got is built
+        assert built.loaded is True, "load_model() was never called"
+        # And the seam works end to end on it, which is what would have failed.
+        assert sut._FishialAdapter(got).segment(  # pylint: disable=protected-access
+            np.zeros((4, 8, 3), dtype=np.uint8)
+        ) == []
+
+
+class TestNoGpuLeavesExistingRowsAlone:
+    """What a GPU-less worker may and may not overwrite.
+
+    Keyed on *whether a row exists*, not on which tier produced it. Keying on
+    the tier invites two mistakes: skipping only an exact fallback match, so a
+    GPU-less worker downgrades a SAM 3.1 row the moment
+    `HEADTAIL_PREDICTOR_VERSION` is bumped during an outage; and ignoring a
+    superseded laser, so a row of the wrong fish is never redrawn.
+    """
+
+    def _payload(self, **kw):
+        from fishsense_shared.preprocess_contracts import PredictHeadtailImage
+
+        base = {
+            "image_id": 1,
+            "checksum": "abc",
+            "laser_points": [[10.0, 10.0]],
+            "laser_label_ids": [5],
+        }
+        base.update(kw)
+        return PredictHeadtailImage(**base)
+
+    def test_defaults_mean_first_prediction(self):
+        p = self._payload()
+        assert p.has_existing_prediction is False
+        assert p.existing_laser_superseded is False
+
+    def test_an_existing_row_with_a_live_laser_is_left_alone(self):
+        p = self._payload(has_existing_prediction=True)
+        assert p.has_existing_prediction and not p.existing_laser_superseded
+
+    def test_a_superseded_laser_is_worth_redrawing_on_any_backend(self):
+        p = self._payload(has_existing_prediction=True, existing_laser_superseded=True)
+        assert p.existing_laser_superseded
+
+
+class TestLabelStudioTagFollowsTheRow:
+    """The tag is the backfill's idempotency key, so it must name the tier
+    that actually produced the row.
+
+    Tagging a fallback prediction as SAM 3.1 makes the later upgrade look
+    already-attached, and the labeler keeps the Mask R-CNN keypoints for good
+    -- the one way the upgrade queue could upgrade the database while
+    changing nothing anyone sees.
+    """
+
+    def test_the_two_tiers_get_different_tags(self):
+        from fishsense_shared.headtail_predictor import (
+            HEADTAIL_FALLBACK_PREDICTOR_VERSION,
+            HEADTAIL_PREDICTOR_VERSION,
+            headtail_model_version_tag,
+        )
+
+        sam3 = headtail_model_version_tag(HEADTAIL_PREDICTOR_VERSION)
+        fallback = headtail_model_version_tag(HEADTAIL_FALLBACK_PREDICTOR_VERSION)
+
+        assert sam3 != fallback
+        assert headtail_model_version_tag() == sam3, "default is the current tier"

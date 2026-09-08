@@ -370,6 +370,32 @@ class PredictHeadtailImage(BaseModel):
     # `fishsense_shared.object_store` and the activity never hard-codes a
     # prefix or reaches into worker config for one.
     jpeg_folder: str = ""
+    # Whether a prediction row already exists for this image, whatever tier
+    # produced it. The activity is the only thing that knows whether it has a
+    # GPU -- and therefore which backend it can run -- so it is the only thing
+    # that can decide whether re-predicting would be an *upgrade* or a repeat.
+    #
+    # A GPU-less worker must not touch an existing row at all: rewriting a
+    # fallback row produces an identical one (the churn the upgrade queue
+    # would otherwise cause every hour), and rewriting a SAM 3.1 row would be
+    # a *downgrade* -- which is reachable simply by bumping
+    # `HEADTAIL_PREDICTOR_VERSION` while no GPU is available.
+    has_existing_prediction: bool = False
+    # ...unless the dot that chose the fish has since been superseded. Then
+    # the existing row may be of the wrong fish entirely, and re-running even
+    # the same backend fixes it, so it is worth doing on any worker.
+    existing_laser_superseded: bool = False
+
+
+#: `HeadtailPredictionResult.status` for an image this worker cannot improve
+#: on -- a fallback-tier row on a worker with no GPU. The parent drops these
+#: before persisting, so the existing row is left untouched.
+#:
+#: Here rather than in the activity because it is a cross-worker agreement:
+#: the data-worker emits it and the api-worker parent has to recognise it.
+#: Anything that does not recognise it would overwrite a good fallback row
+#: with an empty one, which is the failure this exists to prevent.
+HEADTAIL_STATUS_NO_UPGRADE_AVAILABLE = "skipped_no_upgrade_available"
 
 
 class PredictHeadtailImagesInput(BaseModel):

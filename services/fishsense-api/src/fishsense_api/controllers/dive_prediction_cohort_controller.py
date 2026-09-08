@@ -257,11 +257,45 @@ async def select_next_for_headtail_prediction(
         .correlate(Dive)
         .exists()
     )
+    # Dives holding an image that has *never* been predicted, as opposed to one
+    # whose row is merely stale.
+    has_image_never_predicted = (
+        select(Image.id)
+        .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
+        .where(has_live_laser)
+        .where(~has_live_headtail_label)
+        .where(~has_any_prediction)
+        .correlate(Dive)
+        .exists()
+    )
     query = (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
         .where(has_image_needing_prediction)
-        .order_by(Dive.id)
+        # First prediction before upgrade, then by id. This is what stops the
+        # upgrade queue starving new work: a fallback-tier row is permanently
+        # stale by design, so while no GPU is available a dive of them stays
+        # in the cohort indefinitely. Ordered by id alone it would be selected
+        # every firing, the GPU-less worker would skip every image as
+        # unimprovable, and every higher-id dive with genuinely unpredicted
+        # images would wait behind it -- the dive-60 stall shape, arrived at
+        # from a different direction.
+        #
+        # Booleans sort False < True, so `.desc()` puts never-predicted first.
+        #
+        # It trades one starvation shape for another, and that is deliberate.
+        # A dive whose unpredicted images have no stage-5.1 JPEG yet is
+        # deferred by `_only_with_rendered_jpeg`, resolves to nothing, and is
+        # re-selected next firing -- and it now outranks *every* upgrade,
+        # rather than only higher-id dives. That case is transient by design
+        # (it clears when stage 5.1 renders the frame), whereas the case this
+        # ordering prevents is not: a fallback-only dive is permanently stale
+        # for as long as no GPU exists, which is precisely when the fallback
+        # is carrying the stage. If deferred dives are ever found to wedge
+        # here, the fix is to exclude un-rendered images from the cohort
+        # rather than to restore id order.
+        .order_by(has_image_never_predicted.desc(), Dive.id)
         .limit(1)
     )
     return (await session.exec(query)).first()
