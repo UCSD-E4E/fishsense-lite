@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.20.0...fishsense-shared-v0.21.0) (2026-09-08)
+
+
+### Features
+
+* **data-worker:** refuse a laser dot that was not on the board ([#829](https://github.com/UCSD-E4E/fishsense-lite/issues/829)) ([c1f5898](https://github.com/UCSD-E4E/fishsense-lite/commit/c1f5898618b0d0e30c67940eb36255af08a9d674))
+
 ## [0.20.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.19.0...fishsense-shared-v0.20.0) (2026-09-08)
 
 

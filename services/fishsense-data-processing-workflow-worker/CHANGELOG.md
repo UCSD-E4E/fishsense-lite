@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.4.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.3.0...fishsense-data-processing-workflow-worker-v3.4.0) (2026-09-08)
+
+
+### Features
+
+* **data-worker:** refuse a laser dot that was not on the board ([#829](https://github.com/UCSD-E4E/fishsense-lite/issues/829)) ([c1f5898](https://github.com/UCSD-E4E/fishsense-lite/commit/c1f5898618b0d0e30c67940eb36255af08a9d674))
+
+
+### Bug Fixes
+
+* **deps:** pin fishsense-api-sdk&gt;=2.2.0 ([#813](https://github.com/UCSD-E4E/fishsense-lite/issues/813)) ([e1d1777](https://github.com/UCSD-E4E/fishsense-lite/commit/e1d1777fc13f05cb95532987a0c56fa9554d51cf))
+
 ## [3.3.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.2.3...fishsense-data-processing-workflow-worker-v3.3.0) (2026-09-08)
 
 
