@@ -32,6 +32,7 @@ def dive(
     *,
     priority=None,
     calibration_dive_id: int | None = None,
+    calibration_target_id: int | None = None,
     dive_slate_id: int | None = None,
     name: str | None = None,
 ):
@@ -45,6 +46,7 @@ def dive(
         dive_datetime=SEED_DATETIME,
         priority=Priority.HIGH if priority is None else priority,
         calibration_dive_id=calibration_dive_id,
+        calibration_target_id=calibration_target_id,
         dive_slate_id=dive_slate_id,
         name=name,
     )

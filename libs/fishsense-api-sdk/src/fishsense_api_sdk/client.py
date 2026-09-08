@@ -2,6 +2,9 @@
 
 import asyncio
 
+from fishsense_api_sdk.clients.calibration_target_client import (
+    CalibrationTargetClient,
+)
 from fishsense_api_sdk.clients.camera_client import CameraClient
 from fishsense_api_sdk.clients.dive_client import DiveClient
 from fishsense_api_sdk.clients.dive_slate_client import DiveSlateClient
@@ -14,6 +17,15 @@ from fishsense_api_sdk.clients.user_client import UserClient
 class Client:
     # pylint: disable=too-many-instance-attributes
     """Main client for interacting with the Fishsense API."""
+
+    @property
+    def calibration_targets(self) -> CalibrationTargetClient:
+        """Get the calibration target client.
+
+        Returns:
+            CalibrationTargetClient: The calibration target client instance.
+        """
+        return self.__calibration_targets
 
     @property
     def cameras(self) -> CameraClient:
@@ -90,6 +102,9 @@ class Client:
 
         self.__semaphore = asyncio.Semaphore(max_concurrent_requests)
 
+        self.__calibration_targets = CalibrationTargetClient(
+            base_url, username, password, timeout, self.__semaphore
+        )
         self.__cameras = CameraClient(
             base_url, username, password, timeout, self.__semaphore
         )
@@ -113,6 +128,7 @@ class Client:
         )
 
     async def __aenter__(self):
+        await self.calibration_targets.__aenter__()
         await self.cameras.__aenter__()
         await self.dives.__aenter__()
         await self.dive_slates.__aenter__()
@@ -123,6 +139,7 @@ class Client:
         return self
 
     async def __aexit__(self, exc_type, exc_value, traceback) -> None:
+        await self.calibration_targets.__aexit__(exc_type, exc_value, traceback)
         await self.cameras.__aexit__(exc_type, exc_value, traceback)
         await self.dives.__aexit__(exc_type, exc_value, traceback)
         await self.dive_slates.__aexit__(exc_type, exc_value, traceback)

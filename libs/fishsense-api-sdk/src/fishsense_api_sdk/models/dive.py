@@ -37,3 +37,7 @@ class Dive(ModelBase):
     # added optional column must be optional on the wire, or every consumer
     # built against an older API response fails validation.
     notes: str | None = None
+    # Which planar `CalibrationTarget` the dive was shot against, when it was
+    # not one of the `DiveSlate` templates. Defaulted for the same
+    # newly-added-column reason as the two fields above.
+    calibration_target_id: int | None = None
