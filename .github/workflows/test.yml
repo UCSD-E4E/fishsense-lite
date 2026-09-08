@@ -120,11 +120,15 @@ jobs:
             #
             # Six of the eleven are new coverage: `torch`, both `sam3`
             # entries, `fishsense_core.fish`, `.slate` and
-            # `.image.linear_raw_image`. The other five (`cv2`,
-            # `fishsense_core.laser`, `.world_point`, `.image.raw_image`,
-            # `.image.rectified_image`) are already reached today, because
-            # `worker` imports `roles`, which eagerly imports 13 activity
-            # modules that import them at module scope.
+            # `.image.linear_raw_image`. The other five are already reached
+            # today, because `worker` imports `roles`, which eagerly imports
+            # 15 activity modules. Four of those five -- `cv2`,
+            # `fishsense_core.laser`, `.image.raw_image` and
+            # `.image.rectified_image` -- are module-scope imports in the
+            # activity modules themselves. `.world_point` is one level
+            # deeper: no activity module imports it directly, it arrives via
+            # `laser_geometry.py` and `calibration_geometry.py`, which they
+            # do import at module scope.
             #
             # They are listed anyway, deliberately. That reachability is a
             # property of where an import happens to sit right now: moving
