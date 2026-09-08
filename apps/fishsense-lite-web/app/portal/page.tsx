@@ -1,11 +1,23 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth, signOut } from "@/auth";
 import { isPortalAuthorized, portalAllowedGroups } from "@/lib/authz";
-import { getDives } from "@/lib/dives";
-import { CalibrationLinks } from "./calibration-links";
+import { PORTAL_SECTIONS } from "@/lib/portal-sections";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * The portal index, which routes and does nothing else.
+ *
+ * It used to *be* the calibration page. That worked while calibration was the
+ * only thing here, but it left the second page (triage) reachable only by
+ * typing its URL. The work moved to `/portal/calibration`; this is now the one
+ * place that lists what the portal can do.
+ *
+ * It keeps the unauthorized dead end, which is not incidental: every other
+ * portal page redirects here when the group check fails, so this is where that
+ * has to be explained.
+ */
 export default async function PortalPage() {
   const session = await auth();
   if (!session?.user) {
@@ -47,14 +59,6 @@ export default async function PortalPage() {
     );
   }
 
-  let dives: Awaited<ReturnType<typeof getDives>> = [];
-  let divesError: string | null = null;
-  try {
-    dives = await getDives();
-  } catch (error) {
-    divesError = error instanceof Error ? error.message : "Failed to load dives";
-  }
-
   return (
     <main className="mx-auto max-w-5xl px-6 py-12">
       <header className="mb-8 flex items-start justify-between gap-4">
@@ -83,25 +87,28 @@ export default async function PortalPage() {
         </div>
       </header>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <h2 className="text-lg font-medium">Dive calibration links</h2>
-        <p className="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-400">
-          Link a dive that has no slate of its own to a sibling slate dive shot
-          with the same camera and laser rig. The dive then borrows that dive&apos;s
-          laser calibration, so it can be measured without a slate in-frame. A
-          dive with its own slate self-calibrates and needs no link.
-        </p>
-
-        <div className="mt-6">
-          {divesError ? (
-            <p className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-700 dark:bg-red-950 dark:text-red-300">
-              Could not load dives: {divesError}
-            </p>
-          ) : (
-            <CalibrationLinks dives={dives} />
-          )}
-        </div>
-      </section>
+      <ul className="grid gap-4 sm:grid-cols-2">
+        {PORTAL_SECTIONS.map((section) => (
+          <li key={section.href}>
+            {/* The whole card is the target, not a "read more" buried in it —
+                this is used one-handed on a phone. */}
+            <Link
+              href={section.href}
+              className="block h-full rounded-lg border border-slate-200 bg-white p-6 shadow-sm transition hover:border-slate-300 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700"
+            >
+              <h2 className="text-lg font-medium">
+                {section.title}
+                <span aria-hidden className="ml-1.5 text-slate-400">
+                  &rarr;
+                </span>
+              </h2>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                {section.description}
+              </p>
+            </Link>
+          </li>
+        ))}
+      </ul>
     </main>
   );
 }
