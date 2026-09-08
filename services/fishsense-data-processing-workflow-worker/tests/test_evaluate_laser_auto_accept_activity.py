@@ -31,6 +31,11 @@ from fishsense_data_processing_workflow_worker.laser_label_validation.auto_accep
 )
 
 
+#: Sentinel, because ``None`` is a MEANINGFUL predictor_version — it is what
+#: every pre-versioning row carries and the case the stale guard exists for.
+_CURRENT_VERSION = object()
+
+
 def _prediction(
     image_id: int,
     x: float | None,
@@ -38,7 +43,10 @@ def _prediction(
     *,
     auto_accept: bool = False,
     gate_verdict: str | None = None,
+    predictor_version=_CURRENT_VERSION,
 ) -> LaserPrediction:
+    from fishsense_shared import LASER_PREDICTOR_VERSION
+
     return LaserPrediction(
         id=image_id,
         image_id=image_id,
@@ -49,6 +57,11 @@ def _prediction(
         height=3016,
         auto_accept=auto_accept,
         gate_verdict=gate_verdict,
+        predictor_version=(
+            LASER_PREDICTOR_VERSION
+            if predictor_version is _CURRENT_VERSION
+            else predictor_version
+        ),
     )
 
 
@@ -271,3 +284,83 @@ def test_settings_values_are_coerced():
     and an integer audit rate must not turn the sampling into integer maths."""
     config = sut._config_from_settings(_settings(audit_sample_rate=1))
     assert config.audit_sample_rate == 1.0
+
+
+# --- stale-predictor guard ----------------------------------------------------
+#
+# Stage v1 (and every pre-versioning NULL row) hardcoded the laser
+# pre-annotation to "Red Laser" rather than reading the dot's colour — see
+# `fishsense_shared.laser_predictor`. Auto-accepting one writes a possibly-wrong
+# colour into the corpus with NO human in the loop, because skipping review is
+# exactly what this gate does. Nothing downstream catches it.
+#
+# The cohort selector refuses to *select* such dives, but that guards only the
+# hourly drain. The predict parent runs this gate inline, and an operator can
+# run it by hand, so the refusal has to live here too.
+
+
+@pytest.mark.asyncio
+async def test_a_dive_with_a_pre_versioning_prediction_is_refused(monkeypatch):
+    """NULL version — every row written before the stage was versioned."""
+    predictions = _collinear(40)
+    predictions[0] = _prediction(
+        predictions[0].image_id,
+        predictions[0].x,
+        predictions[0].y,
+        predictor_version=None,
+    )
+
+    summary, fs = await _run(monkeypatch, predictions)
+
+    assert not summary.eligible
+    assert summary.reason == "stale_predictor"
+    assert summary.auto_accepted == 0
+    assert not any(p.auto_accept for p in _written(fs).values())
+
+
+@pytest.mark.asyncio
+async def test_a_dive_with_an_older_detector_version_is_refused(monkeypatch):
+    """Explicit v1, not just NULL: the version that got the colour wrong."""
+    predictions = _collinear(40)
+    predictions[7] = _prediction(
+        predictions[7].image_id,
+        predictions[7].x,
+        predictions[7].y,
+        predictor_version=1,
+    )
+
+    summary, _fs = await _run(monkeypatch, predictions)
+
+    assert not summary.eligible
+    assert summary.reason == "stale_predictor"
+    assert summary.auto_accepted == 0
+
+
+@pytest.mark.asyncio
+async def test_the_whole_dive_is_refused_not_just_the_stale_frames(monkeypatch):
+    """Refuse the dive, not the row. The gate's decision is a dive-level
+    consensus: a line fitted across two different detector behaviours is not a
+    meaningful fit, so judging the current frames against it would be wrong
+    even though those frames are individually fine. The dive comes back once
+    re-prediction has replaced the stale rows and cleared the verdicts."""
+    predictions = _collinear(40)
+    predictions[3] = _prediction(
+        predictions[3].image_id,
+        predictions[3].x,
+        predictions[3].y,
+        predictor_version=None,
+    )
+
+    summary, _fs = await _run(monkeypatch, predictions)
+
+    assert summary.auto_accepted == 0
+    assert set(summary.verdicts) == {"dive_ineligible"}
+
+
+@pytest.mark.asyncio
+async def test_an_all_current_dive_is_unaffected(monkeypatch):
+    """The guard must not cost anything on a healthy current-version dive."""
+    summary, _fs = await _run(monkeypatch, _collinear(40))
+
+    assert summary.eligible
+    assert summary.auto_accepted > 0

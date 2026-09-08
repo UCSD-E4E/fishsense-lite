@@ -49,6 +49,9 @@ from fishsense_api_workflow_worker.activities.cleanup_raw_bytes_for_dive_activit
 from fishsense_api_workflow_worker.activities.ensure_data_worker_running_activity import (  # pylint: disable=line-too-long
     ensure_data_worker_running_activity,
 )
+from fishsense_api_workflow_worker.activities.ensure_light_worker_running_activity import (  # pylint: disable=line-too-long
+    ensure_light_worker_running_activity,
+)
 from fishsense_api_workflow_worker.activities.ensure_gpu_worker_running_activity import (  # pylint: disable=line-too-long
     ensure_gpu_worker_running_activity,
 )
@@ -109,8 +112,32 @@ from fishsense_api_workflow_worker.activities.resolve_headtail_preprocess_inputs
 from fishsense_api_workflow_worker.activities.clear_laser_reprocess_flags_activity import (  # pylint: disable=line-too-long
     clear_laser_reprocess_flags_activity,
 )
+from fishsense_api_workflow_worker.activities.clear_species_reprocess_flags_activity import (  # pylint: disable=line-too-long
+    clear_species_reprocess_flags_activity,
+)
+from fishsense_api_workflow_worker.activities.clear_headtail_reprocess_flags_activity import (  # pylint: disable=line-too-long
+    clear_headtail_reprocess_flags_activity,
+)
+from fishsense_api_workflow_worker.activities.clear_slate_reprocess_flags_activity import (  # pylint: disable=line-too-long
+    clear_slate_reprocess_flags_activity,
+)
 from fishsense_api_workflow_worker.activities.resolve_laser_preprocess_inputs_activity import (  # pylint: disable=line-too-long
     resolve_laser_preprocess_inputs_activity,
+)
+from fishsense_api_workflow_worker.activities.resolve_headtail_predict_inputs_activity import (  # noqa: E501  pylint: disable=line-too-long
+    resolve_headtail_predict_inputs_activity,
+)
+from fishsense_api_workflow_worker.activities.persist_headtail_predictions_activity import (  # noqa: E501  pylint: disable=line-too-long
+    persist_headtail_predictions_activity,
+)
+from fishsense_api_workflow_worker.activities.backfill_headtail_predictions_activity import (  # noqa: E501  pylint: disable=line-too-long
+    backfill_headtail_predictions_for_dive_activity,
+)
+from fishsense_api_workflow_worker.activities.select_dives_needing_headtail_population_activity import (  # noqa: E501  pylint: disable=line-too-long
+    select_dives_needing_headtail_population_activity,
+)
+from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_headtail_prediction_activity import (  # noqa: E501  pylint: disable=line-too-long
+    select_next_high_priority_dive_for_headtail_prediction_activity,
 )
 from fishsense_api_workflow_worker.activities.resolve_laser_predict_inputs_activity import (  # noqa: E501  pylint: disable=line-too-long
     resolve_laser_predict_inputs_activity,
@@ -156,6 +183,9 @@ from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for
 )
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_laser_depth_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_laser_depth_activity,
+)
+from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_laser_auto_accept_activity import (  # pylint: disable=line-too-long
+    select_next_high_priority_dive_for_laser_auto_accept_activity,
 )
 from fishsense_api_workflow_worker.activities.select_next_high_priority_dive_for_slate_prediction_activity import (  # pylint: disable=line-too-long
     select_next_high_priority_dive_for_slate_prediction_activity,
@@ -245,6 +275,9 @@ from fishsense_api_workflow_worker.workflows.measure_fish_parent_workflow import
 from fishsense_api_workflow_worker.workflows.compute_laser_depths_parent_workflow import (  # pylint: disable=line-too-long
     ComputeLaserDepthsParentWorkflow,
 )
+from fishsense_api_workflow_worker.workflows.evaluate_laser_auto_accept_parent_workflow import (  # pylint: disable=line-too-long
+    EvaluateLaserAutoAcceptParentWorkflow,
+)
 from fishsense_api_workflow_worker.workflows.perform_laser_calibration_parent_workflow import (  # pylint: disable=line-too-long
     PerformLaserCalibrationParentWorkflow,
 )
@@ -253,6 +286,15 @@ from fishsense_api_workflow_worker.workflows.preprocess_species_images_parent_wo
 )
 from fishsense_api_workflow_worker.workflows.preprocess_headtail_images_parent_workflow import (  # pylint: disable=line-too-long
     PreprocessHeadtailImagesParentWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.backfill_headtail_predictions_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    BackfillHeadtailPredictionsWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.populate_headtail_label_studio_project_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    PopulateHeadTailLabelStudioProjectParentWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.predict_headtail_images_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    PredictHeadtailImagesParentWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.predict_laser_images_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PredictLaserImagesParentWorkflow,
@@ -458,6 +500,42 @@ async def schedule_workflows(client: Client):
             # the GPU data-worker up, predicts a laser dot per unlabeled
             # image, and persists them for the laser populate step to serve
             # as LS pre-annotations. SKIP overlap; drains one dive per firing.
+            # Head/tail detector: hourly at +32, just after the +30 stage-5.1
+            # preprocess has written the JPEGs this reads. Unlike the laser
+            # detector it stages nothing — the stage-5.1 JPEG is already in
+            # Garage and is the exact frame the labeler sees — so the gap only
+            # has to cover preprocess writing them, not a NAS round trip.
+            # SKIP overlap; drains one dive per firing.
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "predict-headtail-images-workflow-schedule",
+                    PredictHeadtailImagesParentWorkflow,
+                    timedelta(hours=1),
+                    offset=timedelta(minutes=32),
+                    run_timeout=timedelta(hours=2),
+                    overlap=ScheduleOverlapPolicy.SKIP,
+                )
+            )
+            # Head/tail populate: hourly at +34, after the +32 predict parent
+            # has written its rows. Decoupled from the stage-5.1 preprocess
+            # parent, which used to chain into it: populate seeds sentinel
+            # `HeadTailLabel` rows and the predict cohort excludes any image
+            # with a live label, so chaining would starve every image of a
+            # prediction permanently. Same fix, same reason, as laser's
+            # +10/+12 pair. Idempotent + prediction-gated, so SKIP-overlap
+            # hourly firings converge.
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "populate-headtail-labels-workflow-schedule",
+                    PopulateHeadTailLabelStudioProjectParentWorkflow,
+                    timedelta(hours=1),
+                    offset=timedelta(minutes=34),
+                    run_timeout=timedelta(hours=1),
+                    overlap=ScheduleOverlapPolicy.SKIP,
+                )
+            )
             tg.create_task(
                 schedule_workflow(
                     client,
@@ -643,6 +721,32 @@ async def schedule_workflows(client: Client):
                     overlap=ScheduleOverlapPolicy.SKIP,
                 )
             )
+            # Auto-accept gate backlog: hourly at +22, a free slot between
+            # species-populate (+20) and reconcile-labeling-configs (+25).
+            #
+            # The gate itself runs inline off the predict parent, but only for
+            # dives that produced NEW predictions — a dive already fully
+            # predicted never re-enters the predict cohort, so it never got
+            # judged. That was 3,711 predictions across ~65 dives when the gate
+            # shipped. This drains them at one dive per firing, so the backlog
+            # clears in about three days and the cohort then sits empty.
+            #
+            # It re-arms by itself: a re-prediction clears the verdict it
+            # computed from a dot the row no longer holds, so the dive comes
+            # back here if the predict parent did not judge it.
+            tg.create_task(
+                schedule_workflow(
+                    client,
+                    "evaluate-laser-auto-accept-workflow-schedule",
+                    EvaluateLaserAutoAcceptParentWorkflow,
+                    timedelta(hours=1),
+                    offset=timedelta(minutes=22),
+                    # Child `execution_timeout` is 30m; margin for the selector
+                    # + data-worker scale-up + the apply step.
+                    run_timeout=timedelta(hours=1),
+                    overlap=ScheduleOverlapPolicy.SKIP,
+                )
+            )
             # Scale-to-zero sweeper for the NRP data-worker: hourly at
             # +55 min, after the last preprocess/calibration parent
             # firing, so it never races a parent that's still scaling
@@ -707,8 +811,11 @@ async def main():
                 VerifyAllDivesChecksumsWorkflow,
                 IngestDiveWorkflow,
                 ClusterDiveFramesParentWorkflow,
+                PopulateHeadTailLabelStudioProjectParentWorkflow,
+                PredictHeadtailImagesParentWorkflow,
                 PredictLaserImagesParentWorkflow,
                 PredictSlateImagesParentWorkflow,
+                BackfillHeadtailPredictionsWorkflow,
                 BackfillLaserPredictionsWorkflow,
                 BackfillSlatePredictionsWorkflow,
                 PreprocessLaserImagesParentWorkflow,
@@ -718,6 +825,7 @@ async def main():
                 PerformLaserCalibrationParentWorkflow,
                 MeasureFishParentWorkflow,
                 ComputeLaserDepthsParentWorkflow,
+                EvaluateLaserAutoAcceptParentWorkflow,
                 ScaleDownIdleDataWorkerWorkflow,
             ],
             activity_executor=executor,
@@ -751,11 +859,17 @@ async def main():
                 finalize_dive_activity,
                 resolve_dive_frame_clustering_inputs_activity,
                 clear_laser_reprocess_flags_activity,
+                clear_species_reprocess_flags_activity,
+                clear_headtail_reprocess_flags_activity,
+                clear_slate_reprocess_flags_activity,
                 resolve_laser_preprocess_inputs_activity,
+                resolve_headtail_predict_inputs_activity,
                 resolve_laser_predict_inputs_activity,
+                persist_headtail_predictions_activity,
                 persist_laser_predictions_activity,
                 resolve_slate_predict_inputs_activity,
                 persist_slate_predictions_activity,
+                backfill_headtail_predictions_for_dive_activity,
                 backfill_laser_predictions_for_dive_activity,
                 apply_laser_auto_accept_for_dive_activity,
                 backfill_slate_predictions_for_dive_activity,
@@ -765,6 +879,8 @@ async def main():
                 persist_dive_frame_clusters_activity,
                 select_next_high_priority_dive_for_clustering_activity,
                 select_next_high_priority_dive_for_laser_preprocessing_activity,
+                select_dives_needing_headtail_population_activity,
+                select_next_high_priority_dive_for_headtail_prediction_activity,
                 select_next_high_priority_dive_for_laser_prediction_activity,
                 select_next_high_priority_dive_for_slate_prediction_activity,
                 select_next_high_priority_dive_for_species_preprocessing_activity,
@@ -775,10 +891,12 @@ async def main():
                 select_next_high_priority_dive_for_laser_calibration_activity,
                 select_next_high_priority_dive_for_measure_fish_activity,
                 select_next_high_priority_dive_for_laser_depth_activity,
+                select_next_high_priority_dive_for_laser_auto_accept_activity,
                 stage_raw_bytes_for_dive_activity,
                 stage_slate_pdf_activity,
                 cleanup_raw_bytes_for_dive_activity,
                 ensure_data_worker_running_activity,
+                ensure_light_worker_running_activity,
                 ensure_gpu_worker_running_activity,
                 scale_down_data_worker_if_idle_activity,
             ],

@@ -81,9 +81,10 @@ jobs:
       - name: Apply the data-worker manifests (server-side validation)
         run: |
           kubectl apply -k deploy/k8s/data-worker
-          # All three: the CPU worker, the GPU worker, and the GPU worker's
-          # CPU-only fallback. The GPU one stays Unschedulable here (kind has no
-          # GPU nodes) — that is expected, and is what the wedge tests rely on.
+          # All four: the per-image worker, the GPU worker, the GPU worker's
+          # CPU-only fallback, and the light worker. The GPU one stays
+          # Unschedulable here (kind has no GPU nodes) — that is expected, and
+          # is what the wedge tests rely on.
           kubectl get deployments -n e4e-fishsense -o wide
 
       - name: Test the slot-side Temporal cert forwarder

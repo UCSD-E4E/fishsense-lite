@@ -47,7 +47,7 @@ from fishsense_api_workflow_worker.activities.gpu_fallback import (
 )
 from fishsense_api_workflow_worker.workflows._dispatch import (
     DATA_PROCESSING_GPU_TASK_QUEUE,
-    DATA_PROCESSING_TASK_QUEUE,
+    DATA_PROCESSING_LIGHT_TASK_QUEUE,
 )
 from fishsense_api_workflow_worker.workflows.predict_laser_images_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PredictLaserImagesParentWorkflow,
@@ -157,7 +157,7 @@ def _stubs(
     async def record(workflow_id: str, d: int) -> None:
         child_ids.append(workflow_id)
 
-    @activity.defn(name="ensure_data_worker_running_activity")
+    @activity.defn(name="ensure_light_worker_running_activity")
     async def ensure_cpu() -> None:
         return None
 
@@ -213,7 +213,7 @@ async def _run(
         activities=activities,
     ), Worker(
         env.client,
-        task_queue=DATA_PROCESSING_TASK_QUEUE,
+        task_queue=DATA_PROCESSING_LIGHT_TASK_QUEUE,
         workflows=[_StubGate],
         activities=activities,
     ):
@@ -340,15 +340,16 @@ async def test_backfill_is_skipped_when_the_child_returned_nothing():
 
 
 @pytest.mark.asyncio
-async def test_gate_runs_on_the_cpu_queue_with_a_deterministic_id():
+async def test_gate_runs_on_the_light_queue_with_a_deterministic_id():
     """The auto-accept gate is dispatched after the predictions are persisted,
-    on the CPU queue.
+    on the light queue.
 
     Queue matters and the failure is silent: `_StubGate` is registered ONLY on
-    `DATA_PROCESSING_TASK_QUEUE`, so a regression sending it to the GPU queue
+    `DATA_PROCESSING_LIGHT_TASK_QUEUE`, so a regression sending it elsewhere
     would hang until the execution timeout rather than fail a assertion. The
-    gate is a line fit — holding a contended NRP card through it is waste, and
-    the CPU Deployment is what every other math stage uses.
+    gate is a line fit: holding a contended NRP card through it is waste, and
+    the per-image queue it used to use caps concurrency at 2 for memory
+    reasons, so it waited behind whole dives of rawpy decoding and expired.
     """
     child_ids: List[str] = []
     persisted: List = []

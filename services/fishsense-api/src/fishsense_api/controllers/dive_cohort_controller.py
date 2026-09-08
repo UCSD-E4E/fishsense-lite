@@ -2,10 +2,22 @@
 #   `== True` / `!= None` are required here, not sloppy: SQLAlchemy overloads
 #   the comparison operators to build SQL expressions, and `is True` / `is not
 #   None` would evaluate to a Python bool and silently drop the predicate.
+# pylint: disable=too-many-lines
+#   TEMPORARY, and it should not outlive the pending split. Adding the
+#   auto-accept selector pushed this module to ~1049 lines, and this module
+#   exists precisely because `dive_controller` grew past 1000 and carried this
+#   same disable. The right home for the selector is the prediction-cohort
+#   module being split out on the headtail branch (0b7f84c) — it is not on
+#   main yet, and duplicating that split here would guarantee a conflict with
+#   it. Move `select_next_for_laser_auto_accept` there when it lands and drop
+#   this line.
 """Cohort selectors — which dive each pipeline stage should work on next.
 
 Split out of `dive_controller` because that module had grown past 1000 lines
-and was carrying a `too-many-lines` disable. These endpoints are a coherent
+and was carrying a `too-many-lines` disable. It then hit the same threshold
+itself, and the three model-assisted (prediction) selectors moved on to
+`dive_prediction_cohort_controller` for the same reason — which must likewise
+be imported before `dive_controller`. These endpoints are a coherent
 group with a different job from dive CRUD: each answers "what is the next
 HIGH-priority dive whose pipeline state matches stage N's cohort", and the
 api-worker's hourly schedules poll them.
@@ -24,7 +36,7 @@ which is silent. `test_dive_pipeline_status_view.py` pins the agreement.
 """
 
 import logging
-from typing import List
+from typing import Any, List
 
 from fastapi import Depends
 from sqlalchemy import and_, func, or_
@@ -50,7 +62,6 @@ from fishsense_api.models.laser_label import LaserLabel
 from fishsense_api.models.laser_prediction import LaserPrediction
 from fishsense_api.models.measurement import Measurement
 from fishsense_api.models.priority import Priority
-from fishsense_api.models.slate_prediction import SlatePrediction
 from fishsense_api.models.species_label import SpeciesLabel
 from fishsense_api.server import app
 
@@ -104,9 +115,10 @@ def _measurable_species_conditions():
                                                    (Scientific)` leaf
         "Fish Model, Weasly Fish"               -> rigid model, name-keyed
         "Calibration Targets, Ruler"            -> the ruler, name-keyed
+        "Calibration Targets, Box"              -> the box, name-keyed
 
-    Everything else — `"Slate, Laser on slate"`, other Calibration Targets —
-    is not measurable. (An earlier version of this docstring listed the
+    Everything else — `"Slate, Laser on slate"`, the E4E Checkerboard — is not
+    measurable. (An earlier version of this docstring listed the
     bottom two branches as *skipped*, six lines above the code matching them.
     It was written when only the first branch existed and never updated when
     models and the ruler were added; the ruler clause in particular looks
@@ -131,7 +143,7 @@ def _measurable_species_conditions():
 
 
 def _is_fish_model_condition():
-    """A rigid known-length target (fish model or the ruler).
+    """A rigid known-length target (fish model, ruler, or box).
 
     These carry no grouping labels and thus no LABEL_STUDIO cluster, so the
     stage-14 cohort waives the cluster requirement for them: identity is the
@@ -146,7 +158,9 @@ def _is_fish_model_condition():
             # `taxonomy.rigid_target_sql` for why that one matters.
             func.trim(SpeciesLabel.content_of_image) != taxonomy.FISH_MODEL_PREFIX,
         ),
-        SpeciesLabel.content_of_image == taxonomy.RULER_CONTENT,
+        SpeciesLabel.content_of_image.in_(
+            tuple(taxonomy.MEASURABLE_CALIBRATION_TARGETS)
+        ),
     )
 
 
@@ -212,7 +226,11 @@ def _resolved_laser_extrinsics_id():
 # activity's `MIN_LASER_POINTS = 2` precondition. Selecting a dive with
 # fewer than two completed slate labels would dispatch a child that
 # raises and re-fires every hour.
-MIN_COMPLETED_SLATE_LABELS = 2
+#: Minimum usable slate-laser OBSERVATIONS a dive needs before stage 13 will
+#: attempt a fit. Must equal the data-worker activity's `MIN_LASER_POINTS`,
+#: which raises below it — the two are one threshold expressed twice, and a
+#: dive between them is re-selected hourly forever with nothing written.
+MIN_SLATE_LASER_POINTS = 2
 
 # Stage-9 species_label.content_of_image marker (re-exported from the
 # shared taxonomy vocabulary so the view and the worker read the same one).
@@ -230,6 +248,56 @@ SLATE_CONTENT_MARKER = taxonomy.SLATE_CONTENT_MARKER
 # matches declaration order: `/dives/select-next/...` would otherwise
 # try to coerce "select-next" into the `{dive_id}: int` path param and
 # 422.
+
+
+def _has_image_flagged_for_reprocess(model) -> Any:
+    """EXISTS: this dive has a canonical image whose `model` row is flagged.
+
+    `needs_reprocess` is the second way into a preprocess cohort, and the only
+    way a decode or overlay change reaches an image that has already been
+    preprocessed -- the main predicate is "image has no row of this kind",
+    which goes false the moment populate seeds a row, freezing that image's
+    JPEG for good.
+
+    Canonical images only. The same physical frame lives under several dive
+    rows and only the canonical copy is ever preprocessed, so a flag on a
+    duplicate would select a dive whose resolver finds no work for it -- and
+    the dive would re-stage its raw `.ORF`s from the NAS every hour, forever,
+    starving every higher-id dive behind it.
+
+    Parameterised by model rather than written out per stage: `duplicate-code`
+    is textual, so four copies differing only in `LaserLabel` vs `SpeciesLabel`
+    score zero and would never be flagged.
+    """
+    return (
+        select(Image.id)
+        .where(Image.dive_id == Dive.id)
+        .where(
+            Image.is_canonical == True
+        )  # noqa: E712  pylint: disable=singleton-comparison
+        .where(
+            select(model.id)
+            .where(model.image_id == Image.id)
+            .where(
+                model.needs_reprocess == True
+            )  # noqa: E712  pylint: disable=singleton-comparison
+            # Superseded rows are invisible to the resolvers, whose per-dive
+            # getters filter them out. Selecting on one would pick a dive the
+            # resolver finds no work for, every hour, forever.
+            #
+            # `== False`, not "not superseded": this has to match the getter's
+            # filter exactly, and NULL is not False in SQL. `laserlabel` and
+            # `headtaillabel` still carry NULLs in prod (added nullable with no
+            # backfill), so counting NULL as live here would select dives whose
+            # resolver returns nothing. Same reasoning, and the same spelling,
+            # as the raise path in `label_controller._set_needs_reprocess`.
+            .where(
+                model.superseded == False
+            )  # noqa: E712  pylint: disable=singleton-comparison
+            .exists()
+        )
+        .exists()
+    )
 
 
 @app.get("/api/v1/dives/select-next/laser-preprocessing/")
@@ -281,174 +349,11 @@ async def select_next_for_laser_preprocessing(
         )
         .exists()
     )
-    has_image_flagged_for_reprocess = (
-        select(Image.id)
-        .where(Image.dive_id == Dive.id)
-        .where(Image.is_canonical == True)
-        .where(
-            select(LaserLabel.id)
-            .where(LaserLabel.image_id == Image.id)
-            .where(LaserLabel.needs_reprocess == True)
-            .exists()
-        )
-        .exists()
-    )
+    has_image_flagged_for_reprocess = _has_image_flagged_for_reprocess(LaserLabel)
     query = (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
         .where(or_(has_image_without_real_laser_label, has_image_flagged_for_reprocess))
-        .order_by(Dive.id)
-        .limit(1)
-    )
-    return (await session.exec(query)).first()
-
-
-@app.get("/api/v1/dives/select-next/laser-prediction/")
-async def select_next_for_laser_prediction(
-    session: AsyncSession = Depends(get_async_session),
-) -> int | None:
-    """Model-assisted laser labeling: HIGH-priority + at least one image
-    with no `LaserPrediction` row and no *completed* `LaserLabel` row.
-
-    An image needs a prediction only if it has neither been predicted nor
-    *labeled by a human* yet — so a dive drops out of the cohort once every
-    image is predicted, and images a human already labeled are never predicted
-    over.
-
-    Re-prediction is no longer "a manual affair": a dive is also selected while
-    it is still being labeled and carries a prediction from an older
-    `LASER_PREDICTOR_VERSION`.
-
-    "Labeled" here means `completed IS TRUE`, NOT merely
-    `project_id IS NOT NULL`: the laser populate step seeds placeholder
-    rows (`completed=False`, x/y NULL) that *carry* a `project_id`, so a
-    project-id check would exclude every populate-seeded-but-unlabeled
-    image — starving the detector on exactly the dives it should assist
-    (e.g. a dive populated before the detector shipped). Matches populate's
-    own `completed`-based definition of "labeled" (`_select_unlabeled_images`).
-
-    "Labeled" also requires `superseded IS FALSE`: a completed label that
-    `ValidateLaserLabelsForDiveWorkflow`'s RANSAC pass dead-lettered is an
-    *invalidated* label — the image has no live human label and should
-    re-enter the cohort. Mirrors the superseded-filter every downstream read
-    (`get_laser_labels`, the preprocess/predict resolvers) already applies.
-    """
-    has_image_needing_prediction = (
-        select(Image.id)
-        .where(Image.dive_id == Dive.id)
-        .where(Image.is_canonical == True)
-        .where(
-            ~select(LaserPrediction.id)
-            .where(LaserPrediction.image_id == Image.id)
-            .exists()
-        )
-        .where(
-            ~select(LaserLabel.id)
-            .where(LaserLabel.image_id == Image.id)
-            .where(LaserLabel.completed == True)
-            .where(LaserLabel.superseded == False)
-            .exists()
-        )
-        .exists()
-    )
-    # Second way in: a stale-version prediction on a dive still being labeled.
-    # Why mismatch rather than absence, and why only actively-labeled dives:
-    # `fishsense_shared.laser_predictor`. `IS DISTINCT FROM`, not `!=` — every
-    # pre-versioning row is NULL, and `!=` would answer NULL and select nothing.
-    version = LASER_PREDICTOR_VERSION
-    dive_is_still_being_labeled = (
-        select(Image.id)
-        .where(Image.dive_id == Dive.id)
-        .where(Image.is_canonical == True)
-        .where(
-            select(LaserLabel.id)
-            .where(LaserLabel.image_id == Image.id)
-            .where(LaserLabel.completed == False)
-            .where(LaserLabel.superseded == False)
-            .where(LaserLabel.label_studio_project_id != None)
-            .exists()
-        )
-        .exists()
-    )
-    has_image_with_a_stale_prediction = (
-        select(Image.id)
-        .where(Image.dive_id == Dive.id)
-        .where(Image.is_canonical == True)
-        .where(
-            select(LaserPrediction.id)
-            .where(LaserPrediction.image_id == Image.id)
-            # pylint: disable-next=no-member
-            .where(LaserPrediction.predictor_version.is_distinct_from(version))
-            .exists()
-        )
-        # Never re-predict over finished human work (the guard, not a fallout).
-        .where(
-            ~select(LaserLabel.id)
-            .where(LaserLabel.image_id == Image.id)
-            .where(LaserLabel.completed == True)
-            .where(LaserLabel.superseded == False)
-            .exists()
-        )
-        .exists()
-    )
-    query = (
-        select(Dive.id)
-        .where(Dive.priority == Priority.HIGH)
-        .where(
-            or_(
-                has_image_needing_prediction,
-                and_(dive_is_still_being_labeled, has_image_with_a_stale_prediction),
-            )
-        )
-        .order_by(Dive.id)
-        .limit(1)
-    )
-    return (await session.exec(query)).first()
-
-
-@app.get("/api/v1/dives/select-next/slate-prediction/")
-async def select_next_for_slate_prediction(
-    session: AsyncSession = Depends(get_async_session),
-) -> int | None:
-    """Model-assisted slate labeling: HIGH-priority + `dive_slate_id` set + at
-    least one slate frame with no `SlatePrediction` and no *completed*
-    `DiveSlateLabel`.
-
-    A slate frame is an image with a `SpeciesLabel.content_of_image =
-    'Slate, Laser on slate'` (the same frames stage 9 preprocesses). Such a
-    frame needs a prediction only if it has neither been predicted nor
-    labeled by a human yet — so a dive drops out once every slate frame is
-    predicted (one-shot per image), and human-labeled frames are never
-    predicted over. "Labeled" = `completed IS TRUE AND superseded IS FALSE`,
-    matching the laser-prediction cohort's rationale (populate seeds
-    placeholder rows that carry a project_id, so a project-id check would
-    starve the detector).
-    """
-    has_slate_frame_needing_prediction = (
-        select(SpeciesLabel.id)
-        .join(Image, Image.id == SpeciesLabel.image_id)
-        .where(Image.dive_id == Dive.id)
-        .where(Image.is_canonical == True)
-        .where(SpeciesLabel.content_of_image == SLATE_CONTENT_MARKER)
-        .where(
-            ~select(SlatePrediction.id)
-            .where(SlatePrediction.image_id == Image.id)
-            .exists()
-        )
-        .where(
-            ~select(DiveSlateLabel.id)
-            .where(DiveSlateLabel.image_id == Image.id)
-            .where(DiveSlateLabel.completed == True)
-            .where(DiveSlateLabel.superseded == False)
-            .exists()
-        )
-        .exists()
-    )
-    query = (
-        select(Dive.id)
-        .where(Dive.priority == Priority.HIGH)
-        .where(Dive.dive_slate_id != None)
-        .where(has_slate_frame_needing_prediction)
         .order_by(Dive.id)
         .limit(1)
     )
@@ -578,7 +483,12 @@ async def select_next_for_species_preprocessing(
     query = (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
-        .where(has_valid_laser_image_in_cluster_without_real_species)
+        .where(
+            or_(
+                has_valid_laser_image_in_cluster_without_real_species,
+                _has_image_flagged_for_reprocess(SpeciesLabel),
+            )
+        )
         .order_by(Dive.id)
         .limit(1)
     )
@@ -724,7 +634,12 @@ async def select_next_for_headtail_preprocessing(
     query = (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
-        .where(has_valid_laser_image_without_real_headtail)
+        .where(
+            or_(
+                has_valid_laser_image_without_real_headtail,
+                _has_image_flagged_for_reprocess(HeadTailLabel),
+            )
+        )
         .order_by(Dive.id)
         .limit(1)
     )
@@ -765,7 +680,12 @@ async def select_next_for_slate_preprocessing(
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
         .where(Dive.dive_slate_id != None)
-        .where(has_slate_marked_image_without_real_dive_slate_label)
+        .where(
+            or_(
+                has_slate_marked_image_without_real_dive_slate_label,
+                _has_image_flagged_for_reprocess(DiveSlateLabel),
+            )
+        )
         .order_by(Dive.id)
         .limit(1)
     )
@@ -777,8 +697,51 @@ async def select_next_for_laser_calibration(
     session: AsyncSession = Depends(get_async_session),
 ) -> int | None:
     """Stage 13: HIGH-priority + dive_slate_id set + no LaserExtrinsics +
-    at least MIN_COMPLETED_SLATE_LABELS completed DiveSlateLabel rows."""
-    completed_slate_label_count = (
+    at least `MIN_SLATE_LASER_POINTS` usable slate-laser observations.
+
+    **An observation is a completed slate label whose image also carries a live
+    laser dot**, which is what `perform_laser_calibration_activity` actually
+    counts: it walks the dive's slate labels, keeps one only when
+    `get_laser_label(image_id)` returns a row with x/y set, and raises below
+    `MIN_LASER_POINTS`. Keep the two in step — they are one threshold spelled
+    twice.
+
+    This used to count completed `DiveSlateLabel` rows and never look at the
+    laser, and the gap was not academic. Prod dive 347 carries 18 completed
+    slate labels and exactly ONE image with a live laser dot; the rest were
+    superseded during the breach recovery, which is permanent. The cohort said
+    eligible, the activity raised `insufficient laser points (1 < 2)`, nothing
+    was written, and the dive was re-selected every hour — the same
+    cohort-says-yes/activity-says-no shape as the `Fish Model,` empty-leaf bug.
+    Because the selector is `ORDER BY Dive.id LIMIT 1`, it also blocked dives
+    427 and 436, which have 3 and 12 observations and are perfectly
+    calibratable. Dive 466 (zero live dots) was next in line behind it.
+
+    `superseded == False` and nothing about `completed`, because that is
+    exactly what `get_laser_label` filters on — a populate-seeded placeholder
+    with NULL x/y is excluded by the x/y check, not by its completion state.
+
+    **Known approximation.** The activity can still reject an observation for
+    reasons SQL cannot model: `plane_from_correspondences` failing PnP, or a
+    NaN ray. This predicate is therefore an over-approximation, and a dive
+    whose geometry fails everywhere could still wedge. That residue is
+    unavoidable without running the solver; what it is not is the *common*
+    case, which was simply a missing laser dot. `get_laser_label` also takes
+    `.first()` among live labels with no ordering, so an image carrying both a
+    dotted and a dotless live label could resolve either way — no slate image
+    in prod does (checked), but it is why this counts EXISTS rather than trying
+    to reproduce `.first()`.
+    """
+    has_live_laser_dot = (
+        select(LaserLabel.id)
+        .where(LaserLabel.image_id == Image.id)
+        .where(LaserLabel.superseded == False)
+        .where(LaserLabel.x != None)
+        .where(LaserLabel.y != None)
+        .correlate(Image)
+        .exists()
+    )
+    usable_laser_point_count = (
         select(func.count(DiveSlateLabel.id))  # pylint: disable=not-callable
         .join(Image, Image.id == DiveSlateLabel.image_id)
         .where(Image.dive_id == Dive.id)
@@ -787,6 +750,7 @@ async def select_next_for_laser_calibration(
         # A dead-lettered slate label doesn't count toward the calibration
         # readiness gate — same validity convention laser calibration uses.
         .where(DiveSlateLabel.superseded == False)
+        .where(has_live_laser_dot)
         .scalar_subquery()
     )
     query = (
@@ -798,7 +762,7 @@ async def select_next_for_laser_calibration(
             .where(LaserExtrinsics.dive_id == Dive.id)
             .exists()
         )
-        .where(completed_slate_label_count >= MIN_COMPLETED_SLATE_LABELS)
+        .where(usable_laser_point_count >= MIN_SLATE_LASER_POINTS)
         .order_by(Dive.id)
         .limit(1)
     )
@@ -998,3 +962,67 @@ def _laser_depth_cohort_query():
         .order_by(Dive.id)
         .limit(1)
     )
+
+
+@app.get("/api/v1/dives/select-next/laser-auto-accept/")
+async def select_next_for_laser_auto_accept(
+    session: AsyncSession = Depends(get_async_session),
+) -> int | None:
+    """Auto-accept gate backlog: HIGH-priority + at least one canonical image
+    whose `LaserPrediction` carries a dot and has never been judged.
+
+    The gate normally runs off the back of the predict parent, but only when
+    the predict child returned *new* predictions — and a dive that is already
+    fully predicted never re-enters the predict cohort, so it never produces
+    results and its predictions were never judged. That left 3,711 rows across
+    ~65 dives permanently at `gate_verdict IS NULL` when the gate shipped, so
+    auto-accept reached almost none of the backlog it was built for.
+
+    A cohort rather than a hand-run backfill, for the reason CLAUDE.md gives
+    about selecting on mismatch: it drains itself, stays empty afterwards, and
+    re-arms on its own if anything leaves a verdict NULL again — which a
+    re-prediction does by design, since it clears the verdict computed from a
+    dot the row no longer holds.
+
+    **Abstentions are excluded, and that is what makes it drain.** A prediction
+    with no `x`/`y` is judged `no_prediction` and can never be auto-accepted,
+    but the gate only *writes* rows whose verdict changed. Selecting on
+    "unjudged" alone would keep re-selecting a dive whose detector abstained on
+    any frame: the gate would reach the same verdict every pass, write nothing,
+    and the dive would look unjudged again on the next poll. Requiring a dot
+    both matches what the gate can act on and gives the cohort a false
+    condition to reach.
+    """
+    has_unjudged_prediction = (
+        select(LaserPrediction.id)
+        .join(Image, Image.id == LaserPrediction.image_id)
+        .where(Image.dive_id == Dive.id)
+        .where(Image.is_canonical == True)
+        .where(LaserPrediction.x != None)
+        .where(LaserPrediction.y != None)
+        .where(LaserPrediction.gate_verdict == None)
+        # Only the CURRENT detector's output may ever be auto-accepted, and
+        # this is a correctness guard rather than a tidiness one. Stage v1 (and
+        # every pre-versioning NULL row) hardcoded the pre-annotation to
+        # "Red Laser" instead of reading the dot's colour -- see
+        # `fishsense_shared.laser_predictor`. Auto-accepting one writes a
+        # possibly-wrong colour into the corpus with NO human in the loop,
+        # because skipping review is precisely what this gate does; nothing
+        # downstream would catch it.
+        #
+        # `== version` rather than `is_distinct_from`: NULL == 2 is NULL, which
+        # is falsy, so pre-versioning rows are excluded exactly as intended.
+        # The predict cohort's mirror-image check uses `is_distinct_from` to
+        # *find* those same rows and re-predict them, so they are not stranded
+        # -- they come back here once they carry the current version.
+        .where(LaserPrediction.predictor_version == LASER_PREDICTOR_VERSION)
+        .exists()
+    )
+    query = (
+        select(Dive.id)
+        .where(Dive.priority == Priority.HIGH)
+        .where(has_unjudged_prediction)
+        .order_by(Dive.id)
+        .limit(1)
+    )
+    return (await session.exec(query)).first()

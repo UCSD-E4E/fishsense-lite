@@ -120,6 +120,70 @@ read-only SELECT on `fishsense`); the **backup-worker** uses the `backup` role
 (`client_id`/`client_secret`/`issuer_url`) (#438), and `oidc/proxy-outpost-token`
 (`token` — the co-located outpost's API token, #440).
 
+### Rotating an app secret — three steps, none of them automatic
+
+Writing a new value to OpenBao changes nothing on its own. `openbao-agent.service`
+is a **`oneshot`**: it renders at converge time and exits. The only automatic
+re-render is `openbao-agent-renew.timer`, and that fires on *cert* expiry — it
+does not notice a KV change. So a rotated app secret sits unread indefinitely.
+(Observed 2026-09-04: `app.env` was two months stale while a freshly-rotated
+Label Studio token sat in OpenBao, and the worker kept using the old one.)
+
+```bash
+# 1. Write it. `patch`, not `put` — KV-v2 `put` REPLACES the whole secret, so a
+#    path with several fields loses the ones you did not pass. Read from stdin:
+#    a token in argv lands in shell history and is visible in `ps`.
+read -rs -p 'new value: ' V && echo
+printf '%s' "$V" | bao kv patch secret/tenants/fishsense/<path> <field>=-
+unset V
+
+# Confirm WITHOUT printing it — check `current_version` incremented.
+bao kv metadata get secret/tenants/fishsense/<path>
+
+# 2. Re-render. Until this runs, /run/tenant/secrets/app.env still has the old value.
+ssh krg-admin@krg-nat.ucsd.edu 'incus exec fishsense --project fishsense -- \
+  systemctl restart openbao-agent.service'
+
+# 3. Recreate the consumers. `docker restart` is NOT enough — `env_file` is read
+#    when a container is CREATED, not started.
+ssh krg-admin@krg-nat.ucsd.edu 'incus exec fishsense --project fishsense -- \
+  systemctl restart fishsense.service'
+```
+
+**Verifying step 2 without reading the secret:** vault-agent skips files whose
+content is unchanged, so compare mtimes — `stat -c '%y %n' /run/tenant/secrets/*`.
+The file you rotated should be newer than the others. Do **not** `bao kv get
+-field=…` or `cat` the render; that puts the credential in your scrollback.
+
+**Step 3 targeted, if bouncing Postgres is unwelcome.** `systemctl restart
+fishsense.service` recreates the whole stack, which is what every converge already
+does. To limit it, copy the unit's own argv rather than reconstructing it:
+
+```bash
+ssh krg-admin@krg-nat.ucsd.edu 'incus exec fishsense --project fishsense -- \
+  systemctl show fishsense.service -p ExecStart --value'
+```
+
+⚠️ **`--project-directory /var/lib/krg/fishsense` is load-bearing** and is the
+trap here. The `-f` argument points at a `/nix/store` path; without the project
+directory, compose resolves relative bind mounts *next to the compose file* —
+inside the read-only store — and the api-worker fails to start with
+`mkdir …/worker_volumes/api_worker/logs: read-only file system`. The store path
+also changes on every converge, so never save it.
+
+**Which services hold which secret** (so you know what to recreate): everything
+in the `app.env` row of the render table above mounts the same file, but only the
+consumer named in `secrets.nix` reads a given variable — e.g. `label_studio.api_key`
+renders as `LABEL_STUDIO_API_KEY` (web) and `E4EFS_LABEL_STUDIO__API_KEY`
+(api-worker), so those two are the only ones a Label Studio rotation needs.
+
+**Label Studio specifically:** the worker authenticates as whoever owns the token.
+It must be the **service account** (`e4e+fishsense@ucsd.edu`), never a person —
+Label Studio stamps `completed_by` from the authenticated user, so a personal token
+makes every machine-written annotation look like that person's work. The account
+needs `users.list` as well as project/task access: `sync_users_label_studio_activity`
+is the first step of all four hourly label-sync workflows and 403s without it.
+
 **Committed non-secret config** (repo binds, self-contained under `deploy/incus/`):
 `worker_volumes/*/config/settings.toml`, `fishsense_api_volumes/config/settings.toml`,
 `pg_volumes/config/{postgres.conf,pg_hba.conf}`, `superset_volumes/docker/*`

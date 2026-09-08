@@ -2,6 +2,87 @@
 
 <!-- version list -->
 
+## [2.2.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.1.0...fishsense-api-workflow-worker-v2.2.0) (2026-09-07)
+
+
+### Features
+
+* add Box as a measurable species calibration target ([#795](https://github.com/UCSD-E4E/fishsense-lite/issues/795)) ([d57a65f](https://github.com/UCSD-E4E/fishsense-lite/commit/d57a65f07bef0eb74a70dde613a38e2af8e8bc95))
+
+## [2.1.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.0.2...fishsense-api-workflow-worker-v2.1.0) (2026-09-07)
+
+
+### Features
+
+* model-assisted head/tail labeling (SAM 3.1 on a laser-centred crop) ([#787](https://github.com/UCSD-E4E/fishsense-lite/issues/787)) ([7720404](https://github.com/UCSD-E4E/fishsense-lite/commit/77204040d8877a1b24beba62c41a53cb66c54cf9))
+
+## [2.0.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.0.1...fishsense-api-workflow-worker-v2.0.2) (2026-09-07)
+
+
+### Bug Fixes
+
+* a firing that dispatched nothing must not clean up after the run that did ([#784](https://github.com/UCSD-E4E/fishsense-lite/issues/784)) ([02c274f](https://github.com/UCSD-E4E/fishsense-lite/commit/02c274fc9d34c1b712fae3655273bc54bfdc0eaa))
+
+## [2.0.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.0.0...fishsense-api-workflow-worker-v2.0.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* close five ways the reprocess flag misbehaves ([#775](https://github.com/UCSD-E4E/fishsense-lite/issues/775)) ([#777](https://github.com/UCSD-E4E/fishsense-lite/issues/777)) ([ccdaccc](https://github.com/UCSD-E4E/fishsense-lite/commit/ccdaccc7dd058351ae4483f78bcb479a1d2fcce7))
+
+## [2.0.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.59.0...fishsense-api-workflow-worker-v2.0.0) (2026-09-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** `RawImage`'s default decode changed (use `DecodeConfig.production()` for the old chain), and `set_laser_needs_reprocess` now flags only incomplete labels by default (pass `only_incomplete=False` for the old wholesale behaviour).
+
+### Features
+
+* **api:** adopt fishsense-core 4.0.0 and honour needs-reprocess in every stage ([#760](https://github.com/UCSD-E4E/fishsense-lite/issues/760)) ([d64a5bd](https://github.com/UCSD-E4E/fishsense-lite/commit/d64a5bd55128c8c8123808dc908ddc90a469728c))
+
+## [1.59.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.58.2...fishsense-api-workflow-worker-v1.59.0) (2026-09-05)
+
+
+### Changes
+
+* **No user-facing change.** This version exists only because "model-assisted head/tail labeling (SAM3 on a laser-centred crop)" ([#694](https://github.com/UCSD-E4E/fishsense-lite/issues/694)) was merged and then reverted ([#734](https://github.com/UCSD-E4E/fishsense-lite/issues/734)) before any release was cut. Release-please does not reconcile a revert against the feature it undoes, so the version bump could not be withdrawn — but none of that code is in this release. The feature never shipped.
+
+## [1.58.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.58.1...fishsense-api-workflow-worker-v1.58.2) (2026-09-05)
+
+
+### Bug Fixes
+
+* **laser-populate:** name the service account on imported annotations ([#729](https://github.com/UCSD-E4E/fishsense-lite/issues/729)) ([aaf7d57](https://github.com/UCSD-E4E/fishsense-lite/commit/aaf7d5741796d116633cd2436e7d6ca0d9707d4d))
+
+## [1.58.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.58.0...fishsense-api-workflow-worker-v1.58.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **stage13:** count calibration observations, not slate labels ([#719](https://github.com/UCSD-E4E/fishsense-lite/issues/719)) ([77b3507](https://github.com/UCSD-E4E/fishsense-lite/commit/77b35076eca6f86b1cd95ac39569420f1640edd4))
+
+## [1.58.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.57.2...fishsense-api-workflow-worker-v1.58.0) (2026-09-04)
+
+
+### Features
+
+* **data-worker:** give the non-image stages their own task queue ([#711](https://github.com/UCSD-E4E/fishsense-lite/issues/711)) ([f6540e4](https://github.com/UCSD-E4E/fishsense-lite/commit/f6540e4cef8787be662a20f0245f69db53558ab6))
+
+## [1.57.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.57.1...fishsense-api-workflow-worker-v1.57.2) (2026-09-04)
+
+
+### Bug Fixes
+
+* **laser-auto-accept:** bound the gate's queue wait separately from its run ([#707](https://github.com/UCSD-E4E/fishsense-lite/issues/707)) ([682fb35](https://github.com/UCSD-E4E/fishsense-lite/commit/682fb35567565130212cb31336081dcd655a56fd))
+
+## [1.57.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.57.0...fishsense-api-workflow-worker-v1.57.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **laser-auto-accept:** drain the predictions the gate never judged ([#701](https://github.com/UCSD-E4E/fishsense-lite/issues/701)) ([e2b26db](https://github.com/UCSD-E4E/fishsense-lite/commit/e2b26dba0db5761b45588f18b77da8d2dba397ea))
+
 ## [1.57.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v1.56.6...fishsense-api-workflow-worker-v1.57.0) (2026-09-03)
 
 

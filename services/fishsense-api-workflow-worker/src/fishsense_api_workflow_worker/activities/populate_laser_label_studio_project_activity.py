@@ -21,6 +21,7 @@ from fishsense_api_workflow_worker.activities.populate_utils import (
     publish_label_studio_project,
 )
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
+from fishsense_api_workflow_worker.config import settings
 from fishsense_api_workflow_worker.object_store import open_object_store_client
 
 PREPROCESS_FOLDER = "preprocess_jpeg"
@@ -133,6 +134,17 @@ def _auto_accepted_annotations(
     — so an auto-accepted annotation is indistinguishable in shape from the
     outcome it stands in for.
 
+    **`ground_truth` is explicitly False, and the "minus the human" is why.**
+    Matching the shape of a human review is about the geometry; it does not
+    extend to the claim. Label Studio treats `ground_truth` as "this annotation
+    is definitive" — the reference other work is scored against — and an
+    auto-accepted frame skipped review entirely. The gate ships an audit sample
+    precisely because a fraction of these are expected to be wrong.
+
+    It has to be said out loud: left unset, Label Studio stamped
+    `ground_truth: true` on import, so the claim was being made silently. Prod
+    dive 520 carried it on all 37 of its auto-accepted annotations.
+
     Coordinates are deliberately not written to the `LaserLabel` here. The
     hourly sync stays the single writer of label x/y, reading them back out of
     LS exactly as it does for a human annotation, so there is one code path and
@@ -143,7 +155,26 @@ def _auto_accepted_annotations(
     result = _keypoint_result(prediction, laser_label)
     if result is None:
         return []
-    return [{"result": [dict(result, origin="prediction")]}]
+    annotation = {
+        "result": [dict(result, origin="prediction")],
+        "ground_truth": False,
+    }
+    # Name the service account explicitly. An IMPORTED annotation is attributed
+    # by Label Studio to the project owner, not the API caller — so unlike
+    # `ls.annotations.create`, holding the bot's token is not enough here, and
+    # there is nothing in the request for LS to infer the author from. Prod
+    # 2026-09-04: the worker had been the bot since 18:07 and populate still
+    # seeded 61 annotations at 18:17, then 164 more at 19:17, under the human
+    # who owned the project.
+    #
+    # Omitted rather than sent as null when unconfigured: `completed_by: null`
+    # is an LS validation error that would fail populate for a whole dive, and
+    # this value arrives through a manual OpenBao rotation. Degrading to the
+    # old (wrong) attribution is survivable; a broken populate is not.
+    bot_user_id = getattr(settings.label_studio, "bot_user_id", 0)
+    if bot_user_id:
+        annotation["completed_by"] = int(bot_user_id)
+    return [annotation]
 
 
 def _select_unlabeled_images(

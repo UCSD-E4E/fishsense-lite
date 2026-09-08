@@ -494,6 +494,63 @@ def test_auto_accepted_annotation_matches_the_shape_of_an_accepted_prediction():
     assert result["type"] == "keypointlabels"
 
 
+def test_auto_accepted_annotation_names_the_service_account(monkeypatch):
+    """**The import path must say who wrote it; the token does not.**
+
+    `ls.annotations.create` stamps `completed_by` from the authenticated user,
+    so swapping the worker's token to the service account fixed that path. An
+    *imported* annotation is different: Label Studio attributes it to the
+    project owner, not the API caller. Prod proved it — the worker was already
+    running as the bot at 18:07 on 2026-09-04, and populate still seeded 61
+    annotations at 18:17 under the human who owned the project, then 164 more
+    at 19:17.
+
+    So this path has to name the account explicitly, from config, because
+    there is nothing in the request for LS to infer it from.
+    """
+    # pylint: disable=protected-access
+    monkeypatch.setattr(sut.settings.label_studio, "bot_user_id", 215238, raising=False)
+
+    task = sut._build_task(_image(7, "abc123"), _accepted(7), "Red Laser")
+
+    assert task["annotations"][0]["completed_by"] == 215238
+
+
+def test_auto_accepted_annotation_omits_completed_by_when_unconfigured(monkeypatch):
+    """Unset means omit the key, never send None.
+
+    `bot_user_id` has to reach the slot through the OpenBao render, and that is
+    a three-step manual rotation nobody can be relied on to complete in one go.
+    Sending `completed_by: null` on a miss would be a hard LS validation error
+    that fails populate for the whole dive; omitting it degrades to the old
+    behaviour, which is wrong attribution but not a broken pipeline.
+    """
+    # pylint: disable=protected-access
+    monkeypatch.setattr(sut.settings.label_studio, "bot_user_id", None, raising=False)
+
+    task = sut._build_task(_image(7, "abc123"), _accepted(7), "Red Laser")
+
+    assert "completed_by" not in task["annotations"][0]
+
+
+def test_auto_accepted_annotation_is_not_marked_ground_truth():
+    """Shape-matching a human review stops at the *geometry*, not the claim.
+
+    `origin: prediction` is truthful — the model placed the point and nothing
+    moved it. `ground_truth` is a different assertion: Label Studio treats it
+    as "this annotation is definitive", the reference other work is scored
+    against. An auto-accepted frame skipped review entirely, and the gate ships
+    an audit sample precisely because some of these are expected to be wrong.
+
+    Must be explicit. Left unset, Label Studio stamped `ground_truth: true` on
+    import — verified on prod dive 520, all 37 annotations.
+    """
+    # pylint: disable=protected-access
+    task = sut._build_task(_image(7, "abc123"), _accepted(7), "Red Laser")
+
+    assert task["annotations"][0]["ground_truth"] is False
+
+
 def test_auto_accepted_keypoint_carries_the_same_percentages_as_a_prediction():
     """The annotation must land on the pixel the detector chose. Sharing the
     conversion with `_prediction_annotations` is what guarantees it."""

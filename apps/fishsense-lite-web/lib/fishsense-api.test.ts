@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getIncompleteProjectIds } from "./fishsense-api";
+import { getProjectIds } from "./fishsense-api";
 
 beforeEach(() => {
   vi.stubEnv("FISHSENSE_API_URL", "http://api.test");
@@ -25,7 +25,7 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 type NextFetchInit = RequestInit & { next?: { revalidate?: number } };
 type FetchSig = (input: string, init?: NextFetchInit) => Promise<Response>;
 
-describe("getIncompleteProjectIds", () => {
+describe("getProjectIds", () => {
   it("calls all four label-kind endpoints with incomplete=true and Basic auth", async () => {
     const fetchMock = vi.fn<FetchSig>(async (url) => {
       if (url.includes("/labels/laser/")) return jsonResponse([42, 43]);
@@ -36,7 +36,12 @@ describe("getIncompleteProjectIds", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await getIncompleteProjectIds(60);
+    const result = {
+      laser: await getProjectIds("laser", 60),
+      species: await getProjectIds("species", 60),
+      headtail: await getProjectIds("headtail", 60),
+      "dive-slate": await getProjectIds("dive-slate", 60),
+    };
 
     expect(result).toEqual({
       laser: [42, 43],
@@ -59,7 +64,7 @@ describe("getIncompleteProjectIds", () => {
     const fetchMock = vi.fn<FetchSig>(async () => jsonResponse([]));
     vi.stubGlobal("fetch", fetchMock);
 
-    await getIncompleteProjectIds(123);
+    await Promise.all(["laser", "species", "headtail", "dive-slate"].map((k) => getProjectIds(k as never, 123)));
 
     for (const [, init] of fetchMock.mock.calls) {
       expect(init?.next?.revalidate).toBe(123);
@@ -75,7 +80,7 @@ describe("getIncompleteProjectIds", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(getIncompleteProjectIds(60)).rejects.toThrow(/laser.*500/);
+    await expect(getProjectIds("laser", 60)).rejects.toThrow(/laser.*500/);
   });
 
   it("hits all four endpoints in parallel (single Promise.all)", async () => {
@@ -90,8 +95,57 @@ describe("getIncompleteProjectIds", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await getIncompleteProjectIds(60);
+    await Promise.all(["laser", "species", "headtail", "dive-slate"].map((k) => getProjectIds(k as never, 60)));
 
     expect(maxInFlight).toBe(4);
+  });
+});
+
+describe("the auto-accept gate filter", () => {
+  // The gate decides which laser predictions a human never needs to see.
+  // Surfacing a project it has not finished with sends a labeler at frames
+  // the machine is about to accept for them — duplicated work, and worse,
+  // work that looks voluntary. `gated=true` means "the gate is done here",
+  // not merely "the gate has run here"; the API owns that distinction.
+  it("asks only for gated laser projects", async () => {
+    const fetchMock = vi.fn<FetchSig>(async () => jsonResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await Promise.all(["laser", "species", "headtail", "dive-slate"].map((k) => getProjectIds(k as never, 60)));
+
+    const laserCall = fetchMock.mock.calls.find(([url]) =>
+      url.includes("/labels/laser/"),
+    );
+    expect(laserCall?.[0]).toContain("gated=true");
+  });
+
+  // Only `LaserPrediction` carries `gate_verdict`. Sending `gated=true` to a
+  // kind with no gate would ask for a condition nothing can satisfy and blank
+  // the section — so the flag is per-kind, and these three opt out until
+  // their own predictions grow a gate.
+  it.each(["species", "headtail", "dive-slate"])(
+    "does not send gated for %s, which has no gate",
+    async (kind) => {
+      const fetchMock = vi.fn<FetchSig>(async () => jsonResponse([]));
+      vi.stubGlobal("fetch", fetchMock);
+
+      await Promise.all(["laser", "species", "headtail", "dive-slate"].map((k) => getProjectIds(k as never, 60)));
+
+      const call = fetchMock.mock.calls.find(([url]) =>
+        url.includes(`/labels/${kind}/`),
+      );
+      expect(call?.[0]).not.toContain("gated");
+    },
+  );
+
+  it("still asks for incomplete work alongside the gate filter", async () => {
+    const fetchMock = vi.fn<FetchSig>(async () => jsonResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await Promise.all(["laser", "species", "headtail", "dive-slate"].map((k) => getProjectIds(k as never, 60)));
+
+    for (const [url] of fetchMock.mock.calls) {
+      expect(url).toContain("incomplete=true");
+    }
   });
 });

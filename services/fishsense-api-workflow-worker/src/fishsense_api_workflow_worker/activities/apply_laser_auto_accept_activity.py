@@ -158,7 +158,16 @@ async def apply_laser_auto_accept_for_dive_activity(dive_id: int) -> int:
                 continue
             await asyncio.to_thread(
                 lambda tid=task_id, pid=project_id, payload=wrapper[0]: (
-                    ls.annotations.create(id=tid, project=pid, result=payload["result"])
+                    ls.annotations.create(
+                        id=tid,
+                        project=pid,
+                        result=payload["result"],
+                        # Never definitive: this annotation skipped human
+                        # review, which is the whole point of the gate. Left
+                        # unset, Label Studio defaults it TRUE — see
+                        # `_auto_accepted_annotations`.
+                        ground_truth=payload["ground_truth"],
+                    )
                 )
             )
             applied += 1

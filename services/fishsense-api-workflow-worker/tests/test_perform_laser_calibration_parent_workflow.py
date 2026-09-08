@@ -16,15 +16,21 @@ from __future__ import annotations
 
 import uuid
 from datetime import timedelta
-from typing import List, Optional
+from typing import List
 
 import pytest
-from temporalio import activity, workflow
+from temporalio import workflow
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
+from tests._parent_stubs import (
+    make_recording_activity,
+    make_stub_selector,
+    stub_wake_light_worker,
+)
+
 from fishsense_api_workflow_worker.workflows.perform_laser_calibration_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
-    DATA_PROCESSING_TASK_QUEUE,
+    DATA_PROCESSING_LIGHT_TASK_QUEUE,
     PerformLaserCalibrationParentWorkflow,
 )
 
@@ -44,47 +50,24 @@ class _StubChildWorkflow:
         return 9001  # arbitrary "extrinsics row id" stand-in
 
 
-def _make_recording_activity(captures: List[tuple]):
-    @activity.defn(name="_record_child_dispatch")
-    async def record_child_dispatch(workflow_id: str, dive_id: int) -> None:
-        captures.append((workflow_id, dive_id))
-
-    return record_child_dispatch
-
-
-@activity.defn(name="ensure_data_worker_running_activity")
-async def _stub_ensure_data_worker_running() -> int:
-    return 0
-
-
-def _make_stub_selector(selector_result: Optional[int]):
-    selector_calls: List[None] = []
-
-    @activity.defn(
-        name="select_next_high_priority_dive_for_laser_calibration_activity"
-    )
-    async def stub_select() -> Optional[int]:
-        selector_calls.append(None)
-        return selector_result
-
-    return stub_select, selector_calls
 
 
 @pytest.mark.asyncio
 async def test_dispatches_child_with_deterministic_id_and_dive_payload():
-    stub_select, selector_calls = _make_stub_selector(440)
+    stub_select, selector_calls = make_stub_selector(
+        "select_next_high_priority_dive_for_laser_calibration_activity", 440)
     child_runs: List[tuple] = []
-    record = _make_recording_activity(child_runs)
+    record = make_recording_activity(child_runs)
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
             env.client,
             task_queue="test-stage13-parent",
             workflows=[PerformLaserCalibrationParentWorkflow],
-            activities=[stub_select, _stub_ensure_data_worker_running],
+            activities=[stub_select, stub_wake_light_worker],
         ), Worker(
             env.client,
-            task_queue=DATA_PROCESSING_TASK_QUEUE,
+            task_queue=DATA_PROCESSING_LIGHT_TASK_QUEUE,
             workflows=[_StubChildWorkflow],
             activities=[record],
         ):
@@ -104,19 +87,20 @@ async def test_dispatches_child_with_deterministic_id_and_dive_payload():
 
 @pytest.mark.asyncio
 async def test_returns_none_when_selector_finds_no_dive():
-    stub_select, selector_calls = _make_stub_selector(None)
+    stub_select, selector_calls = make_stub_selector(
+        "select_next_high_priority_dive_for_laser_calibration_activity", None)
     child_runs: List[tuple] = []
-    record = _make_recording_activity(child_runs)
+    record = make_recording_activity(child_runs)
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
             env.client,
             task_queue="test-stage13-parent-empty",
             workflows=[PerformLaserCalibrationParentWorkflow],
-            activities=[stub_select, _stub_ensure_data_worker_running],
+            activities=[stub_select, stub_wake_light_worker],
         ), Worker(
             env.client,
-            task_queue=DATA_PROCESSING_TASK_QUEUE,
+            task_queue=DATA_PROCESSING_LIGHT_TASK_QUEUE,
             workflows=[_StubChildWorkflow],
             activities=[record],
         ):

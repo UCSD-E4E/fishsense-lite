@@ -136,6 +136,31 @@ async def test_attaches_an_annotation_to_an_open_unannotated_task(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_an_auto_accepted_annotation_is_not_marked_ground_truth(monkeypatch):
+    """A machine annotation no human has reviewed is not ground truth.
+
+    `ground_truth` is Label Studio's "this one is definitive" flag -- it is
+    what a reviewer sets to make an annotation the reference others are scored
+    against. An auto-accepted frame is the opposite: it skipped review entirely,
+    and the gate's own audit sample exists precisely because some fraction of
+    these are expected to be wrong.
+
+    It has to be passed explicitly. Left unset, Label Studio stamped
+    `ground_truth: true` on the annotations this activity created -- verified
+    on prod dive 520, all 37 of them -- so the claim was being made silently.
+    """
+    ls = _make_ls([_task(900)])
+    monkeypatch.setattr(sut, "_get_ls_client", lambda: ls)
+    monkeypatch.setattr(
+        sut, "get_fs_client", lambda: _make_fs([_prediction(1)], [_label(1, 900)])
+    )
+
+    await ActivityEnvironment().run(sut.apply_laser_auto_accept_for_dive_activity, 5)
+
+    assert ls.annotations.create.call_args.kwargs["ground_truth"] is False
+
+
+@pytest.mark.asyncio
 async def test_a_task_that_already_has_an_annotation_is_left_alone(monkeypatch):
     """Doubles as the idempotency test: the first pass leaves an annotation
     behind, so the second pass sees exactly this state. It is also the guard

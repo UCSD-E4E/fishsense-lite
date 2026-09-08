@@ -66,12 +66,37 @@ url = "https://api.fishsense.e4e.ucsd.edu"
 endpoint_url = "https://s3.e4e.ucsd.edu"
 region = "garage"
 # `bucket` = raw/slate scratch (read); `labels_bucket` = LS-facing bucket where
-# this worker writes processed JPEGs (under `labels_prefix`).
+# this worker writes processed JPEGs (under `labels_prefix`); `models_bucket` =
+# model weights (read). Three buckets, three grants: this worker needs read on
+# scratch and models, write on labels.
 bucket = "fishsense-lite"
 labels_bucket = "labels-fishsense-lite"
 labels_prefix = "fishsense-lite"
+models_bucket = "model-weights"
 
 # No NAS access from the data-worker by design — the api-worker is the
 # only side that touches the NAS, and it stages all bytes the
 # data-worker needs into the Garage object store before dispatching
 # child workflows. Don't add an [e4e_nas] block here.
+
+# SAM3 checkpoint for the head/tail predict stage (gpu role).
+#
+# Weights are pulled from the object store rather than baked into the image:
+# this Deployment scales to zero, so a multi-gigabyte layer would be re-pulled
+# on every cold start, and the upstream distribution is gated.
+#
+# `name/version/filename` address `{name}/{version}/{filename}` in
+# `object_store.models_bucket` and must match what was uploaded there — there
+# is no `models/` segment, because the bucket is already the models bucket.
+# `cache_dir` must live on the `cache` volume or the download repeats on every
+# cold start.
+#
+# This is the SAM 3.1 checkpoint (`facebook/sam3.1`), not SAM 3
+# (`facebook/sam3`, `sam3.pt`). The loader takes either without complaint —
+# `strict=False`, missing keys printed rather than raised — so the wrong name
+# here degrades the masks silently instead of failing.
+[sam3]
+cache_dir = "/e4efs/cache/sam3"
+model_name = "sam3"
+model_version = "3.1"
+checkpoint_filename = "sam3.1_multiplex.pt"

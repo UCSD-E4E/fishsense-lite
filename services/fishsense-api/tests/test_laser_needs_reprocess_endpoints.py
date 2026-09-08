@@ -11,6 +11,12 @@ hypothetical -- it is exactly how prod dive 60 wedged dives 84/465/471 until
 Scoped to canonical images: the same physical frame lives under several dive
 rows and only the canonical copy is ever preprocessed, so flagging the others
 would raise a flag no cohort can ever lower.
+
+Every label in `_seed` is `completed=True`, so these tests pass
+`only_incomplete=False` wherever they mean "flag the whole dive". The
+endpoint's default is incomplete-only -- redrawing a frame someone has already
+answered buys nothing -- and that default is covered in
+`test_needs_reprocess_scoping.py`.
 """
 
 from __future__ import annotations
@@ -89,7 +95,9 @@ async def test_put_flags_the_dives_canonical_labels(session):
     )
 
     await _seed(session)
-    count = await set_laser_labels_needs_reprocess(dive_id=1, session=session)
+    count = await set_laser_labels_needs_reprocess(
+        dive_id=1, only_incomplete=False, session=session
+    )
     await session.commit()
 
     assert count == 2
@@ -102,7 +110,9 @@ async def test_put_skips_non_canonical_images(session):
     )
 
     await _seed(session)
-    await set_laser_labels_needs_reprocess(dive_id=1, session=session)
+    await set_laser_labels_needs_reprocess(
+        dive_id=1, only_incomplete=False, session=session
+    )
     await session.commit()
 
     assert await _flags(session, [12]) == {12: False}
@@ -114,7 +124,9 @@ async def test_put_does_not_touch_other_dives(session):
     )
 
     await _seed(session)
-    await set_laser_labels_needs_reprocess(dive_id=1, session=session)
+    await set_laser_labels_needs_reprocess(
+        dive_id=1, only_incomplete=False, session=session
+    )
     await session.commit()
 
     assert await _flags(session, [20]) == {20: False}
@@ -127,7 +139,9 @@ async def test_delete_clears_the_flag(session):
     )
 
     await _seed(session)
-    await set_laser_labels_needs_reprocess(dive_id=1, session=session)
+    await set_laser_labels_needs_reprocess(
+        dive_id=1, only_incomplete=False, session=session
+    )
     await session.commit()
 
     count = await clear_laser_labels_needs_reprocess(dive_id=1, session=session)
@@ -146,8 +160,18 @@ async def test_both_are_idempotent(session):
     )
 
     await _seed(session)
-    assert await set_laser_labels_needs_reprocess(dive_id=1, session=session) == 2
-    assert await set_laser_labels_needs_reprocess(dive_id=1, session=session) == 2
+    assert (
+        await set_laser_labels_needs_reprocess(
+            dive_id=1, only_incomplete=False, session=session
+        )
+        == 2
+    )
+    assert (
+        await set_laser_labels_needs_reprocess(
+            dive_id=1, only_incomplete=False, session=session
+        )
+        == 2
+    )
     await session.commit()
     assert await clear_laser_labels_needs_reprocess(dive_id=1, session=session) == 2
     assert await clear_laser_labels_needs_reprocess(dive_id=1, session=session) == 2
