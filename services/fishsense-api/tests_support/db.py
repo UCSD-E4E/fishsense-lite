@@ -67,3 +67,28 @@ def image(image_id: int, dive_id: int, *, is_canonical: bool = True):
         is_canonical=is_canonical,
         dive_id=dive_id,
     )
+
+
+def reprocess_label_kinds():
+    """The four label models that carry `needs_reprocess`, as pytest params.
+
+    Shared because three suites parametrise over exactly this list, and
+    `duplicate-code` is textual: four copies differing only in which model is
+    named would score zero and drift apart unnoticed.
+
+    Imported lazily inside the function, like the row builders above, so
+    importing this module does not pull in the model registry.
+    """
+    import pytest
+
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel
+    from fishsense_api.models.head_tail_label import HeadTailLabel
+    from fishsense_api.models.laser_label import LaserLabel
+    from fishsense_api.models.species_label import SpeciesLabel
+
+    return [
+        pytest.param(LaserLabel, id="laser"),
+        pytest.param(SpeciesLabel, id="species"),
+        pytest.param(HeadTailLabel, id="headtail"),
+        pytest.param(DiveSlateLabel, id="dive-slate"),
+    ]

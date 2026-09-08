@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.18.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.17.0...fishsense-shared-v0.18.0) (2026-09-07)
+
+
+### Features
+
+* add Box as a measurable species calibration target ([#795](https://github.com/UCSD-E4E/fishsense-lite/issues/795)) ([d57a65f](https://github.com/UCSD-E4E/fishsense-lite/commit/d57a65f07bef0eb74a70dde613a38e2af8e8bc95))
+
+## [0.17.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.16.1...fishsense-shared-v0.17.0) (2026-09-07)
+
+
+### Features
+
+* model-assisted head/tail labeling (SAM 3.1 on a laser-centred crop) ([#787](https://github.com/UCSD-E4E/fishsense-lite/issues/787)) ([7720404](https://github.com/UCSD-E4E/fishsense-lite/commit/77204040d8877a1b24beba62c41a53cb66c54cf9))
+
+## [0.16.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.16.0...fishsense-shared-v0.16.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* close five ways the reprocess flag misbehaves ([#775](https://github.com/UCSD-E4E/fishsense-lite/issues/775)) ([#777](https://github.com/UCSD-E4E/fishsense-lite/issues/777)) ([ccdaccc](https://github.com/UCSD-E4E/fishsense-lite/commit/ccdaccc7dd058351ae4483f78bcb479a1d2fcce7))
+
 ## [0.16.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.15.0...fishsense-shared-v0.16.0) (2026-09-05)
 
 

@@ -20,6 +20,9 @@ from datetime import timedelta
 from fishsense_shared import PreprocessSlateImagesInput
 from temporalio import workflow
 
+from fishsense_api_workflow_worker.activities.reprocess_scope import (
+    ClearReprocessFlagsInput,
+)
 from fishsense_api_workflow_worker.workflows import _dispatch
 
 
@@ -65,7 +68,8 @@ class PreprocessSlateImagesParentWorkflow:
                 dive_id,
             )
             await _dispatch.run_sdk_activity(
-                "clear_slate_reprocess_flags_activity", dive_id
+                "clear_slate_reprocess_flags_activity",
+                ClearReprocessFlagsInput(dive_id=dive_id),
             )
             return inputs.dive_id
 
@@ -75,12 +79,23 @@ class PreprocessSlateImagesParentWorkflow:
             inputs.slate_id,
             schedule_to_close_timeout=timedelta(minutes=5),
         )
-        await _dispatch.dispatch_child(
+        dispatched = await _dispatch.dispatch_child(
             "PreprocessSlateImagesWorkflow",
             inputs,
             child_id=f"preprocess-slate-{dive_id}",
             execution_timeout=timedelta(hours=1),
         )
+        if dispatched is _dispatch.CHILD_ALREADY_RUNNING:
+            # Another run owns that child and is reading the raw scratch this
+            # firing would delete. It will clean up, and it will clear the
+            # flags for the frames it actually redrew.
+            workflow.logger.info(
+                "dive_id=%d already has a child running; leaving its raw bytes "
+                "and reprocess flags alone",
+                dive_id,
+            )
+            return inputs.dive_id
+
         await _dispatch.cleanup_raw(dive_id)
         await _dispatch.dispatch_populate(
             "PopulateDiveSlateLabelStudioProjectWorkflow",
@@ -88,7 +103,12 @@ class PreprocessSlateImagesParentWorkflow:
             f"populate-dive-slate-{dive_id}",
         )
 
+        # Scoped to what this run actually redrew. The child can run for two
+        # hours, so an unscoped clear would silently discard a flag raised
+        # while it was working -- a request that redrew nothing, lost with no
+        # error. Anything flagged since stays flagged for the next firing.
         await _dispatch.run_sdk_activity(
-            "clear_slate_reprocess_flags_activity", dive_id
+            "clear_slate_reprocess_flags_activity",
+            ClearReprocessFlagsInput(dive_id=dive_id, checksums=inputs.image_checksums),
         )
         return inputs.dive_id

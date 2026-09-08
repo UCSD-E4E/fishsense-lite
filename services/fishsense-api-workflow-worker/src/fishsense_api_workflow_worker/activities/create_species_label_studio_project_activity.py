@@ -35,7 +35,14 @@ SPECIES_PROJECT_TITLE_SUFFIX = "Species Labeling"
 #     2026-07-21 with the current model set (Weasly Fish, Snook, Grouper,
 #     Shark, Gray Anthias, Purple Angel, Yellow Anthias).
 #   - `Calibration Targets` top-level branch added 2026-07-21 (Ruler,
-#     E4E Checkerboard). Kept as its own sibling of `Fish Model` rather
+#     E4E Checkerboard); `Box` added 2026-09-07 (0.15 m). The branch is
+#     MIXED — Ruler and Box are rigid known-length targets and grade through
+#     the same `Fish.name` join as the fish models, while E4E Checkerboard
+#     spans no single head/tail distance and is deliberately unmeasurable.
+#     `taxonomy.MEASURABLE_CALIBRATION_TARGETS` is the allowlist that draws
+#     that line; adding a leaf here without adding it there (and to
+#     `views.KNOWN_FISH_MODELS`) is caught by the parity tests, not by
+#     anything at runtime. Kept as its own sibling of `Fish Model` rather
 #     than folded into it because they aren't fish — `content_of_image`
 #     records the taxonomy path, so these read as
 #     "Calibration Targets, Ruler" and stay trivially separable from the
@@ -108,6 +115,7 @@ SPECIES_LABELING_CONFIG_XML = """\
     </Choice>
     <Choice value="Calibration Targets">
       <Choice value="Ruler"/>
+      <Choice value="Box"/>
       <Choice value="E4E Checkerboard"/>
     </Choice>
   </Taxonomy>

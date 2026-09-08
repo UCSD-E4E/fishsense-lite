@@ -63,6 +63,47 @@ def test_known_models_cover_the_labeled_taxonomy():
     assert labeled <= known, f"labelable but ungradeable: {sorted(labeled - known)}"
 
 
+def test_known_models_cover_the_measurable_calibration_targets():
+    """The ruler and the box grade through the same `Fish.name` join as the
+    models, so the same silent absence applies to them.
+
+    Asserted over `MEASURABLE_CALIBRATION_TARGETS` rather than by name, so
+    adding a target to the taxonomy without a reference row fails here instead
+    of producing measurements the accuracy view inner-joins away.
+    """
+    named = set(taxonomy.MEASURABLE_CALIBRATION_TARGETS.values())
+    known = {m["name"] for m in KNOWN_FISH_MODELS}
+
+    assert named <= known, f"measurable but ungradeable: {sorted(named - known)}"
+
+
+def test_box_is_seeded_at_fifteen_centimetres():
+    """Operator-supplied 2026-09-07. Pinned because the reference IS the
+    grading — a wrong length here shows up as a calibration error that isn't
+    one, which is exactly the false trail the ruler's 14-vs-13.5 in history
+    cost."""
+    box = next(m for m in KNOWN_FISH_MODELS if m["name"] == "Box")
+
+    assert box["known_length_m"] == pytest.approx(0.15)
+
+
+def test_box_records_which_landmark_its_length_uses():
+    """Same rule as Weasly Fish, and the box needs it more.
+
+    0.150 m is corner to corner across the middle band of an H-shaped duct-tape
+    pattern on one face — not a box edge and not a face diagonal. Anyone who
+    reconstructs the number from the box's own dimensions gets a different one
+    and reads the difference as calibration error. The row has to say the tape
+    is the target, and which span of it.
+    """
+    notes = FISH_MODEL_NOTES["Box"].lower()
+
+    assert "duct-tape" in notes or "duct tape" in notes
+    assert "corner to corner" in notes
+    assert "not a box edge" in notes
+
+
+
 def test_weasly_fish_records_which_landmark_its_length_uses():
     """A reference that does not say which end it means is ambiguous by ~5pp —
     larger than most of the errors being chased — so the landmark has to be on

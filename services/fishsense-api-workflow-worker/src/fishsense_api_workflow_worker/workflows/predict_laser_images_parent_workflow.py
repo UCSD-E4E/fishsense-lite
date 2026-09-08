@@ -104,6 +104,16 @@ class PredictLaserImagesParentWorkflow:
             task_queue=_dispatch.DATA_PROCESSING_GPU_TASK_QUEUE,
         )
 
+        if results is _dispatch.CHILD_ALREADY_RUNNING:
+            # Another run owns that child and is still reading the raw scratch
+            # this firing would delete. Leave it alone; that run cleans up.
+            workflow.logger.info(
+                "dive_id=%d already has a predict child running; leaving its "
+                "raw bytes alone",
+                dive_id,
+            )
+            return inputs.dive_id
+
         if results:
             await _dispatch.run_sdk_activity(
                 "persist_laser_predictions_activity", results
@@ -159,6 +169,17 @@ class PredictLaserImagesParentWorkflow:
                 execution_timeout=GATE_CHILD_EXECUTION_TIMEOUT,
                 result_type=LaserAutoAcceptSummary,
             )
+            if summary is _dispatch.CHILD_ALREADY_RUNNING:
+                # The backlog drain is running this dive's gate right now. Its
+                # verdicts are the same verdicts; reading `.eligible` off the
+                # sentinel would raise AttributeError and wedge the workflow
+                # task in an infinite retry.
+                workflow.logger.info(
+                    "auto-accept gate for dive_id=%d is already running "
+                    "(backlog drain); skipping this firing's gate",
+                    dive_id,
+                )
+                return inputs.dive_id
             # Logged at the parent because the per-dive verdict mix is the
             # monitoring signal for this stage — cheaper and faster than the
             # audit sample, and it needs no human labels. Watch BOTH tails: a

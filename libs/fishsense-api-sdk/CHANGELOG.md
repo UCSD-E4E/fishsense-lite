@@ -2,6 +2,20 @@
 
 <!-- version list -->
 
+## [2.1.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v2.0.1...fishsense-api-sdk-v2.1.0) (2026-09-07)
+
+
+### Features
+
+* model-assisted head/tail labeling (SAM 3.1 on a laser-centred crop) ([#787](https://github.com/UCSD-E4E/fishsense-lite/issues/787)) ([7720404](https://github.com/UCSD-E4E/fishsense-lite/commit/77204040d8877a1b24beba62c41a53cb66c54cf9))
+
+## [2.0.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v2.0.0...fishsense-api-sdk-v2.0.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* close five ways the reprocess flag misbehaves ([#775](https://github.com/UCSD-E4E/fishsense-lite/issues/775)) ([#777](https://github.com/UCSD-E4E/fishsense-lite/issues/777)) ([ccdaccc](https://github.com/UCSD-E4E/fishsense-lite/commit/ccdaccc7dd058351ae4483f78bcb479a1d2fcce7))
+
 ## [2.0.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.50.0...fishsense-api-sdk-v2.0.0) (2026-09-07)
 
 

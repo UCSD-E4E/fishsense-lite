@@ -55,12 +55,36 @@ export default async function HomePage() {
           Sign in
         </a>
       </header>
+      {active.degraded > 0 && <DegradedNotice count={active.degraded} />}
       <div className="space-y-10">
         {sections.map((section) => (
           <SectionView key={section.title} section={section} />
         ))}
       </div>
     </main>
+  );
+}
+
+/**
+ * Says out loud that the list below is short.
+ *
+ * Without this, Label Studio being unreachable rendered as an absence: on
+ * 2026-09-07 all 45 head/tail projects were rate-limited and silently
+ * dropped, so the page showed no Head/Tail section at all while labelers had
+ * a full queue. A page that could not ask must not present the answer it does
+ * have as the whole one.
+ */
+function DegradedNotice({ count }: { count: number }) {
+  return (
+    <div
+      role="status"
+      className="mb-8 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200"
+    >
+      <span className="font-medium">Some projects could not be loaded.</span>{" "}
+      Label Studio did not answer for {count} labeling{" "}
+      {count === 1 ? "project" : "projects"}, so this list is incomplete.
+      Reload in a moment to see the rest.
+    </div>
   );
 }
 

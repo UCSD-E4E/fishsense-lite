@@ -1,11 +1,19 @@
 import { isPublished, liveProjectIds } from "./label-projects";
 import { getProjects, type LabelStudioProject } from "./label-studio";
 
-export type ActiveProjects = {
+/** The four labeling kinds. Separate from `ActiveProjects` so `buildSections`
+ *  can iterate the kinds without `degraded` being a possible key. */
+export type ProjectsByKind = {
   laser: LabelStudioProject[];
   species: LabelStudioProject[];
   headtail: LabelStudioProject[];
   slate: LabelStudioProject[];
+};
+
+export type ActiveProjects = ProjectsByKind & {
+  /** Projects Label Studio would not resolve, summed across kinds. Non-zero
+   *  means the cards are an incomplete list of the outstanding work. */
+  degraded: number;
 };
 
 // Fresh object per call — a shared constant would hand every caller the
@@ -15,6 +23,7 @@ const noActiveProjects = (): ActiveProjects => ({
   species: [],
   headtail: [],
   slate: [],
+  degraded: 0,
 });
 
 export async function getActiveProjects(revalidate = 300): Promise<ActiveProjects> {
@@ -30,7 +39,9 @@ export async function getActiveProjects(revalidate = 300): Promise<ActiveProject
   // Never resolve an empty list. With Label Studio switched off every list is
   // empty, and this is what keeps the page from touching it at all.
   const resolve = async (ids: number[]) =>
-    ids.length === 0 ? [] : getProjects(ids, revalidate);
+    ids.length === 0
+      ? { projects: [] as LabelStudioProject[], degraded: 0 }
+      : getProjects(ids, revalidate);
 
   const [laser, species, headtail, slate] = await Promise.all([
     resolve(laserIds),
@@ -40,9 +51,11 @@ export async function getActiveProjects(revalidate = 300): Promise<ActiveProject
   ]);
 
   return {
-    laser: laser.filter(isPublished),
-    species: species.filter(isPublished),
-    headtail: headtail.filter(isPublished),
-    slate: slate.filter(isPublished),
+    laser: laser.projects.filter(isPublished),
+    species: species.projects.filter(isPublished),
+    headtail: headtail.projects.filter(isPublished),
+    slate: slate.projects.filter(isPublished),
+    degraded:
+      laser.degraded + species.degraded + headtail.degraded + slate.degraded,
   };
 }

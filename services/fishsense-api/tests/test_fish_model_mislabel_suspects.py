@@ -285,3 +285,74 @@ async def test_a_provisional_model_is_still_graded_in_the_accuracy_view(session)
         )
     ]
     assert [r["model_name"] for r in rows] == ["Weasly Fish"]
+
+
+# ── calibration targets are not candidate species labels ──────────────
+
+
+async def test_a_calibration_target_is_not_offered_as_a_best_fit(session):
+    """The Box (0.150 m) must never be the answer to "which model is this?".
+
+    This view asks a species question, and a ruler or a box is not a species a
+    labeler can have meant. The prompt it would raise is one nobody can act on.
+
+    It became reachable the moment the box was added. Before that the smallest
+    reference was Purple Angel at 0.192 m, comfortably above the band that
+    foreshortened frames of the ~0.195 m models land in. A correctly-labelled
+    Gray Anthias measured at 0.160 m has an own error of -17.9% (clearing the
+    15% gate) and fits the box to 6.7% (inside the 10% gate) — so without this
+    exclusion it is flagged, against a box, at medium confidence.
+
+    Deliberately NOT fixed with `is_provisional`: that flag asserts the length
+    is an estimate, the box's 0.150 m is a real measurement, and both the
+    column and `views.KNOWN_FISH_MODELS` say not to reach for it to quiet this
+    view.
+    """
+    from fishsense_api.models.fish_model_reference import FishModelReference
+
+    session.add(FishModelReference(name="Box", known_length_m=0.15))
+    await session.flush()
+
+    await _measure(session, dive_id=1, model_name="Gray Anthias", length_m=0.160)
+
+    assert await _suspects(session) == []
+
+
+async def test_the_foreshortened_anthias_would_flag_against_a_real_model(session):
+    """The control for the test above — same frame, same gates, but a genuine
+    model sitting at the box's length.
+
+    Without this, the exclusion test would pass just as happily if the frame
+    failed one of the view's thresholds for an unrelated reason.
+    """
+    from fishsense_api.models.fish_model_reference import FishModelReference
+
+    session.add(FishModelReference(name="Tiny Model", known_length_m=0.15))
+    await session.flush()
+
+    await _measure(session, dive_id=1, model_name="Gray Anthias", length_m=0.160)
+
+    suspects = await _suspects(session)
+    assert [s["best_fit_model"] for s in suspects] == ["Tiny Model"]
+
+
+async def test_a_calibration_target_frame_is_not_itself_a_suspect(session):
+    """The other side of the same question.
+
+    A badly-measured ruler frame is a calibration or labeling problem, which
+    the accuracy view already reports. Reporting it here as "this ruler might
+    really be a Grouper" is not a hypothesis anyone would act on, so calibration
+    targets are excluded as suspects too, not just as candidates.
+    """
+    from fishsense_api.models.fish_model_reference import FishModelReference
+
+    session.add(FishModelReference(name="Ruler", known_length_m=0.3429))
+    await session.flush()
+
+    # Own error +32.7% (clears the 15% gate) and landing exactly on Snook, so
+    # the frame satisfies both of the view's thresholds and would be reported
+    # `high` confidence. 0.360 (Grouper) would NOT do: +5% own error never
+    # clears the gate, and the test would pass without exercising anything.
+    await _measure(session, dive_id=1, model_name="Ruler", length_m=0.455)
+
+    assert await _suspects(session) == []

@@ -5,9 +5,10 @@ The key contract and the S3 primitives live in
 worker and the api-worker, so neither owns it. This module is only the
 data-worker's method subset layered on top.
 
-This worker reads staged raw inputs + slate PDFs from the scratch bucket
-and writes processed JPEGs to the labels bucket. It has **no NAS access**
-by design, and no way to delete anything.
+This worker reads staged raw inputs + slate PDFs from the scratch bucket,
+writes processed JPEGs to the labels bucket, and reads model weights from
+the models bucket. It has **no NAS access** by design, and no way to
+delete anything.
 
 The ``{jpeg_prefix}`` values are the same folder names the workflows
 already pass as ``output_folder`` — ``preprocess_jpeg`` (0.1),
@@ -22,6 +23,7 @@ from fishsense_shared.object_store import (
     SLATE_PDF_PREFIX,
     BaseObjectStoreClient,
     jpeg_key,
+    model_key,
     open_client,
     raw_key,
     slate_pdf_key,
@@ -32,6 +34,7 @@ __all__ = [
     "SLATE_PDF_PREFIX",
     "ObjectStoreClient",
     "jpeg_key",
+    "model_key",
     "open_client",
     "open_object_store_client",
     "raw_key",
@@ -55,9 +58,10 @@ class ObjectStoreClient(BaseObjectStoreClient):
     """The data-worker's read + JPEG-write vocabulary.
 
     Reads raw/slate **scratch** from ``bucket``; writes processed JPEGs to
-    ``labels_bucket`` (the LS-facing bucket) under ``labels_prefix``.
-    ``labels_bucket`` defaults to ``bucket`` so single-bucket layouts keep
-    working unchanged.
+    ``labels_bucket`` (the LS-facing bucket) under ``labels_prefix``; reads
+    model weights from ``models_bucket`` under ``models_prefix``. Both of
+    the latter default to ``bucket`` so single-bucket layouts keep working
+    unchanged.
     """
 
     async def download_raw(self, checksum: str) -> bytes:
@@ -65,6 +69,41 @@ class ObjectStoreClient(BaseObjectStoreClient):
 
     async def download_slate_pdf(self, slate_id: int) -> bytes:
         return await self._get(slate_pdf_key(slate_id))
+
+    async def download_processed_jpeg(self, folder: str, checksum: str) -> bytes:
+        """Read back a JPEG this worker wrote.
+
+        A deliberate widening of the read/write asymmetry in this module's
+        docstring: until now the data-worker only ever *wrote* the JPEG
+        prefixes. The head/tail predict stage reads one, because the stage-5.1
+        JPEG is the exact frame the labeler is shown, so predicting on anything
+        else would be predicting on a different image than the one being
+        labelled. It reads its own output, in its own bucket, and still cannot
+        delete anything.
+        """
+        return await self._get(
+            jpeg_key(folder, checksum, self._labels_prefix),
+            bucket=self._labels_bucket,
+        )
+
+    async def download_model(self, name: str, version: str, filename: str) -> bytes:
+        """Fetch a model checkpoint from the object store.
+
+        Weights live here rather than in the image because this Deployment
+        scales to zero — a multi-gigabyte layer would be re-pulled on every
+        cold start — and because keeping them out of a pullable artifact
+        avoids redistributing weights whose upstream distribution is gated.
+        Callers cache the bytes on a volume; see `checkpoint_cache`.
+
+        Reads ``models_bucket``, not ``bucket``: the weights are their own
+        kind of object with their own access grant, and pointing this at the
+        scratch bucket turns a checkpoint uploaded anywhere else into a 404
+        at cold start rather than a question at config review.
+        """
+        return await self._get(
+            model_key(name, version, filename, self._models_prefix),
+            bucket=self._models_bucket,
+        )
 
     async def upload_processed_jpeg(
         self, folder: str, checksum: str, data: bytes

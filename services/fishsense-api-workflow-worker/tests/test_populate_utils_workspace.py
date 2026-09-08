@@ -367,7 +367,7 @@ def test_species_xml_carries_the_current_fish_model_set():
 
 
 def test_species_xml_has_calibration_targets_as_its_own_branch():
-    """Ruler / E4E Checkerboard are not fish.
+    """Ruler / Box / E4E Checkerboard are not fish.
 
     Kept a sibling of `Fish Model` rather than folded into it so
     `content_of_image` (which stores the joined taxonomy path) reads as
@@ -375,6 +375,7 @@ def test_species_xml_has_calibration_targets_as_its_own_branch():
     """
     assert _species_taxonomy_branch("Calibration Targets") == [
         "Ruler",
+        "Box",
         "E4E Checkerboard",
     ]
     # ...and they must NOT also linger under Fish Model.
