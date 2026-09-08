@@ -26,7 +26,10 @@ child → persist.
 from datetime import timedelta
 from typing import List
 
-from fishsense_shared import ClusterDiveFramesInput
+from fishsense_shared import (
+    DATA_PROCESSING_LIGHT_TASK_QUEUE,
+    ClusterDiveFramesInput,
+)
 from temporalio import workflow
 from temporalio.common import WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
@@ -36,8 +39,6 @@ with workflow.unsafe.imports_passed_through():
         SCALING_RETRY_POLICY,
         SDK_FAIL_FAST_RETRY_POLICY,
     )
-
-DATA_PROCESSING_TASK_QUEUE = "fishsense_data_processing_queue"
 
 
 @workflow.defn
@@ -82,7 +83,7 @@ class ClusterDiveFramesParentWorkflow:
         # on the configured replica count, never accumulates; a no-op
         # when k8s scaling isn't configured.
         await workflow.execute_activity(
-            "ensure_data_worker_running_activity",
+            "ensure_light_worker_running_activity",
             args=(),
             schedule_to_close_timeout=timedelta(minutes=5),
             retry_policy=SCALING_RETRY_POLICY,
@@ -94,7 +95,7 @@ class ClusterDiveFramesParentWorkflow:
                 "DiveFrameClusteringWorkflow",
                 inputs,
                 id=f"cluster-{dive_id}",
-                task_queue=DATA_PROCESSING_TASK_QUEUE,
+                task_queue=DATA_PROCESSING_LIGHT_TASK_QUEUE,
                 execution_timeout=timedelta(minutes=15),
                 id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
                 result_type=list,

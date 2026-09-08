@@ -1,5 +1,69 @@
 # Changelog
 
+## [0.12.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.12.0...fishsense-lite-web-v0.12.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **web:** throttle Label Studio requests through one shared limiter ([#796](https://github.com/UCSD-E4E/fishsense-lite/issues/796)) ([7b52d41](https://github.com/UCSD-E4E/fishsense-lite/commit/7b52d41695f09756782d8c63416b4a26713c2e31))
+
+## [0.12.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.11.5...fishsense-lite-web-v0.12.0) (2026-09-07)
+
+
+### Features
+
+* **web:** carry zoom between triage frames ([#768](https://github.com/UCSD-E4E/fishsense-lite/issues/768)) ([b526e2c](https://github.com/UCSD-E4E/fishsense-lite/commit/b526e2c45871600bfed38104f085d21561d1eafd))
+
+## [0.11.5](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.11.4...fishsense-lite-web-v0.11.5) (2026-09-07)
+
+
+### Bug Fixes
+
+* **web:** back off on token-refresh 429s, and stop causing them ([#765](https://github.com/UCSD-E4E/fishsense-lite/issues/765)) ([628fd33](https://github.com/UCSD-E4E/fishsense-lite/commit/628fd331ea7f77798e9c6fc0d8d5fd02e852888b))
+
+## [0.11.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.11.3...fishsense-lite-web-v0.11.4) (2026-09-07)
+
+
+### Bug Fixes
+
+* **web:** ask Label Studio where the frame is, and say why when it fails ([#759](https://github.com/UCSD-E4E/fishsense-lite/issues/759)) ([d3ad3eb](https://github.com/UCSD-E4E/fishsense-lite/commit/d3ad3ebdbac815225fd824f4ff22e3708be16c95))
+
+## [0.11.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.11.2...fishsense-lite-web-v0.11.3) (2026-09-07)
+
+
+### Bug Fixes
+
+* **web:** hydrate tasks before judging them — the list omits predictions ([#756](https://github.com/UCSD-E4E/fishsense-lite/issues/756)) ([7c944a8](https://github.com/UCSD-E4E/fishsense-lite/commit/7c944a8edb9a78aff3ca17854087b504e70207d1))
+* **web:** report the triage scan per project, not as a flat sample ([#755](https://github.com/UCSD-E4E/fishsense-lite/issues/755)) ([a70f724](https://github.com/UCSD-E4E/fishsense-lite/commit/a70f724d2cf9b861feedbadd9f714b0d31cac739))
+
+## [0.11.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.11.1...fishsense-lite-web-v0.11.2) (2026-09-05)
+
+
+### Bug Fixes
+
+* **web:** triage listed no projects, and the cause could not surface ([#752](https://github.com/UCSD-E4E/fishsense-lite/issues/752)) ([242c73a](https://github.com/UCSD-E4E/fishsense-lite/commit/242c73a6f10ef6d1e569f91afe792e7068714a70))
+
+## [0.11.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.11.0...fishsense-lite-web-v0.11.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **web:** stop the triage queue rate-limiting itself out of Label Studio ([#747](https://github.com/UCSD-E4E/fishsense-lite/issues/747)) ([f809771](https://github.com/UCSD-E4E/fishsense-lite/commit/f809771b1ba5794b6b3640a373b332da82f68d0c))
+
+## [0.11.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.10.0...fishsense-lite-web-v0.11.0) (2026-09-05)
+
+
+### Features
+
+* **web:** accept/skip triage of laser predictions ([#732](https://github.com/UCSD-E4E/fishsense-lite/issues/732)) ([126d131](https://github.com/UCSD-E4E/fishsense-lite/commit/126d1318f87d65995fc0c2448d0b181278d46645))
+
+## [0.10.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.9.2...fishsense-lite-web-v0.10.0) (2026-09-04)
+
+
+### Features
+
+* **laser-auto-accept:** hide projects the gate has not finished ([#722](https://github.com/UCSD-E4E/fishsense-lite/issues/722)) ([1810cb9](https://github.com/UCSD-E4E/fishsense-lite/commit/1810cb93689896f6f7bffc4d6c6fd2d7991a7046))
+
 ## [0.9.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.9.1...fishsense-lite-web-v0.9.2) (2026-08-17)
 
 

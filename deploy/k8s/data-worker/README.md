@@ -13,11 +13,12 @@ differs.
 
 | File | What |
 |---|---|
-| `deployment.yaml` | The **CPU** worker (`role=cpu`), serving `fishsense_data_processing_queue`. `replicas` is **omitted** — the api-worker owns the count (scales it up on demand, back to 0 when idle; see below). amd64 nodeSelector, resource requests/limits, `maxSurge: 0`, no PDB, emptyDir scratch, no PVC/GPU/NAS. |
+| `deployment.yaml` | The **per-image** worker (`role=cpu`), serving `fishsense_data_processing_queue` — rectify/overlay/JPEG for stages 0.1 / 2 / 5.1 / 9, and nothing else since 2026-09-04. `replicas` is **omitted** — the api-worker owns the count (scales it up on demand, back to 0 when idle; see below). amd64 nodeSelector, resource requests/limits, `maxSurge: 0`, no PDB, emptyDir scratch, no PVC/GPU/NAS. |
 | `deployment-gpu.yaml` | The **GPU** worker (`role=gpu`), serving `fishsense_data_processing_gpu_queue` (laser detector + slate masker). Adds `nvidia.com/gpu: 1`, the `nvidia.com/gpu:NoSchedule` toleration, and SM >= 7.5 node affinity. Allowed to be unschedulable — see "GPU split" below. |
 | `deployment-gpu-cpu-fallback.yaml` | The **CPU fallback** for the GPU queue (`role=gpu`, no GPU request). Runs the same checkpoint on the CPU when the GPU worker repeatedly fails to start. Normally 0 replicas, indefinitely. |
+| `deployment-light.yaml` | The **light** worker (`role=light`), serving `fishsense_data_processing_light_queue` — clustering, calibration, measurement, laser depth, laser-label validation and the auto-accept gate. A small pod (1-2 CPU, 2-4 Gi) running `max_concurrent_activities = 8`; see "Light queue" below for why it is not simply on the per-image queue. |
 | `settings.toml` | Source for the `fishsense-data-worker-settings` ConfigMap (built by kustomize's `configMapGenerator`; mounted at `/e4efs/config/settings.toml`). Credentials are **not** here — they're env vars from a Secret. |
-| `kustomization.yaml` | `kubectl apply -k` entrypoint. Holds the overridable image tag (CI bumps it) — one entry covers all three Deployments, which share an image and differ only by `E4EFS_GENERAL__ROLE`. |
+| `kustomization.yaml` | `kubectl apply -k` entrypoint. Holds the overridable image tag (CI bumps it) — one entry covers all four Deployments, which share an image and differ by `E4EFS_GENERAL__ROLE` and their resource requests. |
 | `deployer-rbac.yaml` | The **deploy identity**: ServiceAccount `fishsense-deployer` + a least-privilege Role (deployments/scale/configmaps) + RoleBinding + a token-minting Secret. **Not** in `kustomization.yaml` — operator-applied out-of-band (the SA can't create its own RBAC). Credential-free: the token controller populates the Secret's `.data.token` in-cluster; the JWT never enters git. |
 
 ## Who scales it
@@ -27,24 +28,66 @@ no pods run, and work just waits on `fishsense_data_processing_queue`
 until a worker appears. The **api-worker** (running in the Incus slot,
 outside this cluster) brings it back:
 
-* Each parent workflow that dispatches a CPU data-worker child calls
-  `ensure_data_worker_running_activity` first — scales `deployment.yaml`
-  to `kubernetes.active_replicas` (default 1).
+* Each preprocess parent calls `ensure_data_worker_running_activity`
+  first — scales `deployment.yaml` to `kubernetes.active_replicas`
+  (default 1).
+* The six light-stage parents call `ensure_light_worker_running_activity`
+  — scales `deployment-light.yaml` to
+  `kubernetes.light_active_replicas` (default 1).
 * The two predict parents instead call
   `ensure_gpu_worker_running_activity`, which scales **one of** the GPU
   Deployment or its CPU fallback (see the next section).
 * `ScaleDownIdleDataWorkerWorkflow` runs hourly and scales each of the
-  three to 0 once the queue *it* serves has had no running or
+  four to 0 once the queue *it* serves has had no running or
   recently-closed workflow for `kubernetes.idle_cooldown_minutes`. A busy
-  CPU queue therefore never keeps a GPU pod alive.
+  per-image queue therefore never keeps a GPU or light pod alive.
+  **A Deployment absent from `ScalingConfig.sweep_targets()` is never
+  scaled down at all**, which on NRP means holding pods around the clock
+  — so adding a role means adding it there, not only to the wake path.
 
 For that to work the api-worker needs the `e4e-fishsense` kubeconfig
 (vault-agent-rendered from OpenBao to `/run/tenant/nrp/kubeconfig`, #245)
 and the `[kubernetes]` config section (`kubeconfig_path`, `namespace =
 "e4e-fishsense"`, `deployment_name`, `active_replicas`,
-`idle_cooldown_minutes`) — see the api-worker's `settings.toml` in
+`idle_cooldown_minutes`, `light_active_replicas`) — see the api-worker's `settings.toml` in
 `deploy/incus/worker_volumes/api_worker/config/`. The same kubeconfig is
 what CI uses to `kubectl apply` (repo secret `NRP_KUBECONFIG`).
+
+## Light queue, and why a line fit had its own pod
+
+Added 2026-09-04. `fishsense_data_processing_light_queue` carries the six
+stages that hold no image bytes — frame clustering, laser calibration, fish
+measurement, laser depth, laser-label validation, and the auto-accept gate.
+They fetch rows from fishsense-api, do numpy, and write rows back.
+
+**The split is about memory, not CPU.** Both roles are CPU-only and could share
+a pod; what they cannot share is the concurrency cap. The per-image worker runs
+`general.max_concurrent_activities = 2`, and that 2 is the scar of a real
+incident, not a throughput choice: each per-image activity decodes a full-res
+`.ORF` and peaks at 1-3 GB, the Temporal default of 100 OOMKilled the pod into
+CrashLoopBackOff, and a cap of 4 did it again on 2026-07-21 with 17 restarts,
+which starved the queue and timed out the validation children. The pod's memory
+limit is *derived* from the cap, so the cap cannot simply be raised.
+
+Two slots means one multi-image preprocess dispatch owns that queue for as long
+as a dive takes. Measured on 2026-09-04, before the split: three of the
+auto-accept drain's first four hourly firings and two consecutive laser
+calibration firings died with `ScheduleToStart timeout`, for work that
+completes in under two seconds once it has a slot. Widening the gate's timeouts
+(#707) bought patience but not capacity — the contention was the cause.
+
+The light pod is an order of magnitude smaller (1-2 CPU, 2-4 Gi against 4-8 CPU
+and 6-16 Gi) and runs a cap of **8**, because nothing on this queue decodes an
+image. Sized small deliberately: a stage that cannot get a pod scheduled is a
+stage that does not run.
+
+**It scales to zero like the others** — NRP asks guests to hold as little as
+possible, so there is no always-on pod. That makes cold start part of the
+latency budget, which is why the stages on this queue bound queue wait
+*separately* from execution time rather than with one conflated
+`schedule_to_close_timeout` (see `fishsense_shared.auto_accept_timeouts` for
+the worked example). A dedicated queue does not mean an instant one; it means
+nothing else can be ahead of you in it.
 
 ## GPU split, and why nothing waits on a GPU
 

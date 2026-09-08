@@ -3,12 +3,13 @@
 
 The backlog drain. Pins:
   1. Empty cohort -> returns None, wakes nothing, dispatches nothing.
-  2. A selected dive -> child on the data-worker **CPU** queue with the
+  2. A selected dive -> child on the data-worker **light** queue with the
      deterministic id `auto-accept-laser-{dive_id}`, then the apply step.
   3. A dive the gate cleared nothing on -> no apply step.
 
 (2)'s queue matters and its failure is silent: the stub child is registered on
-`DATA_PROCESSING_TASK_QUEUE` only, so a regression sending it to the GPU queue
+`DATA_PROCESSING_LIGHT_TASK_QUEUE` only, so a regression sending it to
+another queue
 hangs until the execution timeout rather than failing an assertion.
 
 (3) is not just an optimisation. Every dive in this backlog already has Label
@@ -30,7 +31,7 @@ from temporalio.worker import Worker
 
 from fishsense_shared import LaserAutoAcceptSummary
 from fishsense_api_workflow_worker.workflows._dispatch import (
-    DATA_PROCESSING_TASK_QUEUE,
+    DATA_PROCESSING_LIGHT_TASK_QUEUE,
 )
 from fishsense_api_workflow_worker.workflows.evaluate_laser_auto_accept_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
     EvaluateLaserAutoAcceptParentWorkflow,
@@ -69,7 +70,7 @@ def _stubs(dive_id, gate_ids, applied, woken):
     async def selector() -> int | None:
         return dive_id
 
-    @activity.defn(name="ensure_data_worker_running_activity")
+    @activity.defn(name="ensure_light_worker_running_activity")
     async def ensure_cpu() -> None:
         woken.append(True)
 
@@ -94,7 +95,7 @@ async def _run(env, dive_id, gate_ids, applied, woken):
         activities=activities,
     ), Worker(
         env.client,
-        task_queue=DATA_PROCESSING_TASK_QUEUE,
+        task_queue=DATA_PROCESSING_LIGHT_TASK_QUEUE,
         workflows=[_StubGate],
         activities=activities,
     ):

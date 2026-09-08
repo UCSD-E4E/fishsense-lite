@@ -1333,6 +1333,8 @@ async def test_slate_preprocessing_excludes_dive_when_sentinel_coexists_with_rea
 async def test_slate_prediction_requires_marker_and_no_prediction_or_label(session):
     from fishsense_api.controllers.dive_cohort_controller import (
         SLATE_CONTENT_MARKER,
+    )
+    from fishsense_api.controllers.dive_prediction_cohort_controller import (
         select_next_for_slate_prediction,
     )
     from fishsense_api.models.slate_prediction import (
@@ -1370,6 +1372,8 @@ async def test_slate_prediction_placeholder_label_still_needs_prediction(session
     prediction cohort keys on `completed`, not on project_id."""
     from fishsense_api.controllers.dive_cohort_controller import (
         SLATE_CONTENT_MARKER,
+    )
+    from fishsense_api.controllers.dive_prediction_cohort_controller import (
         select_next_for_slate_prediction,
     )
     from fishsense_api.models.dive_slate_label import (
@@ -1394,6 +1398,8 @@ async def test_slate_prediction_placeholder_label_still_needs_prediction(session
 async def test_slate_prediction_excludes_completed_but_reenters_when_superseded(session):
     from fishsense_api.controllers.dive_cohort_controller import (
         SLATE_CONTENT_MARKER,
+    )
+    from fishsense_api.controllers.dive_prediction_cohort_controller import (
         select_next_for_slate_prediction,
     )
     from fishsense_api.models.dive_slate_label import (
@@ -1448,6 +1454,31 @@ async def test_slate_preprocessing_ignores_null_project_sentinels(session):
 
 
 # ---------- stage 13: laser-calibration ----------
+#
+# **The cohort counts calibration OBSERVATIONS, not slate labels**, and the
+# difference is what wedged prod. `perform_laser_calibration_activity` walks the
+# dive's slate labels and keeps one only when `get_laser_label(image_id)`
+# returns a row with x/y set -- that endpoint filters `superseded == False` and
+# nothing else -- then refuses the dive below `MIN_LASER_POINTS = 2`.
+#
+# The selector used to count completed `DiveSlateLabel` rows and never look at
+# the laser at all. Prod dive 347 has 18 completed slate labels and exactly ONE
+# image with a live laser dot (the rest were superseded during the breach
+# recovery, which is permanent). So the cohort said eligible, the activity
+# raised `insufficient laser points (1 < 2)`, nothing was written, and the dive
+# was re-selected every hour forever -- the same shape as the `Fish Model,`
+# empty-leaf bug, and it blocked dives 427 and 436, which are calibratable.
+# Dive 466 (zero live dots) sat right behind it.
+
+
+def _slate_laser_dot(image_id: int, *, x: float = 100.0, superseded: bool = False):
+    """A live laser label on a slate image -- what turns a slate label into a
+    usable calibration observation."""
+    from fishsense_api.models.laser_label import LaserLabel
+
+    return LaserLabel(image_id=image_id, x=x, y=200.0, superseded=superseded)
+
+
 
 
 async def test_laser_calibration_requires_min_completed_slate_labels(session):
@@ -1487,12 +1518,147 @@ async def test_laser_calibration_requires_min_completed_slate_labels(session):
             DiveSlateLabel(image_id=31, completed=True),
             DiveSlateLabel(image_id=32, completed=True),
             DiveSlateLabel(image_id=33, completed=True),
+            # A slate label only becomes a calibration observation when its
+            # image also carries a laser dot -- see the readiness tests below.
+            _slate_laser_dot(11),
+            _slate_laser_dot(21),
+            _slate_laser_dot(22),
+            _slate_laser_dot(31),
+            _slate_laser_dot(32),
+            _slate_laser_dot(33),
             _calibration(3),
         ]
     )
     await session.flush()
 
     assert await select_next_for_laser_calibration(session=session) == 2
+
+
+async def test_laser_calibration_needs_two_images_with_laser_dots(session):
+    """The prod wedge, in miniature. A dive can have plenty of completed slate
+    labels and still be uncalibratable, because a slate label without a laser
+    dot on the same image contributes no observation."""
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_laser_calibration,
+    )
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel
+
+    session.add(_dive(1, dive_slate_id=99))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1), _image(13, 1)])
+    await session.flush()
+    session.add_all(
+        [
+            DiveSlateLabel(image_id=11, completed=True),
+            DiveSlateLabel(image_id=12, completed=True),
+            DiveSlateLabel(image_id=13, completed=True),
+            _slate_laser_dot(11),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_calibration(session=session) is None
+
+
+async def test_laser_calibration_selects_once_two_dots_exist(session):
+    """The converse: two observations is exactly `MIN_LASER_POINTS`."""
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_laser_calibration,
+    )
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel
+
+    session.add(_dive(1, dive_slate_id=99))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1)])
+    await session.flush()
+    session.add_all(
+        [
+            DiveSlateLabel(image_id=11, completed=True),
+            DiveSlateLabel(image_id=12, completed=True),
+            _slate_laser_dot(11),
+            _slate_laser_dot(12),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_calibration(session=session) == 1
+
+
+async def test_laser_calibration_ignores_a_superseded_laser_dot(session):
+    """`get_laser_label` filters `superseded == False`, so a dead-lettered dot
+    is invisible to the activity and must be invisible here. This is exactly
+    how dive 347 got into its state -- the breach recovery superseded its
+    lasers, permanently."""
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_laser_calibration,
+    )
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel
+
+    session.add(_dive(1, dive_slate_id=99))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1)])
+    await session.flush()
+    session.add_all(
+        [
+            DiveSlateLabel(image_id=11, completed=True),
+            DiveSlateLabel(image_id=12, completed=True),
+            _slate_laser_dot(11),
+            _slate_laser_dot(12, superseded=True),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_calibration(session=session) is None
+
+
+async def test_laser_calibration_ignores_a_dotless_laser_label(session):
+    """A populate-seeded placeholder carries no x/y. The activity skips it on
+    `laser_label.x is None`, so it is not an observation."""
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_laser_calibration,
+    )
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel
+    from fishsense_api.models.laser_label import LaserLabel
+
+    session.add(_dive(1, dive_slate_id=99))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1)])
+    await session.flush()
+    session.add_all(
+        [
+            DiveSlateLabel(image_id=11, completed=True),
+            DiveSlateLabel(image_id=12, completed=True),
+            _slate_laser_dot(11),
+            LaserLabel(image_id=12, x=None, y=None),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_calibration(session=session) is None
+
+
+async def test_laser_calibration_does_not_count_a_dot_without_a_slate_label(session):
+    """An observation needs BOTH. A laser dot on an image with no slate label
+    gives the activity no plane to project onto."""
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_laser_calibration,
+    )
+    from fishsense_api.models.dive_slate_label import DiveSlateLabel
+
+    session.add(_dive(1, dive_slate_id=99))
+    await session.flush()
+    session.add_all([_image(11, 1), _image(12, 1)])
+    await session.flush()
+    session.add_all(
+        [
+            DiveSlateLabel(image_id=11, completed=True),
+            _slate_laser_dot(11),
+            _slate_laser_dot(12),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_calibration(session=session) is None
 
 
 async def test_laser_calibration_requires_dive_slate_id(session):
@@ -1992,14 +2158,39 @@ def _laser_label(image_id: int, *, project_id=73, completed=False, superseded=Fa
     )
 
 
-def _laser_prediction(image_id: int):
+#: Sentinel for `_laser_prediction`, because ``None`` is a MEANINGFUL version
+#: here -- it is what every pre-versioning row carries, and the case the
+#: auto-accept guard exists for. Using None as "unspecified" made the guard
+#: test silently construct a current-version row and pass for the wrong reason.
+_CURRENT_VERSION = object()
+
+
+def _laser_prediction(image_id: int, predictor_version=_CURRENT_VERSION):
+    """A prediction from the CURRENT detector unless told otherwise.
+
+    Defaulting to the current version matters: the auto-accept cohort refuses
+    anything else, so a helper that left this NULL would quietly turn every
+    test below into a test about stale rows.
+    """
+    from fishsense_shared import LASER_PREDICTOR_VERSION
+
     from fishsense_api.models.laser_prediction import LaserPrediction
 
-    return LaserPrediction(image_id=image_id, x=1.0, y=2.0, confidence=0.9)
+    return LaserPrediction(
+        image_id=image_id,
+        x=1.0,
+        y=2.0,
+        confidence=0.9,
+        predictor_version=(
+            LASER_PREDICTOR_VERSION
+            if predictor_version is _CURRENT_VERSION
+            else predictor_version
+        ),
+    )
 
 
 async def test_laser_prediction_selects_dive_with_unpredicted_unlabeled_image(session):
-    from fishsense_api.controllers.dive_cohort_controller import (
+    from fishsense_api.controllers.dive_prediction_cohort_controller import (
         select_next_for_laser_prediction,
     )
 
@@ -2017,7 +2208,7 @@ async def test_laser_prediction_selects_dive_with_unpredicted_unlabeled_image(se
 
 
 async def test_laser_prediction_none_when_all_predicted_or_labeled(session):
-    from fishsense_api.controllers.dive_cohort_controller import (
+    from fishsense_api.controllers.dive_prediction_cohort_controller import (
         select_next_for_laser_prediction,
     )
 
@@ -2032,7 +2223,7 @@ async def test_laser_prediction_none_when_all_predicted_or_labeled(session):
 async def test_laser_prediction_sentinel_label_does_not_exclude(session):
     """A NULL-project sentinel LaserLabel doesn't count as labeled — the
     image still needs a prediction."""
-    from fishsense_api.controllers.dive_cohort_controller import (
+    from fishsense_api.controllers.dive_prediction_cohort_controller import (
         select_next_for_laser_prediction,
     )
 
@@ -2050,7 +2241,7 @@ async def test_laser_prediction_seeded_placeholder_does_not_exclude(session):
     needs a prediction. This is the dive-84 case: a dive populated before
     the detector shipped has project-id-bearing incomplete rows that must
     not starve the predict cohort."""
-    from fishsense_api.controllers.dive_cohort_controller import (
+    from fishsense_api.controllers.dive_prediction_cohort_controller import (
         select_next_for_laser_prediction,
     )
 
@@ -2068,7 +2259,7 @@ async def test_laser_prediction_superseded_completed_label_does_not_exclude(sess
     invalidated label — the image has no live human label and still needs a
     prediction. Regression for dive 60's straggler 4747, whose only completed
     row was superseded."""
-    from fishsense_api.controllers.dive_cohort_controller import (
+    from fishsense_api.controllers.dive_prediction_cohort_controller import (
         select_next_for_laser_prediction,
     )
 
@@ -2082,7 +2273,7 @@ async def test_laser_prediction_superseded_completed_label_does_not_exclude(sess
 
 async def test_laser_prediction_live_completed_label_excludes(session):
     """A completed, non-superseded label is a live human label — excluded."""
-    from fishsense_api.controllers.dive_cohort_controller import (
+    from fishsense_api.controllers.dive_prediction_cohort_controller import (
         select_next_for_laser_prediction,
     )
 
@@ -2155,11 +2346,14 @@ async def test_needing_laser_population_empty_when_nothing_predicted(session):
 def _judged_prediction(image_id: int, verdict: str = "auto_accepted"):
     from fishsense_api.models.laser_prediction import LaserPrediction
 
+    from fishsense_shared import LASER_PREDICTOR_VERSION
+
     return LaserPrediction(
         image_id=image_id,
         x=1.0,
         y=2.0,
         confidence=0.9,
+        predictor_version=LASER_PREDICTOR_VERSION,
         gate_verdict=verdict,
         auto_accept=verdict == "auto_accepted",
     )
@@ -2241,6 +2435,67 @@ async def test_auto_accept_ignores_non_canonical_images(session):
     await session.flush()
 
     assert await select_next_for_laser_auto_accept(session=session) is None
+
+
+async def test_auto_accept_never_selects_a_pre_versioning_prediction(session):
+    """**The poisoning guard.** A prediction written before
+    `LASER_PREDICTOR_VERSION` existed carries NULL, and v1 of the stage
+    hardcoded the pre-annotation to "Red Laser" instead of reading the dot's
+    colour. Auto-accepting one writes a possibly-wrong laser colour into the
+    corpus with no human ever looking at it — the gate's whole purpose is to
+    skip review, so a bad input here is not caught downstream.
+
+    `laser_predictor.py` already says NULL "reads as stale"; the predict cohort
+    honours that with `is_distinct_from` and re-predicts these dives. The gate
+    simply never applied the rule, so it could judge a v1 row before
+    re-prediction reached it. Prod had 1,296 such rows and reached them at one
+    dive an hour.
+    """
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_laser_auto_accept,
+    )
+
+    session.add_all(
+        [_dive(3), _image(11, 3), _laser_prediction(11, predictor_version=None)]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_auto_accept(session=session) is None
+
+
+async def test_auto_accept_never_selects_an_older_detector_version(session):
+    """Not only NULL: any version that is not the current one. A v1 row is
+    explicitly from the behaviour that got the colour wrong."""
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_laser_auto_accept,
+    )
+
+    session.add_all([_dive(3), _image(11, 3), _laser_prediction(11, predictor_version=1)])
+    await session.flush()
+
+    assert await select_next_for_laser_auto_accept(session=session) is None
+
+
+async def test_auto_accept_still_selects_a_current_prediction_on_the_same_dive(session):
+    """The filter is per-prediction, not per-dive: a dive part-way through
+    re-prediction still has current rows worth judging, and excluding the whole
+    dive would strand them until every last image was re-predicted."""
+    from fishsense_api.controllers.dive_cohort_controller import (
+        select_next_for_laser_auto_accept,
+    )
+
+    session.add_all(
+        [
+            _dive(3),
+            _image(11, 3),
+            _image(12, 3),
+            _laser_prediction(11, predictor_version=None),
+            _laser_prediction(12),
+        ]
+    )
+    await session.flush()
+
+    assert await select_next_for_laser_auto_accept(session=session) == 3
 
 
 async def test_auto_accept_selects_a_dive_only_partly_judged(session):

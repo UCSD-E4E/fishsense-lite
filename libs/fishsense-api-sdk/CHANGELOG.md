@@ -2,6 +2,38 @@
 
 <!-- version list -->
 
+## [2.1.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v2.0.1...fishsense-api-sdk-v2.1.0) (2026-09-07)
+
+
+### Features
+
+* model-assisted head/tail labeling (SAM 3.1 on a laser-centred crop) ([#787](https://github.com/UCSD-E4E/fishsense-lite/issues/787)) ([7720404](https://github.com/UCSD-E4E/fishsense-lite/commit/77204040d8877a1b24beba62c41a53cb66c54cf9))
+
+## [2.0.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v2.0.0...fishsense-api-sdk-v2.0.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* close five ways the reprocess flag misbehaves ([#775](https://github.com/UCSD-E4E/fishsense-lite/issues/775)) ([#777](https://github.com/UCSD-E4E/fishsense-lite/issues/777)) ([ccdaccc](https://github.com/UCSD-E4E/fishsense-lite/commit/ccdaccc7dd058351ae4483f78bcb479a1d2fcce7))
+
+## [2.0.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.50.0...fishsense-api-sdk-v2.0.0) (2026-09-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** `RawImage`'s default decode changed (use `DecodeConfig.production()` for the old chain), and `set_laser_needs_reprocess` now flags only incomplete labels by default (pass `only_incomplete=False` for the old wholesale behaviour).
+
+### Features
+
+* **api:** adopt fishsense-core 4.0.0 and honour needs-reprocess in every stage ([#760](https://github.com/UCSD-E4E/fishsense-lite/issues/760)) ([d64a5bd](https://github.com/UCSD-E4E/fishsense-lite/commit/d64a5bd55128c8c8123808dc908ddc90a469728c))
+
+## [1.50.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.49.1...fishsense-api-sdk-v1.50.0) (2026-09-05)
+
+
+### Changes
+
+* **No user-facing change.** This version exists only because "model-assisted head/tail labeling (SAM3 on a laser-centred crop)" ([#694](https://github.com/UCSD-E4E/fishsense-lite/issues/694)) was merged and then reverted ([#734](https://github.com/UCSD-E4E/fishsense-lite/issues/734)) before any release was cut. Release-please does not reconcile a revert against the feature it undoes, so the version bump could not be withdrawn — but none of that code is in this release. The feature never shipped.
+
 ## [1.49.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v1.49.0...fishsense-api-sdk-v1.49.1) (2026-09-04)
 
 

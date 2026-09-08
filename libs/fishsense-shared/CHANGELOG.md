@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.18.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.17.0...fishsense-shared-v0.18.0) (2026-09-07)
+
+
+### Features
+
+* add Box as a measurable species calibration target ([#795](https://github.com/UCSD-E4E/fishsense-lite/issues/795)) ([d57a65f](https://github.com/UCSD-E4E/fishsense-lite/commit/d57a65f07bef0eb74a70dde613a38e2af8e8bc95))
+
+## [0.17.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.16.1...fishsense-shared-v0.17.0) (2026-09-07)
+
+
+### Features
+
+* model-assisted head/tail labeling (SAM 3.1 on a laser-centred crop) ([#787](https://github.com/UCSD-E4E/fishsense-lite/issues/787)) ([7720404](https://github.com/UCSD-E4E/fishsense-lite/commit/77204040d8877a1b24beba62c41a53cb66c54cf9))
+
+## [0.16.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.16.0...fishsense-shared-v0.16.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* close five ways the reprocess flag misbehaves ([#775](https://github.com/UCSD-E4E/fishsense-lite/issues/775)) ([#777](https://github.com/UCSD-E4E/fishsense-lite/issues/777)) ([ccdaccc](https://github.com/UCSD-E4E/fishsense-lite/commit/ccdaccc7dd058351ae4483f78bcb479a1d2fcce7))
+
+## [0.16.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.15.0...fishsense-shared-v0.16.0) (2026-09-05)
+
+
+### Changes
+
+* **No user-facing change.** This version exists only because "model-assisted head/tail labeling (SAM3 on a laser-centred crop)" ([#694](https://github.com/UCSD-E4E/fishsense-lite/issues/694)) was merged and then reverted ([#734](https://github.com/UCSD-E4E/fishsense-lite/issues/734)) before any release was cut. Release-please does not reconcile a revert against the feature it undoes, so the version bump could not be withdrawn — but none of that code is in this release. The feature never shipped.
+
+## [0.15.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.14.1...fishsense-shared-v0.15.0) (2026-09-04)
+
+
+### Features
+
+* **data-worker:** give the non-image stages their own task queue ([#711](https://github.com/UCSD-E4E/fishsense-lite/issues/711)) ([f6540e4](https://github.com/UCSD-E4E/fishsense-lite/commit/f6540e4cef8787be662a20f0245f69db53558ab6))
+
+## [0.14.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.14.0...fishsense-shared-v0.14.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **laser-auto-accept:** bound the gate's queue wait separately from its run ([#707](https://github.com/UCSD-E4E/fishsense-lite/issues/707)) ([682fb35](https://github.com/UCSD-E4E/fishsense-lite/commit/682fb35567565130212cb31336081dcd655a56fd))
+
 ## [0.14.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.13.0...fishsense-shared-v0.14.0) (2026-09-03)
 
 

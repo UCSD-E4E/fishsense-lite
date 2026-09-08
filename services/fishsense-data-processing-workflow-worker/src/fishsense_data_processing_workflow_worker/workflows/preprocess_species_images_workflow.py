@@ -21,7 +21,7 @@ import asyncio
 from datetime import timedelta
 from typing import List
 
-from fishsense_shared import PreprocessSpeciesImagesInput
+from fishsense_shared import PreprocessSpeciesImagesInput, SpeciesClusterMember
 from pydantic import BaseModel
 from temporalio import workflow
 
@@ -49,21 +49,47 @@ class PreprocessSpeciesImagesWorkflow:
             sum(len(c) for c in payload.clusters),
         )
 
-        for cluster in payload.clusters:
+        # `cluster_members` carries each frame's position in the WHOLE
+        # PREDICTION cluster. Numbering `clusters` positionally instead is only
+        # right when every member of a cluster is being redrawn at once: the
+        # resolver emits just the images that need work, so a partial pass --
+        # the normal case under `needs_reprocess`, and also whenever an image
+        # becomes eligible after its cluster was first processed -- would label
+        # 3 frames of a 7-image cluster "1 of 3".."3 of 3" while their siblings
+        # still read "4 of 7".."7 of 7" at the same object-store keys.
+        #
+        # The fallback keeps this workflow able to run a payload from an older
+        # api-worker, which sends no `cluster_members` at all; it reproduces the
+        # previous numbering exactly rather than inventing something new.
+        groups = payload.cluster_members
+        if groups is None:
+            groups = [
+                [
+                    SpeciesClusterMember(
+                        checksum=checksum,
+                        cluster_index=i + 1,
+                        cluster_size=len(cluster),
+                    )
+                    for i, checksum in enumerate(cluster)
+                ]
+                for cluster in payload.clusters
+            ]
+
+        for group in groups:
             await asyncio.gather(
                 *[
                     workflow.execute_activity(
                         "preprocess_species_image",
                         PreprocessSpeciesImageInput(
-                            checksum=checksum,
-                            cluster_index=i + 1,
-                            cluster_size=len(cluster),
+                            checksum=member.checksum,
+                            cluster_index=member.cluster_index,
+                            cluster_size=member.cluster_size,
                             output_folder="preprocess_groups_jpeg",
                             camera_matrix=payload.camera_matrix,
                             distortion_coefficients=payload.distortion_coefficients,
                         ),
                         start_to_close_timeout=timedelta(minutes=5),
                     )
-                    for i, checksum in enumerate(cluster)
+                    for member in group
                 ]
             )

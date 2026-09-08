@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ActiveProjects } from "./active-projects";
+import type { ProjectsByKind } from "./active-projects";
 import { buildSections } from "./sections";
 import type { StaticLink } from "./static-links";
 
@@ -7,7 +7,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-const EMPTY_ACTIVE: ActiveProjects = {
+const EMPTY_ACTIVE: ProjectsByKind = {
   laser: [],
   species: [],
   headtail: [],

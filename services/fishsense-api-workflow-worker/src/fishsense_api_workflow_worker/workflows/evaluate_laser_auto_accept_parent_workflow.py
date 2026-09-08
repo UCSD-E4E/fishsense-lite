@@ -20,9 +20,7 @@ data-worker child fetches the dive's predictions itself and the work is a line
 fit.
 """
 
-from datetime import timedelta
-
-from fishsense_shared import LaserAutoAcceptSummary
+from fishsense_shared import GATE_CHILD_EXECUTION_TIMEOUT, LaserAutoAcceptSummary
 from temporalio import workflow
 
 from fishsense_api_workflow_worker.workflows import _dispatch
@@ -44,14 +42,32 @@ class EvaluateLaserAutoAcceptParentWorkflow:
         if dive_id is None:
             return None
 
-        await _dispatch.wake_data_worker()
+        await _dispatch.wake_light_worker()
         summary: LaserAutoAcceptSummary = await _dispatch.dispatch_child(
             "EvaluateLaserAutoAcceptWorkflow",
             dive_id,
             child_id=f"auto-accept-laser-{dive_id}",
-            execution_timeout=timedelta(minutes=30),
+            # The light queue: a RANSAC line fit has no business queueing
+            # behind a dive's worth of rawpy decodes, which is what the
+            # per-image queue's two memory-bound slots meant in practice.
+            task_queue=_dispatch.DATA_PROCESSING_LIGHT_TASK_QUEUE,
+            # Shared with the predict parent, which dispatches the same child.
+            # It must outlast the child's own activity budget so the activity's
+            # timeout is the one that fires and names the bound that was hit.
+            execution_timeout=GATE_CHILD_EXECUTION_TIMEOUT,
             result_type=LaserAutoAcceptSummary,
         )
+        if summary is _dispatch.CHILD_ALREADY_RUNNING:
+            # The predict parent is running this dive's gate right now. Same
+            # child id by design, so both directions of the overlap have to be
+            # handled -- reading `.enabled` off the sentinel would raise
+            # AttributeError and wedge the workflow task in an infinite retry.
+            workflow.logger.info(
+                "auto-accept gate for dive_id=%d is already running "
+                "(predict parent); skipping this drain firing",
+                dive_id,
+            )
+            return dive_id
         workflow.logger.info(
             "auto-accept backlog dive_id=%d enabled=%s eligible=%s reason=%s "
             "auto_accepted=%d/%d verdicts=%s",

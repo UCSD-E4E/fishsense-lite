@@ -39,6 +39,22 @@ _VALIDATORS = [
     # LS Enterprise workspace new per-dive projects are created in. Empty =
     # personal/default workspace (back-compat for OSS LS / local dev / tests).
     Validator("label_studio.workspace", cast=str, default=""),
+    # Label Studio user id of the SERVICE ACCOUNT, stamped as `completed_by` on
+    # machine-written annotations that populate *imports*.
+    #
+    # Needed because an imported annotation is attributed to the project owner,
+    # not the API caller -- unlike `ls.annotations.create`, which takes the
+    # authenticated user and is therefore already correct once the worker holds
+    # the bot's token. Prod on 2026-09-04: the worker had been the bot since
+    # 18:07 and populate still seeded 61 annotations at 18:17, and 164 more at
+    # 19:17, under the human who owned the project.
+    #
+    # Defaults to 0 = "unset", which OMITS the field rather than sending null.
+    # This value reaches the slot through the OpenBao render, which is a manual
+    # three-step rotation (see deploy/incus/README.md); a miss must degrade to
+    # the old wrong-attribution behaviour, not fail populate for a whole dive
+    # on an LS validation error.
+    Validator("label_studio.bot_user_id", cast=int, default=0),
     Validator("e4e_nas.url", required=True, cast=str, condition=url_condition),
     Validator("e4e_nas.username", required=True, cast=str),
     Validator("e4e_nas.password", required=True, cast=str),
@@ -93,6 +109,16 @@ _VALIDATORS = [
     # many minutes — so a back-to-back dive doesn't thrash the pod.
     # `resolve_scaling_config` floors a negative value at 0.
     Validator("kubernetes.idle_cooldown_minutes", cast=int, default=15),
+    # --- light queue ---------------------------------------------------------
+    # `fishsense_data_processing_light_queue` is served by its own Deployment,
+    # running the same image with `E4EFS_GENERAL__ROLE=light`. It exists
+    # because the per-image worker's `max_concurrent_activities = 2` is a
+    # memory ceiling, not a throughput choice, and a sub-second line fit
+    # queued behind two multi-GB rawpy decodes simply expires. Name defaults
+    # off `kubernetes.deployment_name`; replicas default to 1 and clamp to
+    # [1, 4] in `resolve_scaling_config`.
+    Validator("kubernetes.light_deployment_name", cast=str),
+    Validator("kubernetes.light_active_replicas", cast=int, default=1),
     # --- GPU split + CPU fallback -------------------------------------------
     # `fishsense_data_processing_gpu_queue` is served by two Deployments
     # running the same image: one that requests a GPU and one that does not and

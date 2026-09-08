@@ -119,3 +119,45 @@ async def test_download_raw_raises_on_missing_key(s3):
     with pytest.raises(ClientError) as exc_info:
         await ActivityEnvironment().run(_run)
     assert exc_info.value.response["Error"]["Code"] == "NoSuchKey"
+
+
+@pytest.mark.asyncio
+async def test_download_model_reads_from_the_models_bucket(s3):
+    """Weights live in their own bucket, not the scratch one.
+
+    `download_model` used to pass no bucket, so it read `bucket` — which meant
+    a checkpoint uploaded to a dedicated models bucket was simply a 404, with
+    the stage failing at cold start rather than at config review.
+    """
+    models = "model-weights-test"
+    s3.create_bucket(Bucket=models)
+    s3.put_object(
+        Bucket=models, Key="sam3/3.1/sam3.1_multiplex.pt", Body=b"WEIGHTS"
+    )
+    client = sut.ObjectStoreClient(s3, BUCKET, models_bucket=models)
+
+    async def _run():
+        return await client.download_model("sam3", "3.1", "sam3.1_multiplex.pt")
+
+    assert await ActivityEnvironment().run(_run) == b"WEIGHTS"
+
+
+@pytest.mark.asyncio
+async def test_download_model_applies_the_models_prefix(s3):
+    """A models bucket shared with another tenant is partitioned by prefix,
+    the same way `labels_prefix` partitions the labels bucket."""
+    models = "model-weights-test"
+    s3.create_bucket(Bucket=models)
+    s3.put_object(
+        Bucket=models,
+        Key="fishsense-lite/sam3/3.1/sam3.1_multiplex.pt",
+        Body=b"WEIGHTS",
+    )
+    client = sut.ObjectStoreClient(
+        s3, BUCKET, models_bucket=models, models_prefix="fishsense-lite"
+    )
+
+    async def _run():
+        return await client.download_model("sam3", "3.1", "sam3.1_multiplex.pt")
+
+    assert await ActivityEnvironment().run(_run) == b"WEIGHTS"
