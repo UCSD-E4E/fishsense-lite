@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.2.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.2.1...fishsense-data-processing-workflow-worker-v3.2.2) (2026-09-08)
+
+
+### Bug Fixes
+
+* **headtail-predict:** run SAM 3.1 inference under bfloat16 autocast ([#821](https://github.com/UCSD-E4E/fishsense-lite/issues/821)) ([d5af6db](https://github.com/UCSD-E4E/fishsense-lite/commit/d5af6db8818c672f46907650e254f6e5d620b44b))
+
 ## [3.2.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.2.0...fishsense-data-processing-workflow-worker-v3.2.1) (2026-09-08)
 
 
