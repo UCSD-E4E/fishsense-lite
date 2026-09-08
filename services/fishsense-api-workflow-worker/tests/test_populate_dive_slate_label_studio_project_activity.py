@@ -295,3 +295,40 @@ async def test_defers_images_whose_jpeg_is_not_in_garage(monkeypatch):
     assert n == 1
     written = [c.args[1] for c in fs.labels.put_dive_slate_label.await_args_list]
     assert {w.image_id for w in written} == {1}
+
+
+@pytest.mark.asyncio
+async def test_deferred_image_keeps_its_live_row_in_this_project(monkeypatch):
+    """A deferred JPEG must not retire an image's EXISTING live row.
+
+    Same defect the headtail populate carried (it is a line-for-line copy of
+    this supersede pass): the exemption was keyed on the post-gate list, so an
+    image whose JPEG was merely late lost the row anchoring a task already in
+    the labeler's queue -- and with it, the project's place on the landing
+    page. Exemption is keyed on candidates instead.
+    """
+    species = [
+        _species_label(1, content=sut.SLATE_CONTENT_MARKER),
+        _species_label(3, content=sut.SLATE_CONTENT_MARKER),
+    ]
+    images_by_id = {1: _image(1, "a"), 3: _image(3, "c")}
+    existing = [_slate_label(1, completed=False), _slate_label(3, completed=False)]
+    fs = _make_fs_client(species, existing_slate=existing, images_by_id=images_by_id)
+    ls = _make_ls_client(returned_task_ids=[6001])
+
+    store = MagicMock()
+    store.has_processed_jpeg = AsyncMock(
+        side_effect=lambda folder, checksum: checksum == "a"
+    )
+
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+    monkeypatch.setattr(sut, "open_object_store_client", lambda: store)
+
+    await ActivityEnvironment().run(
+        sut.populate_dive_slate_label_studio_project_activity, 42, 66
+    )
+
+    written = [c.args[1] for c in fs.labels.put_dive_slate_label.await_args_list]
+    superseded = {w.image_id for w in written if w.id is not None and w.superseded}
+    assert 3 not in superseded
