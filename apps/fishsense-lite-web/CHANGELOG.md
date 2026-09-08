@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.12.2...fishsense-lite-web-v0.12.3) (2026-09-08)
+
+
+### Bug Fixes
+
+* **web:** hide projects Label Studio says are finished ([#826](https://github.com/UCSD-E4E/fishsense-lite/issues/826)) ([ffaed79](https://github.com/UCSD-E4E/fishsense-lite/commit/ffaed79381e90b92a168324850d5b2263a5c00b5))
+
 ## [0.12.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.12.1...fishsense-lite-web-v0.12.2) (2026-09-08)
 
 
