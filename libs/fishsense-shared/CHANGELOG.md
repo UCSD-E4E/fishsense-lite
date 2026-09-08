@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.18.0...fishsense-shared-v0.19.0) (2026-09-08)
+
+
+### Features
+
+* laser calibration from a checkerboard ([#805](https://github.com/UCSD-E4E/fishsense-lite/issues/805)) ([29ddfa3](https://github.com/UCSD-E4E/fishsense-lite/commit/29ddfa34a64186066db0b721581877dee262f646))
+
 ## [0.18.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.17.0...fishsense-shared-v0.18.0) (2026-09-07)
 
 

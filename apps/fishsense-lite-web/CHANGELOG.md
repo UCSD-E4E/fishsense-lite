@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.12.1...fishsense-lite-web-v0.12.2) (2026-09-08)
+
+
+### Bug Fixes
+
+* stop a deferred image dead-lettering its own live label row ([#808](https://github.com/UCSD-E4E/fishsense-lite/issues/808)) ([d6a9392](https://github.com/UCSD-E4E/fishsense-lite/commit/d6a9392399e5fa1f3cad2c4791723fe6a6631529))
+
 ## [0.12.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-lite-web-v0.12.0...fishsense-lite-web-v0.12.1) (2026-09-07)
 
 
