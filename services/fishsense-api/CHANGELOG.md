@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [3.1.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v3.0.1...fishsense-api-v3.1.0) (2026-09-08)
+
+
+### Features
+
+* laser calibration from a checkerboard ([#805](https://github.com/UCSD-E4E/fishsense-lite/issues/805)) ([29ddfa3](https://github.com/UCSD-E4E/fishsense-lite/commit/29ddfa34a64186066db0b721581877dee262f646))
+
 ## [3.0.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v3.0.0...fishsense-api-v3.0.1) (2026-09-07)
 
 

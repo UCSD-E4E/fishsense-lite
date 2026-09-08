@@ -1,5 +1,24 @@
 # Changelog
 
+## [3.2.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.1.0...fishsense-data-processing-workflow-worker-v3.2.0) (2026-09-08)
+
+
+### Features
+
+* laser calibration from a checkerboard ([#805](https://github.com/UCSD-E4E/fishsense-lite/issues/805)) ([29ddfa3](https://github.com/UCSD-E4E/fishsense-lite/commit/29ddfa34a64186066db0b721581877dee262f646))
+
+
+### Bug Fixes
+
+* **data-worker:** declare the runtime deps sam3 needs but does not ([#806](https://github.com/UCSD-E4E/fishsense-lite/issues/806)) ([5fda674](https://github.com/UCSD-E4E/fishsense-lite/commit/5fda6742f9e0a184a72b1cd609024711ac593509))
+* **deps:** pin fishsense-api-sdk&gt;=1.48.2 ([#688](https://github.com/UCSD-E4E/fishsense-lite/issues/688)) ([5572afc](https://github.com/UCSD-E4E/fishsense-lite/commit/5572afc8c8c524f6abbc3b07b26a38bbf771b473))
+* **deps:** pin fishsense-api-sdk&gt;=1.49.0 ([#698](https://github.com/UCSD-E4E/fishsense-lite/issues/698)) ([4f46498](https://github.com/UCSD-E4E/fishsense-lite/commit/4f464986dc049f655d03073539e8b15213fcfab4))
+* **deps:** pin fishsense-api-sdk&gt;=1.49.1 ([#705](https://github.com/UCSD-E4E/fishsense-lite/issues/705)) ([70423f7](https://github.com/UCSD-E4E/fishsense-lite/commit/70423f7b643a630895215e1a7953a3564dbdc423))
+* **deps:** pin fishsense-api-sdk&gt;=1.50.0 ([#738](https://github.com/UCSD-E4E/fishsense-lite/issues/738)) ([bdb299b](https://github.com/UCSD-E4E/fishsense-lite/commit/bdb299b117d9dd5c3d8bb8b975c7e8559d93efe9))
+* **deps:** pin fishsense-api-sdk&gt;=2.0.0 ([#771](https://github.com/UCSD-E4E/fishsense-lite/issues/771)) ([a9ae293](https://github.com/UCSD-E4E/fishsense-lite/commit/a9ae293322e627102e33f7a594f81dafe66e0355))
+* **deps:** pin fishsense-api-sdk&gt;=2.0.1 ([#780](https://github.com/UCSD-E4E/fishsense-lite/issues/780)) ([36bb81c](https://github.com/UCSD-E4E/fishsense-lite/commit/36bb81c30e5e436e2f7ca98b08170d940e2d9f89))
+* **deps:** pin fishsense-api-sdk&gt;=2.1.0 ([#794](https://github.com/UCSD-E4E/fishsense-lite/issues/794)) ([494a9b1](https://github.com/UCSD-E4E/fishsense-lite/commit/494a9b120899d2afacfe72e31025b11363dda003))
+
 ## [3.1.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.0.1...fishsense-data-processing-workflow-worker-v3.1.0) (2026-09-07)
 
 
