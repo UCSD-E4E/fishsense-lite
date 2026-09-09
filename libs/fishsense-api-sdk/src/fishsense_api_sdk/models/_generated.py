@@ -394,6 +394,7 @@ class SpeciesLabel(BaseModel):
     content_of_image: str | None = Field(None, title='Content Of Image')
     fish_measurable_category: str | None = Field(None, title='Fish Measurable Category')
     fish_angle_category: str | None = Field(None, title='Fish Angle Category')
+    fish_angle_degrees: float | None = Field(None, title='Fish Angle Degrees')
     fish_curved_category: str | None = Field(None, title='Fish Curved Category')
     label_studio_json: dict[str, Any] | None = Field(None, title='Label Studio Json')
     image_id: int | None = Field(None, title='Image Id')

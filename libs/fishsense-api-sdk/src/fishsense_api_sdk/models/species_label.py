@@ -26,6 +26,16 @@ class SpeciesLabel(ModelBase):
     content_of_image: str | None
     fish_measurable_category: str | None
     fish_angle_category: str | None
+    # Mirrors the API column: the reviewed angle in degrees, distinct from the
+    # Label Studio category whose `x > 15°` bucket cannot separate one
+    # commanded angle from another. The SDK must carry it so a read-modify-write
+    # caller round-trips it rather than dropping it from the body.
+    # Defaulted, unlike its neighbours, so that constructing a SpeciesLabel
+    # without an angle stays legal — every existing writer builds this model
+    # field-by-field and none of them knows about the angle. It also means the
+    # field is absent from `model_fields_set` for those writers, which is what
+    # `_upsert_label` keys "unmentioned" off when it preserves stored values.
+    fish_angle_degrees: float | None = None
     fish_curved_category: str | None
     label_studio_json: Dict[str, Any] | str | None
 
