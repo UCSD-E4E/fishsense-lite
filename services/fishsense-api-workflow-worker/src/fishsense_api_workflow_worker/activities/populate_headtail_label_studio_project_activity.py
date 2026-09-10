@@ -33,7 +33,6 @@ from fishsense_shared.object_store import HEADTAIL_JPEG_FOLDER
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.populate_utils import (
-    build_image_url,
     build_task_data,
     ImportResult,
     import_tasks_and_record_labels,
