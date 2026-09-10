@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [2.4.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.4.1...fishsense-api-workflow-worker-v2.4.2) (2026-09-10)
+
+
+### Bug Fixes
+
+* **deps:** pin fishsense-api-sdk&gt;=2.3.0 ([#857](https://github.com/UCSD-E4E/fishsense-lite/issues/857)) ([5f5cb96](https://github.com/UCSD-E4E/fishsense-lite/commit/5f5cb9659649c70d740028d0ef9a7f8e9a4ef0f3))
+
 ## [2.4.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.4.0...fishsense-api-workflow-worker-v2.4.1) (2026-09-08)
 
 
