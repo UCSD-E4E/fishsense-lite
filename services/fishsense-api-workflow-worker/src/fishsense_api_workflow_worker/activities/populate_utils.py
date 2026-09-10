@@ -23,8 +23,10 @@ from label_studio_sdk.core import ApiError
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.utils import (
+    THROTTLE_MAX_ATTEMPTS,
     get_fs_client,
     get_ls_client,
+    throttle_wait_seconds,
 )
 from fishsense_api_workflow_worker.config import settings
 
@@ -309,6 +311,42 @@ _IMPORT_VISIBILITY_ATTEMPTS = 12
 _IMPORT_VISIBILITY_INTERVAL_S = 2.0
 
 
+async def _throttle_sleep(seconds: float) -> None:
+    """Back off after a 429. Indirected so tests exercise the path unslowed."""
+    await asyncio.sleep(seconds)
+
+
+async def _call_ls(call: Callable[[], Any], *, what: str) -> Any:
+    """Run a blocking LS call off-loop, backing off through 429s.
+
+    `populate_utils` had no throttle handling at all while the sync path beside
+    it did, so a rate limit failed the whole activity — and a failed populate
+    activity is retried by Temporal, which is the one thing that duplicates
+    tasks (see `import_tasks_and_record_labels`). Swallowing the retry here
+    keeps a throttle from becoming a duplicate.
+    """
+    for attempt in range(THROTTLE_MAX_ATTEMPTS):
+        try:
+            return await asyncio.to_thread(call)
+        except ApiError as e:
+            wait = throttle_wait_seconds(e)
+            if wait is None:
+                raise
+            activity.logger.info(
+                "populate throttled on %s attempt=%d/%d; backing off %.0fs",
+                what,
+                attempt + 1,
+                THROTTLE_MAX_ATTEMPTS,
+                wait,
+            )
+            activity.heartbeat()
+            await _throttle_sleep(wait)
+    raise RuntimeError(
+        f"Label Studio still throttling {what} after {THROTTLE_MAX_ATTEMPTS} "
+        "attempts"
+    )
+
+
 def _task_image_url(task: dict) -> str | None:
     data = task.get("data", {}) or {}
     return data.get("image") or data.get("img")
@@ -364,6 +402,26 @@ async def import_tasks_and_record_labels(
     **dedupe against tasks already in the project before importing** — a retry
     after a mid-activity failure then re-imports nothing and just writes the
     missing rows.
+
+    **An import that has not become visible is not an error.** This used to
+    raise, saying "retrying (dedupe prevents dupes)" — which holds only once
+    the previous import has materialised, exactly the condition that just
+    failed. The populate activities declare no `RetryPolicy`, so Temporal
+    retried inside the 30-minute `schedule_to_close`, the retry's dedup listing
+    still could not see the in-flight import, and it imported the whole set
+    again. That is how ten projects came to hold two tasks per image and one
+    held 23 copies of three images (found 2026-09-09); dive 517's laser wave
+    gaps of 22s and dive 437's 27s sit right on this poll's ~24s budget.
+
+    A duplicate is not merely wasted queue: it splits a row from its own
+    annotation (seven dive-437 head/tail labels were invisible to the pipeline
+    because the row tracked the empty twin), and it hands a labeller a second,
+    *ungated* copy of a frame the laser auto-accept gate had already judged.
+
+    So we now write rows for whatever is visible and return, logging the
+    shortfall. The images whose tasks are still in flight simply keep their
+    place in the cohort and are reconciled by the next scheduled populate, by
+    which time the dedup listing can see them. Slower, and it cannot duplicate.
     """
     tasks = list(tasks)
     items_list = list(items)
@@ -392,36 +450,61 @@ async def import_tasks_and_record_labels(
                 mapping[url] = task.id
         return mapping
 
+    async def _list_known() -> dict:
+        return await _call_ls(_url_to_task_id, what=f"tasks.list({project_id})")
+
     # Dedupe against what's already imported so a retry doesn't duplicate.
-    known = await asyncio.to_thread(_url_to_task_id)
-    to_import = [t for t, u in zip(tasks, urls) if u not in known]
+    known = await _list_known()
+
+    # ...and against the batch itself. The comparison above only ever covered
+    # tasks already in the project, so a caller whose item query returned an
+    # image twice imported it twice in one call, with nothing yet in the
+    # project to match against.
+    to_import: List[dict] = []
+    batch_seen: set = set()
+    for task, url in zip(tasks, urls):
+        if url in known or url in batch_seen:
+            continue
+        batch_seen.add(url)
+        to_import.append(task)
 
     if to_import:
-        await asyncio.to_thread(
+        await _call_ls(
             lambda: ls.projects.import_tasks(
                 project_id, request=to_import, return_task_ids=True
-            )
+            ),
+            what=f"import_tasks({project_id})",
         )
         want = {u for u in urls if u not in known}
         for _ in range(_IMPORT_VISIBILITY_ATTEMPTS):
-            known = await asyncio.to_thread(_url_to_task_id)
+            known = await _list_known()
             if want <= known.keys():
                 break
             activity.heartbeat()
             await asyncio.sleep(_IMPORT_VISIBILITY_INTERVAL_S)
         missing = want - known.keys()
         if missing:
-            raise RuntimeError(
-                f"{len(missing)} imported task(s) not visible in project "
-                f"{project_id} after import — retrying (dedupe prevents dupes)"
+            activity.logger.warning(
+                "populate: %d of %d imported task(s) still not visible in "
+                "project %d; recording the %d that are and leaving the rest to "
+                "the next run — re-importing them is what duplicates tasks",
+                len(missing),
+                len(want),
+                project_id,
+                len(want) - len(missing),
             )
 
+    recorded = 0
     async with asyncio.TaskGroup() as tg:
         for item, url in zip(items_list, urls):
-            tg.create_task(record_label(item, known[url]))
+            task_id = known.get(url)
+            if task_id is None:
+                continue
+            recorded += 1
+            tg.create_task(record_label(item, task_id))
             activity.heartbeat()
 
-    return len(items_list)
+    return recorded
 
 
 async def publish_label_studio_project(project_id: int) -> None:
