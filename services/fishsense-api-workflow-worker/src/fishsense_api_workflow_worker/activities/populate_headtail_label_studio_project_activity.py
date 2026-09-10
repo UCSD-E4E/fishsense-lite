@@ -33,7 +33,9 @@ from fishsense_shared.object_store import HEADTAIL_JPEG_FOLDER
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.populate_utils import (
+    build_image_url,
     build_task_data,
+    ImportResult,
     import_tasks_and_record_labels,
     publish_label_studio_project,
 )
@@ -260,6 +262,7 @@ async def populate_headtail_label_studio_project_activity(
         targets = await _gate_on_jpeg_presence(targets)
 
         new_count = 0
+        import_result = ImportResult(recorded=0, deferred=0)
         if targets:
             tasks = [
                 _build_task(image, predictions_by_image.get(image.id))
@@ -284,12 +287,13 @@ async def populate_headtail_label_studio_project_activity(
                 )
                 await fs.labels.put_headtail_label(image.id, label)
 
-            new_count = await import_tasks_and_record_labels(
+            import_result = await import_tasks_and_record_labels(
                 project_id=project_id,
                 tasks=tasks,
                 record_label=_record,
                 items=targets,
             )
+            new_count = import_result.recorded
         else:
             activity.logger.info(
                 "Dive %d has no laser-valid images needing headtail "
@@ -356,10 +360,16 @@ async def populate_headtail_label_studio_project_activity(
             activity.heartbeat()
 
         # Headtail imports its whole selection in one pass (no JPEG
-        # deferral), so the project's task set is complete. Publish iff it
+        # deferral), so the only thing that can leave the task set incomplete
+        # is an import that is not listable yet — which no longer raises, and
+        # must not be published half-populated. Publish iff the project
         # actually holds tasks so an empty project isn't shown to labelers.
-        if new_count > 0 or any(
-            label.label_studio_project_id == project_id for label in existing_headtail
+        if import_result.complete and (
+            new_count > 0
+            or any(
+                label.label_studio_project_id == project_id
+                for label in existing_headtail
+            )
         ):
             await publish_label_studio_project(project_id)
 

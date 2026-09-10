@@ -344,13 +344,17 @@ async def populate_laser_label_studio_project_activity(
             )
             await fs.labels.put_laser_label(image.id, label)
 
-        imported = await import_tasks_and_record_labels(
+        result = await import_tasks_and_record_labels(
             project_id=project_id,
             tasks=tasks,
             record_label=_record,
             items=unlabeled,
         )
-        # Laser imports its whole selection in one pass (no JPEG deferral),
-        # so the project's task set is now complete — safe to publish.
-        await publish_label_studio_project(project_id)
-        return imported
+        # Laser imports its whole selection in one pass (no JPEG deferral), so
+        # the only thing that can leave the task set incomplete is an import
+        # that is not listable yet — which no longer raises. Publishing then
+        # would show annotators a half-populated list; the next run finishes
+        # the job and publishes.
+        if result.complete:
+            await publish_label_studio_project(project_id)
+        return result.recorded

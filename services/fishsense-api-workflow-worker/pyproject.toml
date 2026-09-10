@@ -1,13 +1,13 @@
 [project]
 name = "fishsense-api-workflow-worker"
-version = "2.4.1"
+version = "2.4.3"
 description = "Temporal API Workflow Worker"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "boto3>=1.35.0",
     "dynaconf>=3.2.11",
-    "fishsense-api-sdk>=2.2.0",
+    "fishsense-api-sdk>=2.3.0",
     "fishsense-shared",
     "httpx>=0.28.1",
     # Scales the NRP data-processing worker Deployment up/down — the

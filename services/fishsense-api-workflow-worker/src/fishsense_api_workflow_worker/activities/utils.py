@@ -63,11 +63,11 @@ def _coerce_updated_at(value: Any) -> datetime | None:
     return None
 
 
-_THROTTLE_MAX_ATTEMPTS = 5
-_THROTTLE_DEFAULT_WAIT_SECONDS = 30.0
+THROTTLE_MAX_ATTEMPTS = 5
+THROTTLE_DEFAULT_WAIT_SECONDS = 30.0
 
 
-def _throttle_wait_seconds(error: ApiError) -> float | None:
+def throttle_wait_seconds(error: ApiError) -> float | None:
     """Seconds to wait if `error` is a throttle, else None.
 
     Label Studio answers 429 with `{"detail": "Request was throttled.
@@ -79,7 +79,7 @@ def _throttle_wait_seconds(error: ApiError) -> float | None:
     body = getattr(error, "body", None)
     detail = body.get("detail", "") if isinstance(body, dict) else str(body or "")
     match = re.search(r"(\d+(?:\.\d+)?)\s*second", str(detail))
-    return float(match.group(1)) + 2.0 if match else _THROTTLE_DEFAULT_WAIT_SECONDS
+    return float(match.group(1)) + 2.0 if match else THROTTLE_DEFAULT_WAIT_SECONDS
 
 
 async def _ls_project_exists(ls: LabelStudio, project_id: int, kind: str) -> bool:
@@ -96,16 +96,16 @@ async def _ls_project_exists(ls: LabelStudio, project_id: int, kind: str) -> boo
     partway through, and whichever projects land after that point are
     silently dropped. Position-dependent, so it looked non-deterministic.
 
-    Raises when still throttled after `_THROTTLE_MAX_ATTEMPTS` so the
+    Raises when still throttled after `THROTTLE_MAX_ATTEMPTS` so the
     activity fails and Temporal retries — a loud failure is correct here,
     because the alternative is the silent skip this replaces.
     """
-    for attempt in range(_THROTTLE_MAX_ATTEMPTS):
+    for attempt in range(THROTTLE_MAX_ATTEMPTS):
         try:
             await asyncio.to_thread(ls.projects.get, project_id)
             return True
         except ApiError as e:
-            wait = _throttle_wait_seconds(e)
+            wait = throttle_wait_seconds(e)
             if wait is None:
                 # 404 and friends — genuinely gone. Skipping is right.
                 activity.logger.warning(
@@ -121,7 +121,7 @@ async def _ls_project_exists(ls: LabelStudio, project_id: int, kind: str) -> boo
                 kind,
                 project_id,
                 attempt + 1,
-                _THROTTLE_MAX_ATTEMPTS,
+                THROTTLE_MAX_ATTEMPTS,
                 wait,
             )
             activity.heartbeat()
@@ -129,7 +129,7 @@ async def _ls_project_exists(ls: LabelStudio, project_id: int, kind: str) -> boo
 
     raise RuntimeError(
         f"Label Studio still throttling project {project_id} (kind={kind}) after "
-        f"{_THROTTLE_MAX_ATTEMPTS} attempts — failing rather than skipping it, "
+        f"{THROTTLE_MAX_ATTEMPTS} attempts — failing rather than skipping it, "
         "so the cursor is not advanced and the next run retries."
     )
 
