@@ -55,26 +55,31 @@ class SlowImportLabelStudio:
 
     def __init__(self, task_ids: List[int], *, visible_after_lists: int = 0):
         self._ids = iter(task_ids)
-        self._visible: List[SimpleNamespace] = []
-        self._pending: List[tuple[int, SimpleNamespace]] = []
+        # (listable_from, task). A task is served once `_lists` reaches its
+        # threshold, which is how the materialisation lag is expressed.
+        self._entries: List[tuple[int, SimpleNamespace]] = []
         self._lists = 0
-        self.import_calls: List[List[dict]] = []
+        self._lag = visible_after_lists
         self.list_raises: List[Exception] = []
-        self._visible_after = visible_after_lists
-        self.projects = MagicMock()
-        self.projects.import_tasks = MagicMock(side_effect=self._import)
-        self.tasks = MagicMock()
-        self.tasks.list = MagicMock(side_effect=self._list)
+        self.projects = MagicMock(import_tasks=MagicMock(side_effect=self._import))
+        self.tasks = MagicMock(list=MagicMock(side_effect=self._list))
+
+    @property
+    def import_calls(self) -> List[List[dict]]:
+        """The tasks each `import_tasks` call sent, in call order."""
+        return [
+            list(call.kwargs["request"])
+            for call in self.projects.import_tasks.call_args_list
+        ]
 
     def _import(self, project_id, request, return_task_ids=False):
         # pylint: disable=unused-argument
-        self.import_calls.append(list(request))
         for task in request:
             task_id = next(self._ids)
             s3_uri = task["data"].get("image") or task["data"].get("img")
-            self._pending.append(
+            self._entries.append(
                 (
-                    self._lists + self._visible_after,
+                    self._lists + self._lag,
                     SimpleNamespace(
                         id=task_id, data={"image": _resolve_url(task_id, s3_uri)}
                     ),
@@ -85,20 +90,17 @@ class SlowImportLabelStudio:
     def _list(self, project=None):  # pylint: disable=unused-argument
         if self.list_raises:
             raise self.list_raises.pop(0)
-        due = [t for due_at, t in self._pending if due_at <= self._lists]
-        self._pending = [p for p in self._pending if p[0] > self._lists]
-        self._visible.extend(due)
+        visible = [t for due_at, t in self._entries if due_at <= self._lists]
         self._lists += 1
-        return list(self._visible)
+        return visible
 
     def reveal_all(self):
         """Let every still-pending task become listable on the next list."""
-        self._visible.extend(t for _, t in self._pending)
-        self._pending = []
+        self._entries = [(0, task) for _, task in self._entries]
 
     def seed(self, *tasks):
         """Put tasks in the project as though an earlier run imported them."""
-        self._visible.extend(tasks)
+        self._entries.extend((0, task) for task in tasks)
 
 
 def _task(checksum: str) -> dict:
@@ -112,7 +114,7 @@ def _fast_poll(monkeypatch):
     monkeypatch.setattr(sut, "_IMPORT_VISIBILITY_INTERVAL_S", 0)
 
 
-async def _run(ls, tasks, items, recorded, project_id=901):
+async def _run(tasks, items, recorded, project_id=901):
     async def record_label(item, task_id):
         recorded.append((item, task_id))
 
@@ -140,16 +142,16 @@ async def test_invisible_import_does_not_raise_and_is_not_reimported(monkeypatch
     tasks = [_task("aaa"), _task("bbb")]
 
     recorded: List[tuple] = []
-    result = await _run(ls, tasks, ["a", "b"], recorded)
+    result = await _run(tasks, ["a", "b"], recorded)
 
     assert len(ls.import_calls) == 1, "the batch is imported exactly once"
     assert result == (0, 2), "nothing visible yet: no rows, both deferred"
-    assert not result.complete and recorded == []
+    assert not result.complete and not recorded
 
     # The next scheduled populate run, by which time LS has caught up.
     ls.reveal_all()
     recorded.clear()
-    result = await _run(ls, tasks, ["a", "b"], recorded)
+    result = await _run(tasks, ["a", "b"], recorded)
 
     assert len(ls.import_calls) == 1, "the second run must NOT re-import"
     assert result == (2, 0) and result.complete
@@ -167,7 +169,6 @@ async def test_partial_visibility_records_what_landed(monkeypatch):
 
     recorded: List[tuple] = []
     result = await _run(
-        ls,
         [{"data": {"image": "s3://bucket/p/aaa.JPG"}}, _task("bbb")],
         ["a", "b"],
         recorded,
@@ -191,7 +192,7 @@ async def test_repeated_url_in_one_batch_is_imported_once(monkeypatch):
     dup = _task("same")
 
     recorded: List[tuple] = []
-    result = await _run(ls, [dup, dict(dup)], ["first", "second"], recorded)
+    result = await _run([dup, dict(dup)], ["first", "second"], recorded)
 
     assert len(ls.import_calls[0]) == 1, "the repeated URL is imported once"
     assert result == (2, 0) and result.complete
@@ -214,7 +215,7 @@ async def test_throttled_listing_is_retried_not_propagated(monkeypatch):
     ]
 
     recorded: List[tuple] = []
-    result = await _run(ls, [_task("ccc")], ["c"], recorded)
+    result = await _run([_task("ccc")], ["c"], recorded)
 
     assert result == (1, 0) and result.complete
     assert recorded == [("c", 41)]
@@ -285,7 +286,7 @@ async def test_existing_duplicates_are_reported_loudly(monkeypatch, caplog):
 
     recorded: List[tuple] = []
     with caplog.at_level(logging.ERROR):
-        await _run(ls, [{"data": {"image": same}}], ["d"], recorded)
+        await _run([{"data": {"image": same}}], ["d"], recorded)
 
     assert any(
         "duplicate task" in record.getMessage() for record in caplog.records
@@ -300,7 +301,7 @@ async def test_a_deferred_batch_is_reported_loudly(monkeypatch, caplog):
 
     recorded: List[tuple] = []
     with caplog.at_level(logging.ERROR):
-        result = await _run(ls, [_task("fff")], ["f"], recorded)
+        result = await _run([_task("fff")], ["f"], recorded)
 
     assert result.deferred == 1
     assert any(
