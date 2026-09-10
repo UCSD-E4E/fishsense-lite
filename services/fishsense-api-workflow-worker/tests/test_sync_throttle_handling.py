@@ -35,17 +35,17 @@ def _throttle(seconds: int = 48) -> ApiError:
 
 
 def test_throttle_wait_honours_the_hint():
-    assert sut._throttle_wait_seconds(_throttle(48)) == 50.0  # hint + margin
+    assert sut.throttle_wait_seconds(_throttle(48)) == 50.0  # hint + margin
 
 
 def test_throttle_wait_falls_back_when_hint_is_unparseable():
     err = ApiError(status_code=429, body={"detail": "Request was throttled."})
-    assert sut._throttle_wait_seconds(err) == sut._THROTTLE_DEFAULT_WAIT_SECONDS
+    assert sut.throttle_wait_seconds(err) == sut.THROTTLE_DEFAULT_WAIT_SECONDS
 
 
 @pytest.mark.parametrize("code", [404, 403, 500])
 def test_non_throttle_errors_are_not_treated_as_throttles(code):
-    assert sut._throttle_wait_seconds(ApiError(status_code=code, body={})) is None
+    assert sut.throttle_wait_seconds(ApiError(status_code=code, body={})) is None
 
 
 async def test_a_404_still_means_missing():
@@ -86,4 +86,4 @@ async def test_persistent_throttle_raises_rather_than_skipping(monkeypatch):
 
     with pytest.raises(RuntimeError, match="still throttling"):
         await ActivityEnvironment().run(sut._ls_project_exists, ls, 274633, "headtail")
-    assert ls.projects.get.call_count == sut._THROTTLE_MAX_ATTEMPTS
+    assert ls.projects.get.call_count == sut.THROTTLE_MAX_ATTEMPTS

@@ -29,6 +29,7 @@ from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.populate_utils import (
     build_image_url,
+    ImportResult,
     import_tasks_and_record_labels,
     publish_label_studio_project,
 )
@@ -167,6 +168,7 @@ async def populate_species_label_studio_project_activity(
         deferred = len(selected) - len(targets)
 
         new_count = 0
+        import_result = ImportResult(recorded=0, deferred=0)
         if targets:
             tasks = [_build_task(image) for image in targets]
 
@@ -195,12 +197,13 @@ async def populate_species_label_studio_project_activity(
                 )
                 await fs.labels.put_species_label(image.id, label)
 
-            new_count = await import_tasks_and_record_labels(
+            import_result = await import_tasks_and_record_labels(
                 project_id=project_id,
                 tasks=tasks,
                 record_label=_record,
                 items=targets,
             )
+            new_count = import_result.recorded
         else:
             activity.logger.info(
                 "Dive %d has no laser-valid images needing species "
@@ -230,11 +233,21 @@ async def populate_species_label_studio_project_activity(
         # draft — never shown to annotators half-populated. Once nothing is
         # deferred, publish iff the project holds tasks (this run's imports or
         # a prior run's non-superseded rows for this project).
+        #
+        # `import_result.complete` is the second half of that: an import whose
+        # tasks are not listable yet no longer raises, so a run can now reach
+        # here having written rows for only part of the batch. Publishing then
+        # would show annotators exactly the half-populated list this gate
+        # exists to prevent.
         already_in_project = any(
             label.label_studio_project_id == project_id and not label.superseded
             for label in existing_species
         )
-        if deferred == 0 and (new_count > 0 or already_in_project):
+        if (
+            deferred == 0
+            and import_result.complete
+            and (new_count > 0 or already_in_project)
+        ):
             await publish_label_studio_project(project_id)
 
         return new_count

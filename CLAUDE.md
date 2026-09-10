@@ -327,7 +327,9 @@ one replica):
   where it also protects manual runs: the populate activity selects
   only images with no non-sentinel label row, and
   `import_tasks_and_record_labels` dedupes by URL against tasks
-  already in the project (the #343 fix). The laser populate parent had
+  already in the project **and against the batch itself** (the #343 fix,
+  extended 2026-09-09 — see "Populate must never re-import" below).
+  The laser populate parent had
   already been flipped for the same reason; headtail/slate followed.
   If you are tempted to restore FAILED_ONLY, note that it does not
   actually prevent duplicate imports — a manual run with a different
@@ -335,6 +337,84 @@ one replica):
   either way.
 * Per-image activities are idempotent: S3 PutObject overwrites,
   SDK upserts.
+
+## Populate must never re-import — an invisible import is not an error
+
+**Added 2026-09-09.** Hosted Label Studio imports asynchronously, so
+`ls.projects.import_tasks` returns before its tasks are listable.
+`import_tasks_and_record_labels` used to poll ~24s
+(`_IMPORT_VISIBILITY_ATTEMPTS` × `_IMPORT_VISIBILITY_INTERVAL_S`) and then
+**raise**, on the reasoning it stated out loud: *"retrying (dedupe prevents
+dupes)"*. That holds only once the previous import has materialised, which is
+exactly the condition that just failed. The populate workflows declared no
+`RetryPolicy`, so Temporal retried inside the 30-minute
+`schedule_to_close_timeout`, the retry's dedup listing still could not see the
+in-flight import, and it imported the whole set again.
+
+That is where every duplicate task in prod came from: ten projects holding two
+tasks per image, and dive 424 holding 23 copies of three frames (activity
+attempt 10, over 1107s). The wave gaps are the fingerprint — 22s on dive 517,
+27s on dive 437, both sitting right on the poll budget.
+
+**Duplicates are not merely wasted labeller queue**, which is why this is worth
+guarding rather than tidying periodically:
+
+* A duplicate **splits a row from its own annotation.** `headtaillabel` carries
+  `uq_headtail_image_project`, so the DB holds one row per (image, project) and
+  it tracks *one* task id. Seven dive-437 head/tail labels were done by a human
+  and invisible to the pipeline, because the row pointed at the empty twin.
+* A duplicate is a second, **ungated** copy of a frame the laser auto-accept
+  gate has already judged. The landing page hides a project until its gate is
+  done precisely so nobody re-does the machine's work, and a duplicate walks
+  straight around that filter — all 66 of dive 517's calibration frames were
+  re-labelled by hand, reproducing the auto-accepted dot to 0.00 px.
+
+So the contract now is: **write rows for whatever is visible, log the
+shortfall, and return.** Images whose tasks are still in flight keep their place
+in the cohort and are reconciled by the next scheduled populate, by which time
+the dedup listing can see them. Slower, and it cannot duplicate.
+
+**Two things replace the signal the raise carried**, because a tolerant path
+that says nothing is how a persistent fault (the #343 URL-normalisation shape)
+would re-import every hour forever with the workflow green:
+
+* `ImportResult.deferred` is non-zero while the task set is incomplete, and
+  **every one of the four populate activities gates
+  `publish_label_studio_project` on it.** A shortfall therefore shows up as a
+  project that stays a draft, never as one annotators see half-populated. The
+  laser and head/tail activities used to justify an unconditional publish with
+  "imports its whole selection in one pass" — true about JPEG deferral, and
+  now false about visibility.
+* A project that **already contains duplicate tasks** is logged at ERROR on
+  every run. Nothing else can notice: the label tables are unique on
+  (image, project), so a duplicate is invisible to the database.
+
+Three supporting changes:
+
+* `populate_utils` had **no 429 handling at all** while the sync path beside it
+  did, so a throttle failed the activity into the same duplicating retry. Both
+  now share `throttle_wait_seconds` / `THROTTLE_MAX_ATTEMPTS` from
+  `activities/utils.py`.
+* Dedup covers the **input batch**, not just the project — a caller whose item
+  query returns an image twice used to import it twice in one call.
+* The four populate workflows share `workflows/_populate.py` (same commands,
+  same order — the `_dispatch.py` rule) and bound the populate activity at
+  `POPULATE_MAX_ATTEMPTS = 5`.
+
+**The retry intervals are as load-bearing as the cap.** Temporal's default
+backoff starts at 1s and doubles, so capping attempts alone would collapse the
+window from 30 minutes to about 3 seconds — and a failing populate child fails
+its parent, which in the slate preprocess parent happens *before*
+`clear_slate_reprocess_flags_activity`, so a half-minute LS blip would leave
+the dive holding its reprocess flag and re-staging raw frames from NAS. The
+policy starts at 30s and allows 5 attempts, keeping roughly 8 minutes of cover.
+
+Widening that window is only safe because **a retry never re-imports**: the
+first import heartbeats `populate_utils.IMPORT_ISSUED`, Temporal hands the
+heartbeat details to the next attempt, and the next attempt reconciles instead.
+Every heartbeat after the import must carry the marker — a bare
+`activity.heartbeat()` clears the details, which is why `_call_ls` takes a
+`beat` argument rather than calling it directly.
 
 Applied to stages 0.1, 1, 2, 5.1, 9, 13, 14 and laser-depth — each
 parent runs hourly. Schedule slots: 0.1 at +0, 1 at +5, 2 at +15,
