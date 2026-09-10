@@ -159,8 +159,8 @@ def test_build_task_uses_configured_url_base_and_dual_keys(monkeypatch):
     # about the URL base and dual emission, not key count.
     assert task["data"]["image"] == expected_url
     assert task["data"]["img"] == expected_url
-    assert task["annotations"] == []
-    assert task["predictions"] == []
+    assert not task["annotations"]
+    assert not task["predictions"]
 
 
 def test_select_unlabeled_gates_on_prediction_present():
