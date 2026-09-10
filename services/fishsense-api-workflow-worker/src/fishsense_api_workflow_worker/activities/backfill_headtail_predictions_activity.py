@@ -37,7 +37,10 @@ from temporalio import activity
 from fishsense_api_workflow_worker.activities.populate_headtail_label_studio_project_activity import (  # noqa: E501  pylint: disable=line-too-long
     prediction_annotations,
 )
-from fishsense_api_workflow_worker.activities.populate_utils import _get_ls_client
+from fishsense_api_workflow_worker.activities.populate_utils import (
+    _get_ls_client,
+    ensure_project_shows_predictions,
+)
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
 
 
@@ -92,83 +95,6 @@ async def _attached_task_versions(ls, project_ids: Set[int]) -> Set[Tuple[int, s
     return attached
 
 
-async def _ensure_projects_show_predictions(ls, tags_by_project) -> int:
-    """Point each project's `model_version` at a tier it actually has.
-
-    **Attaching a prediction is not enough to show one.** Label Studio
-    surfaces predictions to annotators only for the version named in the
-    *project's* `model_version`; with it unset, `show_collab_predictions=True`
-    and hundreds of stored predictions still render a blank task. A labeler
-    worked through five frames of dive 94 by hand on 2026-09-10 with 334
-    invisible predictions sitting on the project.
-
-    It went unnoticed because `import_tasks` sets the field for free when the
-    tasks carry `predictions` inline -- so a dive whose tasks were created
-    *after* its predictions existed looked fine, and only dives backfilled
-    onto pre-existing tasks were blank. That is most of the corpus. The laser
-    stage sets `laser-detector-v2` the same way and has always worked, which
-    is why the difference never showed up as a laser bug.
-
-    `tags_by_project` maps a project id to a count of the tags its placeable
-    predictions carry. A project displays exactly one version, and head/tail
-    predictions are two-tier, so the tier is chosen from what the project
-    *has*: the current `HEADTAIL_PREDICTOR_VERSION` tag when any prediction
-    carries it, otherwise the most common tag present.
-
-    Preferring the current tier is what makes a mixed dive -- part GPU, part
-    Mask R-CNN fallback -- show SAM 3.1, since fallback rows are queued for
-    upgrade anyway (`HEADTAIL_FALLBACK_PREDICTOR_VERSION`). But it must be
-    *preference*, not a constant: a dive predicted entirely on the fallback
-    has no SAM 3.1 predictions at all, so pinning the constant would point the
-    project at a version it does not have, leaving every task blank -- and
-    would overwrite a working value LS had already set from inline fallback
-    predictions, hiding predictions that were visible.
-
-    **Reachability.** This runs only where the backfill does: once per dive,
-    in the predict parent, right after the predictions are persisted. That
-    covers every dive predicted from here on. It does *not* revisit a dive
-    already at the current predictor version, because such a dive has left the
-    stale cohort and the parent will not select it again -- so a project whose
-    `model_version` is later cleared or changed is not self-healing. The
-    on-demand `BackfillHeadtailPredictionsWorkflow(dive_id)` is the repair
-    path for that. The 18 projects blank at the time of this fix were repaired
-    directly rather than waiting for a re-prediction that would never come.
-    """
-    current = headtail_model_version_tag()
-    updated = 0
-    for project_id, tags in tags_by_project.items():
-        if not tags:
-            continue
-        want = current if current in tags else tags.most_common(1)[0][0]
-        try:
-            project = await asyncio.to_thread(ls.projects.get, id=project_id)
-            if (getattr(project, "model_version", "") or "") == want:
-                continue
-            await asyncio.to_thread(
-                ls.projects.update, id=project_id, model_version=want
-            )
-            updated += 1
-            activity.logger.info(
-                "project %s: model_version -> %s (predictions now visible)",
-                project_id,
-                want,
-            )
-        except Exception as exc:  # pylint: disable=broad-except
-            # Never fail the backfill over display configuration: the
-            # predictions are attached and correct either way. Logged with the
-            # exception rather than just its type -- a persistently failing
-            # update (missing write scope, 404, a rejected value) leaves the
-            # bug this fixes live, and the type alone cannot tell you which.
-            # Same reasoning as `heal_labeling_config`.
-            activity.logger.warning(
-                "project %s: could not set model_version to %r: %s",
-                project_id,
-                want,
-                exc,
-            )
-    return updated
-
-
 @activity.defn
 async def backfill_headtail_predictions_for_dive_activity(dive_id: int) -> int:
     """Attach current-version `HeadTailPrediction`s to existing head/tail LS
@@ -216,7 +142,9 @@ async def backfill_headtail_predictions_for_dive_activity(dive_id: int) -> int:
             )
             attached += 1
 
-        await _ensure_projects_show_predictions(ls, tags_by_project)
+        await ensure_project_shows_predictions(
+            ls, dive_id, tags_by_project, headtail_model_version_tag()
+        )
 
     activity.logger.info(
         "dive %d: attached %d head/tail prediction(s) to existing tasks",
