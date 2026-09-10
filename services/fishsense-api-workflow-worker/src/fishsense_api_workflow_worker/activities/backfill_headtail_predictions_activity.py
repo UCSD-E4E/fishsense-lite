@@ -30,6 +30,7 @@ from __future__ import annotations
 import asyncio
 from typing import Dict, Set, Tuple
 
+from fishsense_shared.headtail_predictor import headtail_model_version_tag
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.populate_headtail_label_studio_project_activity import (  # noqa: E501  pylint: disable=line-too-long
@@ -90,6 +91,58 @@ async def _attached_task_versions(ls, project_ids: Set[int]) -> Set[Tuple[int, s
     return attached
 
 
+async def _ensure_projects_show_predictions(ls, project_ids) -> int:
+    """Point each project's `model_version` at the tier we attach.
+
+    **Attaching a prediction is not enough to show one.** Label Studio
+    surfaces predictions to annotators only for the version named in the
+    *project's* `model_version`; with it unset, `show_collab_predictions=True`
+    and hundreds of stored predictions still render a blank task. A labeler
+    worked through five frames of dive 94 by hand on 2026-09-10 with 334
+    invisible predictions sitting on the project.
+
+    It went unnoticed because `import_tasks` sets the field for free when the
+    tasks carry `predictions` inline -- so a dive whose tasks were created
+    *after* its predictions existed looked fine, and only dives backfilled
+    onto pre-existing tasks were blank. That is most of the corpus. The laser
+    stage sets `laser-detector-v2` the same way and has always worked, which
+    is why the difference never showed up as a laser bug.
+
+    Pinned to `HEADTAIL_PREDICTOR_VERSION`'s tag rather than to whatever was
+    just attached: a project can display exactly one version, and head/tail
+    predictions are two-tier. A dive processed partly on GPU and partly on the
+    Mask R-CNN fallback carries both tags, and the SAM 3.1 tier is the one to
+    show -- fallback rows are queued for upgrade anyway
+    (`HEADTAIL_FALLBACK_PREDICTOR_VERSION`).
+    """
+    want = headtail_model_version_tag()
+    updated = 0
+    for project_id in project_ids:
+        try:
+            project = await asyncio.to_thread(ls.projects.get, id=project_id)
+            if (getattr(project, "model_version", "") or "") == want:
+                continue
+            await asyncio.to_thread(
+                ls.projects.update, id=project_id, model_version=want
+            )
+            updated += 1
+            activity.logger.info(
+                "project %s: model_version -> %s (predictions now visible)",
+                project_id,
+                want,
+            )
+        except Exception as exc:  # pylint: disable=broad-except
+            # Never fail the backfill over display configuration. The
+            # predictions are attached and correct either way, and the next
+            # firing retries this.
+            activity.logger.warning(
+                "project %s: could not set model_version (%s)",
+                project_id,
+                type(exc).__name__,
+            )
+    return updated
+
+
 @activity.defn
 async def backfill_headtail_predictions_for_dive_activity(dive_id: int) -> int:
     """Attach current-version `HeadTailPrediction`s to existing head/tail LS
@@ -128,6 +181,8 @@ async def backfill_headtail_predictions_for_dive_activity(dive_id: int) -> int:
                 )
             )
             attached += 1
+
+        await _ensure_projects_show_predictions(ls, project_ids)
 
     activity.logger.info(
         "dive %d: attached %d head/tail prediction(s) to existing tasks",
