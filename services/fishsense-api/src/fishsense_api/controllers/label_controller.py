@@ -227,6 +227,7 @@ async def get_dive_slate_labels_for_dive(
         .join_from(Image, Dive, Image.dive_id == Dive.id)
         .where(Dive.id == dive_id)
         .where(DiveSlateLabel.superseded == False)
+        .order_by(DiveSlateLabel.image_id)  # see get_laser_labels_for_dive
     )
 
     labels = (await session.exec(query)).all()
@@ -340,6 +341,7 @@ async def get_headtail_labels_for_dive(
         .join_from(Image, Dive, Image.dive_id == Dive.id)
         .where(Dive.id == dive_id)
         .where(HeadTailLabel.superseded == False)
+        .order_by(HeadTailLabel.image_id)  # see get_laser_labels_for_dive
     )
 
     labels = (await session.exec(query)).all()
@@ -596,6 +598,11 @@ async def get_laser_labels_for_dive(
         .join_from(Image, Dive, Image.dive_id == Dive.id)
         .where(Dive.id == dive_id)
         .where(LaserLabel.superseded == False)
+        # Ordered because callers treat the sequence as meaningful, not just
+        # the set: the populate activities append in the order they receive
+        # and Label Studio assigns task order from that. See
+        # `test_label_lists_are_ordered`.
+        .order_by(LaserLabel.image_id)
     )
 
     labels = (await session.exec(query)).all()
@@ -628,6 +635,7 @@ async def get_species_labels_for_dive(
         .join_from(Image, Dive, Image.dive_id == Dive.id)
         .where(Dive.id == dive_id)
         .where(SpeciesLabel.superseded == False)
+        .order_by(SpeciesLabel.image_id)  # see get_laser_labels_for_dive
     )
 
     labels = (await session.exec(query)).all()

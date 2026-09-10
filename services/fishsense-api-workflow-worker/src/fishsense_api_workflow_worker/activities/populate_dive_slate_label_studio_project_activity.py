@@ -20,6 +20,7 @@ from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.populate_utils import (
     build_image_url,
+    build_task_data,
     import_tasks_and_record_labels,
     publish_label_studio_project,
 )
@@ -160,9 +161,8 @@ def _build_task(image: Image, prediction=None, panel_width: float = 0.0) -> dict
     labeling-config XML across prod projects. Seeds a keypoint pre-annotation
     from the model `SlatePrediction` when one exists (assisted review) — a
     labeler confirms/nudges the board points rather than placing all of them."""
-    url = build_image_url(DIVE_SLATE_FOLDER, image.checksum)
     return {
-        "data": {"image": url, "img": url},
+        "data": build_task_data(DIVE_SLATE_FOLDER, image),
         "predictions": _prediction_annotations(prediction, panel_width),
         "annotations": [],
     }

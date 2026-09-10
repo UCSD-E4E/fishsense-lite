@@ -154,11 +154,13 @@ def test_build_task_uses_configured_url_base_and_dual_keys(monkeypatch):
     expected_url = "s3://fishsense-test/preprocess_jpeg/abc123.JPG"
     task = sut._build_task(_image(7, "abc123"))  # pylint: disable=protected-access
 
-    assert task == {
-        "data": {"image": expected_url, "img": expected_url},
-        "annotations": [],
-        "predictions": [],
-    }
+    # `data` is asserted per-key rather than as an exact dict: the
+    # capture-order fields (`taken`, `image_id`) ride along and this pin is
+    # about the URL base and dual emission, not key count.
+    assert task["data"]["image"] == expected_url
+    assert task["data"]["img"] == expected_url
+    assert task["annotations"] == []
+    assert task["predictions"] == []
 
 
 def test_select_unlabeled_gates_on_prediction_present():

@@ -93,7 +93,11 @@ def test_build_task_emits_dual_image_and_img_keys(monkeypatch):
     expected_url = "s3://fishsense-test/preprocess_headtail_jpeg/abc123.JPG"
     task = sut._build_task(_image(7, "abc123"))  # pylint: disable=protected-access
 
-    assert task["data"] == {"image": expected_url, "img": expected_url}
+    # Both keys, both the same URL. Asserted per-key rather than as an exact
+    # dict so the capture-order fields (`taken`, `image_id`) can ride along
+    # without this pin — which is about dual emission — failing on key count.
+    assert task["data"]["image"] == expected_url
+    assert task["data"]["img"] == expected_url
     assert not task["annotations"]
     assert not task["predictions"]
 
