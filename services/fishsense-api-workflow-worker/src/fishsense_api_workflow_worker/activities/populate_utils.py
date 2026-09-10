@@ -59,6 +59,41 @@ def build_image_url(folder: str, checksum: str) -> str:
     return f"s3://{bucket}/{key}"
 
 
+def build_task_data(folder: str, image) -> dict:
+    """The `data` payload for one imported Label Studio task.
+
+    `image` and `img` are both emitted because prod labeling configs across
+    the four stages reference one or the other; that predates this helper.
+
+    `taken` and `image_id` exist so a project can be sorted back into capture
+    order from the Data Manager. Task order is fixed at import — `id` and
+    `inner_id` are assigned then, and the sequential labeling stream walks
+    `id` — so a project that imported out of order cannot be reordered
+    afterwards without deleting its tasks and losing their annotations. Before
+    these fields the only task data was the JPEG URL, which is named by MD5
+    checksum and therefore sorts randomly.
+
+    `taken` is ISO-8601 **text**, not a number: Label Studio sorts data columns
+    lexically, so a numeric index sorts "0, 1, 10, 100". ISO-8601 is the format
+    whose text order is its chronological order. `image_id` is the tiebreak,
+    since EXIF resolution is one second and these cameras fire ~4 frames a
+    second.
+
+    With `get_*_labels_for_dive` now ordered, imports already arrive in capture
+    order and these fields are belt-and-braces — they matter for projects
+    imported before that fix, and for any future caller that feeds tasks in
+    unordered.
+    """
+    url = build_image_url(folder, image.checksum)
+    taken = getattr(image, "taken_datetime", None)
+    return {
+        "image": url,
+        "img": url,
+        "taken": taken.isoformat() if taken is not None else None,
+        "image_id": image.id,
+    }
+
+
 def _ls_s3_presign_credentials() -> tuple[str, str]:
     """`(access_key, secret_key)` Label Studio uses to presign GET URLs.
 

@@ -33,7 +33,7 @@ from fishsense_shared.object_store import HEADTAIL_JPEG_FOLDER
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.populate_utils import (
-    build_image_url,
+    build_task_data,
     ImportResult,
     import_tasks_and_record_labels,
     publish_label_studio_project,
@@ -217,9 +217,8 @@ def _build_task(image: Image, prediction=None) -> dict:
     """Build an LS task. Emits both `image` and `img` keys to satisfy
     legacy LS labeling-config XML across prod projects — see
     `populate_laser_label_studio_project_activity._build_task`."""
-    url = build_image_url(HEADTAIL_FOLDER, image.checksum)
     return {
-        "data": {"image": url, "img": url},
+        "data": build_task_data(HEADTAIL_FOLDER, image),
         "predictions": prediction_annotations(prediction),
         "annotations": [],
     }

@@ -16,7 +16,7 @@ from fishsense_shared import laser_model_version_tag
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.populate_utils import (
-    build_image_url,
+    build_task_data,
     import_tasks_and_record_labels,
     publish_label_studio_project,
 )
@@ -249,7 +249,6 @@ def _build_task(
     Dual-emission lets `populate` fan out across both shapes without
     interrogating each project's `label_config` first.
     """
-    url = build_image_url(PREPROCESS_FOLDER, image.checksum)
     # A prediction the auto-accept gate cleared is imported as a completed
     # annotation and NOT also as a prediction: a task carrying both would show
     # a labeler a pre-annotation for work already done. The two paths are
@@ -257,7 +256,7 @@ def _build_task(
     # original one, so nothing changes for a frame the gate has not passed.
     annotations = _auto_accepted_annotations(prediction, laser_label)
     return {
-        "data": {"image": url, "img": url},
+        "data": build_task_data(PREPROCESS_FOLDER, image),
         "annotations": annotations,
         # Model-assisted labeling: seed the laser-detector's predicted dot as
         # a pre-annotation the labeler confirms/nudges. Empty when there's no
