@@ -701,3 +701,85 @@ def _resolve_workspace_id(ls: LabelStudio) -> int | None:
             "(settings.label_studio.workspace) — create it or fix the config."
         )
     return matches[0].id
+
+
+async def ensure_project_shows_predictions(
+    ls, dive_id: int, tags_by_project, current_tag: str | None = None
+) -> int:
+    """Point each per-dive project's `model_version` at a tier it actually has.
+
+    **Attaching a prediction is not enough to show one.** Label Studio surfaces
+    predictions to annotators only for the version named in the *project's*
+    `model_version`; with it unset, `show_collab_predictions=True` and hundreds
+    of stored predictions still render a blank task. A labeler worked five
+    frames of dive 94 by hand on 2026-09-10 with 334 invisible predictions
+    sitting on the project.
+
+    It hid because `import_tasks` sets the field for free when tasks carry
+    `predictions` inline, so a dive whose tasks were created *after* its
+    predictions looked fine. Only dives backfilled onto pre-existing tasks were
+    blank -- which is most of the corpus, since populate seeds tasks long
+    before any prediction exists. Both the laser and head/tail backfills attach
+    that way, so both need this.
+
+    `tags_by_project` maps a project id to a count of the tags its placeable
+    predictions carry.
+
+    **The tag with the most predictions wins**, ties broken toward
+    `current_tag`. Not "prefer the newest tier": a project already showing 40
+    fallback predictions must not be switched to a tier holding 2, which would
+    blank 38 tasks to reveal 2 -- the same harm this function exists to undo,
+    inflicted from the other side. Maximising what a labeler can see is the
+    objective, and it converges on its own: once an upgrade pass overtakes the
+    old tier, the newer tag becomes the majority and the project flips.
+
+    **Only per-dive projects are touched**, identified by `#{dive_id}` in the
+    title -- the marker `build_per_dive_title` always emits. `model_version` is
+    project-*global* while these tags are derived from one dive, so on a
+    grandfathered shared project (the legacy 71/76 layout) two dives at
+    different tiers would overwrite each other on alternate runs, each write
+    blanking the other's tasks while both logged success.
+
+    Never raises: the predictions are attached and correct either way, and
+    display configuration is not worth failing an activity that did its work.
+    """
+    updated = 0
+    for project_id, tags in (tags_by_project or {}).items():
+        if not tags:
+            continue
+        want = max(tags.items(), key=lambda kv: (kv[1], kv[0] == current_tag))[0]
+        try:
+            project = await asyncio.to_thread(ls.projects.get, id=project_id)
+            title = getattr(project, "title", "") or ""
+            if f"#{dive_id}" not in title:
+                activity.logger.info(
+                    "project %s (%r) is not dive %d's own project; "
+                    "leaving model_version alone",
+                    project_id,
+                    title[:60],
+                    dive_id,
+                )
+                continue
+            if (getattr(project, "model_version", "") or "") == want:
+                continue
+            await asyncio.to_thread(
+                ls.projects.update, id=project_id, model_version=want
+            )
+            updated += 1
+            activity.logger.info(
+                "project %s: model_version -> %s (predictions now visible)",
+                project_id,
+                want,
+            )
+        except Exception as exc:  # pylint: disable=broad-except
+            # Logged with the exception rather than just its type: a
+            # persistently failing update (missing write scope, 404, a rejected
+            # value) leaves the invisibility bug live, and the type alone
+            # cannot tell you which. Same reasoning as `heal_labeling_config`.
+            activity.logger.warning(
+                "project %s: could not set model_version to %r: %s",
+                project_id,
+                want,
+                exc,
+            )
+    return updated

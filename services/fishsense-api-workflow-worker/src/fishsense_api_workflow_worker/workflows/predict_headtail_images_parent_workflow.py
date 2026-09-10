@@ -6,6 +6,14 @@ SDK, and dispatches the data-worker's GPU `PredictHeadtailImagesWorkflow`. The
 child returns one result per image; the parent persists them so the head/tail
 populate step can serve them as Label Studio pre-annotations.
 
+**The backfill call is unconditional (2026-09-10), and that changed this
+workflow's command sequence.** It used to be gated on there being something to
+persist. A workflow's command order is its replay contract, so this was
+deployed against a drained queue -- schedule paused, no run in flight -- rather
+than folded into a rolling deploy. If the gate is ever reintroduced or moved,
+do the same; a run mid-flight across the change replays into a
+non-determinism error.
+
 **Lighter than the other predict parents, and deliberately so.** There is no
 `stage_raw` and no `cleanup_raw`: the stage reads the stage-5.1 JPEG that is
 already in Garage, which is the exact frame the labeler is shown. That removes
@@ -100,26 +108,36 @@ class PredictHeadtailImagesParentWorkflow:
         # fallback row is permanently stale by design, so the cohort re-offers
         # it every hour until a GPU can actually upgrade it. Persisting the
         # skip marker instead would blank a perfectly good prediction.
-        results = [
+        persistable = [
             r for r in results if r.status != HEADTAIL_STATUS_NO_UPGRADE_AVAILABLE
         ]
 
-        if results:
+        if persistable:
             await _dispatch.run_sdk_activity(
-                "persist_headtail_predictions_activity", results
+                "persist_headtail_predictions_activity", persistable
             )
-            # Populate seeds a task's pre-annotation once, at import time, and
-            # dedupes by URL — so for a dive whose tasks already exist,
-            # persisting alone changes the database and nothing the labeler
-            # sees. That is most of the corpus: 3,147 still-unlabelled tasks
-            # across 19 dives were imported long before any prediction existed.
-            # Attaching to the existing tasks is what makes a prediction
-            # visible. Last on purpose: it is the only step whose failure
-            # leaves nothing to clean up, and
-            # `BackfillHeadtailPredictionsWorkflow` can repair a dive
-            # afterwards on its own.
-            await _dispatch.run_sdk_activity(
-                "backfill_headtail_predictions_for_dive_activity", dive_id
-            )
+
+        # Populate seeds a task's pre-annotation once, at import time, and
+        # dedupes by URL — so for a dive whose tasks already exist, persisting
+        # alone changes the database and nothing the labeler sees. That is most
+        # of the corpus: 3,147 still-unlabelled tasks across 19 dives were
+        # imported long before any prediction existed. Attaching to the
+        # existing tasks is what makes a prediction visible. Last on purpose:
+        # it is the only step whose failure leaves nothing to clean up, and
+        # `BackfillHeadtailPredictionsWorkflow` can repair a dive afterwards on
+        # its own.
+        #
+        # **Unconditional**, and that is the point rather than an oversight.
+        # It also points the LS project's `model_version` at the tier the dive
+        # holds, without which every attached prediction is invisible to the
+        # labeler. Gated on `persistable` it could never run for the dive that
+        # needs it most: an all-fallback dive re-offered on CPU capacity
+        # returns nothing but `NO_UPGRADE_AVAILABLE`, so the list is empty
+        # while its project may still be showing nothing at all. The activity
+        # is idempotent and returns early when a dive has no attachable task,
+        # so the cost of running it every firing is one cheap call.
+        await _dispatch.run_sdk_activity(
+            "backfill_headtail_predictions_for_dive_activity", dive_id
+        )
 
         return inputs.dive_id

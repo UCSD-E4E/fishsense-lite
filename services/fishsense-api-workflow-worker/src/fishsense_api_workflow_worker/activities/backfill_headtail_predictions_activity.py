@@ -28,14 +28,19 @@ invitation to second-guess finished work at worst.
 from __future__ import annotations
 
 import asyncio
+from collections import Counter
 from typing import Dict, Set, Tuple
 
+from fishsense_shared.headtail_predictor import headtail_model_version_tag
 from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.populate_headtail_label_studio_project_activity import (  # noqa: E501  pylint: disable=line-too-long
     prediction_annotations,
 )
-from fishsense_api_workflow_worker.activities.populate_utils import _get_ls_client
+from fishsense_api_workflow_worker.activities.populate_utils import (
+    _get_ls_client,
+    ensure_project_shows_predictions,
+)
 from fishsense_api_workflow_worker.activities.utils import get_fs_client
 
 
@@ -113,11 +118,19 @@ async def backfill_headtail_predictions_for_dive_activity(dive_id: int) -> int:
         already = await _attached_task_versions(ls, project_ids)
 
         attached = 0
-        for image_id, (task_id, _project_id) in targets.items():
+        # Which tiers each project actually holds, counted over every placeable
+        # prediction rather than only the newly attached ones -- on a re-run
+        # nothing is attached and the project would otherwise be left pointing
+        # nowhere.
+        tags_by_project: Dict[int, Counter] = {}
+        for image_id, (task_id, project_id) in targets.items():
             wrapper = prediction_annotations(prediction_by_image[image_id])
             if not wrapper:
                 continue
             body = wrapper[0]
+            tags_by_project.setdefault(project_id, Counter())[
+                body["model_version"]
+            ] += 1
             if (task_id, body["model_version"]) in already:
                 continue
             await asyncio.to_thread(
@@ -128,6 +141,10 @@ async def backfill_headtail_predictions_for_dive_activity(dive_id: int) -> int:
                 )
             )
             attached += 1
+
+        await ensure_project_shows_predictions(
+            ls, dive_id, tags_by_project, headtail_model_version_tag()
+        )
 
     activity.logger.info(
         "dive %d: attached %d head/tail prediction(s) to existing tasks",

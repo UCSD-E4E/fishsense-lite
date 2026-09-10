@@ -9,6 +9,7 @@ keypoint.
 
 from __future__ import annotations
 
+
 from fishsense_api_workflow_worker.activities.backfill_headtail_predictions_activity import (  # noqa: E501  pylint: disable=line-too-long
     select_attach_targets,
 )
