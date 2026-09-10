@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [2.3.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v2.2.0...fishsense-api-sdk-v2.3.0) (2026-09-10)
+
+
+### Features
+
+* **api:** record the reviewed fish angle in degrees ([#855](https://github.com/UCSD-E4E/fishsense-lite/issues/855)) ([9b3a2e3](https://github.com/UCSD-E4E/fishsense-lite/commit/9b3a2e3f417f3f3db07777a74cdc0a9c77db3286))
+
 ## [2.2.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-sdk-v2.1.0...fishsense-api-sdk-v2.2.0) (2026-09-08)
 
 
