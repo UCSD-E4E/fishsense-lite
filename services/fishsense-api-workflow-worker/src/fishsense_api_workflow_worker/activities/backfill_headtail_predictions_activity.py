@@ -28,6 +28,7 @@ invitation to second-guess finished work at worst.
 from __future__ import annotations
 
 import asyncio
+from collections import Counter
 from typing import Dict, Set, Tuple
 
 from fishsense_shared.headtail_predictor import headtail_model_version_tag
@@ -91,8 +92,8 @@ async def _attached_task_versions(ls, project_ids: Set[int]) -> Set[Tuple[int, s
     return attached
 
 
-async def _ensure_projects_show_predictions(ls, project_ids) -> int:
-    """Point each project's `model_version` at the tier we attach.
+async def _ensure_projects_show_predictions(ls, tags_by_project) -> int:
+    """Point each project's `model_version` at a tier it actually has.
 
     **Attaching a prediction is not enough to show one.** Label Studio
     surfaces predictions to annotators only for the version named in the
@@ -108,16 +109,37 @@ async def _ensure_projects_show_predictions(ls, project_ids) -> int:
     stage sets `laser-detector-v2` the same way and has always worked, which
     is why the difference never showed up as a laser bug.
 
-    Pinned to `HEADTAIL_PREDICTOR_VERSION`'s tag rather than to whatever was
-    just attached: a project can display exactly one version, and head/tail
-    predictions are two-tier. A dive processed partly on GPU and partly on the
-    Mask R-CNN fallback carries both tags, and the SAM 3.1 tier is the one to
-    show -- fallback rows are queued for upgrade anyway
-    (`HEADTAIL_FALLBACK_PREDICTOR_VERSION`).
+    `tags_by_project` maps a project id to a count of the tags its placeable
+    predictions carry. A project displays exactly one version, and head/tail
+    predictions are two-tier, so the tier is chosen from what the project
+    *has*: the current `HEADTAIL_PREDICTOR_VERSION` tag when any prediction
+    carries it, otherwise the most common tag present.
+
+    Preferring the current tier is what makes a mixed dive -- part GPU, part
+    Mask R-CNN fallback -- show SAM 3.1, since fallback rows are queued for
+    upgrade anyway (`HEADTAIL_FALLBACK_PREDICTOR_VERSION`). But it must be
+    *preference*, not a constant: a dive predicted entirely on the fallback
+    has no SAM 3.1 predictions at all, so pinning the constant would point the
+    project at a version it does not have, leaving every task blank -- and
+    would overwrite a working value LS had already set from inline fallback
+    predictions, hiding predictions that were visible.
+
+    **Reachability.** This runs only where the backfill does: once per dive,
+    in the predict parent, right after the predictions are persisted. That
+    covers every dive predicted from here on. It does *not* revisit a dive
+    already at the current predictor version, because such a dive has left the
+    stale cohort and the parent will not select it again -- so a project whose
+    `model_version` is later cleared or changed is not self-healing. The
+    on-demand `BackfillHeadtailPredictionsWorkflow(dive_id)` is the repair
+    path for that. The 18 projects blank at the time of this fix were repaired
+    directly rather than waiting for a re-prediction that would never come.
     """
-    want = headtail_model_version_tag()
+    current = headtail_model_version_tag()
     updated = 0
-    for project_id in project_ids:
+    for project_id, tags in tags_by_project.items():
+        if not tags:
+            continue
+        want = current if current in tags else tags.most_common(1)[0][0]
         try:
             project = await asyncio.to_thread(ls.projects.get, id=project_id)
             if (getattr(project, "model_version", "") or "") == want:
@@ -132,13 +154,17 @@ async def _ensure_projects_show_predictions(ls, project_ids) -> int:
                 want,
             )
         except Exception as exc:  # pylint: disable=broad-except
-            # Never fail the backfill over display configuration. The
-            # predictions are attached and correct either way, and the next
-            # firing retries this.
+            # Never fail the backfill over display configuration: the
+            # predictions are attached and correct either way. Logged with the
+            # exception rather than just its type -- a persistently failing
+            # update (missing write scope, 404, a rejected value) leaves the
+            # bug this fixes live, and the type alone cannot tell you which.
+            # Same reasoning as `heal_labeling_config`.
             activity.logger.warning(
-                "project %s: could not set model_version (%s)",
+                "project %s: could not set model_version to %r: %s",
                 project_id,
-                type(exc).__name__,
+                want,
+                exc,
             )
     return updated
 
@@ -166,11 +192,19 @@ async def backfill_headtail_predictions_for_dive_activity(dive_id: int) -> int:
         already = await _attached_task_versions(ls, project_ids)
 
         attached = 0
-        for image_id, (task_id, _project_id) in targets.items():
+        # Which tiers each project actually holds, counted over every placeable
+        # prediction rather than only the newly attached ones -- on a re-run
+        # nothing is attached and the project would otherwise be left pointing
+        # nowhere.
+        tags_by_project: Dict[int, Counter] = {}
+        for image_id, (task_id, project_id) in targets.items():
             wrapper = prediction_annotations(prediction_by_image[image_id])
             if not wrapper:
                 continue
             body = wrapper[0]
+            tags_by_project.setdefault(project_id, Counter())[
+                body["model_version"]
+            ] += 1
             if (task_id, body["model_version"]) in already:
                 continue
             await asyncio.to_thread(
@@ -182,7 +216,7 @@ async def backfill_headtail_predictions_for_dive_activity(dive_id: int) -> int:
             )
             attached += 1
 
-        await _ensure_projects_show_predictions(ls, project_ids)
+        await _ensure_projects_show_predictions(ls, tags_by_project)
 
     activity.logger.info(
         "dive %d: attached %d head/tail prediction(s) to existing tasks",
