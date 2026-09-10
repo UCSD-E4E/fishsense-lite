@@ -41,6 +41,14 @@ class SpeciesLabel(ModelBase, table=True):
     content_of_image: str | None = Field(default=None)
     fish_measurable_category: str | None = Field(default=None)
     fish_angle_category: str | None = Field(default=None)
+    # The reviewed angle in degrees. Deliberately separate from
+    # `fish_angle_category`, which is the Label Studio taxonomy leaf and whose
+    # top bucket `x > 15°` is an open interval — on dive 87 five distinct
+    # commanded angles all land in it, so the category cannot express an angle
+    # test's independent variable. Different owners too: the hourly species
+    # sync is the sole writer of the category and must never touch this.
+    # NULL means unreviewed, which 0.0 does not — 0° is a real value.
+    fish_angle_degrees: float | None = Field(default=None)
     fish_curved_category: str | None = Field(default=None)
     label_studio_json: Dict[str, Any] | None = Field(
         default=None, sa_column=Column(JSON)
