@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [2.4.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.4.2...fishsense-api-workflow-worker-v2.4.3) (2026-09-10)
+
+
+### Bug Fixes
+
+* **populate:** an invisible Label Studio import is not an error ([#860](https://github.com/UCSD-E4E/fishsense-lite/issues/860)) ([d24c03d](https://github.com/UCSD-E4E/fishsense-lite/commit/d24c03d01c629d02cb1aa0b48da1ca91365a0b98))
+
 ## [2.4.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.4.1...fishsense-api-workflow-worker-v2.4.2) (2026-09-10)
 
 
