@@ -20,6 +20,7 @@ from temporalio import activity
 
 from fishsense_api_workflow_worker.activities.populate_utils import (
     build_image_url,
+    ImportResult,
     import_tasks_and_record_labels,
     publish_label_studio_project,
 )
@@ -192,6 +193,7 @@ async def populate_dive_slate_label_studio_project_activity(
         aspect = await _slate_panel_aspect(dive_id, fs) if prediction_by_image else None
 
         new_count = 0
+        import_result = ImportResult(recorded=0, deferred=0)
         images: List[Image] = []
         for image_id in target_ids:
             image = await fs.images.get(image_id=image_id)
@@ -236,12 +238,13 @@ async def populate_dive_slate_label_studio_project_activity(
                 )
                 await fs.labels.put_dive_slate_label(image.id, label)
 
-            new_count = await import_tasks_and_record_labels(
+            import_result = await import_tasks_and_record_labels(
                 project_id=project_id,
                 tasks=tasks,
                 record_label=_record,
                 items=images,
             )
+            new_count = import_result.recorded
         else:
             activity.logger.info(
                 "Dive %d has no slate-marked images needing labels; skipping",
@@ -303,8 +306,13 @@ async def populate_dive_slate_label_studio_project_activity(
         # isn't shown to labelers. (The old justification here — "imports its
         # whole selection in one pass (no JPEG deferral)" — stopped being true
         # when #525 added the gate above, and was never updated.)
-        if new_count > 0 or any(
-            label.label_studio_project_id == project_id for label in existing_slate
+        # `import_result.complete` guards the other way a run can now finish
+        # short: an import whose tasks are not listable yet no longer raises.
+        if import_result.complete and (
+            new_count > 0
+            or any(
+                label.label_studio_project_id == project_id for label in existing_slate
+            )
         ):
             await publish_label_studio_project(project_id)
 

@@ -372,8 +372,24 @@ guarding rather than tidying periodically:
 So the contract now is: **write rows for whatever is visible, log the
 shortfall, and return.** Images whose tasks are still in flight keep their place
 in the cohort and are reconciled by the next scheduled populate, by which time
-the dedup listing can see them. Slower, and it cannot duplicate. Three
-supporting changes:
+the dedup listing can see them. Slower, and it cannot duplicate.
+
+**Two things replace the signal the raise carried**, because a tolerant path
+that says nothing is how a persistent fault (the #343 URL-normalisation shape)
+would re-import every hour forever with the workflow green:
+
+* `ImportResult.deferred` is non-zero while the task set is incomplete, and
+  **every one of the four populate activities gates
+  `publish_label_studio_project` on it.** A shortfall therefore shows up as a
+  project that stays a draft, never as one annotators see half-populated. The
+  laser and head/tail activities used to justify an unconditional publish with
+  "imports its whole selection in one pass" — true about JPEG deferral, and
+  now false about visibility.
+* A project that **already contains duplicate tasks** is logged at ERROR on
+  every run. Nothing else can notice: the label tables are unique on
+  (image, project), so a duplicate is invisible to the database.
+
+Three supporting changes:
 
 * `populate_utils` had **no 429 handling at all** while the sync path beside it
   did, so a throttle failed the activity into the same duplicating retry. Both
@@ -382,8 +398,23 @@ supporting changes:
 * Dedup covers the **input batch**, not just the project — a caller whose item
   query returns an image twice used to import it twice in one call.
 * The four populate workflows share `workflows/_populate.py` (same commands,
-  same order — the `_dispatch.py` rule) and cap the populate activity at
-  `POPULATE_MAX_ATTEMPTS = 3`, so the one narrow window left cannot compound.
+  same order — the `_dispatch.py` rule) and bound the populate activity at
+  `POPULATE_MAX_ATTEMPTS = 5`.
+
+**The retry intervals are as load-bearing as the cap.** Temporal's default
+backoff starts at 1s and doubles, so capping attempts alone would collapse the
+window from 30 minutes to about 3 seconds — and a failing populate child fails
+its parent, which in the slate preprocess parent happens *before*
+`clear_slate_reprocess_flags_activity`, so a half-minute LS blip would leave
+the dive holding its reprocess flag and re-staging raw frames from NAS. The
+policy starts at 30s and allows 5 attempts, keeping roughly 8 minutes of cover.
+
+Widening that window is only safe because **a retry never re-imports**: the
+first import heartbeats `populate_utils.IMPORT_ISSUED`, Temporal hands the
+heartbeat details to the next attempt, and the next attempt reconciles instead.
+Every heartbeat after the import must carry the marker — a bare
+`activity.heartbeat()` clears the details, which is why `_call_ls` takes a
+`beat` argument rather than calling it directly.
 
 Applied to stages 0.1, 1, 2, 5.1, 9, 13, 14 and laser-depth — each
 parent runs hourly. Schedule slots: 0.1 at +0, 1 at +5, 2 at +15,

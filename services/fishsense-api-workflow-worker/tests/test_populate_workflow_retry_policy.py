@@ -66,3 +66,31 @@ async def test_populate_retries_are_bounded(stage, calls):
     assert policy is not None, "unlimited retries are what compounded duplicates"
     assert policy.maximum_attempts == sut.POPULATE_MAX_ATTEMPTS
     assert 1 < policy.maximum_attempts <= 5
+
+
+@pytest.mark.parametrize("stage", STAGES)
+async def test_the_retry_window_still_absorbs_a_label_studio_blip(stage, calls):
+    """Capping attempts alone would have been a regression.
+
+    Temporal's default backoff starts at 1s and doubles, so three attempts
+    cover about three seconds. A half-minute LS blip would then fail the
+    populate child and, through `dispatch_populate`, the preprocess parent —
+    which in the slate parent runs *before* `clear_slate_reprocess_flags`, so
+    the dive would keep its reprocess flag and re-stage its raw frames from
+    NAS on the next firing.
+    """
+    await sut.create_then_populate(stage, 1)
+    policy = calls[1]["retry_policy"]
+
+    assert policy.initial_interval >= timedelta(seconds=30)
+    assert policy.maximum_interval is not None
+
+    window = timedelta()
+    interval = policy.initial_interval
+    for _ in range(policy.maximum_attempts - 1):
+        window += interval
+        interval = min(
+            interval * policy.backoff_coefficient, policy.maximum_interval
+        )
+    assert window >= timedelta(minutes=5), "must ride out an ordinary LS blip"
+    assert window <= timedelta(minutes=15), "but stay far short of the old 30"

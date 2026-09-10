@@ -16,7 +16,7 @@ import base64
 import binascii
 import urllib.parse
 import xml.etree.ElementTree as ET
-from typing import Any, Awaitable, Callable, Iterable, List
+from typing import Any, Awaitable, Callable, Iterable, List, NamedTuple
 
 from label_studio_sdk.client import LabelStudio
 from label_studio_sdk.core import ApiError
@@ -316,7 +316,9 @@ async def _throttle_sleep(seconds: float) -> None:
     await asyncio.sleep(seconds)
 
 
-async def _call_ls(call: Callable[[], Any], *, what: str) -> Any:
+async def _call_ls(
+    call: Callable[[], Any], *, what: str, beat: Callable[[], None] = activity.heartbeat
+) -> Any:
     """Run a blocking LS call off-loop, backing off through 429s.
 
     `populate_utils` had no throttle handling at all while the sync path beside
@@ -324,6 +326,9 @@ async def _call_ls(call: Callable[[], Any], *, what: str) -> Any:
     activity is retried by Temporal, which is the one thing that duplicates
     tasks (see `import_tasks_and_record_labels`). Swallowing the retry here
     keeps a throttle from becoming a duplicate.
+
+    `beat` is injected because the heartbeat carries the import marker once one
+    exists, and a bare `activity.heartbeat()` would clear it.
     """
     for attempt in range(THROTTLE_MAX_ATTEMPTS):
         try:
@@ -339,12 +344,85 @@ async def _call_ls(call: Callable[[], Any], *, what: str) -> Any:
                 THROTTLE_MAX_ATTEMPTS,
                 wait,
             )
-            activity.heartbeat()
+            beat()
             await _throttle_sleep(wait)
     raise RuntimeError(
         f"Label Studio still throttling {what} after {THROTTLE_MAX_ATTEMPTS} "
         "attempts"
     )
+
+
+# Heartbeat marker recording that this activity execution already issued an
+# import for a project. Temporal hands the last heartbeat's details to the next
+# *attempt* of the same activity, so this is what makes a retry reconcile
+# rather than re-import — and therefore what makes a generous retry policy safe
+# (see `workflows/_populate.py`). Every heartbeat after the import must carry
+# it: `activity.heartbeat()` with no args clears the details.
+IMPORT_ISSUED = "ls-import-issued"
+
+
+def _import_already_issued(project_id: int) -> bool:
+    """Whether an earlier attempt of this activity already imported."""
+    try:
+        details = activity.info().heartbeat_details
+    except RuntimeError:
+        return False
+    return (
+        len(details) >= 2 and details[0] == IMPORT_ISSUED and details[1] == project_id
+    )
+
+
+def _tasks_needing_import(
+    tasks: List[dict], urls: List[str], known: dict, project_id: int
+) -> List[dict]:
+    """The subset of `tasks` that should actually be sent to LS.
+
+    Three ways a task drops out, and each one is a duplicate that reached prod:
+
+    * it is already in the project (the #343 dedup);
+    * the same URL appears earlier in this very batch — the project comparison
+      alone could not catch that, so a caller whose item query returned an
+      image twice imported it twice in one call;
+    * an earlier attempt of *this* activity already issued an import. What it
+      created may still be materialising, so importing again is precisely the
+      duplicate-making move. Reconcile instead.
+    """
+    to_import: List[dict] = []
+    batch_seen: set = set()
+    for task, url in zip(tasks, urls):
+        if url in known or url in batch_seen:
+            continue
+        batch_seen.add(url)
+        to_import.append(task)
+
+    if to_import and _import_already_issued(project_id):
+        activity.logger.info(
+            "populate: attempt %d already issued an import for project %d; "
+            "reconciling rather than re-importing %d task(s)",
+            activity.info().attempt,
+            project_id,
+            len(to_import),
+        )
+        return []
+    return to_import
+
+
+class ImportResult(NamedTuple):
+    """What `import_tasks_and_record_labels` managed to anchor.
+
+    `deferred` is items whose LS task is not yet listable, so no label row
+    could be written for them. It is not an error — see the function's
+    docstring — but callers must not publish a project while it is non-zero,
+    or annotators get a half-populated task list.
+    """
+
+    recorded: int
+    deferred: int
+
+    @property
+    def complete(self) -> bool:
+        """Every item in the batch now has a task and a row."""
+        return self.deferred == 0
 
 
 def _task_image_url(task: dict) -> str | None:
@@ -419,14 +497,28 @@ async def import_tasks_and_record_labels(
     *ungated* copy of a frame the laser auto-accept gate had already judged.
 
     So we now write rows for whatever is visible and return, logging the
-    shortfall. The images whose tasks are still in flight simply keep their
-    place in the cohort and are reconciled by the next scheduled populate, by
-    which time the dedup listing can see them. Slower, and it cannot duplicate.
+    shortfall at ERROR. The images whose tasks are still in flight simply keep
+    their place in the cohort and are reconciled by the next scheduled
+    populate, by which time the dedup listing can see them. Slower, and it
+    cannot duplicate.
+
+    Two things replace the signal the raise used to carry. `ImportResult.
+    deferred` is non-zero while the task set is incomplete, and **every caller
+    gates `publish_label_studio_project` on it** so a shortfall shows up as a
+    project that stays a draft rather than one annotators see half-populated.
+    And a project that already contains duplicate tasks is logged at ERROR on
+    every run, because nothing else notices — the label tables are unique on
+    (image, project), so a duplicate is invisible to the DB.
+
+    Within one activity execution a retry never re-imports: the first import
+    heartbeats `IMPORT_ISSUED`, and Temporal hands that to the next attempt.
+    That is what lets `workflows/_populate.py` keep a retry window wide enough
+    to ride out an LS outage.
     """
     tasks = list(tasks)
     items_list = list(items)
     if not tasks:
-        return 0
+        return ImportResult(recorded=0, deferred=0)
     if len(tasks) != len(items_list):
         raise RuntimeError(
             f"import_tasks_and_record_labels: {len(tasks)} tasks for "
@@ -440,33 +532,42 @@ async def import_tasks_and_record_labels(
         )
 
     ls = _get_ls_client()
+    beat: Callable[[], None] = activity.heartbeat
 
-    def _url_to_task_id() -> dict:
+    def _list_tasks() -> tuple[dict, int]:
+        """`(url -> task_id, duplicate_task_count)` for the whole project."""
         mapping: dict = {}
+        duplicates = 0
         for task in ls.tasks.list(project=project_id):
             data = getattr(task, "data", {}) or {}
             url = _normalize_image_url(data.get("image") or data.get("img"))
-            if url is not None:
-                mapping[url] = task.id
-        return mapping
+            if url is None:
+                continue
+            if url in mapping:
+                duplicates += 1
+            mapping[url] = task.id
+        return mapping, duplicates
 
     async def _list_known() -> dict:
-        return await _call_ls(_url_to_task_id, what=f"tasks.list({project_id})")
+        mapping, duplicates = await _call_ls(
+            _list_tasks, what=f"tasks.list({project_id})", beat=beat
+        )
+        if duplicates:
+            # Loud, because nothing else notices: duplicates are invisible to
+            # the DB (the label tables are unique on (image, project)), they
+            # split a row from its annotation, and they hand a labeller an
+            # ungated copy of a frame the auto-accept gate already judged.
+            activity.logger.error(
+                "populate: project %d already holds %d duplicate task(s) — "
+                "a labeller is being served the same image twice",
+                project_id,
+                duplicates,
+            )
+        return mapping
 
     # Dedupe against what's already imported so a retry doesn't duplicate.
     known = await _list_known()
-
-    # ...and against the batch itself. The comparison above only ever covered
-    # tasks already in the project, so a caller whose item query returned an
-    # image twice imported it twice in one call, with nothing yet in the
-    # project to match against.
-    to_import: List[dict] = []
-    batch_seen: set = set()
-    for task, url in zip(tasks, urls):
-        if url in known or url in batch_seen:
-            continue
-        batch_seen.add(url)
-        to_import.append(task)
+    to_import = _tasks_needing_import(tasks, urls, known, project_id)
 
     if to_import:
         await _call_ls(
@@ -474,37 +575,48 @@ async def import_tasks_and_record_labels(
                 project_id, request=to_import, return_task_ids=True
             ),
             what=f"import_tasks({project_id})",
+            beat=beat,
         )
+
+        def beat_imported() -> None:
+            activity.heartbeat(IMPORT_ISSUED, project_id)
+
+        beat = beat_imported
+        beat()
+
         want = {u for u in urls if u not in known}
         for _ in range(_IMPORT_VISIBILITY_ATTEMPTS):
             known = await _list_known()
             if want <= known.keys():
                 break
-            activity.heartbeat()
+            beat()
             await asyncio.sleep(_IMPORT_VISIBILITY_INTERVAL_S)
-        missing = want - known.keys()
-        if missing:
-            activity.logger.warning(
-                "populate: %d of %d imported task(s) still not visible in "
-                "project %d; recording the %d that are and leaving the rest to "
-                "the next run — re-importing them is what duplicates tasks",
-                len(missing),
-                len(want),
-                project_id,
-                len(want) - len(missing),
-            )
 
     recorded = 0
+    deferred = 0
     async with asyncio.TaskGroup() as tg:
         for item, url in zip(items_list, urls):
             task_id = known.get(url)
             if task_id is None:
+                deferred += 1
                 continue
             recorded += 1
             tg.create_task(record_label(item, task_id))
-            activity.heartbeat()
+            beat()
 
-    return recorded
+    if deferred:
+        activity.logger.error(
+            "populate: %d of %d task(s) for project %d are not listable yet, "
+            "so their label rows are deferred to the next run; the project is "
+            "left unpublished. Re-importing them is what duplicates tasks. "
+            "If this repeats every run the URLs are not matching — compare "
+            "`_normalize_image_url` against what `tasks.list` returns.",
+            deferred,
+            len(items_list),
+            project_id,
+        )
+
+    return ImportResult(recorded=recorded, deferred=deferred)
 
 
 async def publish_label_studio_project(project_id: int) -> None:

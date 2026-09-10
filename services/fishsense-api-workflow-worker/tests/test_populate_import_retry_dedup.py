@@ -25,6 +25,8 @@ scheduled run, and never let a retry re-issue the import.
 from __future__ import annotations
 
 import base64
+import logging
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import List
 from unittest.mock import MagicMock
@@ -94,6 +96,10 @@ class SlowImportLabelStudio:
         self._visible.extend(t for _, t in self._pending)
         self._pending = []
 
+    def seed(self, *tasks):
+        """Put tasks in the project as though an earlier run imported them."""
+        self._visible.extend(tasks)
+
 
 def _task(checksum: str) -> dict:
     return {"data": {"image": f"s3://bucket/preprocess_jpeg/{checksum}.JPG"}}
@@ -134,18 +140,19 @@ async def test_invisible_import_does_not_raise_and_is_not_reimported(monkeypatch
     tasks = [_task("aaa"), _task("bbb")]
 
     recorded: List[tuple] = []
-    written = await _run(ls, tasks, ["a", "b"], recorded)
+    result = await _run(ls, tasks, ["a", "b"], recorded)
 
     assert len(ls.import_calls) == 1, "the batch is imported exactly once"
-    assert written == 0 and recorded == [], "nothing visible yet, so no rows"
+    assert result == (0, 2), "nothing visible yet: no rows, both deferred"
+    assert not result.complete and recorded == []
 
     # The next scheduled populate run, by which time LS has caught up.
     ls.reveal_all()
     recorded.clear()
-    written = await _run(ls, tasks, ["a", "b"], recorded)
+    result = await _run(ls, tasks, ["a", "b"], recorded)
 
     assert len(ls.import_calls) == 1, "the second run must NOT re-import"
-    assert written == 2
+    assert result == (2, 0) and result.complete
     assert sorted(recorded) == [("a", 11), ("b", 12)]
 
 
@@ -154,15 +161,12 @@ async def test_partial_visibility_records_what_landed(monkeypatch):
     """A task that did land gets its row now, not an hour later."""
     ls = SlowImportLabelStudio([21, 22], visible_after_lists=0)
     monkeypatch.setattr(sut, "_get_ls_client", lambda: ls)
-    ls._pending = []  # noqa: SLF001 - seed one task as pre-existing
-    ls._visible = [  # noqa: SLF001
-        SimpleNamespace(
-            id=99, data={"image": _resolve_url(99, "s3://bucket/p/aaa.JPG")}
-        )
-    ]
+    ls.seed(
+        SimpleNamespace(id=99, data={"image": _resolve_url(99, "s3://bucket/p/aaa.JPG")})
+    )
 
     recorded: List[tuple] = []
-    written = await _run(
+    result = await _run(
         ls,
         [{"data": {"image": "s3://bucket/p/aaa.JPG"}}, _task("bbb")],
         ["a", "b"],
@@ -170,7 +174,7 @@ async def test_partial_visibility_records_what_landed(monkeypatch):
     )
 
     assert ls.import_calls == [[_task("bbb")]], "only the missing task imported"
-    assert written == 2
+    assert result == (2, 0) and result.complete
     assert sorted(recorded) == [("a", 99), ("b", 21)]
 
 
@@ -187,10 +191,10 @@ async def test_repeated_url_in_one_batch_is_imported_once(monkeypatch):
     dup = _task("same")
 
     recorded: List[tuple] = []
-    written = await _run(ls, [dup, dict(dup)], ["first", "second"], recorded)
+    result = await _run(ls, [dup, dict(dup)], ["first", "second"], recorded)
 
     assert len(ls.import_calls[0]) == 1, "the repeated URL is imported once"
-    assert written == 2
+    assert result == (2, 0) and result.complete
     assert sorted(recorded) == [("first", 31), ("second", 31)]
 
 
@@ -210,11 +214,96 @@ async def test_throttled_listing_is_retried_not_propagated(monkeypatch):
     ]
 
     recorded: List[tuple] = []
-    written = await _run(ls, [_task("ccc")], ["c"], recorded)
+    result = await _run(ls, [_task("ccc")], ["c"], recorded)
 
-    assert written == 1
+    assert result == (1, 0) and result.complete
     assert recorded == [("c", 41)]
 
 
 async def _no_sleep(_seconds):
     return None
+
+
+@pytest.mark.usefixtures("fast_poll")
+async def test_a_retry_reconciles_instead_of_re_importing(monkeypatch):
+    """The bound on `POPULATE_MAX_ATTEMPTS` is only safe because of this.
+
+    An attempt that already issued an import records the marker in its
+    heartbeat; Temporal hands that to the next attempt, which must reconcile
+    rather than import again. Without it, widening the retry window — so an LS
+    blip does not fail the populate child and, through `dispatch_populate`, its
+    preprocess parent — would widen the duplication window with it.
+    """
+    ls = SlowImportLabelStudio([51, 52], visible_after_lists=99)
+    monkeypatch.setattr(sut, "_get_ls_client", lambda: ls)
+    tasks = [_task("ddd"), _task("eee")]
+    recorded: List[tuple] = []
+
+    async def record_label(item, task_id):
+        recorded.append((item, task_id))
+
+    async def call():
+        return await sut.import_tasks_and_record_labels(
+            project_id=901, tasks=tasks, record_label=record_label, items=["d", "e"]
+        )
+
+    beats: List[tuple] = []
+    env = ActivityEnvironment()
+    env.on_heartbeat = lambda *args: beats.append(args)
+    await env.run(call)
+
+    assert len(ls.import_calls) == 1
+    assert (sut.IMPORT_ISSUED, 901) in beats, "the import must be heartbeated"
+
+    # Attempt 2 of the *same* activity: Temporal replays the last heartbeat.
+    env2 = ActivityEnvironment()
+    env2.info = replace(
+        env2.info, attempt=2, heartbeat_details=[sut.IMPORT_ISSUED, 901]
+    )
+    ls.reveal_all()
+    await env2.run(call)
+
+    assert len(ls.import_calls) == 1, "the retry must not re-issue the import"
+    assert sorted(recorded) == [("d", 51), ("e", 52)]
+
+
+@pytest.mark.usefixtures("fast_poll")
+async def test_existing_duplicates_are_reported_loudly(monkeypatch, caplog):
+    """Nothing else notices a duplicate.
+
+    The label tables are unique on (image, project), so the DB cannot show one.
+    It surfaces only as a labeller served the same frame twice, or as a row
+    tracking the empty twin of its own annotation.
+    """
+    ls = SlowImportLabelStudio([61])
+    monkeypatch.setattr(sut, "_get_ls_client", lambda: ls)
+    same = "s3://bucket/p/dup.JPG"
+    ls.seed(
+        SimpleNamespace(id=1, data={"image": _resolve_url(1, same)}),
+        SimpleNamespace(id=2, data={"image": _resolve_url(2, same)}),
+    )
+
+    recorded: List[tuple] = []
+    with caplog.at_level(logging.ERROR):
+        await _run(ls, [{"data": {"image": same}}], ["d"], recorded)
+
+    assert any(
+        "duplicate task" in record.getMessage() for record in caplog.records
+    ), "a project already holding duplicates must be logged at ERROR"
+
+
+@pytest.mark.usefixtures("fast_poll")
+async def test_a_deferred_batch_is_reported_loudly(monkeypatch, caplog):
+    """The old raise was loud; the tolerant path has to replace that signal."""
+    ls = SlowImportLabelStudio([71], visible_after_lists=99)
+    monkeypatch.setattr(sut, "_get_ls_client", lambda: ls)
+
+    recorded: List[tuple] = []
+    with caplog.at_level(logging.ERROR):
+        result = await _run(ls, [_task("fff")], ["f"], recorded)
+
+    assert result.deferred == 1
+    assert any(
+        "deferred to the next run" in record.getMessage()
+        for record in caplog.records
+    )

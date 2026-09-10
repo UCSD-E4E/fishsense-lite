@@ -22,17 +22,29 @@ from temporalio.common import RetryPolicy
 
 __all__ = ["POPULATE_MAX_ATTEMPTS", "create_then_populate"]
 
-# Bounded on purpose, where the default is unlimited-within-schedule_to_close.
+# Bounded on purpose, where the default is unlimited-within-schedule_to_close:
+# unlimited is what let dive 424 reach activity attempt 10 over 1107s and leave
+# 23 copies of three frames.
 #
-# The import helper no longer treats an unmaterialised import as an error, so
-# the path that duplicated tasks is closed at source. One narrow window is left:
-# an import lands, its tasks stay invisible past the poll budget, and then
-# something *else* in the same attempt fails — the retry's dedup listing still
-# cannot see those tasks and re-imports them. Unlimited attempts turned that
-# window into 23 copies of a dive-424 frame (activity attempt 10, over 1107s).
-# Three caps the damage at one extra copy while still absorbing the ordinary
-# transient failure.
-POPULATE_MAX_ATTEMPTS = 3
+# **The intervals matter as much as the cap.** Temporal's default backoff
+# starts at 1s and doubles, so capping attempts alone would have collapsed the
+# retry window from 30 minutes to about 3 seconds — a half-minute Label Studio
+# blip would then fail the populate child and, through `dispatch_populate`,
+# take the preprocess parent with it. Starting at 30s and allowing 5 attempts
+# keeps roughly 8 minutes of cover, which rides out an ordinary blip while
+# staying far short of the old window.
+#
+# Re-importing across those attempts is prevented in the activity, not here:
+# the first import heartbeats a marker that Temporal hands to the next attempt
+# (`populate_utils._IMPORT_ISSUED`), so a retry reconciles instead. Without
+# that, widening this window would widen the duplication window with it.
+POPULATE_MAX_ATTEMPTS = 5
+_POPULATE_RETRY = RetryPolicy(
+    initial_interval=timedelta(seconds=30),
+    backoff_coefficient=2.0,
+    maximum_interval=timedelta(minutes=5),
+    maximum_attempts=POPULATE_MAX_ATTEMPTS,
+)
 
 
 async def create_then_populate(stage: str, dive_id: int) -> int:
@@ -51,5 +63,5 @@ async def create_then_populate(stage: str, dive_id: int) -> int:
         args=(dive_id, project_id),
         schedule_to_close_timeout=timedelta(minutes=30),
         heartbeat_timeout=timedelta(minutes=2),
-        retry_policy=RetryPolicy(maximum_attempts=POPULATE_MAX_ATTEMPTS),
+        retry_policy=_POPULATE_RETRY,
     )
