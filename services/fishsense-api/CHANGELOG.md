@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [3.3.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v3.3.0...fishsense-api-v3.3.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **labels:** order per-dive label lists so LS imports follow capture order ([#866](https://github.com/UCSD-E4E/fishsense-lite/issues/866)) ([5e38d99](https://github.com/UCSD-E4E/fishsense-lite/commit/5e38d9925f5b55c1edc18d8fb93952dac83134bd))
+
 ## [3.3.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v3.2.0...fishsense-api-v3.3.0) (2026-09-10)
 
 

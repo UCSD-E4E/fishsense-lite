@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## [2.4.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.4.3...fishsense-api-workflow-worker-v2.4.4) (2026-09-10)
+
+
+### Bug Fixes
+
+* **headtail-predict:** point LS projects at the prediction version ([#859](https://github.com/UCSD-E4E/fishsense-lite/issues/859)) ([d148133](https://github.com/UCSD-E4E/fishsense-lite/commit/d14813387f3e147019ee91f109de0a2dfd385dc9))
+* **labels:** order per-dive label lists so LS imports follow capture order ([#866](https://github.com/UCSD-E4E/fishsense-lite/issues/866)) ([5e38d99](https://github.com/UCSD-E4E/fishsense-lite/commit/5e38d9925f5b55c1edc18d8fb93952dac83134bd))
+
 ## [2.4.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.4.2...fishsense-api-workflow-worker-v2.4.3) (2026-09-10)
 
 
