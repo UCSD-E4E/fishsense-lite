@@ -45,11 +45,20 @@ __all__ = [
 def raw_scratch_reader_ids(dive_id: int) -> list[str]:
     """Deterministic ids of every child that reads this dive's raw scratch.
 
-    Both preprocess and predict children `download_raw(checksum)` from
-    `raw/{checksum}.ORF`. Scratch is keyed per **dive**, not per stage -- which
-    is what lets a dive in several cohorts stage once and report
+    Preprocess, predict and both checkerboard children `download_raw(checksum)`
+    from `raw/{checksum}.ORF`. Scratch is keyed per **dive**, not per stage --
+    which is what lets a dive in several cohorts stage once and report
     `skipped_already_present` afterwards -- so deleting it is a cross-stage
     act.
+
+    **Every new child that reads raw scratch must be added here.** Omitting one
+    does not fail loudly: the omitted child is simply invisible to every other
+    stage's cleanup, which then deletes the `.ORF`s out from under it mid-read
+    and kills the render with `NoSuchKey`, costing the whole dive's NAS staging
+    to redo. That is the dive-442 incident (2026-09-07) this list exists to
+    prevent, and the checkerboard pair sat in exactly that gap -- the
+    calibration child from 2026-09-07, the lattice child from 2026-09-11 --
+    until both were added on 2026-09-11.
     """
     return [
         f"preprocess-laser-{dive_id}",
@@ -58,6 +67,8 @@ def raw_scratch_reader_ids(dive_id: int) -> list[str]:
         f"preprocess-slate-{dive_id}",
         f"predict-laser-{dive_id}",
         f"predict-slate-{dive_id}",
+        f"perform-checkerboard-calibration-{dive_id}",
+        f"verify-checkerboard-lattice-{dive_id}",
     ]
 
 
