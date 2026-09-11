@@ -71,6 +71,9 @@ from fishsense_data_processing_workflow_worker.activities.detect_checkerboard_la
 from fishsense_data_processing_workflow_worker.activities.evaluate_laser_auto_accept_activity import (  # noqa: E501  pylint: disable=line-too-long
     evaluate_laser_auto_accept_activity,
 )
+from fishsense_data_processing_workflow_worker.activities.render_checkerboard_lattice import (  # noqa: E501  pylint: disable=line-too-long
+    render_checkerboard_lattice,
+)
 from fishsense_data_processing_workflow_worker.activities.fit_checkerboard_laser_extrinsics import (  # noqa: E501  pylint: disable=line-too-long
     fit_checkerboard_laser_extrinsics,
 )
@@ -112,6 +115,9 @@ from fishsense_data_processing_workflow_worker.workflows.dive_frame_clustering_w
 )
 from fishsense_data_processing_workflow_worker.workflows.measure_fish_workflow import (
     MeasureFishWorkflow,
+)
+from fishsense_data_processing_workflow_worker.workflows.verify_checkerboard_lattice_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    VerifyCheckerboardLatticeWorkflow,
 )
 from fishsense_data_processing_workflow_worker.workflows.perform_checkerboard_calibration_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PerformCheckerboardCalibrationWorkflow,
@@ -164,6 +170,11 @@ CPU_WORKFLOWS: Final[Sequence[type]] = (
     PreprocessLaserImagesWorkflow,
     PreprocessSlateImagesWorkflow,
     PreprocessSpeciesImagesWorkflow,
+    # Same queue as the calibration child and for the same reason: it decodes
+    # every frame it renders. It is also the stage that judges that one, so
+    # running them anywhere else from each other would let the two see
+    # different images.
+    VerifyCheckerboardLatticeWorkflow,
 )
 
 CPU_ACTIVITIES: Final[Sequence[Callable[..., Any]]] = (
@@ -176,6 +187,7 @@ CPU_ACTIVITIES: Final[Sequence[Callable[..., Any]]] = (
     preprocess_laser_image,
     preprocess_slate_image,
     preprocess_species_image,
+    render_checkerboard_lattice,
 )
 
 # The stages that hold no image bytes: they fetch rows from fishsense-api, do

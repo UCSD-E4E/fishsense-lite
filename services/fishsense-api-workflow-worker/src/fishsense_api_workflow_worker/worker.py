@@ -58,6 +58,12 @@ from fishsense_api_workflow_worker.activities.ensure_gpu_worker_running_activity
 from fishsense_api_workflow_worker.activities.scale_down_data_worker_if_idle_activity import (  # pylint: disable=line-too-long
     scale_down_data_worker_if_idle_activity,
 )
+from fishsense_api_workflow_worker.activities.create_checkerboard_lattice_label_studio_project_activity import (  # pylint: disable=line-too-long
+    create_checkerboard_lattice_label_studio_project_activity,
+)
+from fishsense_api_workflow_worker.activities.populate_checkerboard_lattice_label_studio_project_activity import (  # pylint: disable=line-too-long
+    populate_checkerboard_lattice_label_studio_project_activity,
+)
 from fishsense_api_workflow_worker.activities.create_dive_slate_label_studio_project_activity import (  # pylint: disable=line-too-long
     create_dive_slate_label_studio_project_activity,
 )
@@ -286,6 +292,9 @@ from fishsense_api_workflow_worker.workflows.evaluate_laser_auto_accept_parent_w
 )
 from fishsense_api_workflow_worker.workflows.perform_checkerboard_calibration_parent_workflow import (  # pylint: disable=line-too-long
     PerformCheckerboardCalibrationParentWorkflow,
+)
+from fishsense_api_workflow_worker.workflows.verify_checkerboard_lattice_parent_workflow import (  # pylint: disable=line-too-long
+    VerifyCheckerboardLatticeParentWorkflow,
 )
 from fishsense_api_workflow_worker.workflows.perform_laser_calibration_parent_workflow import (  # pylint: disable=line-too-long
     PerformLaserCalibrationParentWorkflow,
@@ -874,6 +883,8 @@ async def main():
                 PreprocessSlateImagesParentWorkflow,
                 PerformLaserCalibrationParentWorkflow,
                 PerformCheckerboardCalibrationParentWorkflow,
+                # On-demand only: an operator-driven study, never scheduled.
+                VerifyCheckerboardLatticeParentWorkflow,
                 MeasureFishParentWorkflow,
                 ComputeLaserDepthsParentWorkflow,
                 EvaluateLaserAutoAcceptParentWorkflow,
@@ -896,6 +907,8 @@ async def main():
                 create_species_label_studio_project_activity,
                 create_headtail_label_studio_project_activity,
                 create_dive_slate_label_studio_project_activity,
+                create_checkerboard_lattice_label_studio_project_activity,
+                populate_checkerboard_lattice_label_studio_project_activity,
                 populate_laser_label_studio_project_activity,
                 populate_species_label_studio_project_activity,
                 populate_headtail_label_studio_project_activity,

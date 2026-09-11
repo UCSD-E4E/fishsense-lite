@@ -54,6 +54,12 @@ LASER_JPEG_FOLDER = "preprocess_jpeg"
 SPECIES_JPEG_FOLDER = "preprocess_groups_jpeg"
 HEADTAIL_JPEG_FOLDER = "preprocess_headtail_jpeg"
 SLATE_JPEG_FOLDER = "preprocess_slate_images_jpeg"
+# Lattice-verification renders. Its own prefix rather than reusing
+# `LASER_JPEG_FOLDER`, because these frames are keyed by checksum like every
+# other stage and would otherwise OVERWRITE the stage-0.1 JPEG a laser project
+# is already serving — the same checksum, a different picture, and the laser
+# labelers would silently start seeing a magenta lattice over their dots.
+CHECKERBOARD_LATTICE_JPEG_FOLDER = "checkerboard_lattice_jpeg"
 
 # botocore surfaces a missing key as one of these `Error.Code` values
 # depending on whether the call was HeadObject (404/NotFound) or
@@ -61,6 +67,7 @@ SLATE_JPEG_FOLDER = "preprocess_slate_images_jpeg"
 NOT_FOUND_CODES = frozenset({"404", "NoSuchKey", "NotFound"})
 
 __all__ = [
+    "CHECKERBOARD_LATTICE_JPEG_FOLDER",
     "HEADTAIL_JPEG_FOLDER",
     "LASER_JPEG_FOLDER",
     "NOT_FOUND_CODES",

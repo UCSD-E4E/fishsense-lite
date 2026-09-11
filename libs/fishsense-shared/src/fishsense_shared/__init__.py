@@ -43,9 +43,11 @@ from fishsense_shared.ingest_contracts import (
 )
 from fishsense_shared.preprocess_contracts import (
     CheckerboardCalibrationImage,
+    CheckerboardLatticeRender,
     CheckerboardObservation,
     ClusterDiveFrameImage,
     ClusterDiveFramesInput,
+    VerifyCheckerboardLatticeInput,
     PerformCheckerboardCalibrationInput,
     LaserAutoAcceptSummary,
     LaserPredictionResult,
@@ -99,7 +101,9 @@ __all__ = [
     "DATA_PROCESSING_LIGHT_TASK_QUEUE",
     "DATA_PROCESSING_TASK_QUEUE",
     "CheckerboardCalibrationImage",
+    "CheckerboardLatticeRender",
     "CheckerboardObservation",
+    "VerifyCheckerboardLatticeInput",
     "ClusterDiveFrameImage",
     "ClusterDiveFramesInput",
     "ExceptionGroupErrorLogging",

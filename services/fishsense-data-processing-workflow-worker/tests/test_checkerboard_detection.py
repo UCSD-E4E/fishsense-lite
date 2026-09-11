@@ -557,7 +557,7 @@ def test_the_quality_gate_keeps_every_genuine_detection():
     ):
         detected = _detect(img)
         assert detected is not None, label
-        spacing = sut._median_corner_spacing(  # pylint: disable=protected-access
+        spacing = sut.median_corner_spacing(
             detected.image_points, detected.rows, detected.cols
         )
         residual = sut.grid_residual_px(detected.body_points, detected.image_points)
