@@ -140,8 +140,12 @@ def test_corners_are_rounded_to_hundredths_of_a_pixel(rectified_is):
 
     render, _ = sut._render(b"raw", _payload(board))  # pylint: disable=protected-access
 
-    assert render.corners
-    for x, y in render.corners:
+    # `or []` rather than a bare bind: `corners` is `Optional[List[...]]` on
+    # the DTO, and pylint keeps reading it as possibly-None through an assert.
+    # The following assert is what actually fails the test if it were empty.
+    corners = list(render.corners or [])
+    assert corners
+    for x, y in corners:
         assert x == round(x, 2)
         assert y == round(y, 2)
 

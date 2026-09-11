@@ -223,7 +223,7 @@ async def test_every_dive_failing_imports_nothing_and_does_not_raise():
     imported = await _run([1, 2], frames=4, workflow_id="wf-lattice-all-fail")
 
     assert imported == 0
-    assert _IMPORT_CHUNKS == []
+    assert not _IMPORT_CHUNKS
 
 
 @pytest.mark.asyncio

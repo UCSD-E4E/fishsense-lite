@@ -250,7 +250,7 @@ async def test_a_deferred_import_leaves_the_project_unpublished(monkeypatch):
     )
 
     assert imported == 2
-    assert published == []
+    assert not published
 
 
 @pytest.mark.asyncio
@@ -266,4 +266,4 @@ async def test_nothing_worth_labeling_imports_nothing(monkeypatch):
     )
 
     assert imported == 0
-    assert published == []
+    assert not published
