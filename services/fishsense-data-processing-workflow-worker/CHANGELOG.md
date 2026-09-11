@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.4.2...fishsense-data-processing-workflow-worker-v3.5.0) (2026-09-11)
+
+
+### Features
+
+* human verification of checkerboard lattices ([#870](https://github.com/UCSD-E4E/fishsense-lite/issues/870)) ([3753639](https://github.com/UCSD-E4E/fishsense-lite/commit/3753639544a37737eed0b2a9e18cc977333c453f))
+
 ## [3.4.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.4.1...fishsense-data-processing-workflow-worker-v3.4.2) (2026-09-10)
 
 
