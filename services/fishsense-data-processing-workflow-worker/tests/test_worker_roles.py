@@ -129,6 +129,13 @@ def test_cpu_role_keeps_exactly_the_per_image_fan_out_stages():
     across queues would make one child need two pods scaled up. By the time it
     is dispatched the fan-out has finished, so it is not competing for the two
     slots it is nominally behind.
+
+    `render_checkerboard_lattice` is a genuine decoder and belongs here on its
+    own merits: it rectifies a full-res `.ORF` and holds both the decoded frame
+    and its overlay copy. It is also the stage that *judges*
+    `detect_checkerboard_laser_point`, so the two must see the same pixels —
+    running them on different pods would not change that, but keeping them
+    together makes it obvious they are one pair.
     """
     assert {activity.__name__ for activity in roles.CPU_ACTIVITIES} == {
         "detect_checkerboard_laser_point",
@@ -137,6 +144,7 @@ def test_cpu_role_keeps_exactly_the_per_image_fan_out_stages():
         "preprocess_laser_image",
         "preprocess_slate_image",
         "preprocess_species_image",
+        "render_checkerboard_lattice",
     }
 
 

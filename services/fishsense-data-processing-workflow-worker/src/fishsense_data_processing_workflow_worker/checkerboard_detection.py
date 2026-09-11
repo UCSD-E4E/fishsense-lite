@@ -59,6 +59,7 @@ __all__ = [
     "board_hull",
     "detect_checkerboard",
     "grid_residual_px",
+    "median_corner_spacing",
 ]
 
 
@@ -151,8 +152,16 @@ def grid_residual_px(body_points: np.ndarray, image_points: np.ndarray) -> float
     return float(np.median(np.linalg.norm(projected - image, axis=1)))
 
 
-def _median_corner_spacing(image_points: np.ndarray, rows: int, cols: int) -> float:
-    """Median distance between horizontally adjacent detected corners."""
+def median_corner_spacing(image_points: np.ndarray, rows: int, cols: int) -> float:
+    """Median distance between horizontally adjacent detected corners.
+
+    Public because the lattice-verification stage reports it per frame. It is
+    the machine-readable counterpart of the question that stage puts to a
+    human: a lattice resolved at twice the true pitch shows twice the corner
+    spacing over the same board, so this number moves with the fault even
+    though `grid_residual_px` cannot see it. Recomputing it there instead
+    would be the same arithmetic in two places, and the two could disagree.
+    """
     grid = np.asarray(image_points, dtype=np.float64).reshape(rows, cols, 2)
     return float(np.median(np.linalg.norm(np.diff(grid, axis=1), axis=2)))
 
@@ -279,7 +288,7 @@ def detect_checkerboard(
     # False, so a bare `spacing <= 0` would ACCEPT it and then divide the
     # threshold by nothing. The safe reading of "no measurable spacing" is
     # refusal.
-    spacing = _median_corner_spacing(image_points, rows, cols)
+    spacing = median_corner_spacing(image_points, rows, cols)
     if (
         not math.isfinite(spacing)
         or spacing <= 0

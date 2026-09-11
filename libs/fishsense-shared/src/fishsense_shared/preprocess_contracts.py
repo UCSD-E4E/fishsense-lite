@@ -205,6 +205,70 @@ class CheckerboardObservation(BaseModel):
     skip_reason: Optional[str] = None
 
 
+class VerifyCheckerboardLatticeInput(BaseModel):
+    """Lattice-verification workflow-level input.
+
+    Deliberately a separate DTO from `PerformCheckerboardCalibrationInput`
+    even though the fields overlap almost completely. The two stages are
+    dispatched independently and their payloads will diverge — this one
+    already carries `sample_limit`, which the calibration path must never
+    have — and sharing a DTO between a stage that *writes* `LaserExtrinsics`
+    and one that only renders pictures would couple the calibration contract
+    to a diagnostic.
+
+    `sample_limit` caps frames per dive. Verification is a statistical
+    question, not an exhaustive one: a systematically coarse lattice shows up
+    in the first handful of frames, while rendering every frame of the ten
+    dives under study would be ~976 tasks of human labeling to answer a
+    question that twenty per calibration settles. None means no cap.
+    """
+
+    dive_id: int
+    camera_matrix: List[List[float]]
+    distortion_coefficients: List[float]
+    target_rows: int
+    target_cols: int
+    square_size_m: float
+    images: List[CheckerboardCalibrationImage]
+    sample_limit: Optional[int] = None
+
+
+class CheckerboardLatticeRender(BaseModel):
+    """One frame's rendered lattice, or why it has none.
+
+    `corners` are rectified pixels in **row-major** order, the same order
+    `DetectedCheckerboard.image_points` carries, so the api-worker can reshape
+    them to `(detected_rows, detected_cols, 2)` without re-deriving anything.
+    They travel back as well as being burned into the JPEG so the Label Studio
+    keypoint predictions and the drawn overlay are the same points — two
+    renderings of one detection rather than two detections.
+
+    `width` / `height` are the *rectified* frame's dimensions, and they are
+    required to place the keypoints: Label Studio stores keypoint coordinates
+    as percentages, so a pixel is meaningless without the frame it came from.
+
+    `median_spacing_px` is the diagnostic number. A lattice at twice the true
+    pitch has twice the corner spacing at the same board size, so this is the
+    machine-readable counterpart to what the labeler is being asked to judge —
+    and the pair lets a verdict be checked against it afterwards.
+    """
+
+    image_id: int
+    checksum: str
+    detected_rows: Optional[int] = None
+    detected_cols: Optional[int] = None
+    median_spacing_px: Optional[float] = None
+    corners: Optional[List[List[float]]] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    # Absent when the frame rendered. Mirrors `CheckerboardObservation`: a
+    # frame with no board is ordinary, so it is tallied rather than raised,
+    # and it becomes no LS task at all — the study is about lattices that
+    # actually fed a fit, so a frame the detector rejected is not evidence
+    # either way and would only dilute the labeler's queue.
+    skip_reason: Optional[str] = None
+
+
 class PredictLaserImage(BaseModel):
     """Per-image (checksum, image_id) pair for laser prediction.
 

@@ -598,6 +598,76 @@ Rig 04 of the 2023.08.18 set (dives 508, 510) shot a **real dive slate** and
 calibrates through stage 13; the 2025 board (24x17) is out of scope because
 OpenCV returned five different grids over six frames of it.
 
+### Lattice verification — the human check the residual cannot replace
+
+**Added 2026-09-11, after the producer above was validated and failed.** Graded
+against the known-length targets, 5 of its 14 calibrations carry a baseline
+that is a simple multiple of the consensus 10.4 cm — 4.00x, 2.16x, 2.12x, 1.51x
+and 0.47x — and their dives read -75% to +45% on length. The slate producer, by
+contrast, puts 12 of 14 inside 9.87-10.50 cm and never misses by more than 15%.
+
+**The baseline is the diagnostic, because it is a rig constant.** One
+camera+laser rig has one true baseline, and 28 independent calibrations across
+both producers agree on ~10.4 cm. Nothing else stored separates a good fit from
+a bad one: `laserextrinsics` holds only `laser_position` and `laser_axis`, with
+no residual or inlier count. **Screen on it** — roughly 8-13 cm — before
+trusting a checkerboard calibration.
+
+**Why no automated check catches this, and a person has to.** The leading
+explanation is a *uniform* lattice error: every corner two squares apart while
+`body_points` labels them one apart. Such a grid is still a perfect grid, so it
+is an exact homography of the modelled one and `grid_residual_px` reads ~0. The
+residual gate catches *mixed* spacing, which breaks regularity — a different
+fault. `_fits_declared_board` only bounds detections from above and a coarse
+lattice is smaller. `check_fit_self_consistency` compares 2-D dots, which a
+pure scale error does not move. A plane's scale is simply not recoverable from
+its grid's own appearance, so no residual test ever will catch it.
+
+`VerifyCheckerboardLatticeParentWorkflow` renders each calibration's frames
+with the detected lattice drawn on them and imports them to one Label Studio
+project for a correct/incorrect verdict plus a fault kind. Pieces:
+`lattice_overlay.py` + `render_checkerboard_lattice` (data-worker, CPU queue)
+-> `VerifyCheckerboardLatticeWorkflow` -> `create_`/
+`populate_checkerboard_lattice_label_studio_project_activity`.
+
+Four things about it are deliberate and will look wrong otherwise:
+
+* **One shared project, not per-dive.** Every other stage is per-dive so
+  labelers track progress. This is a study, and the hypothesis predicts faults
+  in five *named* dives — so a per-dive project tells the judge the answer
+  first. Tasks are shuffled with `workflow.random()` (replay-safe; the stdlib
+  RNG would break determinism) and carry no dive in their data.
+* **Operator-driven with an explicit `dive_ids` list, and never scheduled.**
+  Which dives form the experiment — suspects *and* controls — is not a
+  predicate over the database, and a cohort would drift so two runs could not
+  be compared. Include controls: a run holding only the suspects cannot
+  distinguish "these five mis-latticed" from "everything mis-latticed".
+* **It reuses `resolve_checkerboard_calibration_inputs_activity` and mirrors
+  the calibration path's admission filter** (`detect_checkerboard`, then
+  `board_hull` + `point_in_laser_region`). The study's population must be the
+  fit's population; a frame the fit never saw is not evidence about it.
+* **Its own JPEG prefix** (`checkerboard_lattice_jpeg`). Keys are by checksum,
+  so writing to `preprocess_jpeg` would overwrite the frame laser labelers are
+  looking at with a magenta lattice.
+
+Predictions are attached **inline at import** and must stay that way: LS shows
+predictions only for the version in the project's `model_version`, and
+`import_tasks` sets that for free only when the tasks carry them.
+`ensure_project_shows_predictions` cannot help here — it only touches per-dive
+projects, identified by the `#{dive_id}` title marker this project has no
+reason to carry.
+
+No label row is written and there is no `CheckerboardLatticeLabel` model; the
+verdicts are read back off the LS annotations. `import_tasks_and_record_labels`
+is still used, with a no-op recorder, because what it carries is the
+dedupe-by-URL and hosted-LS async-import handling this repo paid for in
+duplicated tasks.
+
+**Open**: it has not been run, so the coarse-lattice explanation remains an
+inference from the baselines rather than an observation. `detected_rows` /
+`detected_cols` are logged but never persisted, which is why re-rendering was
+needed to see them at all.
+
 ## `content_of_image` taxonomy vocabulary
 
 `SpeciesLabel.content_of_image` is a ", "-joined Label Studio taxonomy

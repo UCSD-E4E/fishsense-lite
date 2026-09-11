@@ -36,8 +36,13 @@ from fishsense_api_workflow_worker.activities.cleanup_raw_bytes_for_dive_activit
 
 class TestReaderIds:
     def test_covers_every_child_that_reads_raw_scratch(self):
-        """Both preprocess and predict children download `raw/{checksum}.ORF`.
-        Missing one means cleanup can delete under it."""
+        """Preprocess, predict and both checkerboard children download
+        `raw/{checksum}.ORF`. Missing one means cleanup can delete under it.
+
+        The two checkerboard ids were absent until 2026-09-11 — the calibration
+        child had been missing since it shipped on 2026-09-07 — so a preprocess
+        cleanup could evict a calibration dive's scratch mid-fit.
+        """
         assert raw_scratch_reader_ids(442) == [
             "preprocess-laser-442",
             "preprocess-species-442",
@@ -45,7 +50,30 @@ class TestReaderIds:
             "preprocess-slate-442",
             "predict-laser-442",
             "predict-slate-442",
+            "perform-checkerboard-calibration-442",
+            "verify-checkerboard-lattice-442",
         ]
+
+    def test_every_dispatched_child_id_shape_is_covered(self):
+        """A tripwire against the next stage forgetting.
+
+        The ids here are the `child_id=` arguments the parent workflows pass to
+        `_dispatch.dispatch_child`. Anything that stages raw bytes and then
+        dispatches a child must appear, so this asserts the shapes rather than
+        trusting a reviewer to notice the omission.
+        """
+        ids = set(raw_scratch_reader_ids(1))
+        for prefix in (
+            "preprocess-laser",
+            "preprocess-species",
+            "preprocess-headtail",
+            "preprocess-slate",
+            "predict-laser",
+            "predict-slate",
+            "perform-checkerboard-calibration",
+            "verify-checkerboard-lattice",
+        ):
+            assert f"{prefix}-1" in ids
 
 
 class TestQuery:
