@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.5.0...fishsense-data-processing-workflow-worker-v3.6.0) (2026-09-12)
+
+
+### Features
+
+* refuse laser calibrations with an implausible baseline ([#874](https://github.com/UCSD-E4E/fishsense-lite/issues/874)) ([5b5069d](https://github.com/UCSD-E4E/fishsense-lite/commit/5b5069d5c96c673ae05527f4a560076fcd589385))
+
 ## [3.5.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.4.2...fishsense-data-processing-workflow-worker-v3.5.0) (2026-09-11)
 
 
