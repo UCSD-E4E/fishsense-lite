@@ -13,6 +13,7 @@ from typing import List
 from fastapi import Body, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
 from fishsense_shared.calibration_bounds import baseline_m, is_plausible_baseline
+from sqlalchemy import func
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -23,8 +24,10 @@ from fishsense_api.models.camera_intrinsics import CameraIntrinsics
 from fishsense_api.models.dive import Dive
 from fishsense_api.models.dive_laser_line import DiveLaserLine
 from fishsense_api.models.dive_slate import DiveSlate
+from fishsense_api.models.dive_slate_label import DiveSlateLabel
 from fishsense_api.models.image import Image
 from fishsense_api.models.laser_extrinsics import LaserExtrinsics
+from fishsense_api.models.laser_label import LaserLabel
 from fishsense_api.models.priority import Priority
 from fishsense_api.server import app
 
@@ -356,6 +359,15 @@ async def put_laser_extrinsics_for_dive(
     extrinsics.created_at = datetime.now(timezone.utc)
 
     extrinsics = await session.merge(extrinsics)
+
+    # A successful fit retires any standing refusal. Without this the dive
+    # keeps showing a `calibration_refused_reason` that is no longer true, to
+    # operators and to Superset, long after it calibrated.
+    dive = await session.get(Dive, dive_id)
+    if dive is not None and dive.calibration_refused_at is not None:
+        _clear_refusal(dive)
+        session.add(dive)
+
     await session.flush()
 
     extrinsics_id = extrinsics.id
@@ -495,6 +507,11 @@ async def set_dive_slate(
         raise HTTPException(status_code=404, detail="DiveSlate template not found")
 
     dive.dive_slate_id = dive_slate_id
+    # A newly declared slate makes the dive plausibly fittable again, and the
+    # species sync writes this link automatically — so leaving a standing
+    # refusal for an operator to clear would strand a corrected dive outside
+    # the cohort with no signal at all.
+    _clear_refusal(dive)
     session.add(dive)
     await session.flush()
 
@@ -535,6 +552,9 @@ async def set_dive_calibration_target(
         raise HTTPException(status_code=404, detail="CalibrationTarget not found")
 
     dive.calibration_target_id = calibration_target_id
+    # Same reasoning as the slate link: a different declared board is exactly
+    # the change a refusal should not outlive, and species sync writes it.
+    _clear_refusal(dive)
     session.add(dive)
     await session.flush()
 
@@ -563,7 +583,44 @@ async def clear_dive_calibration_target(
     await session.flush()
 
 
-@app.put("/api/v1/dives/{dive_id}/calibration-refused")
+async def _newest_label_timestamp(
+    session: AsyncSession, dive_id: int
+) -> datetime | None:
+    """The newest laser/slate label timestamp across the dive's images.
+
+    Both are Label Studio's `task.updated_at`, copied verbatim by the syncs, so
+    this and the cohort's comparison are in one clock. NULL when the dive has
+    no labels yet, which the cohort reads as "anything is newer".
+    """
+    newest = None
+    for model in (LaserLabel, DiveSlateLabel):
+        value = (
+            await session.exec(
+                select(func.max(model.updated_at))  # pylint: disable=not-callable
+                .join(Image, Image.id == model.image_id)
+                .where(Image.dive_id == dive_id)
+            )
+        ).first()
+        if value is not None and (newest is None or value > newest):
+            newest = value
+    return newest
+
+
+def _clear_refusal(dive: Dive) -> None:
+    """Drop a standing refusal because the dive's situation changed.
+
+    Called wherever something makes the dive plausibly fittable again in a way
+    the label timestamps do not capture: a successful calibration, or a change
+    of declared target. The species sync writes those links automatically, so
+    leaving this to an operator would strand a corrected dive outside the
+    cohort with no signal at all.
+    """
+    dive.calibration_refused_at = None
+    dive.calibration_refused_reason = None
+    dive.calibration_refused_labels_at = None
+
+
+@app.put("/api/v1/dives/{dive_id}/calibration-refused/")
 async def set_calibration_refused(
     dive_id: int,
     reason: str | None = Body(default=None, embed=True),
@@ -583,9 +640,15 @@ async def set_calibration_refused(
     non-retryable; anything else propagates untouched.
 
     **Self-expiring.** The cohorts ignore the refusal once any laser or slate
-    label on the dive is updated more recently than `calibration_refused_at`,
-    so relabelling brings the dive back without anyone remembering to clear
-    it. `DELETE` forces that immediately.
+    label on the dive is newer than the labels this fit was computed from, so
+    relabelling brings the dive back without anyone remembering to clear it.
+    `DELETE` forces that immediately.
+
+    That snapshot is taken here, not compared against the wall clock, because
+    label timestamps come from Label Studio and `calibration_refused_at` does
+    not. Mixing the two clocks would let a labeler's 10:20 fix, synced at
+    11:00, read as older than a 10:50 refusal — excluding the dive forever
+    with the correction already in.
     """
     logger.debug("Recording calibration refusal for dive id=%d", dive_id)
     dive = await session.get(Dive, dive_id)
@@ -594,12 +657,13 @@ async def set_calibration_refused(
 
     dive.calibration_refused_at = datetime.now(timezone.utc)
     dive.calibration_refused_reason = reason
+    dive.calibration_refused_labels_at = await _newest_label_timestamp(session, dive_id)
     session.add(dive)
     await session.flush()
     return dive_id
 
 
-@app.delete("/api/v1/dives/{dive_id}/calibration-refused", status_code=204)
+@app.delete("/api/v1/dives/{dive_id}/calibration-refused/", status_code=204)
 async def clear_calibration_refused(
     dive_id: int,
     session: AsyncSession = Depends(get_async_session),
@@ -615,8 +679,7 @@ async def clear_calibration_refused(
     if dive is None:
         raise HTTPException(status_code=404, detail="Dive not found")
 
-    dive.calibration_refused_at = None
-    dive.calibration_refused_reason = None
+    _clear_refusal(dive)
     session.add(dive)
     await session.flush()
 

@@ -77,3 +77,23 @@ class Dive(ModelBase, table=True):
         default=None, sa_type=DateTime(timezone=True)
     )
     calibration_refused_reason: str | None = Field(default=None)
+
+    # The newest label timestamp the refused fit was computed from.
+    #
+    # **Expiry compares this, NOT `calibration_refused_at`, and the difference
+    # is a silent data-loss bug.** Label timestamps come from Label Studio
+    # (the sync copies `task.updated_at` verbatim); `calibration_refused_at` is
+    # the API's own wall clock. Comparing the two mixes clocks: a labeler who
+    # fixes a dive at 10:20 is only synced at the top of the hour, so against a
+    # 10:50 refusal their corrected label looks OLDER and the dive stays
+    # excluded forever — and the ~50 minutes between each hourly sync and the
+    # +50/+52 calibration slots is exactly when a labeler responding to a
+    # wedged dive works.
+    #
+    # Storing the max label timestamp at refusal time keeps both sides of the
+    # comparison in Label Studio's clock, so "a label is newer than what we
+    # fitted from" means what it says. NULL means the dive had no labels then,
+    # so any label at all is newer.
+    calibration_refused_labels_at: datetime | None = Field(
+        default=None, sa_type=DateTime(timezone=True)
+    )

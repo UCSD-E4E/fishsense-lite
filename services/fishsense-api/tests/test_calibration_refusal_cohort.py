@@ -46,8 +46,14 @@ def _laser_label(label_id: int, image_id: int, *, updated_at, x=600.0, y=500.0):
     )
 
 
-async def _seed(session, *, refused_at, label_updated_at):
-    """A checkerboard dive with two dotted frames, optionally refused."""
+async def _seed(session, *, refused_at, label_updated_at, refused_labels_at=BEFORE):
+    """A checkerboard dive with two dotted frames, optionally refused.
+
+    `refused_labels_at` is the snapshot the refusal was computed from, not the
+    wall clock it was recorded at — expiry compares that, so the two sides of
+    the comparison both come from Label Studio. It defaults to `BEFORE`, the
+    timestamp the labels carry at the moment of refusal.
+    """
     from fishsense_api.models.calibration_target import CalibrationTarget
 
     session.add(
@@ -58,6 +64,7 @@ async def _seed(session, *, refused_at, label_updated_at):
     dive = _dive(1, calibration_target_id=1)
     dive.calibration_refused_at = refused_at
     dive.calibration_refused_reason = "implausible baseline" if refused_at else None
+    dive.calibration_refused_labels_at = refused_labels_at if refused_at else None
     session.add(dive)
     await session.flush()
     session.add_all([_image(10, 1), _image(11, 1)])
@@ -135,6 +142,7 @@ async def test_a_refused_dive_does_not_block_a_healthy_one(session):
     )
     refused = _dive(1, calibration_target_id=1)
     refused.calibration_refused_at = REFUSED
+    refused.calibration_refused_labels_at = BEFORE
     healthy = _dive(2, calibration_target_id=1)
     session.add_all([refused, healthy])
     await session.flush()

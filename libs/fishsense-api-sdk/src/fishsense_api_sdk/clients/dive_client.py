@@ -383,7 +383,7 @@ class DiveClient(ClientBase):
             int: The dive id.
         """
         response = await self._put(
-            f"/api/v1/dives/{dive_id}/calibration-refused", json={"reason": reason}
+            f"/api/v1/dives/{dive_id}/calibration-refused/", json={"reason": reason}
         )
         response.raise_for_status()
 
@@ -400,7 +400,7 @@ class DiveClient(ClientBase):
         Args:
             dive_id (int): The dive to clear.
         """
-        response = await self._delete(f"/api/v1/dives/{dive_id}/calibration-refused")
+        response = await self._delete(f"/api/v1/dives/{dive_id}/calibration-refused/")
         response.raise_for_status()
 
     async def set_calibration_target(

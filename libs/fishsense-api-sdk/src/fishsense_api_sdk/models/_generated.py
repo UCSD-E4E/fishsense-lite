@@ -449,6 +449,9 @@ class Dive(BaseModel):
     calibration_refused_reason: str | None = Field(
         None, title='Calibration Refused Reason'
     )
+    calibration_refused_labels_at: AwareDatetime | None = Field(
+        None, title='Calibration Refused Labels At'
+    )
 
 
 class HTTPValidationError(BaseModel):

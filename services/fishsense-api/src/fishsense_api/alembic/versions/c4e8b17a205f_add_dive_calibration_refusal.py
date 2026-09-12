@@ -41,6 +41,17 @@ def upgrade() -> None:
         "dive",
         sa.Column("calibration_refused_reason", sa.String(), nullable=True),
     )
+    # The newest label timestamp the refused fit was computed from. Expiry
+    # compares THIS, not `calibration_refused_at`: label timestamps come from
+    # Label Studio and the refusal is the api's wall clock, so comparing the
+    # two would let a labeler's fix read as older than the refusal and exclude
+    # the dive forever.
+    op.add_column(
+        "dive",
+        sa.Column(
+            "calibration_refused_labels_at", sa.DateTime(timezone=True), nullable=True
+        ),
+    )
 
 
 def downgrade() -> None:
@@ -51,5 +62,6 @@ def downgrade() -> None:
     returns the cohorts to re-offering those dives — the behaviour before this
     revision.
     """
+    op.drop_column("dive", "calibration_refused_labels_at")
     op.drop_column("dive", "calibration_refused_reason")
     op.drop_column("dive", "calibration_refused_at")

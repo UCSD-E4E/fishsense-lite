@@ -47,3 +47,7 @@ class Dive(ModelBase):
     # same newly-added-column reason as the fields above.
     calibration_refused_at: datetime | None = None
     calibration_refused_reason: str | None = None
+    # The newest label timestamp the refused fit was computed from. Expiry
+    # compares this rather than `calibration_refused_at`, so both sides stay in
+    # Label Studio's clock — see the api model for why mixing them loses fixes.
+    calibration_refused_labels_at: datetime | None = None
