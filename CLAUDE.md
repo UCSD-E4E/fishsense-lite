@@ -598,6 +598,65 @@ Rig 04 of the 2023.08.18 set (dives 508, 510) shot a **real dive slate** and
 calibrates through stage 13; the 2025 board (24x17) is out of scope because
 OpenCV returned five different grids over six frames of it.
 
+### The baseline gate — the only check that sees a wrong laser offset
+
+**Added 2026-09-11.** `check_baseline_plausible` in `calibration_consistency.py`
+refuses a fit whose laser offset falls outside **7.8–14.5 cm**. Both producers
+call it before persisting: stage 13's slate fit and the checkerboard fit.
+
+**The baseline is a rig constant, which is what makes it checkable.** Over all
+35 stored calibrations the interquartile range is **9.99–10.45 cm** — half a
+centimetre, across both producers, every camera and two years. Against that, 8
+fits sat outside 8–13 cm (2.35, 2.60, 4.81, 4.90, 6.25, 6.91, 16.01, 22.22),
+backing 12 dives and 663 of 3,104 measurements, grading −75% to +45% against
+the known-length targets. **Two are slate-derived**, so this is not a
+checkerboard problem and the gate is not in the checkerboard path.
+
+**`check_fit_self_consistency` cannot do this job, structurally.** It compares
+the fitted ray's *projection* against its 2-D dots. Many 3-D rays project to
+the same image line — the family in the plane through the camera centre and
+that line — and sliding the laser's offset along it leaves the projection
+identical. It pins two of the ray's four degrees of freedom; the baseline is in
+the other two. The same epipolar blindness as reprojection residual and scale.
+
+**Nothing upstream separates a good fit from a bad one.** Measured 2026-09-11
+by rendering the detected lattices (see below): 60 of 61 frames detected the
+full 14x10 board, on good and bad dives alike. Observation count does not
+discriminate — dive 518 fits 2.60 cm from 19 clean observations, while three
+dives fit correctly from 2. Nor does depth spread, nor detection rate (dive 501
+is *good* with zero usable renders, 495 and 507 are bad with zero). **Do not
+raise `MIN_LASER_POINTS` hoping to fix this**: on the slate path it would
+reject five currently-sound calibrations and still miss dive 103, which is bad
+with 17 observations.
+
+The residual mechanism is an unrobust least-squares line fit dragged by
+individual bad observations — dive 77's shape, in the direction its gate cannot
+see. **Robust fitting is the open follow-up**; the bound is the backstop.
+
+Three things about it:
+
+* **Bounds sit midway between the populations, not against the healthy one.**
+  Healthy extremes 8.90 and 12.95; nearest bad 6.91 and 16.01. A draft used
+  8–13, leaving 0.5 mm of headroom above the widest sound fit — ordinary
+  variation or a 2% pitch error would be refused.
+* **A refusal wedges the dive, deliberately.** Both cohorts select on "no
+  `LaserExtrinsics` row", so a refused dive is re-selected hourly, re-staging
+  its `.ORF`s, and `ORDER BY id LIMIT 1` blocks higher-id dives behind it —
+  the dive-347 shape. The error message names the remedies (fix the
+  observations, park at `Priority.NONE`, or clear the calibration target).
+* **Refusals are non-retryable.** Both gates are deterministic in the run's own
+  observations, so a retry re-derives the same answer; as plain `ValueError`s
+  Temporal rescheduled them until the child's 2 h execution timeout, holding
+  the parent and the staged scratch.
+
+**Open — the 8 bad calibrations already in prod are NOT fixed by this.** The
+gate is write-time only, and both cohorts skip a dive that *has* a
+`LaserExtrinsics` row, so nothing will refit them and stage 14 keeps measuring
+against them. Remediation is an operator step: delete those rows (dives 103,
+427, 495, 499, 505, 507, 518, 522) to re-enter the cohorts, or park the dives.
+Measurements and laser depths re-derive on their own afterwards, since both
+cohorts select on calibration *mismatch*.
+
 ### Lattice verification — the human check the residual cannot replace
 
 **Added 2026-09-11, after the producer above was validated and failed.** Graded

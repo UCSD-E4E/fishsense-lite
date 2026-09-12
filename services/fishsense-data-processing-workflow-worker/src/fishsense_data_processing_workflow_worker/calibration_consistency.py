@@ -23,12 +23,114 @@ from __future__ import annotations
 import numpy as np
 
 __all__ = [
+    "CalibrationImplausibleError",
     "CalibrationInconsistentError",
     "DEFAULT_MAX_ANGLE_DEG",
+    "DEFAULT_MAX_BASELINE_M",
     "DEFAULT_MAX_MEDIAN_OFFSET_PX",
+    "DEFAULT_MIN_BASELINE_M",
     "MIN_DOT_SPAN_PX",
+    "check_baseline_plausible",
     "check_fit_self_consistency",
 ]
+
+# --- baseline plausibility -------------------------------------------------
+#
+# `check_fit_self_consistency` below cannot see the baseline, and that is
+# structural rather than a threshold being too loose. It compares the fitted
+# ray's PROJECTION against the 2D dots. Many different 3D rays project to the
+# same image line -- the whole family lying in the plane through the camera
+# centre and that line -- and sliding the laser's offset along that family
+# moves where the ray crosses z=0 while leaving the projection identical. So
+# it constrains two of the ray's four degrees of freedom, and the baseline
+# sits in the two it cannot. Same epipolar blindness already documented for
+# reprojection residual and scale.
+#
+# The baseline is checkable anyway, because it is not a property of the dive:
+# it is the physical offset between camera and laser on one rig. Measured
+# 2026-09-11 over all 35 stored calibrations, its interquartile range is
+# 9.99-10.45 cm -- half a centimetre, across both producers, every camera and
+# two years of dives.
+#
+# Against that, 8 fits sat outside 8-13 cm: 2.35, 2.60, 4.81, 4.90, 6.25,
+# 6.91, 16.01 and 22.22 cm. They back 12 dives and 663 of 3,104 measurements,
+# and grade -75% to +45% against the known-length targets. **Two are
+# slate-derived**, which is why this lives here beside the shared gate and not
+# in the checkerboard path.
+
+#: Bounds on `norm(laser_position[:2])`, in metres.
+#:
+#: **Placed midway between the populations, not hard against the healthy one.**
+#: The healthy extremes are 8.90 and 12.95 cm; the nearest bad fits are 6.91
+#: and 16.01 cm. An earlier draft used 8-13 cm, which left half a millimetre of
+#: headroom above the widest sound calibration while sitting 3 cm clear of the
+#: nearest bad one — so ordinary variation, a slightly different rig, or a 2%
+#: pitch error would be refused, and a refusal here is expensive (see below).
+#: Centring costs nothing in separation because the gap is wide.
+#:
+#: **Widen further only against re-measured data.** A wrong baseline is the one
+#: error the rest of the pipeline provably cannot see: it scales every depth,
+#: hence every length, while reprojection residual and self-consistency both
+#: stay clean. Loosening the bound to admit a dive that "nearly passes" trades
+#: a loud refusal for silent wrong lengths.
+DEFAULT_MIN_BASELINE_M = 0.078
+DEFAULT_MAX_BASELINE_M = 0.145
+
+
+class CalibrationImplausibleError(ValueError):
+    """The fitted laser sits at a physically implausible offset from the camera."""
+
+
+def check_baseline_plausible(
+    laser_position,
+    *,
+    min_baseline_m: float = DEFAULT_MIN_BASELINE_M,
+    max_baseline_m: float = DEFAULT_MAX_BASELINE_M,
+) -> None:
+    """Raise `CalibrationImplausibleError` when the fitted baseline is not a rig.
+
+    `laser_position` is the fit's origin: where the laser ray crosses the
+    camera's z=0 plane. Its z component is padding (both producers emit the
+    x/y pair and set z to 0), so only the in-plane offset is read -- taking a
+    three-component norm would make the answer depend on a convention that
+    carries no information.
+
+    **Checked before persisting, not after.** A calibration that reaches
+    `LaserExtrinsics` is immediately borrowable by sibling dives through
+    `calibration_dive_id`, so a bad one stops being one dive's problem the
+    moment it is written.
+
+    **A refusal wedges the dive, and that is deliberate but not free.** Both
+    calibration cohorts select on "has no `LaserExtrinsics` row", so a dive
+    refused here stays eligible and is re-selected every hour, re-staging its
+    raw `.ORF`s from the NAS each time and — because the selectors are
+    `ORDER BY id LIMIT 1` — blocking every higher-id dive behind it. That is
+    the same head-of-line shape as prod dive 347. It is the right trade against
+    silently wrong lengths, but it means the refusal has to tell an operator
+    what to do, which is why the message names the remedies.
+    """
+    position = np.asarray(laser_position, dtype=float)
+    baseline = float(np.linalg.norm(position[:2]))
+
+    # `isfinite` explicitly and first: every comparison against NaN is False,
+    # so a bare range test would ACCEPT a NaN baseline. The safe reading of
+    # "no measurable offset" is refusal.
+    if not np.isfinite(baseline) or not min_baseline_m <= baseline <= max_baseline_m:
+        raise CalibrationImplausibleError(
+            f"fitted laser baseline {baseline * 100:.2f} cm is outside the "
+            f"plausible range {min_baseline_m * 100:.1f}-"
+            f"{max_baseline_m * 100:.1f} cm. The baseline is a property of the "
+            f"camera+laser rig, not of the dive, and the fleet sits at "
+            f"~10.4 cm; a value this far off means the fit, not the hardware. "
+            f"It would scale every depth and every length by that factor, "
+            f"invisibly to reprojection residual and to the self-consistency "
+            f"gate. Refusing to persist. This dive stays in the calibration "
+            f"cohort and will be re-selected hourly, blocking higher-id dives: "
+            f"either fix its observations, or park it with Priority.NONE and a "
+            f"note, or (checkerboard dives) clear its calibration target via "
+            f"DELETE /api/v1/dives/{{id}}/calibration-target/."
+        )
+
 
 # Fleet-derived thresholds: good fits sit at <=1.6 deg / <=4 px median, the
 # known-bad fit at 14 deg / 17 px. The gap is wide; these sit in the middle

@@ -172,13 +172,22 @@ def _observation(image_id: int, point, *, laser_x=600.0, laser_y=500.0):
     )
 
 
+#: A realistic fitted origin: 10.4 cm from the camera centre, which is where
+#: every sound calibration in the fleet sits. It used to be (0.01, 0.02) — a
+#: 2.2 cm baseline no rig has — and that was harmless until
+#: `check_baseline_plausible` started refusing physically implausible fits, at
+#: which point the fixture was asking the activity to persist exactly what the
+#: gate exists to stop.
+_GOOD_ORIGIN_XY = (0.0624, 0.0832)
+
+
 def _fake_calibrate_laser(_points):
     """Stand in for the Rust Atanasov kernel.
 
     Returns the 2-vector origin it really returns — z is implicit — so the
     padding the activity does stays under test rather than being assumed.
     """
-    return np.array([0.01, 0.02]), np.array([0.0, 0.0, 1.0])
+    return np.array(_GOOD_ORIGIN_XY), np.array([0.0, 0.0, 1.0])
 
 
 def _fit_input(observations):
@@ -238,7 +247,7 @@ async def test_fit_persists_the_extrinsics_it_computed(monkeypatch):
     assert extrinsics.camera_id == 9
     # The Rust kernel returns a 2-vector origin with z implicit; stage 13 pads
     # it the same way, and the SDK surface is a 3-vector.
-    assert list(extrinsics.laser_position) == [0.01, 0.02, 0.0]
+    assert list(extrinsics.laser_position) == [*_GOOD_ORIGIN_XY, 0.0]
 
 
 @pytest.mark.asyncio
