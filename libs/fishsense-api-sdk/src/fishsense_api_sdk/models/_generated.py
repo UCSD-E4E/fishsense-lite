@@ -9,6 +9,10 @@ from typing import Any
 from pydantic import AwareDatetime, BaseModel, Field, constr
 
 
+class BodySetCalibrationRefusedApiV1DivesDiveIdCalibrationRefusedPut(BaseModel):
+    reason: str | None = Field(None, title='Reason')
+
+
 class BodySetNotesApiV1DivesDiveIdNotesPut(BaseModel):
     notes: str | None = Field(None, title='Notes')
 
@@ -439,6 +443,12 @@ class Dive(BaseModel):
     dive_slate_id: int | None = Field(None, title='Dive Slate Id')
     calibration_target_id: int | None = Field(None, title='Calibration Target Id')
     calibration_dive_id: int | None = Field(None, title='Calibration Dive Id')
+    calibration_refused_at: AwareDatetime | None = Field(
+        None, title='Calibration Refused At'
+    )
+    calibration_refused_reason: str | None = Field(
+        None, title='Calibration Refused Reason'
+    )
 
 
 class HTTPValidationError(BaseModel):

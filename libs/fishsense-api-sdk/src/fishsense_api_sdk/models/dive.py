@@ -41,3 +41,9 @@ class Dive(ModelBase):
     # not one of the `DiveSlate` templates. Defaulted for the same
     # newly-added-column reason as the two fields above.
     calibration_target_id: int | None = None
+    # When a calibration fit was last refused for this dive, and why. Written
+    # only for DETERMINISTIC refusals, so the dive leaves the calibration
+    # cohort instead of being re-selected hourly forever. Defaulted for the
+    # same newly-added-column reason as the fields above.
+    calibration_refused_at: datetime | None = None
+    calibration_refused_reason: str | None = None

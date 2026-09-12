@@ -563,6 +563,64 @@ async def clear_dive_calibration_target(
     await session.flush()
 
 
+@app.put("/api/v1/dives/{dive_id}/calibration-refused")
+async def set_calibration_refused(
+    dive_id: int,
+    reason: str | None = Body(default=None, embed=True),
+    session: AsyncSession = Depends(get_async_session),
+) -> int:
+    """Record that a calibration fit was refused for this dive.
+
+    Written by the fit activities when a refusal is **deterministic** in the
+    observations the run was dispatched with — too few of them, a fit that
+    disagrees with its own dots, an implausible baseline. Retrying re-derives
+    those, so the dive must leave the cohort or it is re-selected hourly
+    forever, re-staging its raw `.ORF`s each time and blocking every dive
+    behind it (`ORDER BY id LIMIT 1`, the dive-347 shape).
+
+    A transient failure must never reach here. The activities only call this
+    for the three refusals above, which is the same set they mark
+    non-retryable; anything else propagates untouched.
+
+    **Self-expiring.** The cohorts ignore the refusal once any laser or slate
+    label on the dive is updated more recently than `calibration_refused_at`,
+    so relabelling brings the dive back without anyone remembering to clear
+    it. `DELETE` forces that immediately.
+    """
+    logger.debug("Recording calibration refusal for dive id=%d", dive_id)
+    dive = await session.get(Dive, dive_id)
+    if dive is None:
+        raise HTTPException(status_code=404, detail="Dive not found")
+
+    dive.calibration_refused_at = datetime.now(timezone.utc)
+    dive.calibration_refused_reason = reason
+    session.add(dive)
+    await session.flush()
+    return dive_id
+
+
+@app.delete("/api/v1/dives/{dive_id}/calibration-refused", status_code=204)
+async def clear_calibration_refused(
+    dive_id: int,
+    session: AsyncSession = Depends(get_async_session),
+) -> None:
+    """Clear a recorded refusal so the dive re-enters the cohort (idempotent).
+
+    The operator's override for "I have changed something the labels do not
+    capture" — swapped the declared board, corrected the square pitch, or just
+    want another attempt. Clearing an already-null refusal is a no-op.
+    """
+    logger.debug("Clearing calibration refusal for dive id=%d", dive_id)
+    dive = await session.get(Dive, dive_id)
+    if dive is None:
+        raise HTTPException(status_code=404, detail="Dive not found")
+
+    dive.calibration_refused_at = None
+    dive.calibration_refused_reason = None
+    session.add(dive)
+    await session.flush()
+
+
 @app.put("/api/v1/dives/{dive_id}/notes")
 async def set_notes(
     dive_id: int,

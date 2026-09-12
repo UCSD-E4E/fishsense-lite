@@ -52,6 +52,28 @@ def _input_model():
     return workflow.FitCheckerboardExtrinsicsInput
 
 
+async def _record_refusal(dive_id: int, reason: str) -> None:
+    """Take the dive out of the calibration cohort until its inputs change.
+
+    Only for refusals that are deterministic in the observations this run was
+    dispatched with — the same set marked non-retryable. Without it the dive is
+    re-selected hourly forever, re-staging its raw `.ORF`s each time, and
+    because the selector is `ORDER BY id LIMIT 1` it blocks every dive behind
+    it (the prod dive-347 shape).
+
+    Best-effort: a failure here must not mask the refusal it is annotating.
+    The worst case is the pre-existing behaviour — the dive is offered again —
+    which is strictly better than losing the real error.
+    """
+    try:
+        async with get_fs_client() as fs:
+            await fs.dives.set_calibration_refused(dive_id, reason)
+    except Exception as exc:  # pylint: disable=broad-except
+        activity.logger.error(
+            "could not record calibration refusal for dive_id=%d: %s", dive_id, exc
+        )
+
+
 def _usable(
     observations: List[CheckerboardObservation],
 ) -> tuple[list[list[float]], list[tuple[float, float]]]:
@@ -103,11 +125,20 @@ async def fit_checkerboard_laser_extrinsics(payload) -> int:
         dict(sorted(skipped.items())) or "{}",
     )
     if len(points) < MIN_LASER_POINTS:
-        raise ValueError(
-            f"dive_id={payload.dive_id}: insufficient checkerboard laser points "
-            f"({len(points)} < {MIN_LASER_POINTS}) from "
-            f"{len(payload.observations)} frames; skipped="
-            f"{dict(sorted(skipped.items()))}"
+        # Deterministic in this run's frames — the boards were not found, and
+        # re-firing cannot change that. Recorded so the dive leaves the cohort
+        # instead of being re-selected hourly forever; it comes back on its own
+        # if its labels are updated.
+        reason = (
+            f"insufficient checkerboard laser points ({len(points)} < "
+            f"{MIN_LASER_POINTS}) from {len(payload.observations)} frames; "
+            f"skipped={dict(sorted(skipped.items()))}"
+        )
+        await _record_refusal(payload.dive_id, reason)
+        raise ApplicationError(
+            f"dive_id={payload.dive_id}: {reason}",
+            type="InsufficientCheckerboardPoints",
+            non_retryable=True,
         )
 
     # Same trim as stage 13, for the same reason: `calibrate_laser` has no
@@ -147,6 +178,7 @@ async def fit_checkerboard_laser_extrinsics(payload) -> int:
         )
         check_baseline_plausible(laser_position)
     except (CalibrationInconsistentError, CalibrationImplausibleError) as exc:
+        await _record_refusal(payload.dive_id, str(exc))
         raise ApplicationError(
             f"dive_id={payload.dive_id}: {exc}",
             type=type(exc).__name__,

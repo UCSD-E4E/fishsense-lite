@@ -210,9 +210,18 @@ async def perform_laser_calibration_activity(dive_id: int) -> int | None:
             fs, dive_slate_labels, slate, camera_intrinsics
         )
         if len(laser_points) < MIN_LASER_POINTS:
-            raise ValueError(
-                f"dive_id={dive_id}: insufficient laser points "
+            # Deterministic in this dive's labels — the observations are not
+            # there, and re-firing will not find them. Recorded so the dive
+            # leaves the cohort; it returns by itself once its labels change.
+            reason = (
+                f"insufficient laser points "
                 f"({len(laser_points)} < {MIN_LASER_POINTS})"
+            )
+            await fs.dives.set_calibration_refused(dive_id, reason)
+            raise ApplicationError(
+                f"dive_id={dive_id}: {reason}",
+                type="InsufficientLaserPoints",
+                non_retryable=True,
             )
 
         # Drop observations that disagree with the ray before fitting.
@@ -262,6 +271,10 @@ async def perform_laser_calibration_activity(dive_id: int) -> int | None:
             )
             check_baseline_plausible(laser_position)
         except (CalibrationInconsistentError, CalibrationImplausibleError) as exc:
+            # Take the dive out of the cohort until its labels change. Without
+            # this a dive whose observations cannot produce a sound fit is
+            # re-selected hourly forever and blocks every dive behind it.
+            await fs.dives.set_calibration_refused(dive_id, str(exc))
             raise ApplicationError(
                 f"dive_id={dive_id}: {exc}",
                 type=type(exc).__name__,
