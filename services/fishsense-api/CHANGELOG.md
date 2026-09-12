@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [3.5.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v3.4.0...fishsense-api-v3.5.0) (2026-09-12)
+
+
+### Features
+
+* a refused calibration takes the dive out of the cohort ([#882](https://github.com/UCSD-E4E/fishsense-lite/issues/882)) ([f35f5aa](https://github.com/UCSD-E4E/fishsense-lite/commit/f35f5aaa52238a53b6b8cf09cdf032b4845dc046))
+
 ## [3.4.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v3.3.1...fishsense-api-v3.4.0) (2026-09-12)
 
 
