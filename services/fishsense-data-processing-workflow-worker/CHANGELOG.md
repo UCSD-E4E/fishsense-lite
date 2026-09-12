@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.8.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.8.0...fishsense-data-processing-workflow-worker-v3.8.1) (2026-09-12)
+
+
+### Bug Fixes
+
+* **data-worker:** a mismatched slate label costs that label, not the dive ([#887](https://github.com/UCSD-E4E/fishsense-lite/issues/887)) ([dd17c41](https://github.com/UCSD-E4E/fishsense-lite/commit/dd17c41a666cd896985f09bf9fc78e7543c242e7))
+
 ## [3.8.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.7.0...fishsense-data-processing-workflow-worker-v3.8.0) (2026-09-12)
 
 
