@@ -25,6 +25,11 @@ from tests_support.db import (  # noqa: F401
 )
 
 
+# Positions are two distinguishable but *plausible* baselines (9.9 and
+# 10.4 cm). They used to be [1,1,1] and [2,2,2] — 1.4 m and 2.8 m offsets, which
+# no rig has. That was harmless until resolution started skipping calibrations
+# with an implausible baseline, at which point these fixtures were asking the
+# resolver to return exactly what it now exists to hide.
 def _extrinsics(dive_id: int, *, position, created_at):
     from fishsense_api.models.laser_extrinsics import LaserExtrinsics
 
@@ -52,13 +57,13 @@ async def test_own_extrinsics_win_over_the_link(session):
                     created_at=datetime(2025, 1, 1, tzinfo=timezone.utc))
     )
     session.add(
-        _extrinsics(2, position=[2.0, 2.0, 2.0],
+        _extrinsics(2, position=[0.0700, 0.0700, 0.0],
                     created_at=datetime(2025, 1, 2, tzinfo=timezone.utc))
     )
     await session.flush()
 
     result = await get_laser_extrinsics_for_dive(2, session=session)
-    assert result.laser_position == [2.0, 2.0, 2.0]  # dive 2's own, not dive 1's
+    assert result.laser_position == [0.0700, 0.0700, 0.0]  # dive 2's own, not dive 1's
 
 
 async def test_falls_back_to_linked_source_when_no_own_extrinsics(session):
@@ -69,13 +74,13 @@ async def test_falls_back_to_linked_source_when_no_own_extrinsics(session):
     session.add_all([_dive(1), _dive(2, calibration_dive_id=1)])
     await session.flush()
     session.add(
-        _extrinsics(1, position=[1.0, 1.0, 1.0],
+        _extrinsics(1, position=[0.0624, 0.0832, 0.0],
                     created_at=datetime(2025, 1, 1, tzinfo=timezone.utc))
     )
     await session.flush()
 
     result = await get_laser_extrinsics_for_dive(2, session=session)
-    assert result.laser_position == [1.0, 1.0, 1.0]  # borrowed from dive 1
+    assert result.laser_position == [0.0624, 0.0832, 0.0]  # borrowed from dive 1
 
 
 async def test_404_when_neither_own_nor_linked_extrinsics(session):

@@ -68,17 +68,17 @@ async def test_put_upserts_on_dive_id_no_duplicate(session):
     )
 
     first_id = await put_laser_extrinsics_for_dive(
-        1, _extrinsics(1, position=[1.0, 1.0, 0.0]), session=session
+        1, _extrinsics(1, position=[0.0624, 0.0832, 0.0]), session=session
     )
     second_id = await put_laser_extrinsics_for_dive(
-        1, _extrinsics(1, position=[2.0, 2.0, 0.0]), session=session
+        1, _extrinsics(1, position=[0.0700, 0.0700, 0.0]), session=session
     )
     await session.flush()
 
     assert await _count_for_dive(session, 1) == 1  # upsert, not append
     assert first_id == second_id  # same row reused
     result = await get_laser_extrinsics_for_dive(1, session=session)
-    assert result.laser_position == [2.0, 2.0, 0.0]  # latest value wins
+    assert result.laser_position == [0.0700, 0.0700, 0.0]  # latest value wins
 
 
 async def test_put_stamps_non_null_created_at(session):
@@ -90,7 +90,7 @@ async def test_put_stamps_non_null_created_at(session):
     # created_at intentionally omitted (None) by the caller, as the
     # calibration activity does.
     await put_laser_extrinsics_for_dive(
-        1, _extrinsics(1, position=[1.0, 1.0, 0.0], created_at=None), session=session
+        1, _extrinsics(1, position=[0.0624, 0.0832, 0.0], created_at=None), session=session
     )
     await session.flush()
 
@@ -104,10 +104,10 @@ async def test_put_independent_across_dives(session):
     )
 
     await put_laser_extrinsics_for_dive(
-        1, _extrinsics(1, position=[1.0, 1.0, 0.0]), session=session
+        1, _extrinsics(1, position=[0.0624, 0.0832, 0.0]), session=session
     )
     await put_laser_extrinsics_for_dive(
-        2, _extrinsics(2, position=[2.0, 2.0, 0.0]), session=session
+        2, _extrinsics(2, position=[0.0700, 0.0700, 0.0]), session=session
     )
     await session.flush()
 

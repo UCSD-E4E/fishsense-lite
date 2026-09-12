@@ -39,12 +39,13 @@ import logging
 from typing import Any, List
 
 from fastapi import Depends
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import aliased
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from fishsense_shared import LASER_PREDICTOR_VERSION, taxonomy
+from fishsense_shared.calibration_bounds import is_plausible_baseline
 
 from fishsense_api.database import get_async_session
 from fishsense_api.models.data_source import DataSource
@@ -220,6 +221,42 @@ def _resolved_laser_extrinsics_id():
         .scalar_subquery()
     )
     return func.coalesce(own, borrowed)
+
+
+def _reentry_last(implausible: set[int]):
+    """Sort key putting known-broken dives after everything else.
+
+    An empty set still has to produce a valid expression — `in_(())` is legal
+    SQL and constant-false, so this needs no special case.
+    """
+    # pylint: disable=no-member
+    return case((Dive.id.in_(implausible), 1), else_=0)
+
+
+async def implausible_calibration_dive_ids(session) -> set[int]:
+    """Dives whose stored calibration has a baseline no rig could have.
+
+    `check_baseline_plausible` on the data-worker refuses to *write* these, but
+    it is write-time only: eight are already stored (2.35 to 22.22 cm against a
+    fleet interquartile range of 9.99-10.45 cm), backing 663 of 3,104
+    measurements at -75% to +45% error. Both calibration cohorts select on
+    "has no `LaserExtrinsics` row", so without this nothing would ever refit
+    them.
+
+    **Read and filtered in Python, not SQL.** The predicate is
+    `norm(laser_position[:2])` over a JSON column, and these selectors run on
+    Postgres in prod and SQLite under test -- the same split that stopped
+    `dive_pipeline_status` porting `is_measurable` exactly, and which is where
+    hand-ported approximations drift. The table holds 35 rows in total, so
+    reading all of them is exact and free, and it cannot disagree with the
+    gate that writes them.
+    """
+    rows = (await session.exec(select(LaserExtrinsics))).all()
+    return {
+        row.dive_id
+        for row in rows
+        if row.dive_id is not None and not is_plausible_baseline(row.laser_position)
+    }
 
 
 # Stage-13 cohort threshold; matches the data-worker calibration
@@ -791,18 +828,31 @@ async def select_next_for_laser_calibration(
     in prod does (checked), but it is why this counts EXISTS rather than trying
     to reproduce `.first()`.
     """
+    implausible = await implausible_calibration_dive_ids(session)
     query = (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
+        # "No calibration" now means "no *usable* calibration": a stored fit
+        # with an implausible baseline counts as none, so its dive comes back
+        # here to be refitted rather than being measured against a fit we know
+        # is wrong. See `implausible_calibration_dive_ids`.
         .where(
-            ~select(LaserExtrinsics.id)
-            .where(LaserExtrinsics.dive_id == Dive.id)
-            .exists()
+            or_(
+                ~select(LaserExtrinsics.id)
+                .where(LaserExtrinsics.dive_id == Dive.id)
+                .exists(),
+                Dive.id.in_(implausible),  # pylint: disable=no-member
+            )
         )
         # The slate link and the observation floor together — shared with the
         # checkerboard cohort, which excludes exactly this.
         .where(_stage_13_can_calibrate())
-        .order_by(Dive.id)
+        # Re-entry candidates last. This selector is `ORDER BY id LIMIT 1`, so
+        # a dive that refits to the same bad baseline and is refused again
+        # would head-of-line block every healthy dive behind it — the dive-347
+        # shape. Ordering the known-broken ones last bounds the damage to
+        # dives that are already broken.
+        .order_by(_reentry_last(implausible), Dive.id)
         .limit(1)
     )
     return (await session.exec(query)).first()
@@ -871,22 +921,31 @@ async def select_next_for_checkerboard_laser_calibration(
         .correlate(Dive)
         .scalar_subquery()
     )
+    implausible = await implausible_calibration_dive_ids(session)
     query = (
         select(Dive.id)
         .where(Dive.priority == Priority.HIGH)
         .where(Dive.calibration_target_id != None)
+        # As in stage 13: a stored fit with an implausible baseline counts as
+        # no calibration, so its dive comes back to be refitted. Six of the
+        # eight already-stored bad fits came from this producer.
         .where(
-            ~select(LaserExtrinsics.id)
-            .where(LaserExtrinsics.dive_id == Dive.id)
-            .correlate(Dive)
-            .exists()
+            or_(
+                ~select(LaserExtrinsics.id)
+                .where(LaserExtrinsics.dive_id == Dive.id)
+                .correlate(Dive)
+                .exists(),
+                Dive.id.in_(implausible),  # pylint: disable=no-member
+            )
         )
         # Stage 13 keeps precedence over a dive it can actually fit. See the
         # docstring: the two links are independent, so this is what makes the
         # cohorts partition instead of racing.
         .where(~_stage_13_can_calibrate())
         .where(usable_observation_count >= MIN_SLATE_LASER_POINTS)
-        .order_by(Dive.id)
+        # Known-broken dives last, so a repeat refusal cannot head-of-line
+        # block a healthy dive behind it.
+        .order_by(_reentry_last(implausible), Dive.id)
         .limit(1)
     )
     return (await session.exec(query)).first()
