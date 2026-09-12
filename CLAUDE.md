@@ -2327,12 +2327,16 @@ Nothing about a mount holding firm bounds it, because the degree of
 freedom is *inside* the mount. It is also why the line holds within a
 dive — nobody handles the laser underwater — and moves between them.
 
-The `DiveLaserLine` model docstring still says the opposite — that the
-line is "the fingerprint of the mount state" which on a given camera
-"changes only when the cold-shoe mount rotates, drifts, or is swapped"
-— and lists borrow, drift tracking, mount-swap detection and pooled
-calibration as things it enables. Do not build on
-that framing; it fails in both directions:
+The `DiveLaserLine` model docstrings (API and SDK) used to say the
+opposite — that the line is "the fingerprint of the mount state" and
+enables borrow, drift tracking, mount-swap detection and pooled
+calibration. They were corrected on 2026-09-12. Two places still act on
+the old framing and must not be used to *choose* a borrow:
+`calibration_candidate_controller.py` (`GET .../calibration-candidates`,
+SDK `dives.get_calibration_candidates`) ranks other dives by line match,
+and `docs/laser-calibration-fingerprint-roadmap.md` §"Reframe" already
+records the 383/471 result that falsified it. The framing fails in both
+directions:
 
 * **Same line ⇏ same rig state.** Re-seat motion is anisotropic — φ
   (in-plane toe-in) moves 2–4× more than out-of-plane and leaves the 2D

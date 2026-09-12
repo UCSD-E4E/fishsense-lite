@@ -1,21 +1,31 @@
-"""Per-dive laser-line fingerprint model for the FishSense API.
+"""Per-dive laser-line model for the FishSense API.
 
 The laser dots across a dive's frames are collinear in image space (the
 projection of the fixed laser ray), so a RANSAC/TLS fit yields a single 2D
-line `a*x + b*y + c = 0` (Hesse normal form, unit normal). That line is the
-*fingerprint of the mount state*: on a given camera it changes only when the
-cold-shoe mount rotates, drifts (PLA thermal/creep), or is swapped. Persisting
-it — a byproduct the laser-label validation already computes — turns four
-questions into queries over `(camera_id, line)`:
+line `a*x + b*y + c = 0` (Hesse normal form, unit normal). Persisting it — a
+byproduct the laser-label validation already computes — keeps the within-dive
+fit queryable: outlier rejection, and separating laser predictions a labeler
+moved from ones they accepted (accepted predictions sit ~1 px off the dive
+line, moved ones ~68 px; measured 2026-09-03).
 
-  * borrow: two dives on one camera with the same confident line share a 3D
-    laser geometry, so one's `LaserExtrinsics` transfers to the other;
-  * drift: the line's wander over time per camera;
-  * mount swaps: step discontinuities in that per-camera series;
-  * pooled calibration: dives with a matching line can co-fit one calibration.
+**The line is a WITHIN-DIVE property. It is not a prior for any other dive,
+in either direction** (demonstrated 2026-09-03; see CLAUDE.md, "Laser-label
+validation"). An earlier version of this docstring called it "the fingerprint
+of the mount state" and listed calibration borrow, drift tracking, mount-swap
+detection and pooled calibration as things it enables. It does not:
 
-`line_confidence` / `residual_std` double as a stability signal — a mount that
-deformed mid-dive smears the dots off a clean line and shows up as a poor fit.
+  * Same line ⇏ same laser geometry. The image of a 3D line fixes only the
+    plane through the camera centre containing it; where the laser sits
+    *within* that plane — the in-plane angle that sets metric scale — moves
+    the dots by ~1e-13 px. Dives 383 and 471 agree to 0.22° in the image and
+    differ by 3.1° in that angle: +44 % and +305 % length error. Two dives of
+    one camera whose lines match can therefore have calibrations that do not
+    transfer, and there is no line tolerance that fixes this.
+  * Same rig ⇏ same line. The laser can rotate inside its clamp, and the beam
+    is off the body axis, so the line moves without the mount being touched.
+
+`line_confidence` / `residual_std` remain a stability signal for the dive
+itself — a mount that deformed mid-dive smears the dots off a clean line.
 """
 
 from datetime import datetime
