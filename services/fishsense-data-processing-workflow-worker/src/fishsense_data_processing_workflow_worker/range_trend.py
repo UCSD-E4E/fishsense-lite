@@ -27,26 +27,38 @@ WHAT IT MEASURED ON THE CORPUS (2026-09-12, 2,927 measurements, 32 dives; see
 imwut_2026_fishsense_lite/post_labeling_analysis/HANDOFF.md). Fitted on frames
 at >= 0.8 m with >= 8 frames spanning a >= 2x range:
 
-  * Negative slopes were pure signal. Every cell whose interval sat below
-    -2 %/m was a calibration already known bad from the known lengths: dive
-    490 at -13.3 %/m (recovered angle -0.78 deg against 0.82 deg measured
-    directly between its two calibration bursts), its borrowers 491 / 492 at
+  * Negative slopes: every cell whose interval sat below -2 %/m was a
+    calibration already known bad from the known lengths -- dive 490 at
+    -13.3 %/m (recovered angle -0.78 deg against 0.82 deg measured directly
+    between its two calibration bursts), its borrowers 491 / 492 at
     -3.8 / -2.8 (-0.22 / -0.17 deg against 0.21 / 0.25 from the known
     lengths), 494 at -6.1 and 509 at -4.1. The two August repairs, 60 and 76,
     read -2.3 on each target (-0.14 deg against the 0.146 deg the repair
-    fitted) with intervals reaching -1.1, so they are seen but not flagged at
-    this threshold. No cell of the 17 well-calibrated cohort cells was below
-    -1.0 %/m, and none flagged.
-  * Positive slopes were NOT signal. Several well-calibrated dives show
-    +2.6 to +4.8 %/m, and dive 76 shows -2.3 on one target and +4.9 on
-    another, which one angle cannot do. A close-range under-read of unknown
-    origin (the corpus median is -5.8 % below 0.8 m against -2.1 % beyond)
-    drives it. So only the negative side flags, and the < 0.8 m frames are
-    dropped before the fit rather than after.
-  * It is blind to range-flat scale errors. Dives 506 and 507 both borrow
-    dive 505 and both over-read (+4.3 / +2.2 pp) with slopes of +0.8 and
-    +0.1 %/m: a wrong baseline scales every depth by a constant. That failure
-    needs a known length; this test does not find it.
+    fitted) with intervals reaching -1.1, so they are seen but not flagged.
+  * Positive slopes are calibration signal too, and were at first misread.
+    They track SHORT fitted baselines: 503 / 504 (borrowing dive 502 at
+    8.90 cm) read +5.3 / +5.5 %/m, 498 (9.51 cm) +2.8, 501 (10.12) +1.6,
+    while every 10.3-10.5 cm calibration sits within -1.0..+0.9. The per-bin
+    structure says what it is: -14 to -18 % at 0.8 m rising to ~0 at 4 m, a
+    short baseline's flat scale error paired with a compensating angle error
+    that cancel exactly where the median and p90 sit -- which is how those
+    dives graded "-1 %" against the known lengths and passed both the cohort
+    rule and the old 7.8 cm baseline floor. So both signs flag. What remains
+    ambiguous on the positive side is object-specific: the single-object
+    angle sessions (87 / 114 are positive even broadside-only) and the Shark
+    on dive 76 (+5.3 while the Purple Angel on the same dive reads -2.2, which
+    one angle cannot do). A flag on a normal multi-frame rigid target is a
+    calibration finding; a flag on those two kinds is not, and the note says
+    which reading applies to the sign.
+  * A milder close-range under-read remains on the Weasly Fish alone (near
+    -6/-7 % against far -2/-4 % on sound dives; the Box shows none). It is
+    concentrated below 0.8 m, which is why those frames are dropped before
+    the fit rather than after.
+  * It is blind to a range-flat scale error on its own. Dives 506 and 507
+    both borrow dive 505 and over-read (+4.3 / +2.2 pp) with slopes of +0.8
+    and +0.1 %/m. A baseline error that the fit did NOT pair with an angle
+    error stays invisible here; the baseline plausibility gate is the check
+    for that.
 
 WHERE IT CAN RUN. It needs one rigid object measured many times across a wide
 range spread. Every rigid-target pool dive has that (33 usable cells over 25
@@ -72,9 +84,9 @@ DEFAULT_MIN_DEPTH_M = 0.8
 #: rather than a confident number over a handful.
 DEFAULT_MIN_FRAMES = 8
 DEFAULT_MIN_RANGE_RATIO = 2.0
-#: A cell flags when its whole confidence interval sits below -this. On the
-#: corpus the known-bad cells were all below -2.3 %/m and the good ones all
-#: above -1.0; the threshold sits between, nearer the good side.
+#: A cell flags when its whole confidence interval sits beyond +-this. On the
+#: corpus every sound-baseline cell sat within -1.0..+0.9 %/m and the known-bad
+#: ones beyond -2.8 or +2.8; the threshold sits between.
 FLAG_SLOPE_PCT_PER_M = 2.0
 
 _CI_Z = 1.96  # 95 % two-sided
@@ -161,7 +173,7 @@ def range_trend(
         return None
     slope_pct, lo_pct, hi_pct = (100.0 * v / intercept for v in (slope, lo, hi))
     eps_deg = float(np.degrees(slope / intercept * baseline_m))
-    flagged = bool(hi_pct < -flag_slope_pct_per_m)
+    flagged = bool(hi_pct < -flag_slope_pct_per_m or lo_pct > flag_slope_pct_per_m)
     return RangeTrend(
         n=int(z.size),
         depth_range_m=(float(z.min()), float(z.max())),
@@ -174,15 +186,20 @@ def range_trend(
 
 
 def _note(flagged: bool, slope_pct: float, eps_deg: float, threshold: float) -> str:
+    if flagged and slope_pct < 0:
+        return (
+            f"length falls with range: in-plane calibration error ~{eps_deg:+.2f} deg "
+            "(rotated axis)"
+        )
     if flagged:
         return (
-            f"length falls with range: in-plane calibration error ~{eps_deg:+.2f} deg"
+            f"length rises with range: in-plane calibration error ~{eps_deg:+.2f} deg; "
+            "on the corpus this sign meant a short fitted baseline paired with a "
+            "compensating angle -- check the baseline. Not a calibration finding "
+            "on a single-object oblique session or the Shark."
         )
-    if slope_pct > threshold:
-        return (
-            "length rises with range: ambiguous, well-calibrated dives show this "
-            "(close-range under-read); not flagged"
-        )
+    if abs(slope_pct) > threshold:
+        return "trend beyond threshold but the interval does not clear it; not flagged"
     return ""
 
 

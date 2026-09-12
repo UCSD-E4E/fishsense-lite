@@ -54,11 +54,14 @@ recording so they are not rebuilt:
     (median |deviation| 2.2% vs 2.4%) and dive 490 was not flagged at all,
     because it measures against its own calibration. The offset it measures is
     PERPENDICULAR, and depth is set by position ALONG the line.
-  * Gating a new fit against its own camera's baseline history. All three
-    baseline outliers measure correctly: dive 498 at 9.51 cm is -1.3% off
-    consensus, dive 502 at 8.90 cm is -1.1%, dive 107 at 12.95 cm is -1.6%. An
-    8% baseline error buys a 1% length error, so the baseline is a weak
-    predictor and the gate would be a false-positive generator.
+  * Gating a new fit against its own camera's baseline history, judged by
+    the median length error. The three baseline outliers graded within 1.6 %
+    on the median (498 at 9.51 cm, 502 at 8.90, 107 at 12.95), which read as
+    "an 8% baseline error buys a 1% length error". That reading was wrong:
+    the range trend later showed 498 and 502's borrowers at -14 to -18 % up
+    close rising to ~0 at 4 m, a flat scale error cancelling against an angle
+    error at the median. The median is not a calibration check; the range
+    trend is, and the baseline floor moved from 7.8 to 9.7 cm on its evidence.
 
 And the dot-on-board check is tautological on its own domain, as above, while
 only about a third of frames detect a board at all. So this is an instrument

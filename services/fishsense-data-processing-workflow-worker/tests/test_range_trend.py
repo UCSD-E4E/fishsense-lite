@@ -11,11 +11,10 @@ slope of length against depth is the diagnostic and slope * b is the angle.
 
 These tests pin the estimator against exact synthetic data, the data
 requirements the audit refuses to work without, and the two things measured
-on the corpus that decide how it may be used: negative slopes were pure
-signal (every flagged cell was a known-bad calibration, zero false positives
-over the 17 good cells), positive slopes were not (a close-range under-read of
-unknown origin drives them on well-calibrated dives), so only the negative
-side flags.
+on the corpus that decide how it may be used: every cell whose interval
+cleared +-2 %/m was a calibration already known bad, in both directions --
+negative for a rotated axis, positive for a short fitted baseline paired with
+a compensating angle -- and no sound-baseline cell was flagged.
 """
 
 from __future__ import annotations
@@ -112,7 +111,10 @@ def test_range_trend_is_flat_on_a_good_calibration():
     assert not trend.flagged
 
 
-def test_range_trend_flags_only_the_negative_side():
+def test_range_trend_flags_both_signs():
+    """A short fitted baseline pairs with a compensating angle error and reads
+    as a POSITIVE trend (dives 503/504 at 8.90 cm: +5.3 %/m); a plain rotation
+    the wrong way reads negative. Both are calibration errors."""
     depths = np.linspace(0.9, 3.0, 40)
     short = range_trend(
         depths, _phi_error_lengths(depths, 0.31, np.radians(-0.25)), BASELINE_M
@@ -123,8 +125,9 @@ def test_range_trend_flags_only_the_negative_side():
     assert short.slope_pct_per_m < -FLAG_SLOPE_PCT_PER_M
     assert short.flagged
     assert long.slope_pct_per_m > FLAG_SLOPE_PCT_PER_M
-    assert not long.flagged  # positive slopes are confounded on good dives
-    assert long.note  # ...and the result says so rather than staying silent
+    assert long.flagged
+    assert "short" in long.note and "baseline" in long.note
+    assert "rotation" in short.note or "error" in short.note
 
 
 def test_range_trend_flag_requires_the_interval_to_exclude_the_threshold():
@@ -133,8 +136,8 @@ def test_range_trend_flag_requires_the_interval_to_exclude_the_threshold():
     depths = np.linspace(0.9, 2.0, 9)
     lengths = 0.31 * (1 + rng.normal(0, 0.08, depths.size))
     trend = range_trend(depths, lengths, baseline_m=BASELINE_M)
-    if trend.slope_pct_per_m < -FLAG_SLOPE_PCT_PER_M:
-        assert trend.flagged == (trend.ci_pct_per_m[1] < -FLAG_SLOPE_PCT_PER_M)
+    lo, hi = trend.ci_pct_per_m
+    assert trend.flagged == (hi < -FLAG_SLOPE_PCT_PER_M or lo > FLAG_SLOPE_PCT_PER_M)
 
 
 def test_range_trend_drops_frames_closer_than_the_minimum_depth():
@@ -167,9 +170,9 @@ def test_range_trend_rejects_non_positive_inputs():
 
 
 def test_flag_threshold_sits_at_the_measured_separation():
-    """On the corpus (2026-09-12): every known-bad cell was below -2.3 %/m
-    (dive 60's repaired 0.146 deg reads -2.3), every good cohort cell above
-    -1.0. The threshold is between them, nearer the good side."""
+    """On the corpus (2026-09-12): every sound-baseline (10.3-10.5 cm) cell sat
+    within -1.0..+0.9 %/m; the known-bad cells sat beyond -2.8 or +2.8 (the
+    short-baseline dives at +5.3 / +5.5). The threshold is between them."""
     assert FLAG_SLOPE_PCT_PER_M == 2.0
 
 
