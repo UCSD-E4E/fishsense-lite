@@ -111,7 +111,8 @@ def _laser_point_in_camera_space(
     """Lift one slate-laser observation to a 3-D point in camera space.
 
     Returns None when the observation can't be used (PnP failure, NaN
-    ray). Mirrors the per-label kernel from `scripts/validate_stage13_refactor.py`.
+    ray, unusable correspondences). Mirrors the per-label kernel from
+    `scripts/validate_stage13_refactor.py`.
     """
     source_points = _drop_skipped(
         list(slate.reference_points or []), label.skipped_points or []
@@ -119,14 +120,34 @@ def _laser_point_in_camera_space(
     image_points = list(label.reference_points or [])
     # solvePnP pairs body<->image points purely by position, so a count that
     # disagrees with (template - skipped) silently mis-pairs the geometry.
-    # Make that a hard error. Mirrors `contracts.template_correspondences`.
+    # Never pair those. Mirrors `contracts.template_correspondences`.
+    #
+    # Skip the LABEL, not the dive. This used to raise, which escaped
+    # `_gather_laser_points`' `is not None` skip and took the whole dive down:
+    # prod dive 526 holds 17 completed slate labels of which 2 carry a JSON
+    # `null` for `reference_points`, and those 2 discarded the 15 good
+    # observations. The bare `ValueError` also bypassed `_record_refusal`, so
+    # the dive stayed in the cohort and head-of-line blocked it -- 10
+    # consecutive hourly failures on 2026-09-12, the same wedge shape
+    # MIN_LASER_POINTS was introduced to end.
+    #
+    # Returning None keeps the pairing guarantee and routes a dive left with
+    # too few observations into the MIN_LASER_POINTS refusal below, which does
+    # record itself. A mismatch is a property of one label's annotation, so
+    # one bad label must not decide the dive.
     if len(image_points) != len(source_points):
-        raise ValueError(
-            f"slate label reference_points={len(image_points)} disagrees with "
-            f"template {slate.id} ({len(slate.reference_points or [])}) minus "
-            f"{len(set(int(i) for i in (label.skipped_points or [])))} skipped "
-            f"= {len(source_points)}; refusing to mis-pair solvePnP correspondences"
+        activity.logger.warning(
+            "skipping slate label id=%s image_id=%s: reference_points=%d "
+            "disagrees with template %s (%d) minus %d skipped = %d",
+            label.id,
+            label.image_id,
+            len(image_points),
+            slate.id,
+            len(slate.reference_points or []),
+            len(set(int(i) for i in (label.skipped_points or []))),
+            len(source_points),
         )
+        return None
     # The slate's whole contribution: template points in metres. Everything
     # after `plane_from_correspondences` is target-agnostic and shared with the
     # coming checkerboard producer — see `calibration_geometry`.
