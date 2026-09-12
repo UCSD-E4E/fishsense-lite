@@ -361,6 +361,48 @@ class DiveClient(ClientBase):
 
         return response.json()
 
+    async def set_calibration_refused(
+        self, dive_id: int, reason: str | None = None
+    ) -> int:
+        """Record that a calibration fit was refused for this dive.
+
+        Called by the fit activities for refusals that are **deterministic** in
+        the observations the run was dispatched with, which is the same set
+        they mark non-retryable. Retrying re-derives those, so the dive has to
+        leave the calibration cohort or it is re-selected hourly forever,
+        re-staging its raw `.ORF`s each time and blocking every dive behind it.
+
+        Never call this for a transient failure — a NAS blip would park a
+        healthy dive.
+
+        Args:
+            dive_id (int): The dive that was refused.
+            reason (str | None): Why, for the operator reading the row.
+
+        Returns:
+            int: The dive id.
+        """
+        response = await self._put(
+            f"/api/v1/dives/{dive_id}/calibration-refused/", json={"reason": reason}
+        )
+        response.raise_for_status()
+
+        return response.json()
+
+    async def clear_calibration_refused(self, dive_id: int) -> None:
+        """Clear a recorded refusal so the dive re-enters the cohort.
+
+        Idempotent. The cohorts also ignore a refusal on their own once any
+        laser or slate label on the dive is newer than it, so this is the
+        override for changes the labels do not capture — a corrected square
+        pitch, a different declared board.
+
+        Args:
+            dive_id (int): The dive to clear.
+        """
+        response = await self._delete(f"/api/v1/dives/{dive_id}/calibration-refused/")
+        response.raise_for_status()
+
     async def set_calibration_target(
         self, dive_id: int, calibration_target_id: int
     ) -> int:

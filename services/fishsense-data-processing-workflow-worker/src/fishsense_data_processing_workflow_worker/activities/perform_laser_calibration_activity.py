@@ -59,6 +59,27 @@ MIN_LASER_POINTS = 2
 __all__ = ["perform_laser_calibration_activity"]
 
 
+async def _record_refusal(fs: Client, dive_id: int, reason: str) -> None:
+    """Take the dive out of the calibration cohort until its inputs change.
+
+    Best-effort, and that matters more than it looks. The api and the
+    data-worker deploy from separate auto-deploy PRs, so the worker can be
+    running ahead of an api that has no `/calibration-refused` route yet. An
+    unguarded call would then replace the real `CalibrationImplausibleError`
+    with an HTTP 404, losing both the diagnostic and `non_retryable=True` — so
+    Temporal would re-run the whole `_gather_laser_points` and PnP pass until
+    the 10-minute `schedule_to_close`, and the dive would stay un-refused and
+    still wedging the cohort. The worst case here is the pre-existing
+    behaviour; losing the real error is strictly worse.
+    """
+    try:
+        await fs.dives.set_calibration_refused(dive_id, reason)
+    except Exception as exc:  # pylint: disable=broad-except
+        activity.logger.error(
+            "could not record calibration refusal for dive_id=%d: %s", dive_id, exc
+        )
+
+
 def _drop_skipped(points: list, skipped) -> list:
     """Remove `skipped` indices from `points`, resolved against the ORIGINAL list.
 
@@ -162,10 +183,14 @@ async def perform_laser_calibration_activity(dive_id: int) -> int | None:
     """Fit laser extrinsics for `dive_id` from its slate-laser labels.
 
     Returns the persisted `LaserExtrinsics` row id, or None when the dive
-    has no `dive_slate_id` / no slate labels (genuine no-op). Raises
-    `ValueError` when fewer than `MIN_LASER_POINTS` usable observations
-    survive PnP / ray projection — that's a real data problem worth
-    surfacing rather than silently producing a degenerate fit.
+    has no `dive_slate_id` / no slate labels (genuine no-op).
+
+    Raises a **non-retryable** `ApplicationError` for the three deterministic
+    refusals — too few usable observations, a fit that disagrees with its own
+    dots, an implausible baseline — and records each on the dive so it leaves
+    the calibration cohort instead of being re-selected hourly forever. All
+    three are functions of the observations this run was dispatched with, so a
+    retry only re-derives them.
 
     Always recomputes; the API endpoint is an upsert. Callers that want
     "skip if already calibrated" should filter on `get_laser_extrinsics`
@@ -210,9 +235,18 @@ async def perform_laser_calibration_activity(dive_id: int) -> int | None:
             fs, dive_slate_labels, slate, camera_intrinsics
         )
         if len(laser_points) < MIN_LASER_POINTS:
-            raise ValueError(
-                f"dive_id={dive_id}: insufficient laser points "
+            # Deterministic in this dive's labels — the observations are not
+            # there, and re-firing will not find them. Recorded so the dive
+            # leaves the cohort; it returns by itself once its labels change.
+            reason = (
+                f"insufficient laser points "
                 f"({len(laser_points)} < {MIN_LASER_POINTS})"
+            )
+            await _record_refusal(fs, dive_id, reason)
+            raise ApplicationError(
+                f"dive_id={dive_id}: {reason}",
+                type="InsufficientLaserPoints",
+                non_retryable=True,
             )
 
         # Drop observations that disagree with the ray before fitting.
@@ -262,6 +296,10 @@ async def perform_laser_calibration_activity(dive_id: int) -> int | None:
             )
             check_baseline_plausible(laser_position)
         except (CalibrationInconsistentError, CalibrationImplausibleError) as exc:
+            # Take the dive out of the cohort until its labels change. Without
+            # this a dive whose observations cannot produce a sound fit is
+            # re-selected hourly forever and blocks every dive behind it.
+            await _record_refusal(fs, dive_id, str(exc))
             raise ApplicationError(
                 f"dive_id={dive_id}: {exc}",
                 type=type(exc).__name__,

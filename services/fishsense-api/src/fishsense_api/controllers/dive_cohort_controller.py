@@ -223,6 +223,69 @@ def _resolved_laser_extrinsics_id():
     return func.coalesce(own, borrowed)
 
 
+def _calibration_refusal_still_stands():
+    """The dive was refused a fit, and nothing has changed since.
+
+    Both calibration cohorts select on dive *state* — "has no usable
+    `LaserExtrinsics` row" — and a refusal does not change that state. Without
+    this a dive whose observations cannot produce a sound fit is re-selected
+    hourly forever, re-staging its raw `.ORF`s from the NAS each time, and
+    because the selectors are `ORDER BY id LIMIT 1` it blocks every dive behind
+    it. That is prod dive 347's shape, and the baseline gate made it reachable
+    for eight more dives at once.
+
+    **Scoped by time, not by a flag.** The refusal is ignored the moment any
+    laser or slate label on the dive is newer than the labels the refused fit
+    was computed from, so relabelling brings the dive back with nobody
+    remembering to clear anything. A bare boolean would instead become a
+    permanent exclusion that outlives the problem — the failure this is most
+    likely to be "simplified" into later.
+
+    **The comparison is against `calibration_refused_labels_at`, NOT
+    `calibration_refused_at`, and mixing those up is a silent data-loss bug.**
+    Label timestamps come from Label Studio; `calibration_refused_at` is the
+    API's own wall clock. Comparing across the two clocks means a labeler who
+    fixes a dive at 10:20 and is synced at 11:00 loses to a 10:50 refusal —
+    their corrected label reads as older, and the dive stays excluded forever.
+    That window is ~50 minutes of every hour, and it is exactly when someone
+    responding to a wedged dive works. Storing the max label timestamp at
+    refusal time keeps both sides in Label Studio's clock.
+
+    A NULL `calibration_refused_labels_at` means the dive had no labels when it
+    was refused, so any label at all is newer — which is why the comparison is
+    `IS NULL OR updated_at > it` rather than a bare `>` that NULL would make
+    unknown, and therefore false, and therefore permanent.
+
+    Both label kinds are checked because they are the two human inputs either
+    producer consumes: the laser dot for both, and the slate's reference points
+    for stage 13. The board itself is detected at run time and has no label to
+    watch, which is why a checkerboard dive that needs *different frames*
+    rather than better labels stays refused until an operator acts — correctly,
+    since nothing about it has changed.
+    """
+    fitted_from = Dive.calibration_refused_labels_at
+    newer_laser = (
+        select(LaserLabel.id)
+        .join(Image, Image.id == LaserLabel.image_id)
+        .where(Image.dive_id == Dive.id)
+        .where(or_(fitted_from == None, LaserLabel.updated_at > fitted_from))
+        .correlate(Dive)
+        .exists()
+    )
+    newer_slate = (
+        select(DiveSlateLabel.id)
+        .join(Image, Image.id == DiveSlateLabel.image_id)
+        .where(Image.dive_id == Dive.id)
+        .where(or_(fitted_from == None, DiveSlateLabel.updated_at > fitted_from))
+        .correlate(Dive)
+        .exists()
+    )
+    return and_(
+        Dive.calibration_refused_at != None,
+        ~or_(newer_laser, newer_slate),
+    )
+
+
 def _reentry_last(implausible: set[int]):
     """Sort key putting known-broken dives after everything else.
 
@@ -847,6 +910,9 @@ async def select_next_for_laser_calibration(
         # The slate link and the observation floor together — shared with the
         # checkerboard cohort, which excludes exactly this.
         .where(_stage_13_can_calibrate())
+        # A refused dive leaves the cohort until its labels change — see
+        # `_calibration_refusal_still_stands`.
+        .where(~_calibration_refusal_still_stands())
         # Re-entry candidates last. This selector is `ORDER BY id LIMIT 1`, so
         # a dive that refits to the same bad baseline and is refused again
         # would head-of-line block every healthy dive behind it — the dive-347
@@ -907,11 +973,15 @@ async def select_next_for_checkerboard_laser_calibration(
     tell whether `findChessboardCornersSB` will actually find a board in these
     frames — that needs the raw bytes, a rectification and a detector run. A
     dive linked to a target whose frames never detect one is therefore offered
-    here, refused by the activity, and re-selected every hour, blocking every
-    higher-id dive behind it (this is ORDER BY id LIMIT 1, the shape that let
-    prod dive 347 hold up 427 and 436). The remedy is operator-side and
-    deliberate: clear the link (`DELETE /dives/{id}/calibration-target/`) or
-    park the dive at `Priority.NONE` with a note. Both drop it immediately.
+    here and refused by the activity.
+
+    **It is no longer re-selected forever.** The activity records the refusal
+    on the dive and `_calibration_refusal_still_stands` excludes it until its
+    labels are newer than the ones that fit was computed from — so it costs one
+    attempt, not one per hour, and it cannot hold up higher-id dives the way
+    prod dive 347 held up 427 and 436. An operator can still force a retry with
+    `DELETE /dives/{id}/calibration-refused/`, drop the dive entirely with
+    `DELETE /dives/{id}/calibration-target/`, or park it at `Priority.NONE`.
     """
     usable_observation_count = (
         select(func.count(Image.id))  # pylint: disable=not-callable
@@ -943,6 +1013,9 @@ async def select_next_for_checkerboard_laser_calibration(
         # cohorts partition instead of racing.
         .where(~_stage_13_can_calibrate())
         .where(usable_observation_count >= MIN_SLATE_LASER_POINTS)
+        # A refused dive leaves the cohort until its labels change — see
+        # `_calibration_refusal_still_stands`.
+        .where(~_calibration_refusal_still_stands())
         # Known-broken dives last, so a repeat refusal cannot head-of-line
         # block a healthy dive behind it.
         .order_by(_reentry_last(implausible), Dive.id)

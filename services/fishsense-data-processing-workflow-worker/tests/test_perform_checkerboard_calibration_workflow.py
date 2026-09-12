@@ -21,6 +21,7 @@ from fishsense_shared import (
     PerformCheckerboardCalibrationInput,
 )
 from temporalio import activity
+from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment, WorkflowEnvironment
 from temporalio.worker import Worker
 
@@ -211,7 +212,9 @@ async def test_fit_refuses_below_the_shared_threshold():
         [_observation(100, [0.0, 0.0, 1.4]), _observation(101, None)]
     )
 
-    with pytest.raises(ValueError, match="insufficient checkerboard laser points"):
+    with pytest.raises(
+        ApplicationError, match="insufficient checkerboard laser points"
+    ):
         await ActivityEnvironment().run(
             fit_module.fit_checkerboard_laser_extrinsics, payload
         )
@@ -359,7 +362,7 @@ async def test_the_refusal_says_why_the_frames_went():
         ]
     )
 
-    with pytest.raises(ValueError, match="dot_off_board"):
+    with pytest.raises(ApplicationError, match="dot_off_board"):
         await ActivityEnvironment().run(
             fit_module.fit_checkerboard_laser_extrinsics, payload
         )

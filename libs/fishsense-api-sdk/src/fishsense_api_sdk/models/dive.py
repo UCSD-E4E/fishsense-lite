@@ -41,3 +41,13 @@ class Dive(ModelBase):
     # not one of the `DiveSlate` templates. Defaulted for the same
     # newly-added-column reason as the two fields above.
     calibration_target_id: int | None = None
+    # When a calibration fit was last refused for this dive, and why. Written
+    # only for DETERMINISTIC refusals, so the dive leaves the calibration
+    # cohort instead of being re-selected hourly forever. Defaulted for the
+    # same newly-added-column reason as the fields above.
+    calibration_refused_at: datetime | None = None
+    calibration_refused_reason: str | None = None
+    # The newest label timestamp the refused fit was computed from. Expiry
+    # compares this rather than `calibration_refused_at`, so both sides stay in
+    # Label Studio's clock — see the api model for why mixing them loses fixes.
+    calibration_refused_labels_at: datetime | None = None

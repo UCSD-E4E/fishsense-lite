@@ -99,6 +99,9 @@ def _make_fs(
     fs.dives = MagicMock()
     fs.dives.get = AsyncMock(return_value=dive)
     fs.dives.put_laser_extrinsics = AsyncMock(return_value=999)
+    # Deterministic refusals record themselves so the dive leaves the cohort
+    # rather than being re-selected hourly forever.
+    fs.dives.set_calibration_refused = AsyncMock(return_value=dive.id)
 
     fs.dive_slates = MagicMock()
     fs.dive_slates.get = AsyncMock(return_value=slates)
@@ -232,7 +235,7 @@ async def test_raises_when_too_few_usable_laser_points(monkeypatch):
     fs = _make_fs(dive, [slate], labels, lasers, intrinsics)
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
 
-    with pytest.raises(ValueError, match="insufficient laser points"):
+    with pytest.raises(ApplicationError, match="insufficient laser points"):
         await ActivityEnvironment().run(
             sut.perform_laser_calibration_activity, 42
         )
