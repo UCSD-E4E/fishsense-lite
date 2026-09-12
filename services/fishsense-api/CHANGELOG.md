@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [3.4.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v3.3.1...fishsense-api-v3.4.0) (2026-09-12)
+
+
+### Features
+
+* an implausible calibration counts as no calibration ([#877](https://github.com/UCSD-E4E/fishsense-lite/issues/877)) ([44011e4](https://github.com/UCSD-E4E/fishsense-lite/commit/44011e489d4c16a7320cd98e0080632a239a0ab6))
+
 ## [3.3.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v3.3.0...fishsense-api-v3.3.1) (2026-09-10)
 
 
