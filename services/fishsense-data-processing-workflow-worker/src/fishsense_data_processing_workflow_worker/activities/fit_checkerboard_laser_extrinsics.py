@@ -25,12 +25,16 @@ from fishsense_api_sdk.models.laser_extrinsics import LaserExtrinsics
 from fishsense_core.laser import calibrate_laser as _calibrate_laser
 from fishsense_shared import CheckerboardObservation
 from temporalio import activity
+from temporalio.exceptions import ApplicationError
 
 from fishsense_data_processing_workflow_worker.activities.perform_laser_calibration_activity import (  # noqa: E501  pylint: disable=line-too-long
     MIN_LASER_POINTS,
 )
 from fishsense_data_processing_workflow_worker.activities.utils import get_fs_client
 from fishsense_data_processing_workflow_worker.calibration_consistency import (
+    CalibrationImplausibleError,
+    CalibrationInconsistentError,
+    check_baseline_plausible,
     check_fit_self_consistency,
 )
 
@@ -109,12 +113,31 @@ async def fit_checkerboard_laser_extrinsics(payload) -> int:
     laser_position = np.array([float(origin[0]), float(origin[1]), 0.0], dtype=float)
     laser_axis = np.asarray(orientation, dtype=float)
 
-    check_fit_self_consistency(
-        laser_position,
-        laser_axis,
-        np.array(payload.camera_matrix, dtype=float),
-        np.array(dots, dtype=float),
-    )
+    # Both gates are deterministic functions of the observations this run was
+    # dispatched with, so a refusal cannot come good on a retry. Left as plain
+    # `ValueError`s Temporal reschedules them until the child's 2 h execution
+    # timeout, holding the parent, keeping the dive's raw scratch alive and
+    # skipping two hourly firings — all to re-derive the same answer. Marked
+    # non-retryable they fail the child in one attempt.
+    #
+    # The baseline gate is the one that sees this producer's failure mode: six
+    # of its calibrations fitted baselines of 2.35 to 22.22 cm against a fleet
+    # constant of ~10.4 cm, and the self-consistency check passed every one,
+    # because a wrong offset does not move the ray's projection.
+    try:
+        check_fit_self_consistency(
+            laser_position,
+            laser_axis,
+            np.array(payload.camera_matrix, dtype=float),
+            np.array(dots, dtype=float),
+        )
+        check_baseline_plausible(laser_position)
+    except (CalibrationInconsistentError, CalibrationImplausibleError) as exc:
+        raise ApplicationError(
+            f"dive_id={payload.dive_id}: {exc}",
+            type=type(exc).__name__,
+            non_retryable=True,
+        ) from exc
 
     async with get_fs_client() as fs:
         return await fs.dives.put_laser_extrinsics(

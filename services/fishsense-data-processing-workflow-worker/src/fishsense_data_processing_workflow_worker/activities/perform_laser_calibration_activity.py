@@ -29,9 +29,13 @@ from fishsense_api_sdk.models.laser_extrinsics import LaserExtrinsics
 from fishsense_api_sdk.models.laser_label import LaserLabel
 from fishsense_core.laser import calibrate_laser as _calibrate_laser
 from temporalio import activity
+from temporalio.exceptions import ApplicationError
 
 from fishsense_data_processing_workflow_worker.activities.utils import get_fs_client
 from fishsense_data_processing_workflow_worker.calibration_consistency import (
+    CalibrationImplausibleError,
+    CalibrationInconsistentError,
+    check_baseline_plausible,
     check_fit_self_consistency,
 )
 from fishsense_data_processing_workflow_worker.calibration_geometry import (
@@ -223,12 +227,31 @@ async def perform_laser_calibration_activity(dive_id: int) -> int | None:
         # mixed dot populations (specular-reflection mislabels, prod dive 77)
         # or corrupt slate poses otherwise ship a calibration whose length
         # errors reach +137% downstream.
-        check_fit_self_consistency(
-            laser_position,
-            laser_axis,
-            camera_intrinsics.camera_matrix,
-            np.array(laser_dots, dtype=float),
-        )
+        # The baseline gate is not redundant with the check above: that one
+        # compares the ray's *projection* to the dots and is structurally blind
+        # to the laser's offset, because sliding the offset leaves the
+        # projection identical. Two of the eight implausible fits found on
+        # 2026-09-11 came from this slate path, so it is gated here too.
+        #
+        # Both refusals are deterministic in this run's observations, so a
+        # retry re-derives the same answer. Non-retryable keeps Temporal from
+        # rescheduling them until the child's execution timeout — which for
+        # this activity would also repeat the whole `_gather_laser_points` SDK
+        # and PnP pass on every attempt.
+        try:
+            check_fit_self_consistency(
+                laser_position,
+                laser_axis,
+                camera_intrinsics.camera_matrix,
+                np.array(laser_dots, dtype=float),
+            )
+            check_baseline_plausible(laser_position)
+        except (CalibrationInconsistentError, CalibrationImplausibleError) as exc:
+            raise ApplicationError(
+                f"dive_id={dive_id}: {exc}",
+                type=type(exc).__name__,
+                non_retryable=True,
+            ) from exc
 
         new_le = LaserExtrinsics(
             laser_position=laser_position,

@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
 import pytest
+from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment
 
 from fishsense_api_sdk.models.camera_intrinsics import CameraIntrinsics
@@ -312,11 +313,19 @@ async def test_reflection_contaminated_scene_is_rejected_not_persisted(monkeypat
     fs = _make_fs(dive, [slate], labels, lasers, intrinsics)
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
 
-    with pytest.raises(CalibrationInconsistentError):
+    # Surfaced as a non-retryable `ApplicationError` rather than the raw
+    # `CalibrationInconsistentError`: the refusal is a deterministic function
+    # of this run's observations, so retrying only re-derives it, and Temporal
+    # would reschedule until the child's execution timeout while holding the
+    # parent and the dive's staged scratch. The original type is preserved on
+    # the error so the log still says which gate fired.
+    with pytest.raises(ApplicationError) as excinfo:
         await ActivityEnvironment().run(
             sut.perform_laser_calibration_activity, 42
         )
 
+    assert excinfo.value.non_retryable
+    assert excinfo.value.type == CalibrationInconsistentError.__name__
     fs.dives.put_laser_extrinsics.assert_not_called()
 
 
