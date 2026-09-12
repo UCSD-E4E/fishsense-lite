@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.22.0...fishsense-shared-v0.23.0) (2026-09-12)
+
+
+### Features
+
+* an implausible calibration counts as no calibration ([#877](https://github.com/UCSD-E4E/fishsense-lite/issues/877)) ([44011e4](https://github.com/UCSD-E4E/fishsense-lite/commit/44011e489d4c16a7320cd98e0080632a239a0ab6))
+
 ## [0.22.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.21.0...fishsense-shared-v0.22.0) (2026-09-11)
 
 
