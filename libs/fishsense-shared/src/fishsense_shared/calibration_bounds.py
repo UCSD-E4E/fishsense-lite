@@ -43,16 +43,23 @@ __all__ = [
 #: Bounds on the baseline, in metres.
 #:
 #: **Placed midway between the populations, not hard against the healthy one.**
-#: Healthy extremes are 8.90 and 12.95 cm; the nearest bad fits are 6.91 and
-#: 16.01 cm. A first draft used 8-13 cm, which left half a millimetre of
-#: headroom above the widest sound calibration while sitting 3 cm clear of the
-#: nearest bad one -- so ordinary variation or a 2% pitch error would have been
-#: refused, and a refusal is expensive (it wedges the dive in its cohort).
+#: The floor moved from 7.8 to 9.7 cm on 2026-09-12. Two fits inside the old
+#: bound, 8.90 cm (dive 502, borrowed by 503/504) and 9.51 cm (dive 498), had
+#: been called healthy on the strength of a ~-1 % median length error. The
+#: range trend of a rigid target showed why the median lied: -14 to -18 % at
+#: 0.8 m rising to ~0 at 4 m -- the short baseline's flat scale error and a
+#: compensating angle error cancel exactly where the median and p90 sit. Sound
+#: calibrations (10.3-10.5 cm) are flat across range to within 1 %. So the
+#: nearest bad fit below is now 9.51 and the smallest sound one 9.87 (dive 94);
+#: 9.7 sits between them. Above, healthy 12.95 and bad 16.01 are unchanged.
 #:
-#: **Widen only against re-measured data.** A wrong baseline is the one error
-#: the rest of the pipeline provably cannot see: it scales every depth, hence
-#: every length, while reprojection residual and self-consistency stay clean.
-MIN_BASELINE_M = 0.078
+#: **Widen only against re-measured data**, and measure with the range trend
+#: (`range_trend.py` in the data-worker), not the median: a wrong baseline is
+#: the one error the rest of the pipeline provably cannot see. It scales every
+#: depth, hence every length, while reprojection residual and self-consistency
+#: stay clean -- and, as above, a compensating angle error can hide it from a
+#: known-length median too.
+MIN_BASELINE_M = 0.097
 MAX_BASELINE_M = 0.145
 
 

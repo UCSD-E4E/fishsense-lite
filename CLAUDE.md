@@ -601,8 +601,9 @@ OpenCV returned five different grids over six frames of it.
 ### The baseline gate — the only check that sees a wrong laser offset
 
 **Added 2026-09-11.** `check_baseline_plausible` in `calibration_consistency.py`
-refuses a fit whose laser offset falls outside **7.8–14.5 cm**. Both producers
-call it before persisting: stage 13's slate fit and the checkerboard fit.
+refuses a fit whose laser offset falls outside **9.7–14.5 cm** (floor raised from
+7.8 on 2026-09-12, see below). Both producers call it before persisting: stage
+13's slate fit and the checkerboard fit.
 
 **The baseline is a rig constant, which is what makes it checkable.** Over all
 35 stored calibrations the interquartile range is **9.99–10.45 cm** — half a
@@ -636,9 +637,22 @@ see. **Robust fitting is the open follow-up**; the bound is the backstop.
 Three things about it:
 
 * **Bounds sit midway between the populations, not against the healthy one.**
-  Healthy extremes 8.90 and 12.95; nearest bad 6.91 and 16.01. A draft used
-  8–13, leaving 0.5 mm of headroom above the widest sound fit — ordinary
-  variation or a 2% pitch error would be refused.
+  Healthy extremes 9.87 and 12.95; nearest bad 9.51 and 16.01. A draft used
+  8–13, leaving 0.5 mm of headroom above the widest fit then thought sound —
+  ordinary variation or a 2% pitch error would be refused.
+* **The floor was 7.8 until 2026-09-12, and the two fits it wrongly admitted
+  are the reason it moved.** 8.90 cm (dive 502, borrowed by 503/504) and
+  9.51 cm (dive 498) graded −1.1 % and −1.3 % on median length error, and an
+  earlier version of this section concluded "an 8 % baseline error buys a 1 %
+  length error". The range trend of a rigid target (`range_trend.py`) showed
+  the median was cancelling a ramp: −14 to −18 % at 0.8 m rising to ~0 at 4 m,
+  a short baseline's flat scale error plus a compensating angle error. Sound
+  calibrations are flat across range to within 1 %. **A median against a known
+  length is not a calibration check**; the range trend is, and it needs no
+  known length. Dives 498 and 502 now read as uncalibrated to the api
+  (`is_plausible_baseline`), so 498, 502, 503 and 504 re-enter the
+  calibration cohorts and will be refused again by the same fit — park them
+  or wait for the robust fit.
 * **A refusal wedges the dive, deliberately.** Both cohorts select on "no
   `LaserExtrinsics` row", so a refused dive is re-selected hourly, re-staging
   its `.ORF`s, and `ORDER BY id LIMIT 1` blocks higher-id dives behind it —
