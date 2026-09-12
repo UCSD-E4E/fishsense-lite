@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [2.5.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.4.4...fishsense-api-workflow-worker-v2.5.0) (2026-09-11)
+
+
+### Features
+
+* human verification of checkerboard lattices ([#870](https://github.com/UCSD-E4E/fishsense-lite/issues/870)) ([3753639](https://github.com/UCSD-E4E/fishsense-lite/commit/3753639544a37737eed0b2a9e18cc977333c453f))
+
 ## [2.4.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.4.3...fishsense-api-workflow-worker-v2.4.4) (2026-09-10)
 
 
