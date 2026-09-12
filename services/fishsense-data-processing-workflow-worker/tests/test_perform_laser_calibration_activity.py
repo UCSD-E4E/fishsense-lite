@@ -355,9 +355,22 @@ def test_drop_skipped_rejects_duplicate_and_out_of_range():
         sut._drop_skipped(list("abcdef"), [-1])
 
 
-def test_laser_point_raises_when_reference_count_mismatches_template():
-    """A labeled point count that disagrees with (template - skipped) must fail
-    loudly rather than mis-pair solvePnP correspondences."""
+def test_laser_point_skips_when_reference_count_mismatches_template():
+    """A labeled point count that disagrees with (template - skipped) must not
+    mis-pair solvePnP correspondences -- but it must cost only that *label*.
+
+    This used to raise, which escaped `_gather_laser_points`' `is not None`
+    skip and failed the whole dive. Prod dive 526 carries 17 completed slate
+    labels of which 2 hold a JSON `null` for `reference_points`; those 2
+    discarded the 15 good observations and the dive never calibrated. Worse,
+    the bare `ValueError` bypassed `_record_refusal`, so the dive stayed in the
+    cohort and blocked it -- 10 consecutive hourly failures on 2026-09-12.
+
+    Returning None keeps the pairing guarantee (nothing mis-paired) and routes
+    the starved case into the existing `MIN_LASER_POINTS` refusal, which does
+    record itself. See `test_mismatched_labels_are_skipped_not_fatal` for the
+    dive-level behaviour.
+    """
     slate = _slate()  # 6 template points
     label = DiveSlateLabel(
         id=1,
@@ -390,5 +403,118 @@ def test_laser_point_raises_when_reference_count_mismatches_template():
         image_id=1,
         user_id=None,
     )
-    with pytest.raises(ValueError):
+    assert (
         sut._laser_point_in_camera_space(label, laser, slate, _camera_intrinsics())
+        is None
+    )
+
+
+def test_laser_point_skips_label_with_null_reference_points():
+    """The prod dive 526 shape: `reference_points` is a JSON `null`, so the
+    label contributes 0 points against a 6-point template."""
+    slate = _slate()
+    label = DiveSlateLabel(
+        id=1,
+        label_studio_task_id=1,
+        label_studio_project_id=66,
+        image_url=None,
+        upside_down=False,
+        reference_points=None,
+        slate_rectangle=None,
+        skipped_points=None,
+        updated_at=None,
+        completed=True,
+        superseded=False,
+        label_studio_json=None,
+        image_id=1,
+        user_id=None,
+    )
+    laser = LaserLabel(
+        id=1,
+        label_studio_task_id=1,
+        label_studio_project_id=73,
+        x=100.0,
+        y=100.0,
+        label="laser",
+        updated_at=None,
+        superseded=False,
+        completed=True,
+        label_studio_json=None,
+        image_id=1,
+        user_id=None,
+    )
+    assert (
+        sut._laser_point_in_camera_space(label, laser, slate, _camera_intrinsics())
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_mismatched_labels_are_skipped_not_fatal(monkeypatch):
+    """Dive 526 regression: 2 of 8 labels carry a JSON `null` for
+    `reference_points`, and the remaining 6 still recover the known extrinsics.
+
+    Before the fix this raised out of `_gather_laser_points` and failed the
+    dive, discarding 6 perfectly good observations.
+    """
+    laser_origin = np.array([-0.03, -0.10, 0.0])
+    laser_axis = np.array([0.005, -0.02, 1.0])
+    laser_axis = laser_axis / np.linalg.norm(laser_axis)
+
+    dive = _dive()
+    slate, intrinsics, labels, lasers = _build_synthetic_scene(
+        n_observations=8,
+        laser_origin_world=laser_origin,
+        laser_axis_world=laser_axis,
+        slate_distances=[0.40, 0.55, 0.70, 0.85, 1.00, 1.15, 1.30, 1.45],
+    )
+    # The two 526-shaped labels. Their laser labels stay perfectly good, which
+    # is the point: the dot is fine, only the slate corners are missing.
+    labels[2].reference_points = None
+    labels[5].reference_points = None
+
+    fs = _make_fs(dive, [slate], labels, lasers, intrinsics)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(sut.perform_laser_calibration_activity, 42)
+
+    assert result == 999
+    fs.dives.put_laser_extrinsics.assert_awaited_once()
+    fs.dives.set_calibration_refused.assert_not_called()
+
+    _, written_le = fs.dives.put_laser_extrinsics.call_args[0]
+    fitted_axis = np.asarray(written_le.laser_axis, dtype=float)
+    fitted_axis = fitted_axis / np.linalg.norm(fitted_axis)
+    cos = float(np.clip(np.dot(fitted_axis, laser_axis), -1.0, 1.0))
+    assert float(np.degrees(np.arccos(abs(cos)))) < 0.5
+
+    fitted_pos = np.asarray(written_le.laser_position, dtype=float)
+    assert float(np.linalg.norm(fitted_pos[:2] - laser_origin[:2])) < 0.001
+
+
+@pytest.mark.asyncio
+async def test_mismatched_labels_that_starve_the_dive_record_a_refusal(monkeypatch):
+    """Skipping must not silently wedge the cohort either.
+
+    When the surviving observations fall below `MIN_LASER_POINTS`, the existing
+    refusal path is what fires -- and unlike the old bare `ValueError`, it
+    records itself so the dive leaves the cohort.
+    """
+    dive = _dive()
+    slate, intrinsics, labels, lasers = _build_synthetic_scene(
+        n_observations=3,
+        laser_origin_world=np.array([-0.03, -0.10, 0.0]),
+        laser_axis_world=np.array([0.0, 0.0, 1.0]),
+        slate_distances=[0.5, 0.7, 0.9],
+    )
+    labels[1].reference_points = None
+    labels[2].reference_points = None
+
+    fs = _make_fs(dive, [slate], labels, lasers, intrinsics)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    with pytest.raises(ApplicationError, match="insufficient laser points"):
+        await ActivityEnvironment().run(sut.perform_laser_calibration_activity, 42)
+
+    fs.dives.put_laser_extrinsics.assert_not_called()
+    fs.dives.set_calibration_refused.assert_awaited_once()
