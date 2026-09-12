@@ -21,6 +21,7 @@ Pure numpy — no cv2 — so it is unit-testable everywhere.
 from __future__ import annotations
 
 import numpy as np
+from fishsense_shared.calibration_bounds import MAX_BASELINE_M, MIN_BASELINE_M
 
 __all__ = [
     "CalibrationImplausibleError",
@@ -58,23 +59,16 @@ __all__ = [
 # slate-derived**, which is why this lives here beside the shared gate and not
 # in the checkerboard path.
 
-#: Bounds on `norm(laser_position[:2])`, in metres.
+#: Re-exported from `fishsense_shared.calibration_bounds`, which owns them.
 #:
-#: **Placed midway between the populations, not hard against the healthy one.**
-#: The healthy extremes are 8.90 and 12.95 cm; the nearest bad fits are 6.91
-#: and 16.01 cm. An earlier draft used 8-13 cm, which left half a millimetre of
-#: headroom above the widest sound calibration while sitting 3 cm clear of the
-#: nearest bad one — so ordinary variation, a slightly different rig, or a 2%
-#: pitch error would be refused, and a refusal here is expensive (see below).
-#: Centring costs nothing in separation because the gap is wide.
-#:
-#: **Widen further only against re-measured data.** A wrong baseline is the one
-#: error the rest of the pipeline provably cannot see: it scales every depth,
-#: hence every length, while reprojection residual and self-consistency both
-#: stay clean. Loosening the bound to admit a dive that "nearly passes" trades
-#: a loud refusal for silent wrong lengths.
-DEFAULT_MIN_BASELINE_M = 0.078
-DEFAULT_MAX_BASELINE_M = 0.145
+#: The api needs the identical numbers — it excludes an already-stored
+#: implausible calibration from counting as a calibration at all, so the dive
+#: re-enters the calibration cohorts instead of being measured against a fit we
+#: know is wrong. Two copies would be the drift this repo keeps rediscovering,
+#: and here disagreement is especially quiet: the api would hand a dive back
+#: for recalibration that this module then persists unchanged, hourly, forever.
+DEFAULT_MIN_BASELINE_M = MIN_BASELINE_M
+DEFAULT_MAX_BASELINE_M = MAX_BASELINE_M
 
 
 class CalibrationImplausibleError(ValueError):

@@ -12,6 +12,7 @@ from typing import List
 
 from fastapi import Body, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
+from fishsense_shared.calibration_bounds import baseline_m, is_plausible_baseline
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -250,6 +251,42 @@ def _latest_extrinsics_query(dive_id: int):
     )
 
 
+async def _plausible_extrinsics(session, dive_id: int) -> LaserExtrinsics | None:
+    """The dive's own calibration, or None when it is one we know is wrong.
+
+    **An implausible baseline counts as no calibration, everywhere.** Eight of
+    the 35 stored calibrations fitted a laser offset outside
+    `MIN_BASELINE_M`..`MAX_BASELINE_M` -- 2.35 to 22.22 cm against a fleet whose
+    interquartile range is 9.99-10.45 cm -- and they back 663 of 3,104
+    measurements at -75% to +45% error. `check_baseline_plausible` now stops
+    new ones, but it is write-time only, so without this the stored eight keep
+    resolving and stage 14 keeps measuring against them forever: both
+    calibration cohorts skip a dive that *has* a row, so nothing would ever
+    refit them.
+
+    Filtered here rather than in SQL deliberately. The predicate is
+    `norm(laser_position[:2])` over a JSON column, and the api's tests run on
+    SQLite while prod is Postgres -- the same split that stopped
+    `dive_pipeline_status` porting `is_measurable` exactly. There are 35
+    calibration rows in the whole database, so reading one and testing it in
+    Python is exact, costs nothing, and cannot drift from the data-worker's
+    gate the way a hand-ported SQL approximation would.
+    """
+    extrinsics = (await session.exec(_latest_extrinsics_query(dive_id))).first()
+    if extrinsics is None:
+        return None
+    if not is_plausible_baseline(extrinsics.laser_position):
+        logger.warning(
+            "dive id=%d has a stored calibration with an implausible baseline "
+            "(%.2f cm); treating it as uncalibrated so it re-enters the "
+            "calibration cohort instead of measuring against it",
+            dive_id,
+            baseline_m(extrinsics.laser_position) * 100,
+        )
+        return None
+    return extrinsics
+
+
 @app.get("/api/v1/dives/{dive_id}/laser-extrinsics/")
 async def get_laser_extrinsics_for_dive(
     dive_id: int, session: AsyncSession = Depends(get_async_session)
@@ -266,7 +303,7 @@ async def get_laser_extrinsics_for_dive(
     """
     logger.debug("Retrieving laser extrinsics for dive with id=%d", dive_id)
 
-    laser_extrinsics = (await session.exec(_latest_extrinsics_query(dive_id))).first()
+    laser_extrinsics = await _plausible_extrinsics(session, dive_id)
 
     if laser_extrinsics is None:
         dive = await session.get(Dive, dive_id)
@@ -277,9 +314,13 @@ async def get_laser_extrinsics_for_dive(
                 dive_id,
                 dive.calibration_dive_id,
             )
-            laser_extrinsics = (
-                await session.exec(_latest_extrinsics_query(dive.calibration_dive_id))
-            ).first()
+            # Borrowed calibrations get the same test. A dive borrowing a
+            # known-wrong fit is the worst case, not a lesser one: the 2.60 cm
+            # calibration on dive 518 was borrowed by two others, so one bad
+            # fit became three dives of wrong lengths.
+            laser_extrinsics = await _plausible_extrinsics(
+                session, dive.calibration_dive_id
+            )
 
     if laser_extrinsics is None:
         logger.warning("Laser extrinsics for dive with id=%d not found", dive_id)
