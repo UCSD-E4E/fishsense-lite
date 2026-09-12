@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.23.0...fishsense-shared-v0.23.1) (2026-09-12)
+
+
+### Bug Fixes
+
+* **shared:** raise the baseline floor to 9.7 cm -- 8.90 and 9.51 were not sound ([#894](https://github.com/UCSD-E4E/fishsense-lite/issues/894)) ([d21a383](https://github.com/UCSD-E4E/fishsense-lite/commit/d21a3832ebd2b8bed6e59fa3ad3b80f3d6175715))
+
 ## [0.23.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.22.0...fishsense-shared-v0.23.0) (2026-09-12)
 
 
