@@ -37,6 +37,9 @@ from fishsense_data_processing_workflow_worker.calibration_consistency import (
     check_baseline_plausible,
     check_fit_self_consistency,
 )
+from fishsense_data_processing_workflow_worker.robust_laser_fit import (
+    trim_outlying_observations,
+)
 
 __all__ = ["fit_checkerboard_laser_extrinsics"]
 
@@ -107,7 +110,18 @@ async def fit_checkerboard_laser_extrinsics(payload) -> int:
             f"{dict(sorted(skipped.items()))}"
         )
 
-    origin, orientation = _calibrate_laser(np.array(points).astype(np.float32))
+    # Same trim as stage 13, for the same reason: `calibrate_laser` has no
+    # outlier rejection, and the z=0 crossing it reports levers a small angular
+    # error into a large baseline error.
+    fitted_points = trim_outlying_observations(np.array(points))
+    if len(fitted_points) < len(points):
+        activity.logger.info(
+            "dive_id=%d: trimmed %d of %d checkerboard observations as outliers",
+            payload.dive_id,
+            len(points) - len(fitted_points),
+            len(points),
+        )
+    origin, orientation = _calibrate_laser(fitted_points.astype(np.float32))
     # Rust kernel returns origin with z=0 implicit; pad to a 3-vector to match
     # the LaserExtrinsics SDK surface. Same as stage 13.
     laser_position = np.array([float(origin[0]), float(origin[1]), 0.0], dtype=float)

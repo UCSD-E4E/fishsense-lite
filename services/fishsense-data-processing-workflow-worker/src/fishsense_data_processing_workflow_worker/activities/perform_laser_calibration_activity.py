@@ -38,6 +38,9 @@ from fishsense_data_processing_workflow_worker.calibration_consistency import (
     check_baseline_plausible,
     check_fit_self_consistency,
 )
+from fishsense_data_processing_workflow_worker.robust_laser_fit import (
+    trim_outlying_observations,
+)
 from fishsense_data_processing_workflow_worker.calibration_geometry import (
     laser_point_on_plane,
     plane_from_correspondences,
@@ -212,9 +215,21 @@ async def perform_laser_calibration_activity(dive_id: int) -> int | None:
                 f"({len(laser_points)} < {MIN_LASER_POINTS})"
             )
 
-        origin, orientation = _calibrate_laser(
-            np.array(laser_points).astype(np.float32)
-        )
+        # Drop observations that disagree with the ray before fitting.
+        # `calibrate_laser` is plain least squares, so one badly-placed dot
+        # drags the line — and because the fit reports the z=0 crossing, a
+        # metre or more behind the observations, a small angular error is
+        # levered into a large baseline error. Dive 103's 6.25 cm baseline came
+        # from 17 otherwise clean observations.
+        fitted_points = trim_outlying_observations(np.array(laser_points))
+        if len(fitted_points) < len(laser_points):
+            activity.logger.info(
+                "dive_id=%d: trimmed %d of %d laser observations as outliers",
+                dive_id,
+                len(laser_points) - len(fitted_points),
+                len(laser_points),
+            )
+        origin, orientation = _calibrate_laser(fitted_points.astype(np.float32))
         # Rust kernel returns origin with z=0 implicit; pad to a 3-vector
         # to match the LaserExtrinsics SDK surface.
         laser_position = np.array(
