@@ -3,8 +3,9 @@
 The baseline is the offset between camera and laser on one rig — hardware, not
 a property of a dive. Over all 35 stored calibrations its interquartile range
 is 9.99-10.45 cm, half a centimetre across both producers, every camera and two
-years. Eight fits sit outside 7.8-14.5 cm and back 663 of 3,104 measurements at
--75% to +45% error.
+years. Eight fits sit outside 9.7-14.5 cm and back 663 of 3,104 measurements at
+-75% to +45% error, and two more (8.90, 9.51 cm) hide a -14 to -18 % close-range
+error behind a flat-looking median.
 
 Two services read these numbers: the data-worker refuses to persist a fit
 outside them, and the api stops an already-stored one outside them from
@@ -69,20 +70,24 @@ def test_infinite_input_is_not_plausible():
     assert not is_plausible_baseline([float("inf"), 0.0])
 
 
-@pytest.mark.parametrize("baseline_cm", [8.90, 9.51, 10.12, 10.36, 10.45, 12.95])
+@pytest.mark.parametrize("baseline_cm", [9.87, 10.12, 10.36, 10.45, 12.95])
 def test_accepts_the_baselines_the_fleet_actually_produces(baseline_cm):
-    """Measured values from calibrations whose lengths grade within -12.7%."""
+    """Measured values from calibrations whose lengths hold flat across range."""
     assert is_plausible_baseline([baseline_cm / 100, 0.0, 0.0])
 
 
 @pytest.mark.parametrize(
-    "baseline_cm", [2.35, 2.60, 4.81, 4.90, 6.25, 6.91, 16.01, 22.22]
+    "baseline_cm", [2.35, 2.60, 4.81, 4.90, 6.25, 6.91, 8.90, 9.51, 16.01, 22.22]
 )
 def test_refuses_the_baselines_that_produced_bad_lengths(baseline_cm):
-    """The eight known-bad fits, by their real measured baselines.
+    """The known-bad fits, by their real measured baselines.
 
-    Parametrised on the actual numbers so that widening the bounds far enough
-    to re-admit one fails the build.
+    8.90 and 9.51 cm were accepted until 2026-09-12. Their median length error
+    was ~-1 %, which looked fine, but the range trend of a rigid target showed
+    why: -14 to -18 % at 0.8 m rising to ~0 at 4 m -- a short baseline's flat
+    scale error and a compensating angle error that cancel where the median
+    sits. Parametrised on the actual numbers so that widening the bounds far
+    enough to re-admit one fails the build.
     """
     assert not is_plausible_baseline([baseline_cm / 100, 0.0, 0.0])
 
@@ -108,11 +113,12 @@ def test_bounds_bracket_the_measured_cluster():
     """The constants themselves, so widening them is a deliberate act.
 
     The fleet sits at 9.99-10.45 cm interquartile. The bounds must contain that
-    comfortably while still excluding 6.91 and 16.01 cm, the nearest bad fits
-    on each side — and sit nearer the midpoint than hard against the healthy
-    extremes, or ordinary variation gets refused.
+    comfortably while still excluding the nearest bad fits on each side —
+    9.51 cm below (dive 498, shown wrong by its range trend) and 16.01 cm
+    above — and sit nearer the midpoint than hard against the healthy
+    extremes (9.87 and 12.95 cm), or ordinary variation gets refused.
     """
-    assert MIN_BASELINE_M < 0.0890
-    assert MIN_BASELINE_M > 0.0691
+    assert MIN_BASELINE_M < 0.0987
+    assert MIN_BASELINE_M > 0.0951
     assert MAX_BASELINE_M > 0.1295
     assert MAX_BASELINE_M < 0.1601

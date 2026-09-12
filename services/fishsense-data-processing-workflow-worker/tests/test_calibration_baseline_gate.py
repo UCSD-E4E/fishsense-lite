@@ -42,7 +42,7 @@ def _position(baseline_m: float) -> np.ndarray:
     return np.array([baseline_m * 0.6, baseline_m * 0.8, 0.0])
 
 
-@pytest.mark.parametrize("baseline_cm", [8.90, 9.51, 10.12, 10.36, 10.45, 12.95])
+@pytest.mark.parametrize("baseline_cm", [9.87, 10.12, 10.36, 10.45, 12.95])
 def test_accepts_every_baseline_the_fleet_actually_produces(baseline_cm):
     """Real good fits must pass, or the gate is useless in practice.
 
@@ -101,10 +101,10 @@ def test_bounds_bracket_the_measured_fleet_cluster():
     """The constants themselves, so widening them is a deliberate act.
 
     The fleet sits at 9.99–10.45 cm interquartile. The bound must contain that
-    comfortably and still exclude 6.91 cm and 16.01 cm, the nearest bad fits on
+    comfortably and still exclude 9.51 cm and 16.01 cm, the nearest bad fits on
     each side.
     """
-    assert DEFAULT_MIN_BASELINE_M < 0.0899
-    assert DEFAULT_MIN_BASELINE_M > 0.0692
+    assert DEFAULT_MIN_BASELINE_M < 0.0987
+    assert DEFAULT_MIN_BASELINE_M > 0.0951
     assert DEFAULT_MAX_BASELINE_M > 0.1296
     assert DEFAULT_MAX_BASELINE_M < 0.1600
