@@ -671,6 +671,72 @@ against them. Remediation is an operator step: delete those rows (dives 103,
 Measurements and laser depths re-derive on their own afterwards, since both
 cohorts select on calibration *mismatch*.
 
+### Two more gates: does the fit describe its dive, and is it determined at all
+
+**Added 2026-09-13.** `calibration_consistency.py` gained
+`check_calibration_describes_dive` and `check_observation_geometry`, and both
+producers now call four gates in this order before persisting:
+
+```
+check_observation_geometry -> check_fit_self_consistency
+    -> check_baseline_plausible -> check_calibration_describes_dive
+```
+
+**Geometry first, because the projection gates abstain on exactly the
+degenerate geometry that most needs refusing.** That is the dive-347 shape:
+the fit came from ONE frame carrying a duplicate laser label at the identical
+pixel, so `check_fit_self_consistency` saw N=1 and returned, while
+`MIN_LASER_POINTS = 2` was satisfied by counting the duplicate. Nothing
+refused it and it measured the whole dive.
+
+**`check_observation_geometry` bounds the lever arm, not the count.** What
+determines the fitted ray's *direction* is the spread of the observations
+along it against the label noise: one pixel of dot noise at range z is z/f
+metres of lateral error, so it rotates the fit by about (z/f)/lever radians,
+and length is ~30 % per degree at 2 m. Two observations a metre apart
+determine the direction far better than sixteen at one range, which is why
+raising `MIN_LASER_POINTS` is the wrong lever (the baseline-gate section says
+the same thing for a different reason). `MIN_OBSERVATION_LEVER_M = 0.60`;
+measured over the 32 recoverable calibrations, 29 sit under 1 % length per px
+of label noise and the refusals are 347 (degenerate), 349 (0.26 m) and 107
+(0.06 m — previously filed in this file as a "healthy extreme" on its
+baseline alone, which it is not).
+
+**`check_calibration_describes_dive` is the only gate that looks outside the
+fit's own observations.** It projects the fitted ray and compares it against
+**every live laser dot in the dive**, including the measurement frames the
+calibration was never fitted to, at a median of 6 px and a p90 of 12 px. That
+is not tautological: it asks whether the laser was in the same state for the
+frames being measured as for the frames it was calibrated from — precisely
+what a mid-dive re-seat breaks (dive 490, where the board burst and the fish
+frames disagreed by 0.82°). Measured over all 32 stored calibrations, twenty
+sit at 0.43–0.88 px, six at 1.31–1.55, and the tail is 341/349 at 3.3–3.9,
+498 at 5.37 and 347 at 9.42. **It is blind to the baseline by construction** —
+sliding the offset along the family of rays sharing an image line leaves the
+projection identical, so five of the six known-bad baselines pass it. The two
+gates are complementary; neither subsumes the other.
+
+Consequences worth knowing:
+
+* **The checkerboard producer now makes an SDK call it did not before.** It
+  fetches the dive's laser labels *before* the `try`, so a transport failure
+  stays retryable instead of being recorded as a deterministic refusal.
+* **The gate abstains below `MIN_DIVE_DOTS = 6` usable dots**, so a dive whose
+  laser labelling has not landed yet is not refused for it.
+* **30 of the 32 stored calibrations pass all four**, so this is a gate on the
+  known-bad tail, not a re-audit of the fleet. The refusals wedge their dives
+  the same way the baseline gate's do — see that section.
+
+**Two halves of the same design are NOT in this change.** The remedy for wild
+dive-slate laser labels is a *coarse* RANSAC supersede pass on the calibration
+frames (a loose absolute tolerance, fitted on those frames only, never on the
+fish-dominated dive line), and then rejecting poor *fish* labels against the
+resulting calibration's projected line. The second needs the validator to run
+after stage 13; `ValidateLaserLabelsForDiveWorkflow` is currently dispatched
+from the hourly laser sync, before any calibration exists. Until the coarse
+pass lands, hand-reviving a superseded slate label is undone within hours by
+the existing 3σ validator.
+
 ### Lattice verification — the human check the residual cannot replace
 
 **Added 2026-09-11, after the producer above was validated and failed.** Graded

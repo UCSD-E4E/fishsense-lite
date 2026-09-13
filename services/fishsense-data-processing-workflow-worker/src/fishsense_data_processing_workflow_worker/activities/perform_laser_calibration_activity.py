@@ -35,8 +35,12 @@ from fishsense_data_processing_workflow_worker.activities.utils import get_fs_cl
 from fishsense_data_processing_workflow_worker.calibration_consistency import (
     CalibrationImplausibleError,
     CalibrationInconsistentError,
+    CalibrationDoesNotDescribeDiveError,
+    CalibrationUnderdeterminedError,
     check_baseline_plausible,
+    check_calibration_describes_dive,
     check_fit_self_consistency,
+    check_observation_geometry,
 )
 from fishsense_data_processing_workflow_worker.robust_laser_fit import (
     trim_outlying_observations,
@@ -308,7 +312,29 @@ async def perform_laser_calibration_activity(dive_id: int) -> int | None:
         # rescheduling them until the child's execution timeout — which for
         # this activity would also repeat the whole `_gather_laser_points` SDK
         # and PnP pass on every attempt.
+        # The dive's own dots, including the measurement frames this fit never
+        # saw. `check_calibration_describes_dive` needs them: the two gates
+        # above both compare the ray against the observations it came from, so
+        # they are satisfied by construction and say nothing about whether the
+        # laser was in this state for the frames about to be measured.
+        dive_laser_labels = await fs.labels.get_laser_labels(dive_id) or []
+        dive_dots = np.array(
+            [
+                (float(label.x), float(label.y))
+                for label in dive_laser_labels
+                if label.x is not None and label.y is not None
+            ],
+            dtype=float,
+        ).reshape(-1, 2)
+
         try:
+            # Underdetermination first: the two projection gates below abstain
+            # on exactly the degenerate geometry that most needs refusing, so
+            # a one-frame or single-distance fit would otherwise sail through
+            # both. Prod dive 347 did, and its calibration lands 9.4 px from
+            # the dive's own 321 dots; prod dive 107 did too, on sixteen
+            # observations inside 6 cm of range.
+            check_observation_geometry(fitted_points)
             check_fit_self_consistency(
                 laser_position,
                 laser_axis,
@@ -316,7 +342,22 @@ async def perform_laser_calibration_activity(dive_id: int) -> int | None:
                 np.array(laser_dots, dtype=float),
             )
             check_baseline_plausible(laser_position)
-        except (CalibrationInconsistentError, CalibrationImplausibleError) as exc:
+            # And the question none of the above asks: does this calibration
+            # describe the dive it will measure? A mid-dive re-seat leaves the
+            # fit perfectly consistent with its own burst and wrong for every
+            # frame after it (prod dive 490, 0.82 deg).
+            check_calibration_describes_dive(
+                laser_position,
+                laser_axis,
+                camera_intrinsics.camera_matrix,
+                dive_dots,
+            )
+        except (
+            CalibrationInconsistentError,
+            CalibrationImplausibleError,
+            CalibrationUnderdeterminedError,
+            CalibrationDoesNotDescribeDiveError,
+        ) as exc:
             # Take the dive out of the cohort until its labels change. Without
             # this a dive whose observations cannot produce a sound fit is
             # re-selected hourly forever and blocks every dive behind it.

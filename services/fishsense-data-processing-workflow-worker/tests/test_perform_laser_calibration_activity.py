@@ -117,6 +117,17 @@ def _make_fs(
 
     fs.labels.get_laser_label = AsyncMock(side_effect=_get_laser_label)
 
+    # The dive's own dots, for `check_calibration_describes_dive`. These
+    # fixtures build every dot on the true ray, so returning the calibration
+    # frames' labels is the honest stand-in for "the whole dive agrees".
+    fs.labels.get_laser_labels = AsyncMock(
+        return_value=[
+            label
+            for label in laser_labels_by_image_id.values()
+            if label is not None
+        ]
+    )
+
     return fs
 
 
