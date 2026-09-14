@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.10.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.10.0...fishsense-data-processing-workflow-worker-v3.10.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **docs:** correct dive 107's lever arm; record leave-one-out as a falsified gate ([#902](https://github.com/UCSD-E4E/fishsense-lite/issues/902)) ([0938248](https://github.com/UCSD-E4E/fishsense-lite/commit/0938248239795033e7e6dc69c8b1bfdc4773d224))
+
 ## [3.10.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.9.0...fishsense-data-processing-workflow-worker-v3.10.0) (2026-09-14)
 
 
