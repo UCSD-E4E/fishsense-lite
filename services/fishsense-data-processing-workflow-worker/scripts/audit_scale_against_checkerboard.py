@@ -54,6 +54,87 @@ recording so they are not rebuilt:
     (median |deviation| 2.2% vs 2.4%) and dive 490 was not flagged at all,
     because it measures against its own calibration. The offset it measures is
     PERPENDICULAR, and depth is set by position ALONG the line.
+  * Fitting the coarse calibration-frame pass against a line through the
+    CALIBRATION FRAMES ALONE, rather than against the dive line that
+    `flag_outliers` uses. This is the coarse pass as originally specified, and
+    the motivation is right: on a fish-heavy dive the measurement frames set
+    the dive line, so a burst shot in a different laser state is judged
+    against a state it does not share.
+
+    Compared over the 23 prod dives that have calibration frames (2026-09-14),
+    twice, because which population you measure decides the answer:
+
+      * over LIVE calibration dots only -- what the validator actually sees on
+        its next run -- the two references agree on all 23 dives and neither
+        flags anything. On this population the change is a no-op, measured.
+      * over live AND superseded calibration dots, i.e. what the validator saw
+        historically, they agree on 18 and the burst line is the more
+        conservative where they differ: dive 466 22 of 22 against 8, dive 77
+        34 of 60 against 30, dive 383 6 of 11 against 5. Those are the
+        decisions already taken, not decisions still to take -- dive 466's 22
+        dots are all superseded today, which is why its row vanishes from the
+        live comparison entirely.
+
+    It was built, tested and then dropped, because the two mechanisms nearly
+    coincide by construction. `detect_reflection_split` runs BEFORE flagging
+    and stands the whole dive down when the dots form two parallel lines
+    8-200 px apart with a coherent secondary of at least MIN_POINTS_FOR_LINE
+    inliers -- which is exactly the condition under which a burst could
+    define its own line and disagree with the dive's. Below 8 px of
+    separation the coarse 20 px tolerance already keeps the burst (dives 347
+    and 349, at 3.4-8.5 px); above it the dive stands down; and a burst too
+    small to fit a line falls back to the dive line either way. Verified on
+    the synthetic 60-fish + 12-burst-at-45-px shape: the activity stands down
+    and supersedes nothing.
+
+    Worth knowing for later: the stand-down is not stable across time, because
+    its trigger disappears once the burst is superseded. Dive 466 today has
+    ZERO live calibration-frame dots, so nothing detects the two-line
+    structure any more and the dive proceeds to flagging with nothing to
+    flag. That is a reason to be careful about reading a quiet validator as
+    evidence of a clean dive, not a reason for a second reference line.
+
+  * Rejecting measurement-frame laser labels whose dot sits too far from the
+    stored calibration's PROJECTED RAY, rather than from the dive's own
+    RANSAC line. The motivation is sound -- the 3 sigma validator anchors on
+    the dive's own labels, so a dive whose labels are mostly wrong can drag
+    the reference onto the wrong population, whereas a calibration fitted from
+    slate frames cannot be dragged by fish labels. Dry-run read-only over all
+    3418 live measurement-frame dots on the 31 calibrated dives (2026-09-14):
+    a 12 px bound would supersede 13 dots, 0.38 %, and ALL THIRTEEN are on
+    dive 498 -- whose calibration is itself refused (baseline 9.51 cm, lever
+    0.34 m). Every other dive's fish dots sit within 8.4 px of their
+    calibration's ray; fleet median 1.33 px, p90 4.55, p99 7.10.
+
+    So the gate does nothing where the calibration is sound and the wrong
+    thing where it is not: on 498 the labels are not the defect, the fit is,
+    and superseding 8 measured frames would destroy evidence rather than bad
+    data. The population it targets is already empty because the auto-accept
+    gate (10 px against the dive line) and the 3 sigma validator have removed
+    it upstream -- and the dragged-reference case they cannot handle is
+    handled by standing down instead: MAX_OUTLIER_FRACTION refuses to act
+    above 50 %, and detect_reflection_split stands down on two-line dives.
+
+    Limit of this dry run, stated because it bounds the conclusion: it
+    measures a population the validator has ALREADY cleaned, so it shows the
+    gate has nothing left to catch, not that a calibration-referenced rule
+    would have been worse at cleaning time. If the laser detector's reef
+    performance is ever wired to seed labels without the auto-accept gate in
+    front, re-run this before concluding again.
+
+  * Leave-one-out over the calibration's own observations, predicting the
+    held-out frame's depth and comparing against that frame's solvePnP depth.
+    This is the in-sample comparison above dressed as a prediction, and it
+    fails on exactly the dive it would need to catch: over 12 dives (2026-09-14)
+    the ten sound ones score 0.52-1.48 % median |depth error| and dive 107
+    scores 0.56 %, better than most of them, while being 17.25 % wrong at
+    4.2 m when evaluated against dive 526's burst -- a range its own frames
+    never visit. A frame held out of a single-distance burst is predicted at
+    the distance the remaining frames already anchor, so it carries no
+    information about the ray's direction. Use `check_observation_geometry`'s
+    lever arm instead: it is structural, needs no second population, and
+    flagged 107 at 2.8 cm where this scored it clean.
+
   * Gating a new fit against its own camera's baseline history, judged by
     the median length error. The three baseline outliers graded within 1.6 %
     on the median (498 at 9.51 cm, 502 at 8.90, 107 at 12.95), which read as

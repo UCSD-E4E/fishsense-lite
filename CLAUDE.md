@@ -742,6 +742,21 @@ Consequences worth knowing:
   known-bad tail, not a re-audit of the fleet. The refusals wedge their dives
   the same way the baseline gate's do — see that section.
 
+**Every in-distribution check is blind to conditioning**, which is the general
+statement behind the lever-arm bound above and worth keeping in mind before
+proposing another gate. Known-length medians at the working range, reprojection
+residual, and cross-validation over the calibration's own observations all
+evaluate where the data already sits. Measured 2026-09-14: leave-one-out over
+the slate observations scores dive 107 at 0.56 % median depth error, better
+than nine of the ten sound dives (which span 0.52-1.48 %), while that fit is
+17.25 % wrong at
+4.2 m — because a frame held out of a single-distance burst is predicted at
+the distance the remaining frames already anchor. It is recorded with the
+other two falsified gate candidates in
+`scripts/audit_scale_against_checkerboard.py`, whose docstring is also the
+place that explains when a solvePnP-depth comparison is evidence and when it
+is near-tautological.
+
 **Two halves of the same design are NOT in this change.** The remedy for wild
 dive-slate laser labels is a *coarse* RANSAC supersede pass on the calibration
 frames (a loose absolute tolerance, fitted on those frames only, never on the

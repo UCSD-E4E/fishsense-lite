@@ -17,21 +17,23 @@ Measured over the 32 stored calibrations whose observations are recoverable
     dive 279    3 obs   1.47 m   ->  0.6 %
     dive 465    3 obs   1.34 m   ->  0.6 %
     dive 383    2 obs   1.09 m   ->  0.7 %
+    dive 062   20 obs   1.02 m   ->  0.4 %     <- tightest sound calibration
     dive 349    2 obs   0.26 m   ->  5.8 %     <- refused here
-    dive 107   16 obs   0.06 m   ->  5.5 %     <- refused here
+    dive 107   16 obs   0.03 m   ->  5.5 %     <- refused here
     dive 347    1 obs   0.00 m   ->  degenerate
 
 Two observations over a metre of range are worth more than sixteen at one
 distance, which is why this gate bounds the lever arm and not the count. The
-bound sits between the populations (1.09 m healthy, 0.26 m bad), nearer the
+bound sits between the populations (1.02 m healthy, 0.26 m bad), nearer the
 bad side because a refusal wedges the dive in its cohort.
 
 Dive 107 is the case that shows the existing gates cannot do this: sixteen
 observations, a 12.95 cm baseline that `check_baseline_plausible` accepts as
 the fleet's high extreme, a dot span wide enough that
-`check_fit_self_consistency` does not abstain — and a 6 cm lever arm. Dive 526
-had the same single-distance geometry and was only caught because its fit
-happened to collapse to a 2.00 cm baseline.
+`check_fit_self_consistency` does not abstain — and a 2.8 cm lever arm
+(1.97-2.00 m). Dive 526 had the same single-distance geometry at 6.6 cm
+(4.16-4.22 m) and was only caught because its fit happened to collapse to a
+2.00 cm baseline.
 """
 
 from __future__ import annotations
@@ -70,19 +72,20 @@ def test_a_long_burst_over_a_wide_range_is_accepted():
 
 
 def test_the_tightest_healthy_dive_is_accepted():
-    """Dive 383: 1.09 m of lever from two observations — the closest sound
-    calibration to the bound, so this pins that the bound does not refuse it."""
-    check_observation_geometry(_observations([0.731, 1.819]))
+    """Dive 62: 1.02 m of lever over 20 observations — the closest sound
+    calibration to the bound, so this pins that the bound does not refuse it.
+    Dive 383's 1.09 m is the next tightest and is covered by the same margin."""
+    check_observation_geometry(_observations(np.linspace(1.38, 2.40, 20)))
 
 
 # --- refused ----------------------------------------------------------------
 
 
 def test_a_single_distance_burst_is_refused_however_many_observations():
-    """Dive 107: sixteen observations inside 6 cm of range. Every other gate
+    """Dive 107: sixteen observations inside 3 cm of range. Every other gate
     passes it; its 12.95 cm baseline is the fleet's highest."""
     rng = np.random.default_rng(0)
-    depths = 1.96 + rng.uniform(0.0, 0.06, 16)
+    depths = 1.97 + rng.uniform(0.0, 0.03, 16)
     with pytest.raises(CalibrationUnderdeterminedError, match="lever"):
         check_observation_geometry(_observations(depths))
 
@@ -113,9 +116,11 @@ def test_empty_is_refused_rather_than_crashing():
 
 
 def test_bound_sits_between_the_measured_populations():
-    """Healthy reaches down to 1.09 m (dive 383); the bad ones are at 0.26 m
-    and below (349, 107, 347). Nearer the bad side: a refusal is expensive."""
-    assert 0.26 < MIN_OBSERVATION_LEVER_M < 1.09
+    """Healthy reaches down to 1.02 m (dive 62, 20 observations); the bad ones
+    are at 0.26 m and below (349, 107, 347). Nearer the bad side: a refusal is
+    expensive. Pinned at 1.02 and not 1.09, so that raising the bound past the
+    tightest *sound* calibration cannot pass with both tests green."""
+    assert 0.26 < MIN_OBSERVATION_LEVER_M < 1.02
 
 
 def test_the_message_reports_the_lever_and_the_count():
