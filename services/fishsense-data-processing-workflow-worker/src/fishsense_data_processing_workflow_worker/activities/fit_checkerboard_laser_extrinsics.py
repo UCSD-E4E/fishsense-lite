@@ -1,18 +1,21 @@
 """Fit and persist `LaserExtrinsics` from checkerboard observations.
 
 The dive-level half of checkerboard calibration, and it is deliberately the
-same three steps stage 13 takes once its slate observations are in hand:
-`fishsense_core.laser.calibrate_laser`, then `check_fit_self_consistency`,
-then `put_laser_extrinsics`. Nothing here knows the target was a board —
+same steps stage 13 takes once its slate observations are in hand:
+`fishsense_core.laser.calibrate_laser`, then the four gates
+(`check_observation_geometry`, `check_fit_self_consistency`,
+`check_baseline_plausible`, `check_calibration_describes_dive`), then
+`put_laser_extrinsics`. Nothing here knows the target was a board —
 by the time an observation reaches this activity it is a 3-D point and the
 2-D dot it came from, which is all the fit ever needed.
 
-The threshold and the gate are imported from the stage-13 activity rather than
-restated. `MIN_LASER_POINTS` is already one number spelled on both sides of
-the worker boundary (the api's `MIN_SLATE_LASER_POINTS` mirrors it), and a
-third copy that could drift from the cohort's is the wedge shape this repo
-keeps rediscovering: cohort says eligible, activity refuses, nothing is
-written, dive re-selected hourly forever.
+The threshold and the gates are imported from the stage-13 activity and
+`calibration_consistency` rather than restated. `MIN_LASER_POINTS` is already
+one number spelled on both sides of the worker boundary (the api's
+`MIN_SLATE_LASER_POINTS` mirrors it), and a third copy that could drift from
+the cohort's is the wedge shape this repo keeps rediscovering: cohort says
+eligible, activity refuses, nothing is written, dive re-selected hourly
+forever.
 """
 
 from __future__ import annotations
@@ -34,8 +37,12 @@ from fishsense_data_processing_workflow_worker.activities.utils import get_fs_cl
 from fishsense_data_processing_workflow_worker.calibration_consistency import (
     CalibrationImplausibleError,
     CalibrationInconsistentError,
+    CalibrationDoesNotDescribeDiveError,
+    CalibrationUnderdeterminedError,
     check_baseline_plausible,
+    check_calibration_describes_dive,
     check_fit_self_consistency,
+    check_observation_geometry,
 )
 from fishsense_data_processing_workflow_worker.robust_laser_fit import (
     trim_outlying_observations,
@@ -158,8 +165,9 @@ async def fit_checkerboard_laser_extrinsics(payload) -> int:
     laser_position = np.array([float(origin[0]), float(origin[1]), 0.0], dtype=float)
     laser_axis = np.asarray(orientation, dtype=float)
 
-    # Both gates are deterministic functions of the observations this run was
-    # dispatched with, so a refusal cannot come good on a retry. Left as plain
+    # A refusal from any of the four cannot come good on a retry: three are
+    # deterministic functions of the observations this run was dispatched
+    # with, and the fourth re-reads the same dive labels. Left as plain
     # `ValueError`s Temporal reschedules them until the child's 2 h execution
     # timeout, holding the parent, keeping the dive's raw scratch alive and
     # skipping two hourly firings — all to re-derive the same answer. Marked
@@ -169,7 +177,26 @@ async def fit_checkerboard_laser_extrinsics(payload) -> int:
     # of its calibrations fitted baselines of 2.35 to 22.22 cm against a fleet
     # constant of ~10.4 cm, and the self-consistency check passed every one,
     # because a wrong offset does not move the ray's projection.
+    # The dive's own dots, for the describes-the-dive gate. Fetched before the
+    # try so a transport failure stays retryable rather than being recorded as
+    # a deterministic refusal.
+    async with get_fs_client() as fs:
+        dive_laser_labels = await fs.labels.get_laser_labels(payload.dive_id) or []
+    dive_dots = np.array(
+        [
+            (float(label.x), float(label.y))
+            for label in dive_laser_labels
+            if label.x is not None and label.y is not None
+        ],
+        dtype=float,
+    ).reshape(-1, 2)
+
     try:
+        # Underdetermination first: both projection gates abstain on exactly
+        # the degenerate geometry that most needs refusing. A board burst shot
+        # at one distance determines the ray's direction no better than one
+        # frame does, however many corners it detects.
+        check_observation_geometry(fitted_points)
         check_fit_self_consistency(
             laser_position,
             laser_axis,
@@ -177,7 +204,21 @@ async def fit_checkerboard_laser_extrinsics(payload) -> int:
             np.array(dots, dtype=float),
         )
         check_baseline_plausible(laser_position)
-    except (CalibrationInconsistentError, CalibrationImplausibleError) as exc:
+        # And whether this fit describes the frames it will measure, which the
+        # three above cannot ask: they all compare the ray against its own
+        # observations.
+        check_calibration_describes_dive(
+            laser_position,
+            laser_axis,
+            np.array(payload.camera_matrix, dtype=float),
+            dive_dots,
+        )
+    except (
+        CalibrationInconsistentError,
+        CalibrationImplausibleError,
+        CalibrationUnderdeterminedError,
+        CalibrationDoesNotDescribeDiveError,
+    ) as exc:
         await _record_refusal(payload.dive_id, str(exc))
         raise ApplicationError(
             f"dive_id={payload.dive_id}: {exc}",

@@ -628,15 +628,21 @@ async def set_calibration_refused(
 ) -> int:
     """Record that a calibration fit was refused for this dive.
 
-    Written by the fit activities when a refusal is **deterministic** in the
-    observations the run was dispatched with — too few of them, a fit that
-    disagrees with its own dots, an implausible baseline. Retrying re-derives
-    those, so the dive must leave the cohort or it is re-selected hourly
-    forever, re-staging its raw `.ORF`s each time and blocking every dive
-    behind it (`ORDER BY id LIMIT 1`, the dive-347 shape).
+    Written by the fit activities when a refusal cannot come good on a retry
+    — too few usable observations, observations too tightly grouped in range
+    to fix the ray's direction, a fit that disagrees with its own dots, an
+    implausible baseline, and a fit the dive's own laser dots disagree with.
+    Retrying re-derives those, so the dive must leave the cohort or it is
+    re-selected hourly forever, re-staging its raw `.ORF`s each time and
+    blocking every dive behind it (`ORDER BY id LIMIT 1`, the dive-347 shape).
+
+    Four of the five are deterministic in the observations the run was
+    dispatched with. The fifth is computed from the dive's live laser labels
+    instead, which makes the self-expiry below exact for it rather than merely
+    convenient: relabelling is the only thing that can change its answer.
 
     A transient failure must never reach here. The activities only call this
-    for the three refusals above, which is the same set they mark
+    for the five refusals above, which is the same set they mark
     non-retryable; anything else propagates untouched.
 
     **Self-expiring.** The cohorts ignore the refusal once any laser or slate

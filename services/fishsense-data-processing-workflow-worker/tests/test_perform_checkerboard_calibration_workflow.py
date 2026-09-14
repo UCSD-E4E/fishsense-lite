@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import logging
 
-from unittest.mock import AsyncMock, MagicMock
-
 import numpy as np
 import pytest
 from fishsense_shared import (
@@ -33,6 +31,8 @@ from fishsense_data_processing_workflow_worker.workflows.perform_checkerboard_ca
     FitCheckerboardExtrinsicsInput,
     PerformCheckerboardCalibrationWorkflow,
 )
+
+from ._calibration_fixtures import make_fit_client
 
 CAMERA_MATRIX = [[1800.0, 0.0, 640.0], [0.0, 1800.0, 480.0], [0.0, 0.0, 1.0]]
 SQUARE_SIZE_M = 0.0254
@@ -191,6 +191,24 @@ def _fake_calibrate_laser(_points):
     return np.array(_GOOD_ORIGIN_XY), np.array([0.0, 0.0, 1.0])
 
 
+def _make_fit_fs(put_return=None):
+    """The SDK surface the fit activity touches: the write, and the dive's own
+    laser dots.
+
+    `check_calibration_describes_dive` compares the fit against every live dot
+    in the dive, so the dots are built on the projection of the ray
+    `_fake_calibrate_laser` returns — "the whole dive agrees", which is what
+    these tests mean to describe. A fit the dive disagrees with is covered by
+    `test_calibration_gates_are_wired.py`.
+    """
+    return make_fit_client(
+        (*_GOOD_ORIGIN_XY, 0.0),
+        (0.0, 0.0, 1.0),
+        CAMERA_MATRIX,
+        put_return=put_return,
+    )
+
+
 def _fit_input(observations):
     return FitCheckerboardExtrinsicsInput(
         dive_id=488,
@@ -222,19 +240,17 @@ async def test_fit_refuses_below_the_shared_threshold():
 
 @pytest.mark.asyncio
 async def test_fit_persists_the_extrinsics_it_computed(monkeypatch):
-    fs = MagicMock()
-    fs.__aenter__ = AsyncMock(return_value=fs)
-    fs.__aexit__ = AsyncMock(return_value=None)
-    fs.dives = MagicMock()
-    fs.dives.put_laser_extrinsics = AsyncMock(return_value=31)
+    fs = _make_fit_fs(put_return=31)
     monkeypatch.setattr(fit_module, "get_fs_client", lambda: fs)
     monkeypatch.setattr(fit_module, "_calibrate_laser", _fake_calibrate_laser)
     monkeypatch.setattr(fit_module, "check_fit_self_consistency", lambda *a, **k: None)
 
+    # 1.2 m to 2.0 m: a real board burst, wide enough that
+    # `check_observation_geometry` does not refuse it as underdetermined.
     payload = _fit_input(
         [
-            _observation(100, [0.0, 0.0, 1.40]),
-            _observation(101, [0.0, 0.0, 1.60], laser_x=620.0),
+            _observation(100, [0.0, 0.0, 1.20]),
+            _observation(101, [0.0, 0.0, 2.00], laser_x=620.0),
             _observation(102, None),
         ]
     )
@@ -260,11 +276,7 @@ async def test_fit_does_not_persist_when_the_gate_rejects(monkeypatch):
     A mixed dot population shipped a calibration whose length errors reached
     +137% downstream on prod dive 77. The gate raises; nothing is written.
     """
-    fs = MagicMock()
-    fs.__aenter__ = AsyncMock(return_value=fs)
-    fs.__aexit__ = AsyncMock(return_value=None)
-    fs.dives = MagicMock()
-    fs.dives.put_laser_extrinsics = AsyncMock()
+    fs = _make_fit_fs()
     monkeypatch.setattr(fit_module, "get_fs_client", lambda: fs)
     monkeypatch.setattr(fit_module, "_calibrate_laser", _fake_calibrate_laser)
 
@@ -274,7 +286,7 @@ async def test_fit_does_not_persist_when_the_gate_rejects(monkeypatch):
     monkeypatch.setattr(fit_module, "check_fit_self_consistency", _reject)
 
     payload = _fit_input(
-        [_observation(100, [0.0, 0.0, 1.4]), _observation(101, [0.0, 0.0, 1.6])]
+        [_observation(100, [0.0, 0.0, 1.2]), _observation(101, [0.0, 0.0, 2.0])]
     )
 
     with pytest.raises(ValueError, match="disagrees"):
@@ -303,11 +315,7 @@ def test_the_threshold_is_the_stage_13_one():
 @pytest.mark.asyncio
 async def test_the_fit_tallies_why_frames_were_dropped(monkeypatch, caplog):
     """The reasons reach the log, not just the count."""
-    fs = MagicMock()
-    fs.__aenter__ = AsyncMock(return_value=fs)
-    fs.__aexit__ = AsyncMock(return_value=None)
-    fs.dives = MagicMock()
-    fs.dives.put_laser_extrinsics = AsyncMock(return_value=7)
+    fs = _make_fit_fs(put_return=7)
     monkeypatch.setattr(fit_module, "get_fs_client", lambda: fs)
     monkeypatch.setattr(fit_module, "_calibrate_laser", _fake_calibrate_laser)
     monkeypatch.setattr(fit_module, "check_fit_self_consistency", lambda *a, **k: None)
@@ -323,8 +331,8 @@ async def test_the_fit_tallies_why_frames_were_dropped(monkeypatch, caplog):
 
     payload = _fit_input(
         [
-            _observation(100, [0.0, 0.0, 1.40]),
-            _observation(101, [0.0, 0.0, 1.60], laser_x=620.0),
+            _observation(100, [0.0, 0.0, 1.20]),
+            _observation(101, [0.0, 0.0, 2.00], laser_x=620.0),
             _skipped(102, "dot_off_board"),
             _skipped(103, "dot_off_board"),
             _skipped(104, "no_usable_board"),

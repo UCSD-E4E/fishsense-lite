@@ -1,23 +1,25 @@
-"""Both fit activities must actually call the baseline gate, before persisting.
+"""Both fit activities must actually call the gates, before persisting.
 
-`test_calibration_baseline_gate.py` tests the gate as a pure function, which
-says nothing about whether anything calls it. Deleting either call site — or
-moving it below `put_laser_extrinsics` — leaves that suite entirely green while
-the implausible calibration lands in the database and becomes borrowable by
+`test_calibration_baseline_gate.py`, `test_calibration_describes_dive.py` and
+`test_calibration_observation_geometry.py` test the gates as pure functions,
+which says nothing about whether anything calls them. Deleting a call site —
+or moving it below `put_laser_extrinsics` — leaves those suites entirely green
+while the bad calibration lands in the database and becomes borrowable by
 sibling dives through `calibration_dive_id`.
 
 So these drive the activities end to end with a fit that the gate must refuse,
 and assert two things: nothing was written, and the refusal reached Temporal as
-**non-retryable**. The second matters as much as the first. Both gates are
-deterministic functions of the observations the run was dispatched with, so a
-retry re-derives the same answer; left retryable, Temporal reschedules until
-the child's 2 h execution timeout, holding the parent, keeping the dive's raw
-scratch alive and skipping two hourly firings.
+**non-retryable**. The second matters as much as the first. Three of the four
+gates are deterministic functions of the observations the run was dispatched
+with and the fourth re-reads the same dive labels, so a retry re-derives the
+same answer; left retryable, Temporal reschedules until the child's 2 h
+execution timeout, holding the parent, keeping the dive's raw scratch alive
+and skipping two hourly firings.
 """
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -31,6 +33,8 @@ from fishsense_data_processing_workflow_worker.workflows.perform_checkerboard_ca
     FitCheckerboardExtrinsicsInput,
 )
 from fishsense_shared import CheckerboardObservation
+
+from ._calibration_fixtures import make_fit_client
 
 CAMERA_MATRIX = [[1800.0, 0.0, 640.0], [0.0, 1800.0, 480.0], [0.0, 0.0, 1.0]]
 
@@ -62,8 +66,13 @@ def _payload() -> FitCheckerboardExtrinsicsInput:
     )
 
 
-def _patch_fit(monkeypatch, origin_xy) -> MagicMock:
-    """Force the kernel's answer and capture whether anything was persisted."""
+def _patch_fit(monkeypatch, origin_xy, *, dive_offset_px: float = 0.0) -> MagicMock:
+    """Force the kernel's answer and capture whether anything was persisted.
+
+    The dive's own dots are built on the projection of the ray the fake kernel
+    returns, so `check_calibration_describes_dive` passes unless a test asks
+    for a `dive_offset_px` — the honest stand-in for "the whole dive agrees".
+    """
 
     def _fake_calibrate(_points):
         # Axis pointing straight down the optical axis keeps the
@@ -75,12 +84,13 @@ def _patch_fit(monkeypatch, origin_xy) -> MagicMock:
         fit_module, "check_fit_self_consistency", lambda *a, **k: None
     )
 
-    client = MagicMock()
-    client.dives.put_laser_extrinsics = AsyncMock(return_value=7)
-    ctx = MagicMock()
-    ctx.__aenter__ = AsyncMock(return_value=client)
-    ctx.__aexit__ = AsyncMock(return_value=False)
-    monkeypatch.setattr(fit_module, "get_fs_client", lambda: ctx)
+    client = make_fit_client(
+        (*origin_xy, 0.0),
+        (0.0, 0.0, 1.0),
+        CAMERA_MATRIX,
+        dive_offset_px=dive_offset_px,
+    )
+    monkeypatch.setattr(fit_module, "get_fs_client", lambda: client)
     return client
 
 
@@ -124,6 +134,55 @@ async def test_the_refusal_names_the_dive(monkeypatch):
     assert "522" in str(excinfo.value)
 
 
+@pytest.mark.asyncio
+async def test_checkerboard_fit_refuses_a_fit_the_dive_disagrees_with(monkeypatch):
+    """The gate the other three cannot stand in for.
+
+    Baseline and self-consistency both look only at the fit's own
+    observations, so a board burst that is internally perfect but was shot
+    with the laser in a different state from the dive's fish frames passes
+    them both. Prod dive 347's calibration sits 9.4 px off its own 321 dots
+    and was caught by nothing.
+    """
+    client = _patch_fit(monkeypatch, _PLAUSIBLE_XY, dive_offset_px=40.0)
+
+    with pytest.raises(ApplicationError) as excinfo:
+        await ActivityEnvironment().run(
+            fit_module.fit_checkerboard_laser_extrinsics, _payload()
+        )
+
+    assert excinfo.value.non_retryable
+    assert "522" in str(excinfo.value)
+    client.dives.put_laser_extrinsics.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_checkerboard_fit_refuses_a_single_distance_burst(monkeypatch):
+    """A board burst at one distance determines the ray's direction no better
+    than one frame does, however many corners it detects — and it is the
+    geometry under which every other gate abstains."""
+    client = _patch_fit(monkeypatch, _PLAUSIBLE_XY)
+    payload = _payload()
+    payload.observations = [
+        CheckerboardObservation(
+            image_id=100 + i,
+            point=[0.01 * i, 0.02, 1.40],
+            laser_x=600.0 + 40 * i,
+            laser_y=500.0 + 30 * i,
+        )
+        for i in range(12)
+    ]
+
+    with pytest.raises(ApplicationError) as excinfo:
+        await ActivityEnvironment().run(
+            fit_module.fit_checkerboard_laser_extrinsics, payload
+        )
+
+    assert excinfo.value.non_retryable
+    assert "522" in str(excinfo.value)
+    client.dives.put_laser_extrinsics.assert_not_awaited()
+
+
 def test_the_slate_fit_gates_before_it_persists():
     """Source-order check on stage 13, which needs live SDK data to drive.
 
@@ -140,6 +199,11 @@ def test_the_slate_fit_gates_before_it_persists():
     )
 
     source = inspect.getsource(slate_module)
-    gate_at = source.index("check_baseline_plausible(laser_position)")
     write_at = source.index("put_laser_extrinsics")
-    assert gate_at < write_at
+    for gate in (
+        "check_observation_geometry(",
+        "check_fit_self_consistency(",
+        "check_baseline_plausible(laser_position)",
+        "check_calibration_describes_dive(",
+    ):
+        assert source.index(gate) < write_at, gate

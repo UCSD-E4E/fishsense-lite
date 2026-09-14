@@ -14,7 +14,7 @@ recording a refusal for a dive that calibrated fine would park a healthy dive.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import numpy as np
 import pytest
@@ -28,6 +28,8 @@ from fishsense_data_processing_workflow_worker.workflows.perform_checkerboard_ca
     FitCheckerboardExtrinsicsInput,
 )
 from fishsense_shared import CheckerboardObservation
+
+from ._calibration_fixtures import make_fit_client
 
 CAMERA_MATRIX = [[1800.0, 0.0, 640.0], [0.0, 1800.0, 480.0], [0.0, 0.0, 1.0]]
 #: 2.35 cm — dive 522's real fitted baseline, which the gate must refuse.
@@ -66,13 +68,12 @@ def _patch(monkeypatch, origin_xy):
     )
     monkeypatch.setattr(fit_module, "check_fit_self_consistency", lambda *a, **k: None)
 
-    client = MagicMock()
+    # The dive's own dots are built on the projection of the ray the kernel
+    # was told to return, so `check_calibration_describes_dive` is satisfied
+    # and the refusal under test is the only one that can fire.
+    client = make_fit_client((*origin_xy, 0.0), (0.0, 0.0, 1.0), CAMERA_MATRIX)
     client.dives.set_calibration_refused = AsyncMock(return_value=522)
-    client.dives.put_laser_extrinsics = AsyncMock(return_value=7)
-    ctx = MagicMock()
-    ctx.__aenter__ = AsyncMock(return_value=client)
-    ctx.__aexit__ = AsyncMock(return_value=False)
-    monkeypatch.setattr(fit_module, "get_fs_client", lambda: ctx)
+    monkeypatch.setattr(fit_module, "get_fs_client", lambda: client)
     return client
 
 
