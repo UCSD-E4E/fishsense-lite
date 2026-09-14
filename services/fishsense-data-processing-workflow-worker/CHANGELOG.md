@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.10.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.9.0...fishsense-data-processing-workflow-worker-v3.10.0) (2026-09-14)
+
+
+### Features
+
+* **data-worker:** judge calibration frames coarsely, not at 3 sigma ([#899](https://github.com/UCSD-E4E/fishsense-lite/issues/899)) ([f64e100](https://github.com/UCSD-E4E/fishsense-lite/commit/f64e100bb040e61c8c7dbac277cb419e10e52aca))
+
 ## [3.9.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.8.1...fishsense-data-processing-workflow-worker-v3.9.0) (2026-09-14)
 
 
