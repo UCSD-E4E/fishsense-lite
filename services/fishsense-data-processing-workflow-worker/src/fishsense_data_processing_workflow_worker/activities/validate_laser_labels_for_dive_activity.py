@@ -8,6 +8,16 @@ observations should be colinear in image space — outliers are
 mislabeled and shouldn't feed downstream stage 13 calibration / stage
 14 measurement.
 
+Calibration frames are judged coarsely. A frame carrying a completed,
+non-superseded `DiveSlateLabel` is a calibration observation, and the dive
+line is fitted overwhelmingly from the *measurement* frames — so a genuine
+slate dot sits a few px off it (measured on prod: 0.34-8.48 px on dive 347,
+against a fish-dot line of 1.25 px median) and 3 sigma superseded it. That is
+how 347 came to be calibrated from ONE frame and 349 from two dots 26 cm
+apart in range, and it cannot be undone by relabelling. Those frames are
+therefore tested against `COARSE_CALIBRATION_TOLERANCE_PX` instead, which
+still removes the separate population of wild mislabels (45-130 px on 347).
+
 Phase 2 (writeback enabled): each flagged label is updated with
 `superseded=True` via `put_laser_label`. The endpoint is an upsert by
 primary key, so re-runs on a dive whose outliers have already been
@@ -42,6 +52,7 @@ from fishsense_data_processing_workflow_worker.activities.heartbeat import (
 )
 from fishsense_data_processing_workflow_worker.activities.utils import get_fs_client
 from fishsense_data_processing_workflow_worker.laser_label_validation.line_fit import (
+    COARSE_CALIBRATION_TOLERANCE_PX,
     MIN_POINTS_FOR_LINE,
     fit_dive_line,
     flag_outliers,
@@ -134,6 +145,29 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
             )
             return 0
 
+        # Which frames are calibration observations. Fetched before the fit
+        # so a transport failure fails the activity (Temporal retries it)
+        # rather than silently falling through to the tight rule and
+        # superseding the dive's slate dots -- the failure this exists to
+        # prevent. `stage 13` consumes only completed, non-superseded slate
+        # labels, so those are exactly the frames that get the loose bound.
+        slate_labels = await fs.labels.get_dive_slate_labels(dive_id) or []
+        calibration_image_ids = {
+            label.image_id
+            for label in slate_labels
+            if label.image_id is not None
+            and label.completed
+            and not getattr(label, "superseded", False)
+        }
+        activity.logger.info(
+            "dive_id=%d has %d calibration frames among its slate labels; "
+            "those are judged at %.0fpx rather than 3 sigma",
+            dive_id,
+            len(calibration_image_ids),
+            COARSE_CALIBRATION_TOLERANCE_PX,
+        )
+        activity.heartbeat()
+
         xy, positives = _positive_xy(labels)
         if xy.shape[0] < MIN_POINTS_FOR_LINE:
             activity.logger.info(
@@ -219,7 +253,11 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
             )
             return 0
 
-        outlier_mask = flag_outliers(xy, fit)
+        calibration_mask = np.array(
+            [label.image_id in calibration_image_ids for label in positives],
+            dtype=bool,
+        )
+        outlier_mask = flag_outliers(xy, fit, calibration_mask=calibration_mask)
         n_outliers = int(outlier_mask.sum())
         if n_outliers == 0:
             activity.logger.info("dive_id=%d: no outlier laser labels", dive_id)
@@ -247,7 +285,7 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
             label = positives[i]
             activity.logger.info(
                 "dive_id=%d OUTLIER laser_label_id=%s image_id=%s "
-                "x=%.1f y=%.1f perp=%.2fpx label_studio_task_id=%s "
+                "x=%.1f y=%.1f perp=%.2fpx rule=%s label_studio_task_id=%s "
                 "label_studio_project_id=%s -> superseded=True",
                 dive_id,
                 label.id,
@@ -255,6 +293,7 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
                 float(label.x),
                 float(label.y),
                 float(perp[i]),
+                "coarse-calibration" if calibration_mask[i] else "3-sigma",
                 label.label_studio_task_id,
                 label.label_studio_project_id,
             )
