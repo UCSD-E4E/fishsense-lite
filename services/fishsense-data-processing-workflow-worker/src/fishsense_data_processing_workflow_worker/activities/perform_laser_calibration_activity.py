@@ -210,12 +210,18 @@ async def perform_laser_calibration_activity(dive_id: int) -> int | None:
     Returns the persisted `LaserExtrinsics` row id, or None when the dive
     has no `dive_slate_id` / no slate labels (genuine no-op).
 
-    Raises a **non-retryable** `ApplicationError` for the three deterministic
-    refusals — too few usable observations, a fit that disagrees with its own
-    dots, an implausible baseline — and records each on the dive so it leaves
-    the calibration cohort instead of being re-selected hourly forever. All
-    three are functions of the observations this run was dispatched with, so a
-    retry only re-derives them.
+    Raises a **non-retryable** `ApplicationError` for the five deterministic
+    refusals — too few usable observations, observations too tightly grouped
+    in range to fix the ray's direction, a fit that disagrees with its own
+    dots, an implausible baseline, and a fit the dive's own laser dots
+    disagree with — and records each on the dive so it leaves the calibration
+    cohort instead of being re-selected hourly forever.
+
+    The first four are functions of the observations this run was dispatched
+    with, so a retry only re-derives them. The fifth reads fresh state, the
+    dive's live laser labels, and is still non-retryable for the same reason:
+    an immediate retry re-reads the same labels. What changes its answer is
+    relabelling, which is exactly what expires a recorded refusal.
 
     Always recomputes; the API endpoint is an upsert. Callers that want
     "skip if already calibrated" should filter on `get_laser_extrinsics`

@@ -45,6 +45,7 @@ import pytest
 from fishsense_data_processing_workflow_worker.calibration_consistency import (
     DEFAULT_MAX_DIVE_MEDIAN_OFFSET_PX,
     DEFAULT_MAX_DIVE_P90_OFFSET_PX,
+    MIN_DISAGREEING_DIVE_DOTS,
     CalibrationDoesNotDescribeDiveError,
     check_calibration_describes_dive,
 )
@@ -132,15 +133,61 @@ def test_a_wild_minority_is_caught_by_the_p90_even_when_the_median_is_fine():
         check_calibration_describes_dive(ORIGIN, AXIS, K, dots)
 
 
+def test_a_disagreeing_subset_is_refused_once_it_is_a_real_population():
+    """Dive 498's true proportions: 13 of its 40 live dots sit beyond the p90
+    bound. The floor must not be so high that this stops being refused."""
+    dots = _dots_on_ray(depths=np.linspace(0.6, 3.5, 40))
+    dots[-13:] = _perpendicular(dots, 40.0)[-13:]
+    with pytest.raises(CalibrationDoesNotDescribeDiveError, match="p90"):
+        check_calibration_describes_dive(ORIGIN, AXIS, K, dots)
+
+
+# --- the p90 branch needs a real subset, not one or two labels --------------
+#
+# The dots come from the whole dive, so they include labels the fit never saw
+# and labels nobody has checked yet. The 3 sigma per-dive validator that would
+# supersede a reflection mislabel only runs on dives whose laser labelling is
+# *complete*, so during labelling the population is unpoliced -- and because a
+# recorded refusal self-expires the moment any label on the dive changes, a
+# refusal earned this way comes back every hour a labeler works.
+
+
+def test_a_pair_of_mislabels_does_not_refuse_a_fit_they_never_fed():
+    """Two reflection mislabels in a partly-labelled dive. `np.percentile`
+    interpolates, so at N=18 the 90th percentile already reaches into the two
+    worst values and lands at ~18 px with the fit itself exact."""
+    dots = _dots_on_ray(depths=np.linspace(0.6, 3.5, 18))
+    dots[-2:] = _perpendicular(dots, 60.0)[-2:]
+    check_calibration_describes_dive(ORIGIN, AXIS, K, dots)
+
+
+def test_one_wild_label_does_not_refuse_at_the_minimum_dot_count():
+    """At N=6 the 90th percentile is effectively the maximum, while the bounds
+    were measured on populations of 13 to 321 dots."""
+    dots = _dots_on_ray(depths=np.linspace(0.6, 3.5, 6))
+    dots[-1] = _perpendicular(dots, 60.0)[-1]
+    check_calibration_describes_dive(ORIGIN, AXIS, K, dots)
+
+
+def test_the_median_branch_still_fires_below_the_disagreeing_dot_floor():
+    """The floor is on the p90 branch only. A dive whose every dot disagrees
+    is refused however few dots it has — that is dive 347, and the whole
+    point of the gate."""
+    dots = _perpendicular(_dots_on_ray(depths=np.linspace(0.6, 3.5, 6)), 9.4)
+    with pytest.raises(CalibrationDoesNotDescribeDiveError, match="median"):
+        check_calibration_describes_dive(ORIGIN, AXIS, K, dots)
+
+
 # --- abstention, so the gate never fires on data that cannot answer ---------
 
 
 @pytest.mark.parametrize("n", [0, 1, 2, 5])
 def test_abstains_on_too_few_dots(n):
     """Same posture as `check_fit_self_consistency`: too little to judge means
-    say nothing, not refuse. A dive with a handful of dots is the degenerate
-    case this gate is meant to expose, and the exposure comes from the
-    observation-count check, not from here."""
+    say nothing, not refuse. A dive with a handful of dots says nothing about
+    the fit; what exposes a fit that had nothing to constrain it is
+    `check_observation_geometry`, on the lever arm of the observations — not
+    a count, which is the quantity dive 347 satisfied with a duplicate."""
     dots = _perpendicular(_dots_on_ray(depths=np.linspace(0.6, 3.5, max(n, 1))), 60.0)
     check_calibration_describes_dive(ORIGIN, AXIS, K, dots[:n])
 
@@ -170,6 +217,15 @@ def test_bounds_sit_between_the_measured_populations():
     whose calibrations are merely imperfect."""
     assert 3.92 < DEFAULT_MAX_DIVE_MEDIAN_OFFSET_PX < 9.42
     assert 6.07 < DEFAULT_MAX_DIVE_P90_OFFSET_PX < 18.44
+
+
+def test_the_disagreeing_dot_floor_sits_between_the_measured_populations():
+    """Re-measured 2026-09-13 over all 32 stored calibrations against their
+    dives' live dots: **every one of the 30 sound calibrations has zero dots
+    beyond the p90 bound.** The two refused have 13 (dive 498, of 40) and 139
+    (dive 347, of 321). So the floor has only to clear the handful of stray
+    labels a dive accumulates mid-labelling and stay below 13."""
+    assert 2 < MIN_DISAGREEING_DIVE_DOTS < 13
 
 
 def test_error_names_the_dive_statistic_so_a_refusal_is_actionable():

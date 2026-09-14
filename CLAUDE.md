@@ -658,10 +658,11 @@ Three things about it:
   its `.ORF`s, and `ORDER BY id LIMIT 1` blocks higher-id dives behind it —
   the dive-347 shape. The error message names the remedies (fix the
   observations, park at `Priority.NONE`, or clear the calibration target).
-* **Refusals are non-retryable.** Both gates are deterministic in the run's own
-  observations, so a retry re-derives the same answer; as plain `ValueError`s
-  Temporal rescheduled them until the child's 2 h execution timeout, holding
-  the parent and the staged scratch.
+* **Refusals are non-retryable.** Three of the four gates are deterministic in
+  the run's own observations and the fourth re-reads the same dive labels, so a
+  retry re-derives the same answer; as plain `ValueError`s Temporal rescheduled
+  them until the child's 2 h execution timeout, holding the parent and the
+  staged scratch.
 
 **Open — the 8 bad calibrations already in prod are NOT fixed by this.** The
 gate is write-time only, and both cohorts skip a dive that *has* a
@@ -715,6 +716,20 @@ sit at 0.43–0.88 px, six at 1.31–1.55, and the tail is 341/349 at 3.3–3.9,
 sliding the offset along the family of rays sharing an image line leaves the
 projection identical, so five of the six known-bad baselines pass it. The two
 gates are complementary; neither subsumes the other.
+
+**The p90 branch needs a disagreeing subset, not one or two labels.** The dots
+are the whole dive's, so they include labels the fit never saw and labels
+nobody has checked yet: the 3σ per-dive validator that supersedes a reflection
+mislabel only runs once a dive's laser labelling is *complete*, so
+mid-labelling the population is unpoliced. `np.percentile` interpolates, so at
+N=18 two 60 px mislabels drag the 90th percentile to ~18 px — and since a
+recorded refusal self-expires the moment any label on the dive changes, a
+refusal earned that way returns every hour a labeler works. So the branch also
+requires `MIN_DISAGREEING_DIVE_DOTS = 5` dots beyond the bound. Re-measured
+2026-09-13 over all 32 stored calibrations: **every one of the 30 sound ones
+has zero dots beyond the p90 bound**, against 13 of 40 (dive 498) and 139 of
+321 (347), so the floor separates cleanly. The median branch has no floor —
+"the whole dive disagrees" is a property of the fit at any N.
 
 Consequences worth knowing:
 

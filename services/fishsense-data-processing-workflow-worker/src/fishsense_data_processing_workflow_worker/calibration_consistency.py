@@ -34,14 +34,27 @@ __all__ = [
     "CalibrationUnderdeterminedError",
     "DEFAULT_MAX_DIVE_MEDIAN_OFFSET_PX",
     "DEFAULT_MAX_DIVE_P90_OFFSET_PX",
+    "MIN_DISAGREEING_DIVE_DOTS",
     "MIN_DIVE_DOTS",
     "MIN_OBSERVATION_LEVER_M",
     "MIN_DOT_SPAN_PX",
+    "REFUSAL_REMEDIES",
     "check_baseline_plausible",
     "check_calibration_describes_dive",
     "check_observation_geometry",
     "check_fit_self_consistency",
 ]
+
+#: Every refusal here parks the dive in its cohort, so every refusal message
+#: has to tell an operator what to do about it -- the reasoning is in
+#: `check_baseline_plausible`'s docstring. One string, so the gates cannot
+#: drift on the remedies they name.
+REFUSAL_REMEDIES = (
+    "This dive stays in the calibration cohort and will be re-selected "
+    "hourly, blocking higher-id dives: either fix its observations, or park "
+    "it with Priority.NONE and a note, or (checkerboard dives) clear its "
+    "calibration target via DELETE /api/v1/dives/{id}/calibration-target/."
+)
 
 # --- baseline plausibility -------------------------------------------------
 #
@@ -126,11 +139,7 @@ def check_baseline_plausible(
             f"~10.4 cm; a value this far off means the fit, not the hardware. "
             f"It would scale every depth and every length by that factor, "
             f"invisibly to reprojection residual and to the self-consistency "
-            f"gate. Refusing to persist. This dive stays in the calibration "
-            f"cohort and will be re-selected hourly, blocking higher-id dives: "
-            f"either fix its observations, or park it with Priority.NONE and a "
-            f"note, or (checkerboard dives) clear its calibration target via "
-            f"DELETE /api/v1/dives/{{id}}/calibration-target/."
+            f"gate. Refusing to persist. {REFUSAL_REMEDIES}"
         )
 
 
@@ -221,14 +230,15 @@ def check_fit_self_consistency(
             f"input dot line (gate {max_angle_deg} deg); median offset "
             f"{median_offset_px:.1f}px. The fit disagrees with its own "
             f"observations — mixed dot populations (e.g. specular-reflection "
-            f"mislabels) or corrupt slate poses. Refusing to persist."
+            f"mislabels) or corrupt slate poses. Refusing to persist. "
+            f"{REFUSAL_REMEDIES}"
         )
     if median_offset_px > max_median_offset_px:
         raise CalibrationInconsistentError(
             f"fitted laser ray reprojects with median offset "
             f"{median_offset_px:.1f}px from the input dot line "
             f"(gate {max_median_offset_px}px); angle {angle_deg:.2f} deg. "
-            f"Refusing to persist."
+            f"Refusing to persist. {REFUSAL_REMEDIES}"
         )
 
 
@@ -272,10 +282,30 @@ def check_fit_self_consistency(
 # what `check_baseline_plausible` is for. Neither gate subsumes the other.
 DEFAULT_MAX_DIVE_MEDIAN_OFFSET_PX = 6.0
 DEFAULT_MAX_DIVE_P90_OFFSET_PX = 12.0
-#: Below this many usable dots the dive cannot answer the question, so the
-#: gate abstains rather than refusing. The degenerate-observation case is
-#: caught by the observation count in the calibration activity, not here.
+#: Below this many usable dots the dive cannot define a line, so the gate
+#: abstains rather than refusing. A degenerate *fit* is not this gate's
+#: abstention: it is caught by `check_observation_geometry`, which bounds the
+#: lever arm of the observations rather than counting them -- the count is the
+#: quantity that failed on dive 347, where `MIN_LASER_POINTS = 2` was
+#: satisfied by a duplicate label at the identical pixel.
 MIN_DIVE_DOTS = 6
+#: The p90 branch needs a disagreeing SUBSET, not one or two stray labels, so
+#: it also requires this many dots beyond the bound.
+#:
+#: The dots are the whole dive's, which means they include labels the fit
+#: never saw and labels nobody has checked yet: the 3 sigma per-dive validator
+#: that supersedes a reflection mislabel only runs once a dive's laser
+#: labelling is *complete*, so mid-labelling the population is unpoliced. And
+#: `np.percentile` interpolates, so at N=18 two 60 px mislabels already drag
+#: the 90th percentile to ~18 px. Without a floor that refuses the dive, and a
+#: recorded refusal self-expires the moment any label changes, so it would
+#: come back every hour a labeler works.
+#:
+#: Re-measured 2026-09-13 over all 32 stored calibrations against their dives'
+#: live dots: **every one of the 30 sound calibrations has zero dots beyond
+#: the p90 bound**, against 13 of 40 (dive 498) and 139 of 321 (dive 347). So
+#: the floor has only to clear a handful of strays and stay below 13.
+MIN_DISAGREEING_DIVE_DOTS = 5
 
 
 class CalibrationDoesNotDescribeDiveError(ValueError):
@@ -290,25 +320,32 @@ def check_calibration_describes_dive(
     *,
     max_median_offset_px: float = DEFAULT_MAX_DIVE_MEDIAN_OFFSET_PX,
     max_p90_offset_px: float = DEFAULT_MAX_DIVE_P90_OFFSET_PX,
-    min_dots: int = MIN_DIVE_DOTS,
-    min_span_px: float = MIN_DOT_SPAN_PX,
+    min_disagreeing_dots: int = MIN_DISAGREEING_DIVE_DOTS,
 ) -> None:
     """Raise `CalibrationDoesNotDescribeDiveError` when the fitted ray's
     projection disagrees with the laser dots of the dive it will measure.
 
     `dive_dots_xy` is an (N, 2) array of every live laser pixel in the dive,
     not just the observations that fed the fit. Non-finite rows are dropped.
-    Abstains when fewer than `min_dots` usable dots remain or their spread is
-    below `min_span_px`: a dive that cannot define a line cannot answer this.
+    Abstains below `MIN_DIVE_DOTS` usable dots or `MIN_DOT_SPAN_PX` of spread:
+    a dive that cannot define a line cannot answer this. Those two are read
+    from the module rather than taken as parameters — they say when the
+    question is unanswerable, which is not a per-caller policy, and the three
+    that are keep this signature inside pylint's argument bound.
+
+    Two branches, and they fail differently. The median says the *whole* dive
+    disagrees, which is a property of the fit. The p90 says a subset does,
+    which can also be a handful of bad labels the fit never saw, so it fires
+    only when at least `min_disagreeing_dots` sit beyond the bound.
     """
     dots = np.asarray(dive_dots_xy, dtype=float)
     if dots.ndim != 2 or dots.shape[1] != 2:
         return
     dots = dots[np.isfinite(dots).all(axis=1)]
-    if dots.shape[0] < min_dots:
+    if dots.shape[0] < MIN_DIVE_DOTS:
         return
     span = float(np.linalg.norm(dots.max(axis=0) - dots.min(axis=0)))
-    if span < min_span_px:
+    if span < MIN_DOT_SPAN_PX:
         return
 
     centroid, direction = _project_ray_to_image_line(
@@ -318,6 +355,7 @@ def check_calibration_describes_dive(
     offsets = np.abs((dots - centroid) @ normal)
     median_px = float(np.median(offsets))
     p90_px = float(np.percentile(offsets, 90))
+    n_disagreeing = int((offsets > max_p90_offset_px).sum())
 
     if median_px > max_median_offset_px:
         raise CalibrationDoesNotDescribeDiveError(
@@ -327,14 +365,17 @@ def check_calibration_describes_dive(
             f"{p90_px:.1f}px). The laser was not in the same state for the "
             f"frames being measured as for the frames it was calibrated from, "
             f"or the fit came from too few observations to constrain it. "
-            f"Refusing to persist."
+            f"Refusing to persist. {REFUSAL_REMEDIES}"
         )
-    if p90_px > max_p90_offset_px:
+    if p90_px > max_p90_offset_px and n_disagreeing >= min_disagreeing_dots:
         raise CalibrationDoesNotDescribeDiveError(
             f"calibration does not describe its dive: p90 offset {p90_px:.1f}px "
             f"from the dive's own {dots.shape[0]} laser dots (gate "
-            f"{max_p90_offset_px}px, median {median_px:.1f}px). A subset of the "
-            f"dive disagrees with the fit. Refusing to persist."
+            f"{max_p90_offset_px}px, median {median_px:.1f}px), with "
+            f"{n_disagreeing} of them beyond that bound (floor "
+            f"{min_disagreeing_dots}). A real subset of the dive disagrees with "
+            f"the fit -- either the laser moved partway through, or those "
+            f"frames' labels are wrong. Refusing to persist. {REFUSAL_REMEDIES}"
         )
 
 
@@ -403,5 +444,5 @@ def check_observation_geometry(
             f"The lever arm, not the count, fixes the fitted direction: at this "
             f"spread one pixel of dot-label noise moves every length by several "
             f"percent. Shoot the target at two clearly different distances. "
-            f"Refusing to persist."
+            f"Refusing to persist. {REFUSAL_REMEDIES}"
         )

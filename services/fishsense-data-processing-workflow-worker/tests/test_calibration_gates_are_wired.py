@@ -9,11 +9,12 @@ sibling dives through `calibration_dive_id`.
 
 So these drive the activities end to end with a fit that the gate must refuse,
 and assert two things: nothing was written, and the refusal reached Temporal as
-**non-retryable**. The second matters as much as the first. Both gates are
-deterministic functions of the observations the run was dispatched with, so a
-retry re-derives the same answer; left retryable, Temporal reschedules until
-the child's 2 h execution timeout, holding the parent, keeping the dive's raw
-scratch alive and skipping two hourly firings.
+**non-retryable**. The second matters as much as the first. Three of the four
+gates are deterministic functions of the observations the run was dispatched
+with and the fourth re-reads the same dive labels, so a retry re-derives the
+same answer; left retryable, Temporal reschedules until the child's 2 h
+execution timeout, holding the parent, keeping the dive's raw scratch alive
+and skipping two hourly firings.
 """
 
 from __future__ import annotations
