@@ -891,6 +891,84 @@ async def test_real_fish_bindings_are_never_invalidated(monkeypatch):
     assert result.skipped_already_measured == 1
 
 
+@pytest.mark.asyncio
+async def test_a_reclustered_real_fish_binding_is_invalidated(monkeypatch):
+    """A real fish's identity IS its LABEL_STUDIO cluster, so a row bound to a
+    Fish the cluster no longer points at is left over from a re-clustering.
+
+    `post_measurement` upserts on (image_id, fish_id), so the corrected
+    binding is ADDED alongside rather than replacing it, and the frame is then
+    counted twice. Prod dives 341 and 383 each carried one such pair
+    (2026-09-14): image 101302 bound to both fish 176 and fish 305 at the
+    identical 193.4 mm, which inflated a published field-set count by two
+    measurements and one individual.
+
+    This is the same self-heal the model branch does; only the way the
+    expected Fish is found differs. For a model it is the name, and for a real
+    fish it is the cluster's own `fish_id` — which needs no find-or-create, so
+    it cannot have a side effect on an image the loop is about to skip."""
+    image_id = 100
+    le, head_pix, tail_pix, laser_pix = _model_observation()
+    current = Fish(id=305, name=None, species_id=42)
+
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_camera_intrinsics(),
+        laser_extrinsics=le,
+        species_labels=[_species_label(image_id)],
+        laser_labels={image_id: _laser_label(image_id, *laser_pix)},
+        headtail_labels={image_id: _headtail_label(image_id, head_pix, tail_pix)},
+        clusters=[_cluster([image_id], fish_id=current.id)],
+        existing_measurements=[
+            Measurement(
+                id=1, length_m=0.1934, image_id=image_id, fish_id=176,
+                laser_extrinsics_id=CURRENT_CALIBRATION_ID,
+            )
+        ],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(sut.measure_fish_activity, 42)
+
+    fs.fish.delete_measurement.assert_awaited_once_with(176, image_id)
+    assert result.invalidated_stale_binding == 1
+    # and with the stale row gone the image is no longer "already measured",
+    # so it is measured against the cluster's Fish
+    assert result.skipped_already_measured == 0
+    assert result.measured == 1
+
+
+@pytest.mark.asyncio
+async def test_an_unbound_cluster_invalidates_nothing(monkeypatch):
+    """No `fish_id` on the cluster means no expected binding to compare
+    against, so the conservative move is to leave the row alone rather than
+    guess which Fish is right."""
+    image_id = 100
+    le, head_pix, tail_pix, laser_pix = _model_observation()
+
+    fs = _make_fs(
+        dive=_dive(),
+        intrinsics=_camera_intrinsics(),
+        laser_extrinsics=le,
+        species_labels=[_species_label(image_id)],
+        laser_labels={image_id: _laser_label(image_id, *laser_pix)},
+        headtail_labels={image_id: _headtail_label(image_id, head_pix, tail_pix)},
+        clusters=[_cluster([image_id], fish_id=None)],
+        existing_measurements=[
+            Measurement(
+                id=1, length_m=0.30, image_id=image_id, fish_id=176,
+                laser_extrinsics_id=CURRENT_CALIBRATION_ID,
+            )
+        ],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    result = await ActivityEnvironment().run(sut.measure_fish_activity, 42)
+
+    fs.fish.delete_measurement.assert_not_awaited()
+    assert result.invalidated_stale_binding == 0
+
+
 # ── calibration provenance ────────────────────────────────────────────
 #
 # A length is only meaningful relative to the `LaserExtrinsics` behind its

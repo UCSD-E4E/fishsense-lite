@@ -322,6 +322,53 @@ async def measure_fish_activity(dive_id: int) -> MeasureFishResult:
                 existing_measurements = [
                     m for m in existing_measurements if m.fish_id == expected.id
                 ]
+            elif names is not None and existing_measurements:
+                # Same self-heal for real fish, whose identity is per-CLUSTER
+                # rather than per-label — so the cluster's own `fish_id` IS
+                # the expected binding, and a row bound to a different Fish is
+                # left over from a re-clustering. Read it off the cluster
+                # instead of calling `_ensure_fish`: that would find-or-create
+                # and rebind, which must not happen for an image this loop may
+                # be about to skip.
+                #
+                # Left undone, the consequence is the one the model branch
+                # above describes: the corrected binding is ADDED alongside
+                # (the upsert key is the pair) and the frame is counted twice.
+                # Prod dives 341 and 383 each carried one such pair, found
+                # 2026-09-14 -- image 101302 bound to both fish 176 and fish
+                # 305 at the identical 193.4 mm -- and between them they
+                # inflated a field-set count by two measurements and one
+                # individual. A species change still does NOT invalidate
+                # anything, which is what `_ensure_fish` means by anchoring
+                # identity to the cluster; only disagreeing with the cluster
+                # does.
+                cluster_for_image = cluster_by_image.get(image_id)
+                expected_fish_id = (
+                    cluster_for_image.fish_id if cluster_for_image is not None else None
+                )
+                if expected_fish_id is not None:
+                    stale = [
+                        m
+                        for m in existing_measurements
+                        if m.fish_id != expected_fish_id
+                    ]
+                    for measurement in stale:
+                        activity.logger.info(
+                            "dive_id=%d image_id=%d: measurement bound to "
+                            "fish_id=%s but its cluster now points at "
+                            "fish_id=%s; invalidating the stale binding",
+                            dive_id,
+                            image_id,
+                            measurement.fish_id,
+                            expected_fish_id,
+                        )
+                        await fs.fish.delete_measurement(measurement.fish_id, image_id)
+                        result.invalidated_stale_binding += 1
+                    existing_measurements = [
+                        m
+                        for m in existing_measurements
+                        if m.fish_id == expected_fish_id
+                    ]
 
             # "Already measured" has to mean "already measured with the
             # calibration this dive resolves to now". A recalibration (the
