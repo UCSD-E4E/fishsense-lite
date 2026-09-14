@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.10.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.10.1...fishsense-data-processing-workflow-worker-v3.10.2) (2026-09-14)
+
+
+### Bug Fixes
+
+* **data-worker:** invalidate a real fish's measurement when its cluster rebinds ([#905](https://github.com/UCSD-E4E/fishsense-lite/issues/905)) ([ef8d01d](https://github.com/UCSD-E4E/fishsense-lite/commit/ef8d01d788e3e2b50b8355ace656ea1a0e557f23))
+
 ## [3.10.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.10.0...fishsense-data-processing-workflow-worker-v3.10.1) (2026-09-14)
 
 
