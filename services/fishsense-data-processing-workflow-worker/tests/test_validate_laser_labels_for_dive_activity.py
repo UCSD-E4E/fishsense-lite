@@ -47,12 +47,24 @@ def _label(
     )
 
 
-def _make_fs(labels: List[LaserLabel]):
+def _slate_label(image_id: int, *, completed: bool = True, superseded: bool = False):
+    """Only `image_id`, `completed` and `superseded` are read — the activity
+    uses these rows to learn which frames are calibration observations, not to
+    do any geometry."""
+    slate = MagicMock()
+    slate.image_id = image_id
+    slate.completed = completed
+    slate.superseded = superseded
+    return slate
+
+
+def _make_fs(labels: List[LaserLabel], slate_labels=()):
     fs = MagicMock()
     fs.__aenter__ = AsyncMock(return_value=fs)
     fs.__aexit__ = AsyncMock(return_value=None)
     fs.labels = MagicMock()
     fs.labels.get_laser_labels = AsyncMock(return_value=labels)
+    fs.labels.get_dive_slate_labels = AsyncMock(return_value=list(slate_labels))
     # put_laser_label echoes the row id back like the real endpoint
     # (status_code=201, body is the persisted row id).
     fs.labels.put_laser_label = AsyncMock(
@@ -243,6 +255,8 @@ async def test_rerun_after_supersede_is_a_noop(monkeypatch):
     fs.__aexit__ = AsyncMock(return_value=None)
     fs.labels = MagicMock()
     fs.labels.get_laser_labels = AsyncMock(side_effect=fake_get_laser_labels)
+    # No slate labels: every frame is a measurement frame here.
+    fs.labels.get_dive_slate_labels = AsyncMock(return_value=[])
     fs.labels.put_laser_label = AsyncMock(side_effect=fake_put_laser_label)
     fs.dives = MagicMock()
     fs.dives.put_dive_laser_line = AsyncMock(return_value=1)
@@ -302,6 +316,8 @@ async def test_inlier_fraction_strictly_improves_after_supersede(
     fs.__aexit__ = AsyncMock(return_value=None)
     fs.labels = MagicMock()
     fs.labels.get_laser_labels = AsyncMock(side_effect=fake_get_laser_labels)
+    # No slate labels: every frame is a measurement frame here.
+    fs.labels.get_dive_slate_labels = AsyncMock(return_value=[])
     fs.labels.put_laser_label = AsyncMock(side_effect=fake_put_laser_label)
     fs.dives = MagicMock()
     fs.dives.put_dive_laser_line = AsyncMock(return_value=1)
@@ -437,6 +453,8 @@ async def test_supersede_writes_run_concurrently(monkeypatch):
     fs.__aexit__ = AsyncMock(return_value=None)
     fs.labels = MagicMock()
     fs.labels.get_laser_labels = AsyncMock(return_value=labels)
+    # No slate labels: every frame is a measurement frame here.
+    fs.labels.get_dive_slate_labels = AsyncMock(return_value=[])
     fs.labels.put_laser_label = AsyncMock(side_effect=gated_put)
     fs.dives = MagicMock()
     fs.dives.put_dive_laser_line = AsyncMock(return_value=1)
@@ -552,3 +570,109 @@ async def test_reflection_split_logs_error_and_stands_down(monkeypatch, caplog):
     assert any(
         "REFLECTION SUSPECT" in rec.getMessage() for rec in caplog.records
     ), "two-line split must be loudly reported"
+
+
+# --- calibration frames are judged coarsely ---------------------------------
+#
+# See `test_coarse_calibration_frame_supersede.py` for the measurements
+# behind the tolerance. These pin the wiring: that the activity actually asks
+# which frames are calibration frames, and that it applies the loose rule to
+# exactly those.
+
+
+@pytest.mark.asyncio
+async def test_a_genuine_slate_dot_off_the_fish_line_is_not_superseded(monkeypatch):
+    """Dive 347's shape in miniature: a slate frame whose dot sits 6 px off a
+    line the fish frames define to ~1 px. Superseding it is what left 347
+    with one usable observation."""
+    labels = _colinear_labels(60)
+    slate = _label(label_id=900, image_id=9000, x=800.0, y=0.4 * 800.0 + 106.0)
+    fs = _make_fs(labels=labels + [slate], slate_labels=[_slate_label(9000)])
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    superseded = await ActivityEnvironment().run(
+        sut.validate_laser_labels_for_dive_activity, 347
+    )
+
+    assert superseded == 0
+    fs.labels.put_laser_label.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_wild_slate_dot_is_still_superseded(monkeypatch):
+    """The complement — the coarse rule is a wider bound, not an exemption."""
+    labels = _colinear_labels(60)
+    slate = _label(label_id=901, image_id=9001, x=800.0, y=0.4 * 800.0 + 180.0)
+    fs = _make_fs(labels=labels + [slate], slate_labels=[_slate_label(9001)])
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    superseded = await ActivityEnvironment().run(
+        sut.validate_laser_labels_for_dive_activity, 347
+    )
+
+    assert superseded == 1
+    (image_id, written), _ = fs.labels.put_laser_label.await_args
+    assert image_id == 9001
+    assert written.superseded is True
+
+
+@pytest.mark.asyncio
+async def test_a_measurement_dot_the_same_distance_off_is_superseded(monkeypatch):
+    """Same 6 px offset, no slate label on the frame -> still 3 sigma. This is
+    the pair that shows the rule keys on the frame, not on the number."""
+    labels = _colinear_labels(60)
+    fish = _label(label_id=902, image_id=9002, x=800.0, y=0.4 * 800.0 + 106.0)
+    fs = _make_fs(labels=labels + [fish], slate_labels=[])
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    assert (
+        await ActivityEnvironment().run(
+            sut.validate_laser_labels_for_dive_activity, 347
+        )
+        == 1
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_incomplete_or_superseded_slate_label_does_not_shield_a_frame(
+    monkeypatch,
+):
+    """The shield is "this frame is a calibration observation", and stage 13
+    only consumes completed, non-superseded slate labels. Anything else must
+    not buy a laser label a looser test."""
+    labels = _colinear_labels(60)
+    a = _label(label_id=903, image_id=9003, x=800.0, y=0.4 * 800.0 + 106.0)
+    b = _label(label_id=904, image_id=9004, x=830.0, y=0.4 * 830.0 + 106.0)
+    fs = _make_fs(
+        labels=labels + [a, b],
+        slate_labels=[
+            _slate_label(9003, completed=False),
+            _slate_label(9004, superseded=True),
+        ],
+    )
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    assert (
+        await ActivityEnvironment().run(
+            sut.validate_laser_labels_for_dive_activity, 347
+        )
+        == 2
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_dive_with_no_slate_labels_behaves_exactly_as_before(monkeypatch):
+    """Most dives. The fetch must not change the outcome where it returns
+    nothing, and must tolerate the endpoint answering None."""
+    labels = _colinear_labels(60)
+    fish = _label(label_id=905, image_id=9005, x=800.0, y=0.4 * 800.0 + 40.0)
+    fs = _make_fs(labels=labels + [fish])
+    fs.labels.get_dive_slate_labels = AsyncMock(return_value=None)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    assert (
+        await ActivityEnvironment().run(
+            sut.validate_laser_labels_for_dive_activity, 347
+        )
+        == 1
+    )

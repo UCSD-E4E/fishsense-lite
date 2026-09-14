@@ -59,6 +59,32 @@ LABEL_NOISE_MAD_FLOOR_PX = 1.0
 # well under one expected false flag.
 DEFAULT_OUTLIER_SIGMA = 3.0
 
+#: Calibration frames (a frame carrying a completed `DiveSlateLabel`, or a
+#: checkerboard frame) are judged against this absolute bound instead of the
+#: 3 sigma one, because the dive line is fish-dominated and a genuine slate
+#: dot legitimately sits a few px off it.
+#:
+#: Measured on prod 2026-09-13 against each dive's own fitted line: dive
+#: 347's thirteen genuine slate dots sit 0.34-8.48 px off a line its 319 fish
+#: dots define to 1.25 px median, and 349's twelve sit 2.87-5.98 px off a
+#: 0.94 px line. The burst is a few seconds inside a dive whose fish frames
+#: are minutes away, so a small in-plane rotation of the laser within its
+#: mount moves the whole burst coherently -- and a dozen dots against
+#: hundreds cannot pull the fit back toward themselves. The four real
+#: mislabels on 347 are 45.57, 50.59, 83.99 and 130.18 px: a separate
+#: population, a specular reflection or another object, and they must still
+#: go.
+#:
+#: The bound sits between those populations rather than near either, because
+#: the costs are wildly asymmetric. Superseding a genuine slate dot removes
+#: the dive's only route to a calibration and cannot be undone by
+#: relabelling (`get_laser_label_by_label_studio_id` filters superseded rows),
+#: which is how prod dive 347 came to be calibrated from ONE frame and 349
+#: from two dots 26 cm apart in range. A 10 px error in one calibration dot,
+#: by contrast, is diluted by the others and caught downstream by the four
+#: gates in `calibration_consistency`.
+COARSE_CALIBRATION_TOLERANCE_PX = 20.0
+
 
 @dataclass
 class LineFit:  # pylint: disable=too-many-instance-attributes
@@ -210,6 +236,8 @@ def flag_outliers(
     *,
     sigma: float = DEFAULT_OUTLIER_SIGMA,
     mad_floor_px: float = LABEL_NOISE_MAD_FLOOR_PX,
+    calibration_mask: np.ndarray | None = None,
+    coarse_tolerance_px: float = COARSE_CALIBRATION_TOLERANCE_PX,
 ) -> np.ndarray:
     """Boolean mask marking labels whose perpendicular distance to ``fit``
     exceeds ``sigma * max(label_noise_mad, mad_floor_px)``.
@@ -219,10 +247,25 @@ def flag_outliers(
 
     The MAD floor handles small-N dives where MAD collapses to sub-pixel
     values and would otherwise flag every label.
+
+    ``calibration_mask`` marks the rows that are calibration observations —
+    frames carrying a completed `DiveSlateLabel`. Those are judged against
+    ``coarse_tolerance_px`` in absolute pixels instead, never the tighter of
+    the two, because the dive line is fish-dominated and a genuine slate dot
+    sits a few px off it; see `COARSE_CALIBRATION_TOLERANCE_PX`. Omit it and
+    every row is judged at 3 sigma, which is what every caller got before
+    this existed — the loose rule has to be asked for.
     """
     if not fit.is_confident:
         return np.zeros(xy.shape[0], dtype=bool)
     effective_mad = max(fit.label_noise_mad, mad_floor_px)
-    threshold = sigma * effective_mad
+    threshold = np.full(xy.shape[0], sigma * effective_mad, dtype=float)
+    if calibration_mask is not None:
+        mask = np.asarray(calibration_mask, dtype=bool)
+        # `maximum`, not assignment: on a slate-only calibration dive the
+        # line is fitted from the slate dots themselves, so 3 sigma there is
+        # the *looser* of the two and tightening it would re-break the dives
+        # this exists for.
+        threshold[mask] = np.maximum(threshold[mask], coarse_tolerance_px)
     perp = fit.perpendicular_distance(xy[:, 0], xy[:, 1])
     return perp > threshold

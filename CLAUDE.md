@@ -2471,6 +2471,45 @@ Open follow-up:
    data-processing worker's `pyproject.toml`. The vendored file has a
    header comment pointing at the source.
 
+**Calibration frames are judged coarsely, not at 3σ (added 2026-09-14).** A
+frame carrying a completed, non-superseded `DiveSlateLabel` is a calibration
+observation, and the dive line is fitted overwhelmingly from the *measurement*
+frames — so a genuine slate dot legitimately sits a few px off it and 3σ ate
+it. Measured on prod: dive 347's thirteen genuine slate dots sit 0.34–8.48 px
+off a line its 319 fish dots define to 1.25 px median, and 349's twelve sit
+2.87–5.98 px off a 0.94 px line, against thresholds of 3.56 and 3.00 px. The
+validator superseded eleven of 347's and all ten of 349's, **which is how 347
+came to be calibrated from ONE frame (a duplicate label at the identical
+pixel) and 349 from two dots 26 cm apart in range.**
+
+Why the burst sits off the line at all: it is a few seconds long inside a dive
+whose fish frames are minutes away, so a small in-plane rotation of the laser
+*within* its mount moves the whole burst coherently — the same degree of
+freedom as the within-dive-only entry above — and a dozen dots against
+hundreds cannot pull the fit toward themselves.
+
+So those frames are tested against `COARSE_CALIBRATION_TOLERANCE_PX = 20.0`
+in absolute pixels (`flag_outliers(..., calibration_mask=...)`), which sits
+between the two measured populations: genuine dots reach 8.48 px, the nearest
+real mislabel is 45.57 (347's four are 45.57, 50.59, 83.99, 130.18 — specular
+reflections and another object). Verified against the real populations: the
+coarse rule supersedes 0 of the 23 genuine dots on 347/349 and all 6 of the
+known-wild rows. The bound is `maximum(3σ, 20px)`, not an assignment, because
+on a slate-only calibration dive the line is fitted from the slate dots
+themselves and 3σ there is the looser test.
+
+The asymmetry is the reason for the wide bound: superseding a genuine slate
+dot removes the dive's only route to a calibration and **cannot be undone by
+relabelling** (`get_laser_label_by_label_studio_id` filters superseded rows),
+while a 10 px error in one calibration dot is diluted by the others and caught
+downstream by the four gates in `calibration_consistency`. Reviving one is an
+operator `UPDATE`; see the dive 347/349 recipe in project memory.
+
+Not done yet: the other half of the same design, rejecting poor *fish* labels
+against the calibration's projected line. That needs the validator to run
+after stage 13 — it is dispatched from the hourly laser sync today, before any
+calibration exists.
+
 Tuning knobs if the writeback turns out too aggressive (false-positive
 rate too high, watch the OUTLIER log lines):
 
@@ -2478,6 +2517,9 @@ rate too high, watch the OUTLIER log lines):
   threshold loosening.
 - Raise `LABEL_NOISE_MAD_FLOOR_PX` (currently 1.0) — protects
   small-N dives where MAD collapses sub-pixel.
+- Raise `COARSE_CALIBRATION_TOLERANCE_PX` (currently 20.0) — widens the
+  bound on calibration frames only. Re-measure against both populations
+  before moving it; the margin is 2.4× on either side.
 - Raise `LINE_CONFIDENCE_THRESHOLD` (currently 5.0) — refuses to
   supersede on dives whose line geometry isn't well-determined.
   `flag_outliers` already returns all-False for non-confident fits,
