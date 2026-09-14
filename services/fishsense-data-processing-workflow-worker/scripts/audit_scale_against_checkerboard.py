@@ -54,6 +54,38 @@ recording so they are not rebuilt:
     (median |deviation| 2.2% vs 2.4%) and dive 490 was not flagged at all,
     because it measures against its own calibration. The offset it measures is
     PERPENDICULAR, and depth is set by position ALONG the line.
+  * Fitting the coarse calibration-frame pass against a line through the
+    CALIBRATION FRAMES ALONE, rather than against the dive line that
+    `flag_outliers` uses. This is the coarse pass as originally specified, and
+    the motivation is right: on a fish-heavy dive the measurement frames set
+    the dive line, so a burst shot in a different laser state is judged
+    against a state it does not share. Compared over the 23 prod dives that
+    have calibration frames (2026-09-14) the two references agree on 18, and
+    where they differ the burst line is the more conservative one:
+
+        dive 466   dive line flags 22 of 22 calibration dots; burst line 8
+        dive 077   34 of 60                                          30
+        dive 383    6 of 11                                           5
+
+    It was built, tested and then dropped, because the two mechanisms nearly
+    coincide by construction. `detect_reflection_split` runs BEFORE flagging
+    and stands the whole dive down when the dots form two parallel lines
+    8-200 px apart with a coherent secondary of at least MIN_POINTS_FOR_LINE
+    inliers -- which is exactly the condition under which a burst could
+    define its own line and disagree with the dive's. Below 8 px of
+    separation the coarse 20 px tolerance already keeps the burst (dives 347
+    and 349, at 3.4-8.5 px); above it the dive stands down; and a burst too
+    small to fit a line falls back to the dive line either way. Verified on
+    the synthetic 60-fish + 12-burst-at-45-px shape: the activity stands down
+    and supersedes nothing.
+
+    Worth knowing for later: the stand-down is not stable across time, because
+    its trigger disappears once the burst is superseded. Dive 466 today has
+    ZERO live calibration-frame dots, so nothing detects the two-line
+    structure any more and the dive proceeds to flagging with nothing to
+    flag. That is a reason to be careful about reading a quiet validator as
+    evidence of a clean dive, not a reason for a second reference line.
+
   * Rejecting measurement-frame laser labels whose dot sits too far from the
     stored calibration's PROJECTED RAY, rather than from the dive's own
     RANSAC line. The motivation is sound -- the 3 sigma validator anchors on
