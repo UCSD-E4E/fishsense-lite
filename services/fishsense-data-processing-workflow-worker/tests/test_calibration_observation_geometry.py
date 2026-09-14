@@ -18,7 +18,7 @@ Measured over the 32 stored calibrations whose observations are recoverable
     dive 465    3 obs   1.34 m   ->  0.6 %
     dive 383    2 obs   1.09 m   ->  0.7 %
     dive 349    2 obs   0.26 m   ->  5.8 %     <- refused here
-    dive 107   16 obs   0.06 m   ->  5.5 %     <- refused here
+    dive 107   16 obs   0.03 m   ->  5.5 %     <- refused here
     dive 347    1 obs   0.00 m   ->  degenerate
 
 Two observations over a metre of range are worth more than sixteen at one
@@ -79,10 +79,10 @@ def test_the_tightest_healthy_dive_is_accepted():
 
 
 def test_a_single_distance_burst_is_refused_however_many_observations():
-    """Dive 107: sixteen observations inside 6 cm of range. Every other gate
+    """Dive 107: sixteen observations inside 3 cm of range. Every other gate
     passes it; its 12.95 cm baseline is the fleet's highest."""
     rng = np.random.default_rng(0)
-    depths = 1.96 + rng.uniform(0.0, 0.06, 16)
+    depths = 1.97 + rng.uniform(0.0, 0.03, 16)
     with pytest.raises(CalibrationUnderdeterminedError, match="lever"):
         check_observation_geometry(_observations(depths))
 

@@ -397,18 +397,29 @@ def check_calibration_describes_dive(
 #     dive 471    2 obs   1.56 m   0.7 %
 #     dive 279    3 obs   1.47 m   0.6 %
 #     dive 465    3 obs   1.34 m   0.6 %
-#     dive 383    2 obs   1.09 m   0.7 %   <- tightest sound calibration
+#     dive 383    2 obs   1.09 m   0.7 %
 #     dive 349    2 obs   0.26 m   5.8 %   <- refused
-#     dive 107   16 obs   0.06 m   5.5 %   <- refused
+#     dive 062   20 obs   1.02 m   0.4 %   <- tightest sound calibration
+#     dive 107   16 obs   0.03 m   5.5 %   <- refused
+#     dive 526   15 obs   0.07 m           <- refused (its own fit collapses)
 #     dive 347    1 obs   0.00 m   degenerate
 #
 # Dive 107 is why this gate is needed: sixteen observations, a dot span wide
 # enough that `check_fit_self_consistency` does not abstain, and a 12.95 cm
 # baseline that `check_baseline_plausible` accepts as the fleet's high
-# extreme -- with 6 cm of lever. Dive 526 had the same single-distance
-# geometry and was caught only because its fit happened to collapse to
-# 2.00 cm. The bound sits between the populations, nearer the bad side
-# because a refusal wedges the dive in its cohort.
+# extreme -- with 2.8 cm of lever (1.97-2.00 m). Dive 526 had the same
+# single-distance geometry at 6.6 cm (4.16-4.22 m) and was caught only because
+# its fit happened to collapse to 2.00 cm.
+#
+# Confirmed out of sample 2026-09-14, which is the strongest evidence for the
+# bound: 107's fit reproduces its own 2.0 m working range to -0.12 % against
+# the slate's solvePnP depth and 526's 4.2 m range to -17.25 %. Fitted jointly
+# the two bursts give a 2.25 m lever and reproduce both to -0.22 % / -1.10 %
+# (held-out medians -0.23 % / -1.19 %), so the two are one mount state and the
+# single-burst fits are simply underdetermined.
+#
+# The bound sits between the populations, nearer the bad side, because a
+# refusal wedges the dive in its cohort.
 MIN_OBSERVATION_LEVER_M = 0.60
 
 

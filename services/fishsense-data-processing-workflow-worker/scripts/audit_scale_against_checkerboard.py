@@ -54,6 +54,19 @@ recording so they are not rebuilt:
     (median |deviation| 2.2% vs 2.4%) and dive 490 was not flagged at all,
     because it measures against its own calibration. The offset it measures is
     PERPENDICULAR, and depth is set by position ALONG the line.
+  * Leave-one-out over the calibration's own observations, predicting the
+    held-out frame's depth and comparing against that frame's solvePnP depth.
+    This is the in-sample comparison above dressed as a prediction, and it
+    fails on exactly the dive it would need to catch: over 12 dives (2026-09-14)
+    the ten sound ones score 0.52-1.48 % median |depth error| and dive 107
+    scores 0.56 %, better than most of them, while being 17.25 % wrong at
+    4.2 m when evaluated against dive 526's burst -- a range its own frames
+    never visit. A frame held out of a single-distance burst is predicted at
+    the distance the remaining frames already anchor, so it carries no
+    information about the ray's direction. Use `check_observation_geometry`'s
+    lever arm instead: it is structural, needs no second population, and
+    flagged 107 at 2.8 cm where this scored it clean.
+
   * Gating a new fit against its own camera's baseline history, judged by
     the median length error. The three baseline outliers graded within 1.6 %
     on the median (498 at 9.51 cm, 502 at 8.90, 107 at 12.95), which read as

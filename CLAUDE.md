@@ -742,35 +742,19 @@ Consequences worth knowing:
   known-bad tail, not a re-audit of the fleet. The refusals wedge their dives
   the same way the baseline gate's do — see that section.
 
-**Do NOT build leave-one-out cross-validation as a conditioning gate — it was
-measured and it certifies the worst fit in the fleet.** The idea is natural: refit
-N times leaving one slate observation out, predict the held-out frame's depth
-with the laser kernel, and compare against that frame's *slate* PnP depth, which
-is independent of the laser calibration. No known length, no fish, and every
-input is already in stage 13's hands. Measured 2026-09-14 over 12 dives:
-
-    sound dives (n=11)   lever 1.02-2.32 m   LOO median |depth err| 0.52-1.48 %
-    dive 107             lever 0.03 m        0.56 %   <- better than most sound dives
-    dive 526             lever 0.07 m        4.42 %
-
-Dive 107 scores **0.56 %** while being independently **17 % wrong at 4.2 m**
-(its stored calibration reproduces its own 2.0 m working range to −0.12 % and a
-4.2 m range to −17.25 %, against the slate PnP standard). The failure is
-structural, not a threshold: a frame held out of a single-distance burst is
-predicted at the distance the remaining frames already anchor, so it carries no
-information about the ray's *direction*. **Every in-distribution check is blind
-to conditioning** — known-length medians at the working range, reprojection
-residual, and cross-validation alike. Only the observation geometry
-(`check_observation_geometry`'s lever arm) or an evaluation at a genuinely
-different range can see it.
-
-The depth-vs-PnP comparison is still worth knowing about, as a diagnostic rather
-than a gate: it is the only check in this module with access to an *independent*
-depth, so it is the only one that can see **scale**, which reprojection residual
-and `LaserDepth.residual_m` structurally cannot. But it is circular in sample
-(the fit came from those observations), unavailable on any dive without
-calibration frames — every borrowed-calibration dive — and anchored to the
-calibration target and the intrinsics rather than to metres.
+**Every in-distribution check is blind to conditioning**, which is the general
+statement behind the lever-arm bound above and worth keeping in mind before
+proposing another gate. Known-length medians at the working range, reprojection
+residual, and cross-validation over the calibration's own observations all
+evaluate where the data already sits. Measured 2026-09-14: leave-one-out over
+the slate observations scores dive 107 at 0.56 % median depth error, *better*
+than the ten sound dives (0.52-1.48 %), while that fit is 17.25 % wrong at
+4.2 m — because a frame held out of a single-distance burst is predicted at
+the distance the remaining frames already anchor. It is recorded with the
+other two falsified gate candidates in
+`scripts/audit_scale_against_checkerboard.py`, whose docstring is also the
+place that explains when a solvePnP-depth comparison is evidence and when it
+is near-tautological.
 
 **Two halves of the same design are NOT in this change.** The remedy for wild
 dive-slate laser labels is a *coarse* RANSAC supersede pass on the calibration
