@@ -54,6 +54,34 @@ recording so they are not rebuilt:
     (median |deviation| 2.2% vs 2.4%) and dive 490 was not flagged at all,
     because it measures against its own calibration. The offset it measures is
     PERPENDICULAR, and depth is set by position ALONG the line.
+  * Rejecting measurement-frame laser labels whose dot sits too far from the
+    stored calibration's PROJECTED RAY, rather than from the dive's own
+    RANSAC line. The motivation is sound -- the 3 sigma validator anchors on
+    the dive's own labels, so a dive whose labels are mostly wrong can drag
+    the reference onto the wrong population, whereas a calibration fitted from
+    slate frames cannot be dragged by fish labels. Dry-run read-only over all
+    3418 live measurement-frame dots on the 31 calibrated dives (2026-09-14):
+    a 12 px bound would supersede 13 dots, 0.38 %, and ALL THIRTEEN are on
+    dive 498 -- whose calibration is itself refused (baseline 9.51 cm, lever
+    0.34 m). Every other dive's fish dots sit within 8.4 px of their
+    calibration's ray; fleet median 1.33 px, p90 4.55, p99 7.10.
+
+    So the gate does nothing where the calibration is sound and the wrong
+    thing where it is not: on 498 the labels are not the defect, the fit is,
+    and superseding 8 measured frames would destroy evidence rather than bad
+    data. The population it targets is already empty because the auto-accept
+    gate (10 px against the dive line) and the 3 sigma validator have removed
+    it upstream -- and the dragged-reference case they cannot handle is
+    handled by standing down instead: MAX_OUTLIER_FRACTION refuses to act
+    above 50 %, and detect_reflection_split stands down on two-line dives.
+
+    Limit of this dry run, stated because it bounds the conclusion: it
+    measures a population the validator has ALREADY cleaned, so it shows the
+    gate has nothing left to catch, not that a calibration-referenced rule
+    would have been worse at cleaning time. If the laser detector's reef
+    performance is ever wired to seed labels without the auto-accept gate in
+    front, re-run this before concluding again.
+
   * Leave-one-out over the calibration's own observations, predicting the
     held-out frame's depth and comparing against that frame's solvePnP depth.
     This is the in-sample comparison above dressed as a prediction, and it
