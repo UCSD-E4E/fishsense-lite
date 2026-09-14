@@ -2,6 +2,18 @@
 
 <!-- version list -->
 
+## [3.6.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v3.5.0...fishsense-api-v3.6.0) (2026-09-14)
+
+
+### Features
+
+* **data-worker:** refuse a calibration the dive itself disagrees with ([#895](https://github.com/UCSD-E4E/fishsense-lite/issues/895)) ([0874dcc](https://github.com/UCSD-E4E/fishsense-lite/commit/0874dcc4ff37f90616af69353e585b3055eb5c71))
+
+
+### Documentation
+
+* the DiveLaserLine is a within-dive fit, not a mount-state fingerprint ([#890](https://github.com/UCSD-E4E/fishsense-lite/issues/890)) ([624e28c](https://github.com/UCSD-E4E/fishsense-lite/commit/624e28cc96aab4a561c7a9ecb3f7cebe1dbddced))
+
 ## [3.5.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v3.4.0...fishsense-api-v3.5.0) (2026-09-12)
 
 
