@@ -747,8 +747,9 @@ statement behind the lever-arm bound above and worth keeping in mind before
 proposing another gate. Known-length medians at the working range, reprojection
 residual, and cross-validation over the calibration's own observations all
 evaluate where the data already sits. Measured 2026-09-14: leave-one-out over
-the slate observations scores dive 107 at 0.56 % median depth error, *better*
-than the ten sound dives (0.52-1.48 %), while that fit is 17.25 % wrong at
+the slate observations scores dive 107 at 0.56 % median depth error, better
+than nine of the ten sound dives (which span 0.52-1.48 %), while that fit is
+17.25 % wrong at
 4.2 m — because a frame held out of a single-distance burst is predicted at
 the distance the remaining frames already anchor. It is recorded with the
 other two falsified gate candidates in

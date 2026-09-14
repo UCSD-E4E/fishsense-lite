@@ -418,8 +418,9 @@ def check_calibration_describes_dive(
 # (held-out medians -0.23 % / -1.19 %), so the two are one mount state and the
 # single-burst fits are simply underdetermined.
 #
-# The bound sits between the populations, nearer the bad side, because a
-# refusal wedges the dive in its cohort.
+# The bound sits between the populations -- 1.02 m is the tightest sound
+# calibration and 0.26 m the loosest refused one -- nearer the bad side,
+# because a refusal wedges the dive in its cohort.
 MIN_OBSERVATION_LEVER_M = 0.60
 
 

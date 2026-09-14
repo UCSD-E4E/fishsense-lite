@@ -59,13 +59,21 @@ recording so they are not rebuilt:
     `flag_outliers` uses. This is the coarse pass as originally specified, and
     the motivation is right: on a fish-heavy dive the measurement frames set
     the dive line, so a burst shot in a different laser state is judged
-    against a state it does not share. Compared over the 23 prod dives that
-    have calibration frames (2026-09-14) the two references agree on 18, and
-    where they differ the burst line is the more conservative one:
+    against a state it does not share.
 
-        dive 466   dive line flags 22 of 22 calibration dots; burst line 8
-        dive 077   34 of 60                                          30
-        dive 383    6 of 11                                           5
+    Compared over the 23 prod dives that have calibration frames (2026-09-14),
+    twice, because which population you measure decides the answer:
+
+      * over LIVE calibration dots only -- what the validator actually sees on
+        its next run -- the two references agree on all 23 dives and neither
+        flags anything. On this population the change is a no-op, measured.
+      * over live AND superseded calibration dots, i.e. what the validator saw
+        historically, they agree on 18 and the burst line is the more
+        conservative where they differ: dive 466 22 of 22 against 8, dive 77
+        34 of 60 against 30, dive 383 6 of 11 against 5. Those are the
+        decisions already taken, not decisions still to take -- dive 466's 22
+        dots are all superseded today, which is why its row vanishes from the
+        live comparison entirely.
 
     It was built, tested and then dropped, because the two mechanisms nearly
     coincide by construction. `detect_reflection_split` runs BEFORE flagging
