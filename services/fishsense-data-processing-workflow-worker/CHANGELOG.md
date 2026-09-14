@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.9.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.8.1...fishsense-data-processing-workflow-worker-v3.9.0) (2026-09-14)
+
+
+### Features
+
+* **data-worker:** refuse a calibration the dive itself disagrees with ([#895](https://github.com/UCSD-E4E/fishsense-lite/issues/895)) ([0874dcc](https://github.com/UCSD-E4E/fishsense-lite/commit/0874dcc4ff37f90616af69353e585b3055eb5c71))
+* **data-worker:** scale-free range-trend audit of a laser calibration ([#891](https://github.com/UCSD-E4E/fishsense-lite/issues/891)) ([c0da89d](https://github.com/UCSD-E4E/fishsense-lite/commit/c0da89dc9b47ae337bff5108b3bb75e114fe56ef))
+* **data-worker:** the range-trend audit flags both signs ([#893](https://github.com/UCSD-E4E/fishsense-lite/issues/893)) ([8ec6a72](https://github.com/UCSD-E4E/fishsense-lite/commit/8ec6a721a147990db2721cd63e998e90f112d76f))
+
+
+### Bug Fixes
+
+* **shared:** raise the baseline floor to 9.7 cm -- 8.90 and 9.51 were not sound ([#894](https://github.com/UCSD-E4E/fishsense-lite/issues/894)) ([d21a383](https://github.com/UCSD-E4E/fishsense-lite/commit/d21a3832ebd2b8bed6e59fa3ad3b80f3d6175715))
+
 ## [3.8.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.8.0...fishsense-data-processing-workflow-worker-v3.8.1) (2026-09-12)
 
 
