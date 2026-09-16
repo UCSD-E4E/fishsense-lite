@@ -157,3 +157,41 @@ def test_the_real_sdk_model_satisfies_the_shape():
         "fish_curved_category",
     ):
         assert field in SpeciesLabel.model_fields
+
+
+# --- malformed content must not become a prediction -------------------------
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "Fish Model,",  # the real prod empty-leaf case `parse_model_name` rejects
+        "Fish,",
+        "Slate,",
+        "Fish",  # a bare parent node
+        "Slate",  # what a spreadsheet writes when it cannot name the slate
+        ", Hogfish (Lachnolaimus maximus)",
+        "Fish, ",
+    ],
+)
+def test_a_value_that_is_not_a_full_taxonomy_path_is_not_pre_annotated(content):
+    """The species Taxonomy is `leafsOnly="true"`, so a path that stops at a
+    parent is not selectable. LS answers such a prediction by dropping it or by
+    rejecting the whole import batch — and a rejected batch takes the real
+    tasks down with it, which is why this is refused here rather than sent.
+
+    `"Fish Model,"` is not hypothetical: it is the empty-leaf value a labeler
+    produces by picking the parent node, it exists in prod, and it is the same
+    value the `rigid_target_sql` TRIM guard was added for.
+    """
+    pred = build_prediction(_row(content_of_image=content))
+    assert pred is None or all(r["from_name"] != "species" for r in pred["result"])
+
+
+def test_a_malformed_species_value_does_not_suppress_the_other_controls():
+    """Rejecting the species path must not throw away a usable measurable or
+    angle judgement that came with it."""
+    pred = build_prediction(
+        _row(content_of_image="Fish Model,", fish_measurable_category="no")
+    )
+    assert {r["from_name"] for r in pred["result"]} == {"measurable"}

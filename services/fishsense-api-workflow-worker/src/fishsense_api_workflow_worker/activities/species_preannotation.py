@@ -8,6 +8,11 @@ they belong to stay in the normal labelling flow. This module renders such a
 row as an LS prediction, so the labeler is shown the judgement pre-filled and
 confirms it instead of retyping it.
 
+Prod holds **no** sentinel rows today -- zero for species, laser and head/tail
+alike, whatever the `dive_cohort_controller` docstrings' "~2000 of them" says
+about an earlier state -- so an import of judgements creates the first ones and
+nothing else exercises this path.
+
 **It is the exact inverse of `_parse_results` in the species sync activity**,
 and that parser is the definition of record for what a result shape means. The
 round-trip is pinned in `test_species_preannotation.py`, for the same reason
@@ -67,20 +72,46 @@ def _taxonomy_result(from_name: str, path: list[str]) -> Dict[str, Any]:
     }
 
 
+def _species_path(content: Optional[str]) -> Optional[list[str]]:
+    """`content_of_image` split into the nested path LS wants, or None when it
+    is not a full path to a leaf.
+
+    The species Taxonomy is `leafsOnly="true"`, so a value that stops at a
+    parent names nothing selectable. LS answers such a prediction either by
+    dropping it or by rejecting the whole import batch -- and a rejected batch
+    takes the run's real tasks down with it, so this refuses rather than sends.
+
+    `"Fish Model,"` is the case that makes this necessary rather than
+    defensive: it is what a labeler produces by picking the parent node, it
+    exists in prod, and it is the same value `rigid_target_sql` needed a TRIM
+    guard for. A spreadsheet's bare `"Slate"` is the other.
+    """
+    if not content:
+        return None
+    parts = [part.strip() for part in content.split(", ")]
+    if len(parts) < 2 or any(not part for part in parts):
+        return None
+    return parts
+
+
 def build_prediction(label: _HasJudgement) -> Optional[Dict[str, Any]]:
     """Render `label` as an LS prediction, or None if it says nothing.
 
     `content_of_image` is a ", "-joined taxonomy path, so it splits back into
-    the nested path LS wants. The three attribute taxonomies are flat, and the
+    the nested path LS wants -- but only if it reaches a leaf; see
+    `_species_path`. A malformed species value drops that one result and keeps
+    the rest, because a usable measurable or angle judgement arriving beside a
+    bad species value is still worth showing. The three attribute taxonomies
+    are flat, and the
     parser reads them with `taxonomy[0][0]` — the first element of the first
     path — so each must be emitted as a **single-element** path or the parser
     would read a parent where a leaf was meant.
     """
     results: list[Dict[str, Any]] = []
 
-    content = getattr(label, "content_of_image", None)
-    if content:
-        results.append(_taxonomy_result(_SPECIES_CONTROL, content.split(", ")))
+    path = _species_path(getattr(label, "content_of_image", None))
+    if path is not None:
+        results.append(_taxonomy_result(_SPECIES_CONTROL, path))
 
     for control, attribute in _TAXONOMY_CONTROLS:
         value = getattr(label, attribute, None)

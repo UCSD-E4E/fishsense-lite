@@ -146,6 +146,22 @@ def _sentinel_judgements(
             continue
         if label.image_id is None or label.image_id in out:
             continue
+        if label.completed or label.superseded:
+            # `completed` on a sentinel is refused, not honoured. Because
+            # `_select_target_images` builds its completed-id set with no
+            # project filter, a completed sentinel takes its image out of
+            # population for good -- no task, no JPEG, no way for a labeler to
+            # supply what the import could not carry -- and it does it
+            # silently. Treating it as "not a judgement" keeps that from
+            # looking like a successful import.
+            activity.logger.warning(
+                "image %d has a %s judgement sentinel; ignoring it as a "
+                "pre-annotation source (a completed sentinel removes the image "
+                "from population)",
+                label.image_id,
+                "completed" if label.completed else "superseded",
+            )
+            continue
         if build_prediction(label) is not None:
             out[label.image_id] = label
     return out
@@ -208,9 +224,16 @@ async def populate_species_label_studio_project_activity(
             tasks = [_build_task(image, judgements.get(image.id)) for image in targets]
             pre_annotated = sum(1 for image in targets if image.id in judgements)
             if pre_annotated:
+                # "built", not "imported": `import_tasks_and_record_labels`
+                # drops any task whose URL is already in the project (the #343
+                # dedup), and a prediction rides on the task, so a frame
+                # reached by that reconcile path keeps its label row and gets
+                # no pre-annotation. Its sentinel survives, so the judgement is
+                # not lost -- but attaching predictions to tasks that already
+                # exist needs an LS task update this activity does not do.
                 activity.logger.info(
-                    "Dive %d: %d of %d species tasks carry a pre-annotation "
-                    "from a stored judgement",
+                    "Dive %d: built %d of %d species tasks with a "
+                    "pre-annotation from a stored judgement",
                     dive_id,
                     pre_annotated,
                     len(targets),
@@ -264,6 +287,15 @@ async def populate_species_label_studio_project_activity(
         # aren't in `existing_species`.
         for old in existing_species:
             if old.completed or old.superseded or old.id is None:
+                continue
+            if old.label_studio_project_id is None:
+                # A sentinel is not a stale project row. It is the
+                # pre-annotation source, and `get_species_labels` filters
+                # `superseded == False`, so dead-lettering it here would
+                # destroy an imported judgement -- permanently, for any image
+                # this run deferred. The NULL compares unequal to `project_id`,
+                # so without this branch the run that reads a sentinel is the
+                # run that discards it.
                 continue
             if old.label_studio_project_id == project_id:
                 continue

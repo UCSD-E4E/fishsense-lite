@@ -847,16 +847,47 @@ pieces and one convention:
   `label_studio_project_id IS NULL` is a *sentinel*, and every preprocess cohort
   reads "no non-sentinel row" as "this image is unlabelled" (see the cohort
   docstrings in `dive_cohort_controller`). So a bulk import lands as sentinels
-  and the dives stay in the labelling flow. Prod already holds ~2,000 legacy
-  sentinels; ones that say nothing about the species are inert here.
+  and the dives stay in the labelling flow. **Prod holds no sentinel rows
+  today** — zero for species, laser and head/tail alike, whatever those
+  docstrings' "prod has ~2000 of them" says about an earlier state — so an
+  import creates the first ones and nothing else exercises this path. Measured
+  2026-09-15; an earlier draft of this section asserted the 2,000 were species
+  rows, which was wrong.
 * **`species_preannotation.build_prediction`** renders such a row as an LS
   prediction, and `populate_species_label_studio_project_activity` puts it in the
   task's `predictions`.
 
-**`completed` must be false on an imported sentinel.** `_select_target_images`
-builds `completed_ids` with no project filter, so a sentinel marked completed
-takes its image out of population permanently — no task, no JPEG, and no way for
-a labeler to supply what the import could not carry.
+**`completed` must be false on an imported sentinel**, and
+`_sentinel_judgements` now refuses one rather than trusting the loader.
+`_select_target_images` builds `completed_ids` with no project filter, so a
+sentinel marked completed takes its image out of population permanently — no
+task, no JPEG, and no way for a labeler to supply what the import could not
+carry — and it does it silently. A completed or superseded sentinel is
+therefore logged and ignored as a pre-annotation source.
+
+**The supersede pass must skip sentinels, and this was a live defect.** That
+pass dead-letters incomplete rows belonging to a *different* project, and it
+compared `label_studio_project_id == project_id` — a sentinel's NULL is not
+equal, so the run that read a judgement was the run that discarded it. Since
+`get_species_labels` filters `superseded == False`, the judgement then became
+unrecoverable for any image the run deferred. Pinned by
+`test_the_supersede_pass_leaves_judgement_sentinels_alone`, which fails if the
+guard is removed.
+
+**A value that does not reach a leaf is never emitted.** The species Taxonomy is
+`leafsOnly="true"`, and LS answers a parent-node prediction by dropping it or by
+rejecting the whole import batch — which would take the run's real tasks with
+it. `_species_path` requires at least two non-empty parts, so the prod
+empty-leaf value `"Fish Model,"` (the one `rigid_target_sql` needed a TRIM guard
+for) and a spreadsheet's bare `"Slate"` are refused. A bad species value drops
+only that result; a usable measurable or angle judgement beside it still shows.
+
+**Known gap: a prediction rides on a task import.** `import_tasks_and_record_labels`
+drops any task whose URL is already in the project (the #343 dedup), so a frame
+reached by that reconcile path gets a label row and no pre-annotation. The
+sentinel survives, so nothing is lost — but attaching a prediction to a task
+that already exists needs an LS task update the activity does not do. The log
+line says "built", not "imported", for that reason.
 
 **It goes in `predictions`, never `annotations`.** An annotation reads as
 finished human work, so the sync activity would write those values back as a

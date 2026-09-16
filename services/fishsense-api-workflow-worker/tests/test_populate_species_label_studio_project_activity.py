@@ -449,3 +449,43 @@ def test_a_stored_judgement_does_not_take_the_image_out_of_population():
     selected = sut._select_target_images(laser, images, judgements, 70)  # pylint: disable=protected-access
 
     assert [image.id for image in selected] == [5]
+
+
+@pytest.mark.asyncio
+async def test_the_supersede_pass_leaves_judgement_sentinels_alone(monkeypatch):
+    """The defect this guards against was confirmed live: the supersede pass
+    compares `label_studio_project_id == project_id`, and a sentinel's NULL is
+    not equal, so it fell through and was dead-lettered by the very run that
+    read it. `get_species_labels` filters `superseded == False`, so the
+    judgement became unrecoverable for any image deferred to a later run —
+    silent loss of imported human work, on its first use.
+    """
+    judgement = _judgement(1, "Fish, Hogfish (Lachnolaimus maximus)")
+    fs = _make_fs_client([_laser(1)], [judgement], {1: _image(1, "a")})
+    ls = _make_ls_client(returned_task_ids=[3001])
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    monkeypatch.setattr(sut_utils, "_get_ls_client", lambda: ls)
+
+    await ActivityEnvironment().run(
+        sut.populate_species_label_studio_project_activity, 42, 70
+    )
+
+    written = [c.args[1] for c in fs.labels.put_species_label.await_args_list]
+    superseded = [w for w in written if w.superseded]
+    assert superseded == [], "a judgement sentinel was dead-lettered"
+    # And it did its job: the image was still populated, carrying the
+    # pre-annotation.
+    assert {w.image_id for w in written if w.id is None} == {1}
+
+
+def test_a_completed_judgement_sentinel_is_refused_rather_than_honoured():
+    """`completed` on a sentinel is the one hard requirement of the import, and
+    it used to fail silently: `_select_target_images` builds its completed-id
+    set with no project filter, so the image left population for good — no
+    task, no JPEG, no log line. A judgement that would do that is not treated
+    as a judgement."""
+    completed = _judgement(
+        5, "Fish, Hogfish (Lachnolaimus maximus)"
+    ).model_copy(update={"completed": True})
+
+    assert sut._sentinel_judgements([completed]) == {}  # pylint: disable=protected-access
