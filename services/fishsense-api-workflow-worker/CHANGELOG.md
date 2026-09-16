@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [2.6.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.6.1...fishsense-api-workflow-worker-v2.6.2) (2026-09-16)
+
+
+### Bug Fixes
+
+* **api-worker:** sentinel species rows drove measurement grouping ([#921](https://github.com/UCSD-E4E/fishsense-lite/issues/921)) ([925f39b](https://github.com/UCSD-E4E/fishsense-lite/commit/925f39b291543ce0aa1238f9c4d0091f48d1e813))
+
 ## [2.6.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.6.0...fishsense-api-workflow-worker-v2.6.1) (2026-09-16)
 
 
