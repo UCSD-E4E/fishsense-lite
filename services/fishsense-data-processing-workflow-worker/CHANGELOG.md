@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.10.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.10.2...fishsense-data-processing-workflow-worker-v3.10.3) (2026-09-16)
+
+
+### Bug Fixes
+
+* **data-worker:** the refusal message described a churn that cannot happen ([#912](https://github.com/UCSD-E4E/fishsense-lite/issues/912)) ([cc686ac](https://github.com/UCSD-E4E/fishsense-lite/commit/cc686ac21d297562b205f68d4a83e24cc21f36cf))
+
 ## [3.10.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.10.1...fishsense-data-processing-workflow-worker-v3.10.2) (2026-09-14)
 
 
