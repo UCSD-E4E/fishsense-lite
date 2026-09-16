@@ -405,22 +405,24 @@ def test_build_task_carries_a_pre_annotation_when_a_judgement_exists(monkeypatch
     assert {r["from_name"] for r in result} == {"species", "measurable"}
     # It must never land in `annotations`: that would read as completed human
     # work and the sync activity would write it back as a labeler's answer.
-    assert task["annotations"] == []
+    assert not task["annotations"]
 
 
 def test_sentinel_judgements_ignores_rows_belonging_to_a_real_project():
     """A row with a project id is a labeler's own row, not an import. Feeding it
     back as a prediction would show a labeler their own answer as a suggestion."""
     labels = [_species_label(5, completed=False, project_id=70)]
-    labels[0] = labels[0].model_copy(update={"content_of_image": "Fish, Hogfish (Lachnolaimus maximus)"})
-    assert sut._sentinel_judgements(labels) == {}  # pylint: disable=protected-access
+    labels[0] = labels[0].model_copy(
+        update={"content_of_image": "Fish, Hogfish (Lachnolaimus maximus)"}
+    )
+    assert not sut._sentinel_judgements(labels)  # pylint: disable=protected-access
 
 
 def test_sentinel_judgements_ignores_a_sentinel_that_says_nothing():
     """Prod carries ~2,000 legacy NULL-project sentinels with no species set.
     They must stay inert rather than producing empty predictions."""
     labels = [_species_label(5, completed=False, project_id=None)]
-    assert sut._sentinel_judgements(labels) == {}  # pylint: disable=protected-access
+    assert not sut._sentinel_judgements(labels)  # pylint: disable=protected-access
 
 
 def test_sentinel_judgements_keys_by_image():
@@ -472,7 +474,7 @@ async def test_the_supersede_pass_leaves_judgement_sentinels_alone(monkeypatch):
 
     written = [c.args[1] for c in fs.labels.put_species_label.await_args_list]
     superseded = [w for w in written if w.superseded]
-    assert superseded == [], "a judgement sentinel was dead-lettered"
+    assert not superseded, "a judgement sentinel was dead-lettered"
     # And it did its job: the image was still populated, carrying the
     # pre-annotation.
     assert {w.image_id for w in written if w.id is None} == {1}
@@ -488,4 +490,4 @@ def test_a_completed_judgement_sentinel_is_refused_rather_than_honoured():
         5, "Fish, Hogfish (Lachnolaimus maximus)"
     ).model_copy(update={"completed": True})
 
-    assert sut._sentinel_judgements([completed]) == {}  # pylint: disable=protected-access
+    assert not sut._sentinel_judgements([completed])  # pylint: disable=protected-access

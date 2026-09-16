@@ -23,9 +23,11 @@ from fishsense_api_workflow_worker.activities.species_preannotation import (
     build_prediction,
     PREANNOTATION_MODEL_VERSION,
 )
-from fishsense_api_workflow_worker.activities.sync_species_labels_for_label_studio_project_activity import (  # noqa: E501
-    _parse_results,
+from fishsense_api_workflow_worker.activities import (
+    sync_species_labels_for_label_studio_project_activity as sync_sut,
 )
+
+_parse_results = sync_sut._parse_results  # pylint: disable=protected-access
 
 
 def _row(**kw) -> SimpleNamespace:
@@ -33,14 +35,14 @@ def _row(**kw) -> SimpleNamespace:
     than constructing a twenty-field SDK model. The real `SpeciesLabel` carries
     the same four -- `test_the_real_sdk_model_satisfies_the_shape` is the
     tripwire that says so."""
-    fields = dict(
-        content_of_image=None,
-        fish_measurable_category=None,
-        fish_angle_category=None,
-        fish_curved_category=None,
-        grouping=None,
-        top_three_photos_of_group=None,
-    )
+    fields = {
+        "content_of_image": None,
+        "fish_measurable_category": None,
+        "fish_angle_category": None,
+        "fish_curved_category": None,
+        "grouping": None,
+        "top_three_photos_of_group": None,
+    }
     fields.update(kw)
     return SimpleNamespace(**fields)
 
@@ -118,7 +120,8 @@ def test_grouping_and_top_three_are_never_pre_annotated():
     parsed = _parse_results(build_prediction(row))
     assert parsed["grouping"] is None
     assert parsed["top_three_photos_of_group"] is None
-    assert all(r["from_name"] not in ("grouping", "exclude") for r in build_prediction(row)["result"])
+    emitted = {r["from_name"] for r in build_prediction(row)["result"]}
+    assert not emitted & {"grouping", "exclude"}
 
 
 def test_a_row_with_nothing_to_say_yields_no_prediction():
@@ -150,13 +153,17 @@ def test_the_real_sdk_model_satisfies_the_shape():
     model carries the same four attributes, so the stand-in cannot drift."""
     from fishsense_api_sdk.models.species_label import SpeciesLabel
 
+    # Read through a local name: pylint cannot infer pydantic's `model_fields`
+    # as a mapping and reports `unsupported-membership-test` on a direct
+    # `in` against the class attribute.
+    declared = set(SpeciesLabel.model_fields)
     for field in (
         "content_of_image",
         "fish_measurable_category",
         "fish_angle_category",
         "fish_curved_category",
     ):
-        assert field in SpeciesLabel.model_fields
+        assert field in declared
 
 
 # --- malformed content must not become a prediction -------------------------
