@@ -65,6 +65,55 @@ __all__ = [
 ]
 
 
+def select_species_label_per_image(
+    species_labels: Iterable[SpeciesLabel],
+) -> dict[int, SpeciesLabel]:
+    """One species label per image — the labeler's answer, and only that.
+
+    **A sentinel is not an answer.** A `SpeciesLabel` whose
+    `label_studio_project_id` is NULL was never produced by a labeler; it holds
+    an imported or legacy judgement. Every cohort selector in
+    `dive_cohort_controller` already reads "no non-sentinel row" as "this image
+    is unlabelled", which is what lets a bulk import sit in the database
+    without taking its dives out of the labelling flow.
+
+    This activity did not honour that, and it cost a wrong measurement
+    grouping. It built its lookup from every species row a dive had, with no
+    project and no superseded filter. Prod dive 5
+    (`Hogfish01_MolHITW_0926_080323`) on 2026-09-16: image 1399 had no real
+    species label — populate skipped it because its stage-2 JPEG was missing —
+    so its only row was an imported sentinel with `grouping` NULL. 1399 leads a
+    PREDICTION cluster, so stage 6.1 started a new group there and one hogfish
+    became TWO `Fish` rows carrying 4 and 7 measurements.
+
+    Two rules, both learned from that:
+
+    * **Skip sentinels and superseded rows.** A frame left with no answer is
+      then absent from the returned mapping, and `regroup_by_species_labels`
+      omits it from every group — correct, because nobody judged it, and a
+      frame nobody judged must not be measured.
+    * **Choose deterministically.** The old dict comprehension was keyed on
+      `image_id`, so where a frame carried a real row *and* a sentinel,
+      whichever arrived last won: a sentinel could silently override a human
+      answer, and the outcome depended on API row order. A frame can also
+      legitimately hold rows in two real projects (its per-dive project plus a
+      grandfathered one), so ties are broken on the highest `id` — the most
+      recently written — as a stated rule rather than an accident.
+    """
+    chosen: dict[int, SpeciesLabel] = {}
+    for label in species_labels:
+        if label.image_id is None:
+            continue
+        if label.label_studio_project_id is None:
+            continue
+        if label.superseded:
+            continue
+        current = chosen.get(label.image_id)
+        if current is None or (label.id or 0) >= (current.id or 0):
+            chosen[label.image_id] = label
+    return chosen
+
+
 def regroup_by_species_labels(
     prediction_clusters: Iterable[DiveFrameCluster],
     species_label_by_image_id: dict[int, SpeciesLabel],
@@ -139,11 +188,7 @@ async def update_dive_image_groups_activity(
         )
         species_labels = await fs.labels.get_species_labels(dive_id) or []
 
-        species_label_by_image_id = {
-            label.image_id: label
-            for label in species_labels
-            if label.image_id is not None
-        }
+        species_label_by_image_id = select_species_label_per_image(species_labels)
 
         groups = regroup_by_species_labels(
             prediction_clusters, species_label_by_image_id

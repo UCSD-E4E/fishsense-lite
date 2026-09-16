@@ -270,3 +270,130 @@ async def test_activity_no_groups_is_not_a_skip(monkeypatch):
     assert result.skipped_already_grouped is False
     assert result.new_clusters_created == 0
     fs.images.post_cluster.assert_not_called()
+
+
+# --- sentinel species rows must not drive grouping --------------------------
+#
+# A `SpeciesLabel` with `label_studio_project_id IS NULL` is a SENTINEL: not a
+# labeler's answer. Every cohort selector in `dive_cohort_controller` reads
+# "no non-sentinel row" as "unlabelled", which is what lets a bulk import of
+# stored judgements sit in the database without taking dives out of the
+# labelling flow.
+#
+# This activity did not honour that. It built its lookup from every species row
+# the dive has, with no project and no superseded filter, so sentinels were read
+# as human answers. Measured in prod 2026-09-16 on dive 5
+# (`Hogfish01_MolHITW_0926_080323`): image 1399 had no real species label --
+# populate skipped it because its stage-2 JPEG was missing -- so its only row
+# was an imported sentinel with `grouping = NULL`. 1399 LEADS a PREDICTION
+# cluster, so a new group started there and ONE hogfish became TWO Fish rows
+# with 4 and 7 measurements. `species_labels_seen: 20` on a 16-task project was
+# the tell.
+#
+# Second failure mode: the lookup was a dict comprehension keyed on image_id,
+# so where a frame held both a real row and a sentinel, whichever came last
+# won -- a sentinel could silently override a human answer. Dive 5 had three
+# such frames.
+
+
+def _sentinel(image_id: int, *, grouping: str | None = None) -> SpeciesLabel:
+    """An imported judgement: carries a species, belongs to no LS project."""
+    label = _label(image_id, grouping=grouping)
+    return label.model_copy(
+        update={
+            "label_studio_project_id": None,
+            "label_studio_task_id": None,
+            "completed": False,
+            "content_of_image": "Fish, Hogfish (Lachnolaimus maximus)",
+        }
+    )
+
+
+def test_a_frame_whose_only_species_row_is_a_sentinel_is_not_grouped():
+    """No human judged that frame, so it must not join a measurement cluster
+    and must not start one either."""
+    chosen = sut.select_species_label_per_image([_sentinel(5)])
+    assert not chosen
+
+
+def test_a_sentinel_never_overrides_a_real_answer_whatever_the_order():
+    real = _label(5, grouping="Part of previous group")
+    sentinel = _sentinel(5)
+    for order in ([real, sentinel], [sentinel, real]):
+        chosen = sut.select_species_label_per_image(order)
+        assert chosen[5].label_studio_project_id == 70
+        assert chosen[5].grouping == "Part of previous group"
+
+
+def test_a_superseded_row_is_ignored():
+    """`superseded` is this repo's dead-letter for every label kind; a
+    dead-lettered answer must not decide a grouping."""
+    dead = _label(5, grouping="Part of previous group").model_copy(
+        update={"superseded": True}
+    )
+    assert not sut.select_species_label_per_image([dead])
+
+
+def test_a_live_row_wins_over_a_superseded_one():
+    dead = _label(5, grouping="Not part of current group").model_copy(
+        update={"superseded": True}
+    )
+    live = _label(5, grouping="Part of previous group")
+    for order in ([dead, live], [live, dead]):
+        chosen = sut.select_species_label_per_image(order)
+        assert chosen[5].grouping == "Part of previous group"
+
+
+def test_the_choice_among_several_real_rows_is_deterministic():
+    """A frame can carry rows in two real projects (the per-dive project plus a
+    grandfathered one). Last-wins over an unordered list made the grouping
+    depend on API row order; the highest id -- most recently written -- is a
+    stated rule instead."""
+    older = _label(5, grouping="Not part of current group").model_copy(
+        update={"id": 100, "label_studio_project_id": 70}
+    )
+    newer = _label(5, grouping="Part of previous group").model_copy(
+        update={"id": 200, "label_studio_project_id": 99}
+    )
+    for order in ([older, newer], [newer, older]):
+        chosen = sut.select_species_label_per_image(order)
+        assert chosen[5].id == 200
+
+
+def test_the_prod_dive_5_shape_yields_one_group_not_two():
+    """The regression this exists for, end to end through the real regrouper.
+
+    Eight PREDICTION clusters; every cluster-leading frame carries
+    "Part of previous group" EXCEPT 1399, whose only row is a sentinel with
+    NULL grouping. Before the fix that split the run in two.
+    """
+    clusters = [
+        _prediction_cluster(1, [1393, 1394]),
+        _prediction_cluster(2, [1395, 1396]),
+        _prediction_cluster(3, [1397, 1398]),
+        _prediction_cluster(4, [1399, 1400]),
+        _prediction_cluster(5, [1401, 1402]),
+        _prediction_cluster(6, [1403, 1404]),
+        _prediction_cluster(7, [1405, 1406, 1407]),
+        _prediction_cluster(8, [1408, 1409]),
+    ]
+    cont = "Part of previous group"
+    labels = [
+        _label(1393), _label(1394),
+        _label(1395, grouping=cont), _label(1396),
+        _label(1397, grouping=cont), _label(1398),
+        _sentinel(1399),                      # <- no human answer for this frame
+        _label(1400, grouping=cont),
+        _label(1401, grouping=cont), _label(1402),
+        _label(1403, grouping=cont), _label(1404),
+        _label(1405, grouping=cont), _label(1406), _label(1407),
+        _label(1408, grouping=cont), _label(1409),
+    ]
+
+    groups = sut.regroup_by_species_labels(
+        clusters, sut.select_species_label_per_image(labels)
+    )
+
+    assert len(groups) == 1, f"one hogfish must be one group, got {groups}"
+    assert 1399 not in groups[0], "an unjudged frame must not be measured"
+    assert len(groups[0]) == 16
