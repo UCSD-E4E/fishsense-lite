@@ -837,6 +837,53 @@ inference from the baselines rather than an observation. `detected_rows` /
 `detected_cols` are logged but never persisted, which is why re-rendering was
 needed to see them at all.
 
+## Species pre-annotations from a stored judgement
+
+A batch of hand-labelled species judgements can be loaded ahead of labelling and
+shown to the labeler pre-filled, instead of being retyped. The mechanism is two
+pieces and one convention:
+
+* **Sentinel rows carry the judgement.** A `SpeciesLabel` with
+  `label_studio_project_id IS NULL` is a *sentinel*, and every preprocess cohort
+  reads "no non-sentinel row" as "this image is unlabelled" (see the cohort
+  docstrings in `dive_cohort_controller`). So a bulk import lands as sentinels
+  and the dives stay in the labelling flow. Prod already holds ~2,000 legacy
+  sentinels; ones that say nothing about the species are inert here.
+* **`species_preannotation.build_prediction`** renders such a row as an LS
+  prediction, and `populate_species_label_studio_project_activity` puts it in the
+  task's `predictions`.
+
+**`completed` must be false on an imported sentinel.** `_select_target_images`
+builds `completed_ids` with no project filter, so a sentinel marked completed
+takes its image out of population permanently — no task, no JPEG, and no way for
+a labeler to supply what the import could not carry.
+
+**It goes in `predictions`, never `annotations`.** An annotation reads as
+finished human work, so the sync activity would write those values back as a
+labeler's completed label without anyone having looked at the frame.
+
+**`build_prediction` is the exact inverse of the sync activity's
+`_parse_results`, and the round trip is the test that matters**
+(`test_species_preannotation.py`). That parser is the definition of record for
+what a result shape means, so pinning the two against each other is the only
+thing that stops them drifting — the same reasoning as the taxonomy SQL/Python
+parity test. A pre-annotation the parser reads differently would write the wrong
+column the moment a labeler accepted it, with nothing raising. Note
+`_first_taxonomy_leaf` reads `taxonomy[0][0]`, so the three flat attribute
+taxonomies must be emitted as **single-element** paths.
+
+**Three fields are deliberately never pre-annotated**, and this is the design
+rather than an omission:
+
+* `grouping` — a judgement about the frame *before* this one.
+* `exclude` / `top_three_photos_of_group` — stage 14 keys measurability on it, so
+  a fabricated default silently decides what gets measured.
+* the slate branch's type choice (`H-Slate`, `V-Slate 2`, …). A spreadsheet that
+  records a bare `Slate` has named the taxonomy's *parent*, not a leaf, and
+  `Dive.dive_slate_id` is written only from the type choice. A wrong slate is a
+  wrong **scale**, which is exactly what reprojection residual cannot see, so
+  such rows are not loaded at all and stay a human's job.
+
 ## `content_of_image` taxonomy vocabulary
 
 `SpeciesLabel.content_of_image` is a ", "-joined Label Studio taxonomy

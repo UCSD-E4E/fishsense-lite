@@ -376,3 +376,76 @@ async def test_does_not_publish_empty_project(monkeypatch):
     )
 
     ls.projects.update.assert_not_called()
+
+
+# --- pre-annotation from stored judgements ----------------------------------
+
+
+def _judgement(image_id: int, species: str, **extra) -> SpeciesLabel:
+    """A sentinel row (`label_studio_project_id is None`) carrying a species
+    judgement — what a bulk import of hand-labelled work looks like."""
+    return _species_label(image_id, completed=False, project_id=None).model_copy(
+        update={"content_of_image": species, **extra}
+    )
+
+
+def test_build_task_carries_a_pre_annotation_when_a_judgement_exists(monkeypatch):
+    monkeypatch.setenv("E4EFS_OBJECT_STORE__BUCKET", "fishsense-test")
+    from fishsense_api_workflow_worker import config as cfg
+
+    cfg.settings.reload()
+
+    judgement = _judgement(
+        7, "Fish, Hogfish (Lachnolaimus maximus)", fish_measurable_category="no"
+    )
+    task = sut._build_task(_image(7, "abc123"), judgement)  # pylint: disable=protected-access
+
+    assert len(task["predictions"]) == 1
+    result = task["predictions"][0]["result"]
+    assert {r["from_name"] for r in result} == {"species", "measurable"}
+    # It must never land in `annotations`: that would read as completed human
+    # work and the sync activity would write it back as a labeler's answer.
+    assert task["annotations"] == []
+
+
+def test_sentinel_judgements_ignores_rows_belonging_to_a_real_project():
+    """A row with a project id is a labeler's own row, not an import. Feeding it
+    back as a prediction would show a labeler their own answer as a suggestion."""
+    labels = [_species_label(5, completed=False, project_id=70)]
+    labels[0] = labels[0].model_copy(update={"content_of_image": "Fish, Hogfish (Lachnolaimus maximus)"})
+    assert sut._sentinel_judgements(labels) == {}  # pylint: disable=protected-access
+
+
+def test_sentinel_judgements_ignores_a_sentinel_that_says_nothing():
+    """Prod carries ~2,000 legacy NULL-project sentinels with no species set.
+    They must stay inert rather than producing empty predictions."""
+    labels = [_species_label(5, completed=False, project_id=None)]
+    assert sut._sentinel_judgements(labels) == {}  # pylint: disable=protected-access
+
+
+def test_sentinel_judgements_keys_by_image():
+    labels = [
+        _judgement(5, "Fish, Hogfish (Lachnolaimus maximus)"),
+        _judgement(6, "Fish, Grey Snapper (Lutjanus griseus)"),
+        _species_label(7, completed=False, project_id=None),
+    ]
+    found = sut._sentinel_judgements(labels)  # pylint: disable=protected-access
+    assert set(found) == {5, 6}
+    assert found[6].content_of_image == "Fish, Grey Snapper (Lutjanus griseus)"
+
+
+def test_a_stored_judgement_does_not_take_the_image_out_of_population():
+    """The property that makes the whole approach safe. `_select_target_images`
+    drops an image the moment a *non-sentinel* row exists, so importing
+    judgements against a real project would have stranded these frames outside
+    the labelling flow for good — no task, no JPEG regeneration, and no way for
+    a labeler to supply the fields the import cannot carry (the slate type,
+    `grouping`, and the top-3 marker stage 14 keys measurability on).
+    """
+    laser = [_laser(5)]
+    images = {5: _image(5, "abc123")}
+    judgements = [_judgement(5, "Fish, Hogfish (Lachnolaimus maximus)")]
+
+    selected = sut._select_target_images(laser, images, judgements, 70)  # pylint: disable=protected-access
+
+    assert [image.id for image in selected] == [5]
