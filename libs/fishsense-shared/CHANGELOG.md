@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.23.1...fishsense-shared-v0.23.2) (2026-09-16)
+
+
+### Bug Fixes
+
+* **api-worker:** content_of_image took whichever taxonomy path was clicked first ([#914](https://github.com/UCSD-E4E/fishsense-lite/issues/914)) ([7c4e38e](https://github.com/UCSD-E4E/fishsense-lite/commit/7c4e38e891ca801defb8dad9a1df400fea25c8bc))
+
 ## [0.23.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.23.0...fishsense-shared-v0.23.1) (2026-09-14)
 
 
