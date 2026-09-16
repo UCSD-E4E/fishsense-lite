@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [2.6.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.5.0...fishsense-api-workflow-worker-v2.6.0) (2026-09-16)
+
+
+### Features
+
+* **api-worker:** pre-annotate species tasks from a stored judgement ([#908](https://github.com/UCSD-E4E/fishsense-lite/issues/908)) ([946f977](https://github.com/UCSD-E4E/fishsense-lite/commit/946f9777f81fe9788884e732ce4a73f7c727d526))
+
 ## [2.5.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.4.4...fishsense-api-workflow-worker-v2.5.0) (2026-09-11)
 
 
