@@ -837,6 +837,40 @@ inference from the baselines rather than an observation. `detected_rows` /
 `detected_cols` are logged but never persisted, which is why re-rendering was
 needed to see them at all.
 
+## Label Studio sync is INCREMENTAL — the cursor is the thing to know
+
+`sync_label_studio_project` (shared by all four label kinds) keeps a cursor per
+`(kind, project_id)` in `labelstudiosynccursor`, **skips every task whose
+`updated_at <= cursor.last_synced_at`**, and advances the cursor to the highest
+`updated_at` it saw only on full success. A partial failure leaves the cursor
+where it was, so the next run re-reads the batch.
+
+Three consequences, and getting them wrong costs real time:
+
+* **A sync will not re-read a task nobody has touched.** So a defect in a
+  parser is *not* repaired by deploying the fix — already-synced tasks are never
+  revisited. Conversely a hand-written DB correction **is durable**, because
+  nothing will overwrite it.
+* **A correction whose `updated_at` does not move is silently skipped.** If a
+  labeler fixes a task and the source system does not bump the timestamp past
+  the cursor, the fix never lands. When someone says "I corrected it", check
+  whether it actually arrived rather than assuming.
+* **To force a full re-read, rewind the cursor**, then sync:
+
+      PUT /api/v1/labels/sync-cursor/{kind}/{project_id}
+      {"kind": ..., "label_studio_project_id": ..., "last_synced_at": "1970-01-01T00:00:00Z"}
+
+  `kind` is `species` / `laser` / `headtail` / `dive_slate`. This is how 38
+  rows across 8 dives were repaired on 2026-09-16 after the `content_of_image`
+  path-order fix shipped: rewinding let the *deployed* parser redo the work,
+  which keeps one implementation of the transformation rather than a second one
+  in SQL.
+
+**Read the cursor back from Postgres, not the API.** The API can serve a stale
+read straight after its own write (see the project memory entry), and a
+rewind that looks like it did nothing is indistinguishable from one that was
+refused.
+
 ## Species pre-annotations from a stored judgement
 
 A batch of hand-labelled species judgements can be loaded ahead of labelling and
@@ -854,6 +888,28 @@ pieces and one convention:
   2026-09-15; an earlier draft of this section asserted the 2,000 were species
   rows, which was wrong.
 * **`species_preannotation.build_prediction`** renders such a row as an LS
+  prediction, and `populate_species_label_studio_project_activity` puts it in the
+  task's `predictions`.
+
+**"Sentinel" is a property each consumer must honour, not a global invariant,
+and assuming otherwise broke prod.** The cohort selectors in
+`dive_cohort_controller` do filter sentinels. `update_dive_image_groups_activity`
+(stage 6.1) did not: it built its lookup from every species row a dive had, with
+no project and no superseded filter, so an imported judgement was read as a
+labeler's answer. Prod dive 5 on 2026-09-16 — image 1399 had no real species
+label (populate skipped it, its stage-2 JPEG being one of 16 written for 17
+frames), so its only row was a sentinel with `grouping` NULL; 1399 *leads* a
+PREDICTION cluster, stage 6.1 starts a new group on a cluster's first frame
+unless it says "Part of previous group", and **one hogfish became two `Fish`
+rows** carrying 4 and 7 measurements. The same line's `{image_id: label}`
+comprehension also let a sentinel override a real answer where a frame held
+both, with the winner decided by API row order.
+
+`select_species_label_per_image` is now the one filter: skip sentinels, skip
+superseded, break ties among real rows on the highest `id`. **Any new reader of
+`fs.labels.get_species_labels` must go through it** — that call returns
+sentinels, and a frame with no real answer must be absent from the mapping so
+the regrouper omits it. A frame nobody judged must not be measured.* **`species_preannotation.build_prediction`** renders such a row as an LS
   prediction, and `populate_species_label_studio_project_activity` puts it in the
   task's `predictions`.
 
@@ -963,6 +1019,19 @@ Existing LS projects pick the new choice up automatically: `heal_labeling_config
 converges an already-created project onto the current XML constant, and adding
 a choice is additive so LS won't reject it.
 
+**`content_of_image` is not `taxonomy[0]`.** The `Slate` branch carries two
+orthogonal answers as sibling paths — the content answer (`Laser on slate` /
+`Laser not on slate`, which stage 9's cohort keys on) and the slate *type*
+(`H-Slate`, `V-Slate 2`, …, which species sync maps to `Dive.dive_slate_id`) —
+and a labeler picks one of each. Label Studio returns them in **selection
+order**, so taking path 0 made stage-9 eligibility depend on which choice was
+clicked first, silently, with the dropped path still sitting in
+`label_studio_json`. That cost 34 rows across 6 dives their laser answer;
+dive 22 lost all ten of its frames and with them any route to a calibration.
+`_content_of_image` now prefers a path in `taxonomy.SLATE_LASER_CONTENT` and
+falls back to path 0 only when no content answer is present, which leaves every
+other branch and the `Slate not in list` sentinel reading exactly as before.
+
 `taxonomy.is_measurable` is the **definition of record**: measurable
 means `measure_fish_activity` will actually bind a Measurement. The
 `LIKE` predicates in the view and the cohort selector are
@@ -1063,6 +1132,35 @@ cohort selector excludes dives that already have *any* PREDICTION
 cluster, so this is one-shot per dive; an operator must drop partial
 PREDICTION rows manually if a parent run failed mid-persist (the
 cohort would otherwise skip the dive forever).
+
+**Stage 1 returns every frame in exactly one cluster, and that is a contract.**
+`cluster_dive_frames` runs `HDBSCAN(min_cluster_size=2)` over timestamps and
+used to drop noise points (label -1), which caused three silent defects with one
+root cause. Evenly-spaced frames have no density variation for HDBSCAN to find,
+so *every* point is noise — measured all-noise for n = 2..6 — the activity
+returned `[]`, nothing persisted, the "has no PREDICTION cluster" gate stayed
+true, and the dive was re-selected forever, **head-of-line blocking every
+higher-id dive** because the selector is `ORDER BY id LIMIT 1`. Prod dive 8
+(2 frames, 2 s apart) was selected 8 times in a row on 2026-09-16. A dive with
+exactly one frame raised outright (`n_samples=1 while HDBSCAN requires more
+than one sample`), failing activity, child and parent. And even where clustering
+worked, noise frames vanished — prod dive 5 had 17 canonical frames and 16 in
+clusters, so one frame never entered stage 2 at all.
+
+A noise point is now its own singleton and n=1 short-circuits. Do not "simplify"
+that into one cluster holding every unclustered frame: a PREDICTION cluster is a
+prediction labelers correct in stage 6.1, "this frame groups with nothing" is
+what the data says, and lumping would be actively wrong on a reef dive holding
+many fish. The partition invariant — every input frame in exactly one cluster,
+none dropped, none duplicated — is the test that pins all three.
+
+**Stage 2 does not drain on the work stage 2 does.** Its cohort clears only
+when the *decoupled* `PopulateSpeciesLabelStudioProjectParentWorkflow` seeds
+species rows, so the preprocess parent keeps re-selecting the lowest-id dive
+until then. Firing it N times drains one dive N times, not N dives: on
+2026-09-16 fourteen firings rebuilt dive 8's JPEGs fourteen times and starved
+six dives behind it. A manual drain of N dives needs N interleaved
+(preprocess, populate) cycles.
 
 Stages 13 and 14 are structurally lighter than the preprocess parents:
 pure SDK math, no NAS staging, no object-store JPEGs, no per-image
