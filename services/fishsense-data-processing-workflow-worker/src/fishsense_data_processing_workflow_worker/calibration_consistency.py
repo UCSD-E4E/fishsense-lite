@@ -45,15 +45,28 @@ __all__ = [
     "check_fit_self_consistency",
 ]
 
-#: Every refusal here parks the dive in its cohort, so every refusal message
-#: has to tell an operator what to do about it -- the reasoning is in
-#: `check_baseline_plausible`'s docstring. One string, so the gates cannot
-#: drift on the remedies they name.
+#: The only thing an operator sees when a fit is refused: it is stored in
+#: `Dive.calibration_refused_reason` and read back from prod. One string, so
+#: the gates cannot drift on the remedies they name -- the reasoning for the
+#: refusals themselves is in `check_baseline_plausible`'s docstring.
+#:
+#: **Do not reintroduce the claim that the dive is re-selected hourly.** This
+#: text used to say so, and it was made false by the refusal record:
+#: `perform_laser_calibration_activity` calls `set_calibration_refused`, and
+#: both calibration cohorts then exclude the dive via
+#: `_calibration_refusal_still_stands` until one of its labels is newer than
+#: the refusal. Five prod dives still carry the stale sentence, and it was
+#: later read back off one of them as a live diagnosis of a churn that was not
+#: happening. A message that describes the wrong failure mode costs more than
+#: no message.
 REFUSAL_REMEDIES = (
-    "This dive stays in the calibration cohort and will be re-selected "
-    "hourly, blocking higher-id dives: either fix its observations, or park "
-    "it with Priority.NONE and a note, or (checkerboard dives) clear its "
-    "calibration target via DELETE /api/v1/dives/{id}/calibration-target/."
+    "The refusal is recorded, so this dive has left the calibration cohort "
+    "and nothing is retrying it. It returns on its own once any laser or "
+    "slate label on it is newer than the refusal, so relabelling is enough "
+    "and there is no flag to clear. If its observations cannot be fixed, "
+    "park it with Priority.NONE and a note; for a checkerboard dive that "
+    "needs different frames rather than better labels, clear its calibration "
+    "target via DELETE /api/v1/dives/{id}/calibration-target/."
 )
 
 # --- baseline plausibility -------------------------------------------------
