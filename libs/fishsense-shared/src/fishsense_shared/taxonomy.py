@@ -146,10 +146,26 @@ LABELED_FISH_MODELS = (
     "Yellow Anthias",
 )
 
-# Stage-9 marker: the frame shows the slate with the laser on it. This is read
-# off `taxonomy[0]`, a separate path from the slate-*type* leaf that species
-# sync maps to `Dive.dive_slate_id`.
+# Stage-9 marker: the frame shows the slate with the laser on it.
 SLATE_CONTENT_MARKER = "Slate, Laser on slate"
+
+# Its negative counterpart. Previously spelled only in the species labeling
+# XML, which is why the sync parser could not refer to it.
+SLATE_NO_LASER_CONTENT = "Slate, Laser not on slate"
+
+# The two CONTENT answers under `Slate`, as opposed to the slate *type*
+# (`H-Slate`, `V-Slate 2`, ...) that species sync maps to `Dive.dive_slate_id`.
+#
+# **Both live under `Slate` as sibling paths, and a labeler is meant to pick
+# one of each.** Label Studio returns the picked paths in selection order, so
+# `content_of_image` cannot be `taxonomy[0]`: whether the frame reads as
+# stage-9 eligible would depend on which choice was clicked first. It did, and
+# 34 prod rows across 6 dives lost their laser answer that way -- dive 22 lost
+# all ten of its frames and with them any route to a calibration.
+# `_content_of_image` therefore prefers a path in this set.
+SLATE_LASER_CONTENT: frozenset[str] = frozenset(
+    {SLATE_CONTENT_MARKER, SLATE_NO_LASER_CONTENT}
+)
 
 # The slate-type answer for "I can see a slate, and it is not one of the
 # templates you are offering me."
@@ -191,6 +207,8 @@ __all__ = [
     "RULER_CONTENT",
     "RULER_NAME",
     "SLATE_CONTENT_MARKER",
+    "SLATE_LASER_CONTENT",
+    "SLATE_NO_LASER_CONTENT",
     "SLATE_NOT_IN_LIST_LEAF",
     "SQL_BROADER_THAN_PYTHON",
     "calibration_target_leaf",

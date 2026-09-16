@@ -72,12 +72,34 @@ def _content_of_image(results: list[dict]) -> str | None:
     `_parse_species_names` reads this back to derive (common,
     scientific) from the trailing element — keep the join character
     fixed.
+
+    **`taxonomy[0]` is not good enough on the slate branch, and this was a
+    live bug.** `Slate` holds two orthogonal answers as sibling paths — the
+    content answer (`Laser on slate` / `Laser not on slate`, which stage 9's
+    cohort keys on) and the slate type (`H-Slate`, ..., which
+    `_slate_type_choice` maps to `Dive.dive_slate_id`) — and a labeler picks
+    one of each. Label Studio returns them in *selection order*, so taking
+    path 0 made stage-9 eligibility depend on which choice was clicked first,
+    silently, with the dropped path still sitting in `label_studio_json`. In
+    prod that cost 34 rows across 6 dives their laser answer; dive 22 lost all
+    ten of its frames and with them any route to a calibration.
+
+    So a content answer is preferred when one is present. Everything else
+    falls back to path 0 unchanged: no other branch carries a laser-marker
+    path, and a slate frame whose labeler gave only a type (or only the
+    `Slate not in list` sentinel) still reports exactly what it always did.
     """
     for r in results:
         if r["from_name"] == "species":
             paths = r.get("value", {}).get("taxonomy") or []
-            if paths:
-                return ", ".join(paths[0])
+            if not paths:
+                continue
+            joined = [", ".join(path) for path in paths if path]
+            for candidate in joined:
+                if candidate in taxonomy.SLATE_LASER_CONTENT:
+                    return candidate
+            if joined:
+                return joined[0]
     return None
 
 
