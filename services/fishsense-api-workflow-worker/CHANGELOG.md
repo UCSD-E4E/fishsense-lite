@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [2.6.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.6.0...fishsense-api-workflow-worker-v2.6.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* **api-worker:** content_of_image took whichever taxonomy path was clicked first ([#914](https://github.com/UCSD-E4E/fishsense-lite/issues/914)) ([7c4e38e](https://github.com/UCSD-E4E/fishsense-lite/commit/7c4e38e891ca801defb8dad9a1df400fea25c8bc))
+
 ## [2.6.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.5.0...fishsense-api-workflow-worker-v2.6.0) (2026-09-16)
 
 
