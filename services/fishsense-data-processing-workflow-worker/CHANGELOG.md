@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.10.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.10.3...fishsense-data-processing-workflow-worker-v3.10.4) (2026-09-16)
+
+
+### Bug Fixes
+
+* **data-worker:** clustering dropped frames, wedging stage 1 forever ([#918](https://github.com/UCSD-E4E/fishsense-lite/issues/918)) ([902beb4](https://github.com/UCSD-E4E/fishsense-lite/commit/902beb4eeb76d24dac2e2c7a4151109854fd366f))
+
 ## [3.10.3](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.10.2...fishsense-data-processing-workflow-worker-v3.10.3) (2026-09-16)
 
 
