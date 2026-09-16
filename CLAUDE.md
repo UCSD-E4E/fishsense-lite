@@ -540,16 +540,45 @@ Five things that are load-bearing:
   are INTERIOR CORNERS (a 15x11 board has 14x10); confusing those with squares
   is a 7-10% scale error.
 
-  The E4E board is seeded at **4.2 cm**, measured with a ruler against the
+  The E4E board was seeded at **4.2 cm**, measured with a ruler against the
   board on 2026-09-07 (migration `e07c31b9a4d2`, and
   `_seed_calibration_targets` for the fresh-database stamp path, which runs no
   migrations). A millimetre rule resolves an edge to ~+-0.5 mm, so a pitch read
   across one square is known to about **+-1.2% of scale** — a property of the
   span, not of the care taken. Tightening it needs no better instrument, just a
-  longer span: the same read across the full 14-corner span (588 mm) is worth
-  +-0.09%. Both seeds are **insert-only**, so correcting the row in place
+  longer span: the same read across the board's full 13-pitch span (548 mm) is
+  worth +-0.09%. Both seeds are **insert-only**, so correcting the row in place
   survives every deploy. `views.KNOWN_CALIBRATION_TARGETS` is the source of
   truth for both, and the row's `notes` carries the provenance.
+
+  **That longer span was then measured, and the row is now 0.04217 m**
+  (2026-09-16, `calibrationtarget` id 1, superseded note in place). The board is
+  14x10 interior corners, so **13x9 pitches**: 549 mm / 13 = 42.23 mm and
+  379 mm / 9 = 42.11 mm, mean 42.17. Note the arithmetic above had been done
+  over 14 pitches rather than 13 (588 = 14 x 42), which is the same
+  corners-versus-gaps slip this bullet opens by warning about — an N-corner row
+  has N-1 pitches.
+
+  **The correction propagates by itself, and it is worth knowing how far.** The
+  pitch sets the board's pose, which sets the laser fit, which sets the
+  baseline. Of the twelve checkerboard dives, the seven with a recorded
+  before-and-after moved **+0.39% to +0.79%** (e.g. 10.236->10.285,
+  10.326->10.375, 10.362->10.444); eleven of the twelve now sit in
+  **10.285-10.555 cm**, a 2.7 mm spread against the fleet IQR of 9.99-10.45.
+  Stage 14 then rewrote every measurement naming a retired fit on its own,
+  because both downstream cohorts select on provenance *mismatch* — 236
+  measurements, and `measurement.laser_extrinsics_id` went to NULL on 0 of 3130
+  rows. The one dive that still cannot self-fit (501: zero usable points from 52
+  frames, 47 rejected `dot_off_board`) borrows a sibling's via
+  `calibration_dive_id`, so it measures anyway.
+
+  **The one manual step was deleting the old `laserextrinsics` rows.** The
+  endpoint upserts on `dive_id` and **keeps the row id**, so a refit in place is
+  invisible to every provenance-mismatch cohort and nothing recomputes. Delete
+  to force a new id. Note this also un-calibrates the dive until the refit
+  lands, so do not delete faster than the cohort can refit — each checkerboard
+  dive takes ~35 min, and the drain must wait on the child (see "Draining a
+  cohort by hand").
 
   **Never back-solve the pitch from the known-length fish models.** They are
   the validation set — a scale bias they reveal is evidence to re-measure the
@@ -1306,9 +1335,44 @@ depth, so head and tail move together). `compute_laser_depths_activity` gates
 on `depth_m > 0` and counts the rest as `skipped_invalid_geometry`. **Stage 14
 still guards only on `isfinite`**, so it will happily measure a fish from an
 impossible depth; the depth stage's `skipped_invalid_geometry` counter is the
-only place that population is visible. As of the 2026-08-23 backfill it is
-**0 of 1109** — the gap is real but not currently reachable by any prod data,
-so it is deliberately left alone rather than changing stage-14 output.
+only place that population is visible.
+
+**That counter is no longer zero, and a non-zero one wedges its dive
+permanently.** It read 0 of 1109 at the 2026-08-23 backfill, and this file used
+to conclude from that the gap was "not currently reachable by any prod data, so
+it is deliberately left alone". On 2026-09-16 dive 32 reached it and blocked
+**49 higher-id dives for 23 consecutive hourly firings**. The shape is the
+never-goes-false wedge, and it is worth reading carefully because the child
+looks healthy:
+
+```
+compute-laser-depths-32 -> COMPLETED
+{computed: 0, skipped_current: 2, skipped_invalid_geometry: 1,
+ skipped_unusable_label: 10}
+```
+
+The cohort promises "an image with a valid laser label and no `LaserDepth`
+naming it under the resolved calibration". For an image whose only valid label
+triangulates behind the camera, the activity gates on `depth_m > 0`, writes
+nothing, counts it — and **returns successfully**. So the predicate stays true
+for ever and `ORDER BY id LIMIT 1` parks every higher-id dive behind it. A
+`ValueError` would at least be loud; a clean completion is silent.
+
+The offending row was one laser label taken verbatim from the v2 detector
+(`laserprediction` confidence 0.885, `gate_verdict 'dive_ineligible'`) at a
+pixel no dot on that rig could occupy — the dive's two sound human dots sit at
+0.98 m and 1.92 m, and the mislabel is past the point along the epipolar line
+where the two rays become parallel. Nothing automatic catches that: the 3-sigma
+validator cannot reach `LINE_CONFIDENCE_THRESHOLD` from three dots, and the
+coarse 20 px calibration rule only covers frames carrying a `DiveSlateLabel`.
+Superseding it drained the cohort; it changed no calibration, because that frame
+was never a calibration observation.
+
+**Open**: the activity should record the refusal so the cohort drains, the way
+the four gates in `calibration_consistency` do. Until it does, a single
+impossible dot anywhere costs every dive above it, and the only signal is a
+counter nobody is watching. Do not read a green child as work done — read its
+result.
 
 **`LaserDepth.residual_m` is how well the dot and the calibration agreed** —
 the closest-approach distance between the two rays, ~0 when the dot really is
@@ -2381,6 +2445,45 @@ dead, and not part of the live pipeline. If you are tracing why a slate
 frame has no prediction, this is why; nothing is broken.
 
 ## Operational ground truth (read before touching prod)
+
+### Draining a cohort by hand: wait on the child, and read its result
+
+Every hourly parent drains exactly one dive per firing, so clearing a backlog
+means firing it repeatedly. **Firing it in a tight loop does not work, and a
+dive that keeps coming back from such a loop is not evidence of a wedge.**
+
+Child workflow ids are deterministic — `measure-fish-{dive}`,
+`compute-laser-depths-{dive}`, `preprocess-laser-{dive}`, and
+`perform-checkerboard-calibration-{dive}`.
+A second firing while the first child is still running collides on that id;
+`_dispatch.dispatch_child` turns the `WorkflowAlreadyStartedError` into its
+`CHILD_ALREADY_RUNNING` sentinel, the parent skips `cleanup_raw` (deliberately —
+deleting the scratch would pull the `.ORF`s out from under the child still
+reading them, the dive-442 incident) and returns the same dive id. So a loop
+issuing parents faster than a child can finish reports the same dive for ever
+while the work underneath is progressing perfectly well — and it is
+*indistinguishable from a wedge* by the parent's return value alone.
+
+That misread cost real damage on 2026-09-16: eight consecutive `-> 509` lines
+were taken for a new head-of-line wedge, when
+`perform-checkerboard-calibration-509` was RUNNING and working through ~230
+`detect_checkerboard_laser_point` activities two at a time — the CPU pod's
+`max_concurrent_activities = 2`, about 35 min per dive. Four dives had their
+`laserextrinsics` deleted for a refit and were then reported as stranded; a
+drain that waited on each child recovered all four.
+
+So a hand drain looks like: fire the parent, take the dive id it returns, poll
+`describe()` on that dive's child id until it leaves RUNNING, then print
+`await handle.result()` — **the result, not the status**. A child that completes
+having skipped everything is exactly the never-goes-false shape (the dive-32
+depth wedge above, `computed: 0`), and the status cannot show it. Stop on any
+dive returned three times rather than looping on it.
+
+Before calling anything wedged, check three things on the child: is it RUNNING,
+is its `history_length` advancing, and are its pending activities in state
+`SCHEDULED` (queued behind the concurrency cap) rather than absent. And put
+`-o ServerAliveInterval=20` on the ssh — a multi-hour drain otherwise dies on a
+broken pipe with its progress unrecorded.
 
 ### No staging / test environment
 
