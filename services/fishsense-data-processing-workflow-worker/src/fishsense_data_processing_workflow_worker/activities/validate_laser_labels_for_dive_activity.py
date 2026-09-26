@@ -44,6 +44,12 @@ from typing import List
 import numpy as np
 from fishsense_api_sdk.models.dive_laser_line import DiveLaserLine
 from fishsense_api_sdk.models.laser_label import LaserLabel
+from fishsense_core.laser import (
+    COARSE_CALIBRATION_TOLERANCE_PX,
+    MIN_POINTS_FOR_LINE,
+    fit_dive_line,
+    flag_outliers,
+)
 from temporalio import activity
 
 from fishsense_data_processing_workflow_worker.activities.heartbeat import (
@@ -51,12 +57,6 @@ from fishsense_data_processing_workflow_worker.activities.heartbeat import (
     heartbeat_pump,
 )
 from fishsense_data_processing_workflow_worker.activities.utils import get_fs_client
-from fishsense_data_processing_workflow_worker.laser_label_validation.line_fit import (
-    COARSE_CALIBRATION_TOLERANCE_PX,
-    MIN_POINTS_FOR_LINE,
-    fit_dive_line,
-    flag_outliers,
-)
 from fishsense_data_processing_workflow_worker.laser_label_validation.reflection import (
     detect_reflection_split,
 )

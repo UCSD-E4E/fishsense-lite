@@ -16,8 +16,8 @@ operator-level context the per-dive validator doesn't have. The activity logs
 the finding loudly for manual remediation (see the dive-77 recipe in project
 memory: supersede the artifact line's labels, delete the extrinsics, refit).
 
-Not vendored from the laser-detector repo (unlike ``line_fit``) — this is
-pipeline-side diagnostics.
+Lives here rather than in ``fishsense_core.laser`` (unlike the line fit) —
+this is pipeline-side diagnostics.
 """
 
 from __future__ import annotations
@@ -25,8 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-
-from fishsense_data_processing_workflow_worker.laser_label_validation.line_fit import (
+from fishsense_core.laser import (
     LineFit,
     MIN_POINTS_FOR_LINE,
     RANSAC_INLIER_TOL_PX,

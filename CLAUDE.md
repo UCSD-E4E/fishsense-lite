@@ -2753,18 +2753,6 @@ calibration. If a calibration was already computed using a
 later-superseded label, the calibration row stays as-is until
 something explicitly recomputes it; there's no automatic invalidation.
 
-Open follow-up:
-
-1. **Replace the vendored copy of `line_fit.py` with a real
-   dependency.** The kernel was duplicated from
-   `UCSD-E4E/2026-05-02_laser_detector` @ commit 3d5d2e8 into
-   `services/fishsense-data-processing-workflow-worker/src/.../laser_label_validation/line_fit.py`
-   because that repo says "early — nothing trained yet" and isn't
-   published. Once the laser-detector cuts a versioned release, drop
-   the vendored module and add it as a workspace / git dep in the
-   data-processing worker's `pyproject.toml`. The vendored file has a
-   header comment pointing at the source.
-
 **Calibration frames are judged coarsely, not at 3σ (added 2026-09-14).** A
 frame carrying a completed, non-superseded `DiveSlateLabel` is a calibration
 observation, and the dive line is fitted overwhelmingly from the *measurement*
