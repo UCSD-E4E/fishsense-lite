@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.10.5](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.10.4...fishsense-data-processing-workflow-worker-v3.10.5) (2026-09-26)
+
+
+### Bug Fixes
+
+* stop the laser validator eroding dives one hourly run at a time ([#927](https://github.com/UCSD-E4E/fishsense-lite/issues/927)) ([3b5ae55](https://github.com/UCSD-E4E/fishsense-lite/commit/3b5ae55167c6fd10d62fc821fb6ca95766c93bd6))
+
 ## [3.10.4](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.10.3...fishsense-data-processing-workflow-worker-v3.10.4) (2026-09-16)
 
 
