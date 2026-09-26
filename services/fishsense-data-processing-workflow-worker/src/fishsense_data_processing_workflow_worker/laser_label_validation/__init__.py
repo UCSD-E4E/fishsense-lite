@@ -1,4 +1,6 @@
-"""Laser-label validation primitives.
+"""Laser-label validation, pipeline side.
 
-Vendored from the standalone laser-detector repo (see ``line_fit.py``).
+The per-dive line fit and outlier flag live in ``fishsense_core.laser``; this
+package holds what sits on top of them here: reflection detection and the
+auto-accept gate.
 """

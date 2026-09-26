@@ -37,7 +37,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from fishsense_data_processing_workflow_worker.laser_label_validation.line_fit import (
+from fishsense_core.laser import (
     COARSE_CALIBRATION_TOLERANCE_PX,
     fit_dive_line,
     flag_outliers,

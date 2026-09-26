@@ -70,7 +70,7 @@ from enum import Enum
 
 import numpy as np
 
-from fishsense_data_processing_workflow_worker.laser_label_validation.line_fit import (  # noqa: E501  pylint: disable=line-too-long
+from fishsense_core.laser import (
     LABEL_NOISE_MAD_FLOOR_PX,
     LINE_CONFIDENCE_THRESHOLD,
     MAD_TO_SIGMA,
@@ -134,7 +134,7 @@ class AutoAcceptConfig:
     (p10 = 0.985) and a bar set there is inert.
 
     `min_predictions = 20` keeps 164 of 226 dives and 95.5% of frames.
-    `line_fit.MIN_POINTS_FOR_LINE` is 5, which is fine for the validator —
+    `fishsense_core.laser.MIN_POINTS_FOR_LINE` is 5, fine for the validator —
     whose worst case is discarding a good label — but far too low here, where
     the worst case is keeping a bad one silently. At n=5, three bad points are
     a majority and RANSAC only needs two to hypothesise.

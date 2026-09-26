@@ -588,22 +588,33 @@ async def get_laser_label_by_label_studio_id(
 
 @app.get("/api/v1/dives/{dive_id}/labels/laser")
 async def get_laser_labels_for_dive(
-    dive_id: int, session: AsyncSession = Depends(get_async_session)
+    dive_id: int,
+    include_superseded: bool = False,
+    session: AsyncSession = Depends(get_async_session),
 ) -> List[LaserLabel]:
-    """Retrieve all laser labels for a given dive ID."""
+    """Retrieve all laser labels for a given dive ID.
+
+    `include_superseded` is for the laser validator only: it must fit and flag
+    the dive's full population every run, or it erodes the dive a pass at a
+    time (see `test_laser_labels_include_superseded`). Every resolver relies
+    on the default hiding superseded rows.
+    """
     logger.debug("Retrieving laser labels for dive with id=%d", dive_id)
     query = (
         select(LaserLabel)
         .join_from(LaserLabel, Image, LaserLabel.image_id == Image.id)
         .join_from(Image, Dive, Image.dive_id == Dive.id)
         .where(Dive.id == dive_id)
-        .where(LaserLabel.superseded == False)
         # Ordered because callers treat the sequence as meaningful, not just
         # the set: the populate activities append in the order they receive
         # and Label Studio assigns task order from that. See
-        # `test_label_lists_are_ordered`.
-        .order_by(LaserLabel.image_id)
+        # `test_label_lists_are_ordered`. The `id` tie-break makes it total —
+        # an image can hold one label per project, and the validator's RANSAC
+        # picks point pairs by row index, so an unbroken tie moves its line.
+        .order_by(LaserLabel.image_id, LaserLabel.id)
     )
+    if not include_superseded:
+        query = query.where(LaserLabel.superseded == False)
 
     labels = (await session.exec(query)).all()
     if not labels:

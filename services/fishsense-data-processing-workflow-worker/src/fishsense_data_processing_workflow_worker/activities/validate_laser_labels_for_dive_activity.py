@@ -1,6 +1,6 @@
 """Per-dive laser-label validation.
 
-Fetches the dive's non-superseded `LaserLabel`s from fishsense-api,
+Fetches the dive's `LaserLabel`s from fishsense-api (superseded included),
 fits a RANSAC line through the positives, and supersedes any label
 whose perpendicular distance exceeds the per-dive outlier threshold.
 The laser rig is fixed across a dive, so all positive laser
@@ -18,14 +18,25 @@ apart in range, and it cannot be undone by relabelling. Those frames are
 therefore tested against `COARSE_CALIBRATION_TOLERANCE_PX` instead, which
 still removes the separate population of wild mislabels (45-130 px on 347).
 
-Phase 2 (writeback enabled): each flagged label is updated with
-`superseded=True` via `put_laser_label`. The endpoint is an upsert by
-primary key, so re-runs on a dive whose outliers have already been
-superseded are no-ops at the SDK level — `get_laser_labels` filters
-on `superseded=False` server-side, so the second run sees a smaller
-population, refits the line, and may flag additional borderline
-labels that are now visible as outliers relative to the cleaned
-inlier set. That iterative tightening is intentional.
+Each run is ONE judgement of the dive's FULL population. The fetch includes
+superseded labels, the rows are put in (image_id, id) order, and the fit and
+flag run over all of them; a flagged label that is still live is superseded.
+Nothing is carried over from earlier runs, so an unchanged dive gets the same
+answer every hour.
+
+It used to re-fit only the survivors, and that eroded dives a pass at a time:
+`flag_outliers` estimates its noise scale from the rows it is handed, removing
+the flagged tail narrows that population, and the next estimate flags more.
+Prod dive 521 lost 15, then 7, then 1 label on consecutive hourly runs with no
+label edited in between. fishsense-core #88 documents the contract this
+follows (fit and flag the full population every run, in a stable order); see
+`test_laser_validator_does_not_erode.py`.
+
+The validator only supersedes. A superseded label the fit now keeps — most
+of what the erosion took — is left alone: reviving is a reviewed operator
+decision, not something an hourly job does. A legacy row whose `superseded`
+is NULL is fitted but never written; every resolver already reads it as not
+live.
 
 Note on labeler corrections: once a `LaserLabel` row is superseded,
 `get_laser_label_by_label_studio_id` filters it out, so a labeler
@@ -44,6 +55,12 @@ from typing import List
 import numpy as np
 from fishsense_api_sdk.models.dive_laser_line import DiveLaserLine
 from fishsense_api_sdk.models.laser_label import LaserLabel
+from fishsense_core.laser import (
+    COARSE_CALIBRATION_TOLERANCE_PX,
+    MIN_POINTS_FOR_LINE,
+    fit_dive_line,
+    flag_outliers,
+)
 from temporalio import activity
 
 from fishsense_data_processing_workflow_worker.activities.heartbeat import (
@@ -51,12 +68,6 @@ from fishsense_data_processing_workflow_worker.activities.heartbeat import (
     heartbeat_pump,
 )
 from fishsense_data_processing_workflow_worker.activities.utils import get_fs_client
-from fishsense_data_processing_workflow_worker.laser_label_validation.line_fit import (
-    COARSE_CALIBRATION_TOLERANCE_PX,
-    MIN_POINTS_FOR_LINE,
-    fit_dive_line,
-    flag_outliers,
-)
 from fishsense_data_processing_workflow_worker.laser_label_validation.reflection import (
     detect_reflection_split,
 )
@@ -94,10 +105,16 @@ def _positive_xy(labels: List[LaserLabel]) -> tuple[np.ndarray, List[LaserLabel]
     A "positive" is a laser-localization label with both coordinates set.
     Sentinel rows seeded by populate (no laser visible) and skipped
     annotations land here as null x/y and are excluded.
+
+    Ordered by (image_id, id) here rather than trusting the API: RANSAC picks
+    point pairs by row index, so the same labels in another order can settle
+    on another line (fishsense-core measured dive 257 flagging 41-63 labels
+    across 50 shuffles).
     """
-    positives = [
-        label for label in labels if label.x is not None and label.y is not None
-    ]
+    positives = sorted(
+        (label for label in labels if label.x is not None and label.y is not None),
+        key=lambda label: (label.image_id, label.id),
+    )
     if not positives:
         return np.empty((0, 2), dtype=float), []
     xy = np.array(
@@ -113,8 +130,9 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
     # positives, no fit, reflection split, no outliers, fraction gate);
     # reads better inline than dispersed across helpers.
     """Run RANSAC line-fit validation for `dive_id` and supersede any
-    flagged outliers. Returns the number of labels superseded (0 when
-    the line isn't confident or there aren't enough positives to fit).
+    flagged outliers that are still live. Returns the number of labels
+    this run superseded (0 when the line isn't confident, there aren't
+    enough positives to fit, or everything flagged is already superseded).
 
     Heartbeats around the SDK fetch + each compute milestone + each
     supersede write so a stalled call (large dive's `label_studio_json`
@@ -123,17 +141,18 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
     of where it hung.
 
     Failure semantics: if any individual `put_laser_label` raises, the
-    activity raises and Temporal retries the whole activity. The
-    activity is idempotent at the dive level — already-superseded
-    labels are filtered out by `get_laser_labels` server-side, so a
-    retry sees a smaller population and re-runs the line fit cleanly.
+    activity raises and Temporal retries the whole activity. The retry
+    re-judges the same full population, flags the same set, and writes
+    only what the failed attempt had not yet superseded.
     """
     activity.logger.info(
         "dive_id=%d validation starting; fetching laser labels", dive_id
     )
     activity.heartbeat()
     async with heartbeat_pump(HEARTBEAT_INTERVAL_SECONDS), get_fs_client() as fs:
-        labels = await fs.labels.get_laser_labels(dive_id) or []
+        labels = (
+            await fs.labels.get_laser_labels(dive_id, include_superseded=True) or []
+        )
         activity.logger.info(
             "dive_id=%d fetched %d laser label rows", dive_id, len(labels)
         )
@@ -280,7 +299,8 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
         perp = fit.perpendicular_distance(xy[:, 0], xy[:, 1])
         flagged: list[LaserLabel] = []
         for i, is_outlier in enumerate(outlier_mask):
-            if not is_outlier:
+            # `is False`, not `not`: a legacy NULL row is not live either.
+            if not is_outlier or positives[i].superseded is not False:
                 continue
             label = positives[i]
             activity.logger.info(
@@ -300,6 +320,14 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
             label.superseded = True
             flagged.append(label)
 
+        if not flagged:
+            activity.logger.info(
+                "dive_id=%d: %d outlier laser labels, all already superseded",
+                dive_id,
+                n_outliers,
+            )
+            return 0
+
         # Concurrent supersede PUTs, capped by SUPERSEDE_CONCURRENCY.
         # `asyncio.gather` (return_exceptions=False) raises the first
         # exception bare — matches the existing failure-propagation
@@ -317,9 +345,10 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
         await asyncio.gather(*(_supersede(label) for label in flagged))
 
     activity.logger.info(
-        "dive_id=%d superseded %d/%d positive laser labels",
+        "dive_id=%d superseded %d/%d positive laser labels (%d flagged in all)",
         dive_id,
-        n_outliers,
+        len(flagged),
         xy.shape[0],
+        n_outliers,
     )
-    return n_outliers
+    return len(flagged)

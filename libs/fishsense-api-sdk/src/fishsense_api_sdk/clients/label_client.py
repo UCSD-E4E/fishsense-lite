@@ -541,16 +541,22 @@ class LabelClient(ClientBase):
 
         return response.json()
 
-    async def get_laser_labels(self, dive_id: int) -> List[LaserLabel] | None:
-        """Get laser labels for all images in a dive .
+    async def get_laser_labels(
+        self, dive_id: int, *, include_superseded: bool = False
+    ) -> List[LaserLabel] | None:
+        """Get laser labels for all images in a dive, ordered by (image_id, id).
 
         Args:
             dive_id (int): The ID of the dive to retrieve laser labels for.
+            include_superseded: also return superseded rows. Only the laser
+                validator wants this — it must fit the full population every
+                run. Everything else relies on the default hiding them.
 
         Returns:
             List[LaserLabel] | None: The list of laser labels for the specified dive.
         """
-        response = await self._get(f"/api/v1/dives/{dive_id}/labels/laser")
+        suffix = "?include_superseded=true" if include_superseded else ""
+        response = await self._get(f"/api/v1/dives/{dive_id}/labels/laser{suffix}")
         if response.status_code == 404:
             self.logger.debug("No laser labels found for dive ID %s", dive_id)
             return None
