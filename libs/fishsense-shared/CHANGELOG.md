@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.23.2...fishsense-shared-v0.24.0) (2026-09-26)
+
+
+### Features
+
+* record why laser labels are superseded, and a reviewed tool to revive eroded ones ([#932](https://github.com/UCSD-E4E/fishsense-lite/issues/932)) ([b734db9](https://github.com/UCSD-E4E/fishsense-lite/commit/b734db93ee7bc5403917c00a6ee56c57488c68cf))
+
 ## [0.23.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-shared-v0.23.1...fishsense-shared-v0.23.2) (2026-09-16)
 
 
