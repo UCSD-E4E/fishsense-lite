@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [3.7.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v3.6.1...fishsense-api-v3.7.0) (2026-09-26)
+
+
+### Features
+
+* record why laser labels are superseded, and a reviewed tool to revive eroded ones ([#932](https://github.com/UCSD-E4E/fishsense-lite/issues/932)) ([b734db9](https://github.com/UCSD-E4E/fishsense-lite/commit/b734db93ee7bc5403917c00a6ee56c57488c68cf))
+
 ## [3.6.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v3.6.0...fishsense-api-v3.6.1) (2026-09-26)
 
 

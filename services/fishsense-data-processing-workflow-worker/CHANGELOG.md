@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.11.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.10.5...fishsense-data-processing-workflow-worker-v3.11.0) (2026-09-26)
+
+
+### Features
+
+* record why laser labels are superseded, and a reviewed tool to revive eroded ones ([#932](https://github.com/UCSD-E4E/fishsense-lite/issues/932)) ([b734db9](https://github.com/UCSD-E4E/fishsense-lite/commit/b734db93ee7bc5403917c00a6ee56c57488c68cf))
+
 ## [3.10.5](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-data-processing-workflow-worker-v3.10.4...fishsense-data-processing-workflow-worker-v3.10.5) (2026-09-26)
 
 

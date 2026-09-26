@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [2.7.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.6.2...fishsense-api-workflow-worker-v2.7.0) (2026-09-26)
+
+
+### Features
+
+* record why laser labels are superseded, and a reviewed tool to revive eroded ones ([#932](https://github.com/UCSD-E4E/fishsense-lite/issues/932)) ([b734db9](https://github.com/UCSD-E4E/fishsense-lite/commit/b734db93ee7bc5403917c00a6ee56c57488c68cf))
+
 ## [2.6.2](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-workflow-worker-v2.6.1...fishsense-api-workflow-worker-v2.6.2) (2026-09-16)
 
 
