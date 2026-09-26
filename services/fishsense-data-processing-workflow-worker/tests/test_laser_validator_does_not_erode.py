@@ -47,6 +47,7 @@ from fishsense_api_sdk.models.laser_label import LaserLabel
 from fishsense_data_processing_workflow_worker.activities import (
     validate_laser_labels_for_dive_activity as sut,
 )
+from fishsense_data_processing_workflow_worker.laser_label_validation import judgement
 
 SLOPE, INTERCEPT = 0.4, 100.0
 NORMAL = np.array([-SLOPE, 1.0]) / np.hypot(SLOPE, 1.0)
@@ -180,7 +181,7 @@ async def test_the_guard_does_not_depend_on_the_noise_estimate(monkeypatch):
         flags[int(np.argmax(dist))] = True
         return flags
 
-    monkeypatch.setattr(sut, "flag_outliers", farthest_one)
+    monkeypatch.setattr(judgement, "flag_outliers", farthest_one)
     api = FakeApi(_prod_like_dive(0))
 
     counts = [await _run(api, monkeypatch) for _ in range(3)]
@@ -258,8 +259,8 @@ def test_the_fit_is_fishsense_cores_not_a_vendored_copy():
 
     import fishsense_core.laser as core_laser
 
-    assert sut.fit_dive_line is core_laser.fit_dive_line
-    assert sut.flag_outliers is core_laser.flag_outliers
+    assert judgement.fit_dive_line is core_laser.fit_dive_line
+    assert judgement.flag_outliers is core_laser.flag_outliers
     assert (
         importlib.util.find_spec(
             "fishsense_data_processing_workflow_worker.laser_label_validation.line_fit"

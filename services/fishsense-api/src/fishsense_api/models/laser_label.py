@@ -5,9 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict
 
+from sqlalchemy import Enum as SAEnum
 from sqlmodel import JSON, Column, DateTime, Field, UniqueConstraint
 
 from fishsense_api.models.model_base import ModelBase
+from fishsense_api.models.superseded_reason import SupersededReason
 
 
 class LaserLabel(ModelBase, table=True):
@@ -29,6 +31,22 @@ class LaserLabel(ModelBase, table=True):
     label: str | None = Field(default=None)
     updated_at: datetime | None = Field(sa_type=DateTime(timezone=True), default=None)
     superseded: bool | None = Field(default=False)
+    # Who superseded it; NULL = unknown (every supersede before 2026-09-26).
+    # Stored as VARCHAR, not a native enum, so a new reason needs no
+    # `ALTER TYPE`. See models/superseded_reason.py.
+    superseded_reason: SupersededReason | None = Field(
+        default=None,
+        sa_column=Column(
+            SAEnum(
+                SupersededReason,
+                native_enum=False,
+                create_constraint=False,
+                length=40,
+                values_callable=lambda enum: [member.value for member in enum],
+            ),
+            nullable=True,
+        ),
+    )
     completed: bool | None = Field(default=False)
     # True when this label's image must have its overlay JPEG regenerated:
     # the preprocess cohorts select on "no label row of this kind", so an

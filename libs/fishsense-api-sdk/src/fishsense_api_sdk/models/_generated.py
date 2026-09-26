@@ -273,26 +273,6 @@ class LaserExtrinsics(BaseModel):
     camera_id: int | None = Field(None, title='Camera Id')
 
 
-class LaserLabel(BaseModel):
-    """
-    Model representing a laser label.
-    """
-
-    id: int | None = Field(None, title='Id')
-    label_studio_task_id: int | None = Field(None, title='Label Studio Task Id')
-    label_studio_project_id: int | None = Field(None, title='Label Studio Project Id')
-    x: float | None = Field(None, title='X')
-    y: float | None = Field(None, title='Y')
-    label: str | None = Field(None, title='Label')
-    updated_at: AwareDatetime | None = Field(None, title='Updated At')
-    superseded: bool | None = Field(False, title='Superseded')
-    completed: bool | None = Field(False, title='Completed')
-    needs_reprocess: bool | None = Field(False, title='Needs Reprocess')
-    label_studio_json: dict[str, Any] | None = Field(None, title='Label Studio Json')
-    image_id: int | None = Field(None, title='Image Id')
-    user_id: int | None = Field(None, title='User Id')
-
-
 class LaserPrediction(BaseModel):
     """
     A model-predicted laser dot, in rectified-image pixels (the space
@@ -405,6 +385,22 @@ class SpeciesLabel(BaseModel):
     user_id: int | None = Field(None, title='User Id')
 
 
+class SupersededReason(Enum):
+    """
+    Who dead-lettered a `LaserLabel`, recorded on the row that says so.
+
+    NULL means unknown: every supersede before 2026-09-26 carries it, because
+    nothing recorded the writer until the laser validator was found to have
+    eroded dives a run at a time and the good supersedes could not be told
+    from the bad.
+    """
+
+    validator_3sigma = 'validator_3sigma'
+    validator_coarse_calibration = 'validator_coarse_calibration'
+    manual = 'manual'
+    remediation = 'remediation'
+
+
 class User(BaseModel):
     """
     Model representing a user.
@@ -456,3 +452,24 @@ class Dive(BaseModel):
 
 class HTTPValidationError(BaseModel):
     detail: list[ValidationError] | None = Field(None, title='Detail')
+
+
+class LaserLabel(BaseModel):
+    """
+    Model representing a laser label.
+    """
+
+    id: int | None = Field(None, title='Id')
+    label_studio_task_id: int | None = Field(None, title='Label Studio Task Id')
+    label_studio_project_id: int | None = Field(None, title='Label Studio Project Id')
+    x: float | None = Field(None, title='X')
+    y: float | None = Field(None, title='Y')
+    label: str | None = Field(None, title='Label')
+    updated_at: AwareDatetime | None = Field(None, title='Updated At')
+    superseded: bool | None = Field(False, title='Superseded')
+    superseded_reason: SupersededReason | None = None
+    completed: bool | None = Field(False, title='Completed')
+    needs_reprocess: bool | None = Field(False, title='Needs Reprocess')
+    label_studio_json: dict[str, Any] | None = Field(None, title='Label Studio Json')
+    image_id: int | None = Field(None, title='Image Id')
+    user_id: int | None = Field(None, title='User Id')

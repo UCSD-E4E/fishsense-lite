@@ -16,9 +16,11 @@ import pytest
 from temporalio.testing import ActivityEnvironment
 
 from fishsense_api_sdk.models.laser_label import LaserLabel
+from fishsense_api_sdk.models.superseded_reason import SupersededReason
 from fishsense_data_processing_workflow_worker.activities import (
     validate_laser_labels_for_dive_activity as sut,
 )
+from fishsense_data_processing_workflow_worker.laser_label_validation import judgement
 
 
 def _label(
@@ -447,7 +449,7 @@ async def test_refuses_to_supersede_when_outlier_fraction_exceeds_safety_gate(
         flags[: int(0.6 * xy.shape[0])] = True
         return flags
 
-    monkeypatch.setattr(sut, "flag_outliers", flags_sixty_percent)
+    monkeypatch.setattr(judgement, "flag_outliers", flags_sixty_percent)
     fs = _make_fs(_colinear_labels(30))
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
 
@@ -618,3 +620,34 @@ async def test_a_dive_with_no_slate_labels_behaves_exactly_as_before(monkeypatch
         )
         == 1
     )
+
+
+# --- why it was superseded ---------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_each_supersede_records_which_rule_took_it(monkeypatch):
+    """`superseded` alone could not tell the validator's supersedes from an
+    operator's, which is why remediating the 2026-09 erosion needed a
+    hand-kept exclusion list. Every write now names its rule."""
+    labels = _colinear_labels(60)
+    fish = _label(label_id=906, image_id=9006, x=800.0, y=0.4 * 800.0 + 40.0)
+    slate = _label(label_id=907, image_id=9007, x=820.0, y=0.4 * 820.0 + 180.0)
+    fs = _make_fs(labels=labels + [fish, slate], slate_labels=[_slate_label(9007)])
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    assert (
+        await ActivityEnvironment().run(
+            sut.validate_laser_labels_for_dive_activity, 347
+        )
+        == 2
+    )
+
+    reasons = {
+        image_id: written.superseded_reason
+        for (image_id, written), _ in fs.labels.put_laser_label.await_args_list
+    }
+    assert reasons == {
+        9006: SupersededReason.VALIDATOR_3SIGMA,
+        9007: SupersededReason.VALIDATOR_COARSE_CALIBRATION,
+    }
