@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## [3.6.1](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v3.6.0...fishsense-api-v3.6.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* stop the laser validator eroding dives one hourly run at a time ([#927](https://github.com/UCSD-E4E/fishsense-lite/issues/927)) ([3b5ae55](https://github.com/UCSD-E4E/fishsense-lite/commit/3b5ae55167c6fd10d62fc821fb6ca95766c93bd6))
+
 ## [3.6.0](https://github.com/UCSD-E4E/fishsense-lite/compare/fishsense-api-v3.5.0...fishsense-api-v3.6.0) (2026-09-14)
 
 
