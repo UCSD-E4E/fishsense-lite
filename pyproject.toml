@@ -71,7 +71,12 @@ extension-pkg-allow-list = ["cv2"]
 # stock `superset_config.py`, which isn't pylint-clean by our standards), not
 # first-party package code — exclude it. The changed-files pylint job passes
 # file paths explicitly, and pylint honors `ignore-paths` for those too.
-ignore-paths = ["^deploy/.*$"]
+# `_generated.py` is datamodel-codegen output, compared byte-for-byte against
+# a fresh regeneration by `test_generated_sdk_models_freshness`, so it cannot
+# be edited to satisfy a lint rule: an enum whose values are lowercase
+# (`SupersededReason`) gets lowercase member names there. Black excludes it for
+# the same reason (see `force-exclude` below).
+ignore-paths = ["^deploy/.*$", "^.*/_generated[.]py$"]
 
 [tool.pylint."messages control"]
 # fail-under=10 with all checks on is unworkable for a real codebase;

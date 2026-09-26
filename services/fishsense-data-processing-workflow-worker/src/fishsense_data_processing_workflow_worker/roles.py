@@ -104,6 +104,10 @@ from fishsense_data_processing_workflow_worker.activities.preprocess_slate_image
 from fishsense_data_processing_workflow_worker.activities.preprocess_species_image import (  # noqa: E501  pylint: disable=line-too-long
     preprocess_species_image,
 )
+from fishsense_data_processing_workflow_worker.activities.laser_supersede_remediation import (
+    apply_laser_supersede_remediation_activity,
+    plan_laser_supersede_remediation_activity,
+)
 from fishsense_data_processing_workflow_worker.activities.validate_laser_labels_for_dive_activity import (  # noqa: E501  pylint: disable=line-too-long
     validate_laser_labels_for_dive_activity,
 )
@@ -148,6 +152,9 @@ from fishsense_data_processing_workflow_worker.workflows.preprocess_slate_images
 )
 from fishsense_data_processing_workflow_worker.workflows.preprocess_species_images_workflow import (  # noqa: E501  pylint: disable=line-too-long
     PreprocessSpeciesImagesWorkflow,
+)
+from fishsense_data_processing_workflow_worker.workflows.remediate_laser_supersedes_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    RemediateLaserSupersedesWorkflow,
 )
 from fishsense_data_processing_workflow_worker.workflows.validate_laser_labels_for_dive_workflow import (  # noqa: E501  pylint: disable=line-too-long
     ValidateLaserLabelsForDiveWorkflow,
@@ -205,6 +212,8 @@ LIGHT_WORKFLOWS: Final[Sequence[type]] = (
     EvaluateLaserAutoAcceptWorkflow,
     MeasureFishWorkflow,
     PerformLaserCalibrationWorkflow,
+    # On-demand, operator-reviewed; reads and writes rows only.
+    RemediateLaserSupersedesWorkflow,
     ValidateLaserLabelsForDiveWorkflow,
 )
 
@@ -214,6 +223,8 @@ LIGHT_ACTIVITIES: Final[Sequence[Callable[..., Any]]] = (
     evaluate_laser_auto_accept_activity,
     measure_fish_activity,
     perform_laser_calibration_activity,
+    plan_laser_supersede_remediation_activity,
+    apply_laser_supersede_remediation_activity,
     validate_laser_labels_for_dive_activity,
 )
 

@@ -146,31 +146,6 @@ class TestUnmentionedFieldsSurvive:
         assert rows[0].completed is True
 
 
-@pytest.fixture
-async def http(session):
-    """The app over the in-memory session, without running the real lifespan.
-
-    Entering `TestClient`'s context manager would run `lifespan`, which calls
-    `create_all` against Postgres and then `run_alembic_upgrade`.
-    """
-    from fastapi.testclient import TestClient
-
-    from tests_support.app import seed_placeholder_settings
-
-    seed_placeholder_settings()
-
-    import fishsense_api.controllers  # noqa: F401  pylint: disable=unused-import
-    from fishsense_api.database import get_async_session
-    from fishsense_api.server import app
-
-    async def _override():
-        yield session
-
-    app.dependency_overrides[get_async_session] = _override
-    yield TestClient(app)
-    app.dependency_overrides.pop(get_async_session, None)
-
-
 @pytest.mark.parametrize("model", reprocess_label_kinds())
 async def test_the_flag_survives_a_real_request_body(http, session, model):
     """The same property, but crossing HTTP.
