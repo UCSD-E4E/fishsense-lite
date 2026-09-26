@@ -5,7 +5,7 @@ from importlib.metadata import version
 
 import validators
 from dynaconf import Dynaconf, Validator
-
+from fishsense_core.laser import MIN_POINTS_FOR_LINE
 from fishsense_shared import (
     configure_logging as _configure_logging,
     get_config_path,
@@ -13,9 +13,6 @@ from fishsense_shared import (
     url_condition,
 )
 
-from fishsense_data_processing_workflow_worker.laser_label_validation.line_fit import (
-    MIN_POINTS_FOR_LINE,
-)
 from fishsense_data_processing_workflow_worker.role_names import ROLE_ALL, ROLES
 
 APP_NAME = "e4efs_data_processing_workflow_worker"

@@ -495,19 +495,21 @@ async def test_refuses_to_supersede_when_outlier_fraction_exceeds_safety_gate(
     bad labelers. Without this gate the activity propagates the line
     fit's mistake to the DB at scale; with it we log a warning, return
     0, and leave the dive's labels alone for manual review.
+
+    The mask is stubbed. Since fishsense-core's line fit estimates label
+    noise from signed residuals (core #85), a real fit only flags a
+    majority when the median label sits far off the line — and then
+    RANSAC takes that line instead, or the reflection check stands down
+    first. The gate is defence in depth, so it is tested as policy on
+    whatever mask it is handed.
     """
-    # 30 positives total, 18 mutated to be far off the line — 60%
-    # outlier rate, above the 50% gate.
     labels = _colinear_labels(30)
-    outlier_idxs = list(range(0, 18))
-    for idx in outlier_idxs:
-        # Alternating sign so the points still scatter around the
-        # original line rather than coordinate-shifting to a new one
-        # (which RANSAC could pick up as a parallel fit).
-        offset = 50.0 if idx % 2 == 0 else -50.0
-        labels[idx].y = labels[idx].y + offset  # type: ignore[operator]
     fs = _make_fs(labels)
     monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+    # 18 of 30 flagged — 60%, above the 50% gate.
+    mask = np.zeros(30, dtype=bool)
+    mask[:18] = True
+    monkeypatch.setattr(sut, "flag_outliers", lambda *a, **kw: mask)
 
     env = ActivityEnvironment()
     with caplog.at_level("WARNING"):
@@ -521,6 +523,36 @@ async def test_refuses_to_supersede_when_outlier_fraction_exceeds_safety_gate(
         "refusing" in rec.message.lower() and "dive_id=99" in rec.message
         for rec in caplog.records
     ), f"expected a 'refusing' WARNING for dive_id=99, got {[r.message for r in caplog.records]}"
+
+
+@pytest.mark.asyncio
+async def test_a_dive_mostly_off_its_line_flags_nothing(monkeypatch, caplog):
+    """18 of 30 labels scattered ±50 px either side of the line. The
+    vendored fit took the MAD of |distance|, which on this bimodal set
+    collapsed to ~6 px and flagged 60% — only the safety gate stopped the
+    supersede. core's signed-residual MAD reads the scatter as ~66 px of
+    noise, so nothing is flagged: the same no-write outcome, reached
+    without leaning on the gate."""
+    labels = _colinear_labels(30)
+    for idx in range(18):
+        # Alternating sign so the points still scatter around the
+        # original line rather than coordinate-shifting to a new one
+        # (which RANSAC could pick up as a parallel fit).
+        offset = 50.0 if idx % 2 == 0 else -50.0
+        labels[idx].y = labels[idx].y + offset  # type: ignore[operator]
+    fs = _make_fs(labels)
+    monkeypatch.setattr(sut, "get_fs_client", lambda: fs)
+
+    env = ActivityEnvironment()
+    with caplog.at_level("INFO"):
+        result = await env.run(sut.validate_laser_labels_for_dive_activity, 99)
+
+    assert result == 0
+    fs.labels.put_laser_label.assert_not_called()
+    assert any(
+        "no outlier laser labels" in rec.message and "dive_id=99" in rec.message
+        for rec in caplog.records
+    ), [r.message for r in caplog.records]
 
 
 @pytest.mark.asyncio
