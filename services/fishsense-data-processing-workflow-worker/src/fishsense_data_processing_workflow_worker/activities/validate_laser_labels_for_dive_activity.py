@@ -50,17 +50,11 @@ had; reviving a superseded label requires an explicit operator action
 from __future__ import annotations
 
 import asyncio
-from typing import List
 
-import numpy as np
 from fishsense_api_sdk.models.dive_laser_line import DiveLaserLine
 from fishsense_api_sdk.models.laser_label import LaserLabel
-from fishsense_core.laser import (
-    COARSE_CALIBRATION_TOLERANCE_PX,
-    MIN_POINTS_FOR_LINE,
-    fit_dive_line,
-    flag_outliers,
-)
+from fishsense_api_sdk.models.superseded_reason import SupersededReason
+from fishsense_core.laser import COARSE_CALIBRATION_TOLERANCE_PX, MIN_POINTS_FOR_LINE
 from temporalio import activity
 
 from fishsense_data_processing_workflow_worker.activities.heartbeat import (
@@ -68,8 +62,16 @@ from fishsense_data_processing_workflow_worker.activities.heartbeat import (
     heartbeat_pump,
 )
 from fishsense_data_processing_workflow_worker.activities.utils import get_fs_client
-from fishsense_data_processing_workflow_worker.laser_label_validation.reflection import (
-    detect_reflection_split,
+from fishsense_data_processing_workflow_worker.laser_label_validation.judgement import (
+    GATE,
+    MAX_OUTLIER_FRACTION,
+    NO_FIT,
+    NO_OUTLIERS,
+    NOT_CONFIDENT,
+    REFLECTION,
+    TOO_FEW,
+    calibration_image_ids,
+    judge_dive,
 )
 
 __all__ = [
@@ -87,40 +89,6 @@ __all__ = [
 # every outbound HTTP slot when multiple validate workflows run in
 # parallel against different dives.
 SUPERSEDE_CONCURRENCY = 8
-
-# Safety gate: refuse to supersede when more than this fraction of a
-# dive's positive labels would be flagged. At >50% the line fit is
-# more likely to be degenerate (a small accidentally-aligned cluster
-# being picked over the real majority) than the labelers being wrong
-# at that rate. Empirically prod has ~6 dives at 50%+ supersede rate
-# that are almost certainly degenerate fits — refusing to act on them
-# costs us nothing (the labels stay as-is, available for manual
-# review) and prevents propagating the line-fit error to the DB.
-MAX_OUTLIER_FRACTION = 0.5
-
-
-def _positive_xy(labels: List[LaserLabel]) -> tuple[np.ndarray, List[LaserLabel]]:
-    """Pull the positive (x, y) labels and the matching label objects.
-
-    A "positive" is a laser-localization label with both coordinates set.
-    Sentinel rows seeded by populate (no laser visible) and skipped
-    annotations land here as null x/y and are excluded.
-
-    Ordered by (image_id, id) here rather than trusting the API: RANSAC picks
-    point pairs by row index, so the same labels in another order can settle
-    on another line (fishsense-core measured dive 257 flagging 41-63 labels
-    across 50 shuffles).
-    """
-    positives = sorted(
-        (label for label in labels if label.x is not None and label.y is not None),
-        key=lambda label: (label.image_id, label.id),
-    )
-    if not positives:
-        return np.empty((0, 2), dtype=float), []
-    xy = np.array(
-        [(float(label.x), float(label.y)) for label in positives], dtype=float
-    )
-    return xy, positives
 
 
 @activity.defn
@@ -170,43 +138,38 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
         # superseding the dive's slate dots -- the failure this exists to
         # prevent. `stage 13` consumes only completed, non-superseded slate
         # labels, so those are exactly the frames that get the loose bound.
-        slate_labels = await fs.labels.get_dive_slate_labels(dive_id) or []
-        calibration_image_ids = {
-            label.image_id
-            for label in slate_labels
-            if label.image_id is not None
-            and label.completed
-            and not getattr(label, "superseded", False)
-        }
+        calibration_ids = calibration_image_ids(
+            await fs.labels.get_dive_slate_labels(dive_id) or []
+        )
         activity.logger.info(
             "dive_id=%d has %d calibration frames among its slate labels; "
             "those are judged at %.0fpx rather than 3 sigma",
             dive_id,
-            len(calibration_image_ids),
+            len(calibration_ids),
             COARSE_CALIBRATION_TOLERANCE_PX,
         )
         activity.heartbeat()
 
-        xy, positives = _positive_xy(labels)
-        if xy.shape[0] < MIN_POINTS_FOR_LINE:
+        judgement = judge_dive(labels, calibration_ids)
+        n_positives = len(judgement.positives)
+        if judgement.status == TOO_FEW:
             activity.logger.info(
                 "dive_id=%d has %d positive laser labels (<%d); skipping line fit",
                 dive_id,
-                xy.shape[0],
+                n_positives,
                 MIN_POINTS_FOR_LINE,
             )
             return 0
-
-        fit = fit_dive_line(xy)
-        if fit is None:
+        if judgement.status == NO_FIT:
             activity.logger.info(
                 "dive_id=%d: line fit returned None despite %d positives "
                 "(unexpected; check inputs)",
                 dive_id,
-                xy.shape[0],
+                n_positives,
             )
             return 0
 
+        fit = judgement.fit
         activity.logger.info(
             "dive_id=%d line fit: n=%d inliers=%d (%.0f%%) "
             "residual_std=%.2fpx label_noise_mad=%.2fpx "
@@ -221,11 +184,9 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
             fit.is_confident,
         )
 
-        # Persist the line fingerprint (byproduct we already computed) so
-        # (camera_id, line) becomes queryable: borrow candidates, drift,
-        # mount-swap epochs, pooled calibration. Written every run — even a
-        # clean dive with no outliers — and tightens as outliers are
-        # superseded across runs. Upsert keyed on dive_id.
+        # Persist the line (a byproduct already computed). Written every run,
+        # even on a clean dive; upsert keyed on dive_id. It is a WITHIN-dive
+        # property — never a prior for another dive (see CLAUDE.md).
         await fs.dives.put_dive_laser_line(
             dive_id,
             DiveLaserLine(
@@ -248,15 +209,12 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
         # reflection on the slate (prod dive 77) — defeats single-line
         # validation in exactly the wrong way: with the artifact in the
         # majority, RANSAC anchors on the WRONG line and 3-sigma flagging
-        # would supersede the true one; with a near-even split, confidence
-        # collapses and the dive is silently skipped while stage 13 consumes
-        # the poisoned mix. Choosing which line is real needs cross-dive
-        # consensus (sibling dives, same camera), which the per-dive validator
-        # doesn't have — so on detection it logs loudly and stands down,
-        # leaving the labels for operator remediation (supersede the artifact
-        # line, delete the extrinsics, refit — see the dive-77 recipe).
-        suspect = detect_reflection_split(xy, fit)
-        if suspect is not None:
+        # would supersede the true one. Choosing which line is real needs
+        # cross-dive consensus the per-dive validator doesn't have — so on
+        # detection it logs loudly and stands down, leaving the labels for
+        # operator remediation (the dive-77 recipe).
+        if judgement.status == REFLECTION:
+            suspect = judgement.reflection
             activity.logger.error(
                 "dive_id=%d REFLECTION SUSPECT: laser dots form two parallel "
                 "lines — primary n=%d, secondary n=%d at %.1fpx separation "
@@ -272,37 +230,30 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
             )
             return 0
 
-        calibration_mask = np.array(
-            [label.image_id in calibration_image_ids for label in positives],
-            dtype=bool,
-        )
-        outlier_mask = flag_outliers(xy, fit, calibration_mask=calibration_mask)
-        n_outliers = int(outlier_mask.sum())
-        if n_outliers == 0:
+        if judgement.status in (NOT_CONFIDENT, NO_OUTLIERS):
             activity.logger.info("dive_id=%d: no outlier laser labels", dive_id)
             return 0
 
-        outlier_fraction = n_outliers / xy.shape[0]
-        if outlier_fraction > MAX_OUTLIER_FRACTION:
+        n_outliers = judgement.n_flagged_before_gate
+        if judgement.status == GATE:
             activity.logger.warning(
                 "dive_id=%d would supersede %d/%d positive laser labels "
                 "(%.0f%%, gate=%.0f%%); refusing — line fit is likely "
                 "degenerate. Labels left unchanged for manual review.",
                 dive_id,
                 n_outliers,
-                xy.shape[0],
-                100.0 * outlier_fraction,
+                n_positives,
+                100.0 * n_outliers / n_positives,
                 100.0 * MAX_OUTLIER_FRACTION,
             )
             return 0
 
-        perp = fit.perpendicular_distance(xy[:, 0], xy[:, 1])
         flagged: list[LaserLabel] = []
-        for i, is_outlier in enumerate(outlier_mask):
-            # `is False`, not `not`: a legacy NULL row is not live either.
-            if not is_outlier or positives[i].superseded is not False:
+        for label in judgement.positives:
+            # `is not False`, not `not`: a legacy NULL row is not live either.
+            if label.id not in judgement.flagged_ids or label.superseded is not False:
                 continue
-            label = positives[i]
+            coarse = judgement.is_calibration(label.id)
             activity.logger.info(
                 "dive_id=%d OUTLIER laser_label_id=%s image_id=%s "
                 "x=%.1f y=%.1f perp=%.2fpx rule=%s label_studio_task_id=%s "
@@ -312,12 +263,17 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
                 label.image_id,
                 float(label.x),
                 float(label.y),
-                float(perp[i]),
-                "coarse-calibration" if calibration_mask[i] else "3-sigma",
+                judgement.perpendicular_px[label.id],
+                "coarse-calibration" if coarse else "3-sigma",
                 label.label_studio_task_id,
                 label.label_studio_project_id,
             )
             label.superseded = True
+            label.superseded_reason = (
+                SupersededReason.VALIDATOR_COARSE_CALIBRATION
+                if coarse
+                else SupersededReason.VALIDATOR_3SIGMA
+            )
             flagged.append(label)
 
         if not flagged:
@@ -348,7 +304,7 @@ async def validate_laser_labels_for_dive_activity(dive_id: int) -> int:
         "dive_id=%d superseded %d/%d positive laser labels (%d flagged in all)",
         dive_id,
         len(flagged),
-        xy.shape[0],
+        n_positives,
         n_outliers,
     )
     return len(flagged)

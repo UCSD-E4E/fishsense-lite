@@ -338,6 +338,9 @@ from fishsense_api_workflow_worker.workflows.sync_label_studio_dive_slate_labels
 from fishsense_api_workflow_worker.workflows.sync_label_studio_headtail_labels_workflow import (
     SyncLabelStudioHeadTailLabelsWorkflow,
 )
+from fishsense_api_workflow_worker.workflows.remediate_laser_supersedes_parent_workflow import (  # noqa: E501  pylint: disable=line-too-long
+    RemediateLaserSupersedesParentWorkflow,
+)
 from fishsense_api_workflow_worker.workflows.sync_label_studio_laser_labels_workflow import (
     SyncLabelStudioLaserLabelsWorkflow,
 )
@@ -851,6 +854,8 @@ async def main():
             task_queue=TASK_QUEUE_NAME,
             workflows=[
                 SyncLabelStudioLaserLabelsWorkflow,
+                # On-demand, operator-reviewed; see tools/remediate_laser_supersedes.py.
+                RemediateLaserSupersedesParentWorkflow,
                 SyncLabelStudioHeadTailLabelsWorkflow,
                 SyncLabelStudioDiveSlateLabelsWorkflow,
                 SyncLabelStudioSpeciesLabelsWorkflow,

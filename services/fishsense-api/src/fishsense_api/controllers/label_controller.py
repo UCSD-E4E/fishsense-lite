@@ -6,6 +6,8 @@ from typing import List
 
 from fastapi import Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 from sqlalchemy import alias
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -56,7 +58,14 @@ async def _upsert_label(session: AsyncSession, model, image_id: int, payload):
     through `jsonable_encoder` marks every field as set.
     """
     provided = set(payload.model_fields_set)
-    payload = model.model_validate(jsonable_encoder(payload))
+    try:
+        payload = model.model_validate(jsonable_encoder(payload))
+    except ValidationError as exc:
+        # A `table=True` body is not validated when FastAPI parses it, so this
+        # is the first check a bad value meets -- e.g. an unknown
+        # `superseded_reason`. Answer it as the 422 the caller's mistake is,
+        # not a 500.
+        raise RequestValidationError(exc.errors()) from exc
     payload.image_id = image_id
     provided.add("image_id")
 

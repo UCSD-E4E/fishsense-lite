@@ -2727,6 +2727,52 @@ runs, so an unchanged dive gets the same answer every hour
 A legacy row with `superseded IS NULL` is fitted but never written (prod has
 none carrying a dot; every resolver reads NULL as not live).
 
+**`laserlabel.superseded_reason` says who superseded a row (2026-09-26).**
+`validator_3sigma` / `validator_coarse_calibration` (the validator, per rule),
+`manual` (an operator — **set it in every hand-written UPDATE**, the dive-77
+and 347 recipes included), `remediation` (the revival tool; on a *live* row it
+records that remediation made the last change). NULL = unknown, which is every
+supersede before this column. A plain VARCHAR, not a native enum, so adding a
+reason needs no `ALTER TYPE`. An unknown value is a 422: the label PUT now maps
+the in-handler `ValidationError` of a `table=True` body to FastAPI's own 422
+instead of a 500.
+
+**`judge_dive` (`laser_label_validation/judgement.py`) is the one definition
+of the validator's verdict**, shared with the remediation tool so a revived
+label is exactly one the next hourly run keeps. Its `judged` flag is the thing
+to know: too few positives, an unconfident line, a reflection split and a
+refused (>50%) fit all flag *nothing*, and none of them is a verdict that the
+labels are good.
+
+**Reviving eroded labels: `RemediateLaserSupersedesParentWorkflow`**, driven by
+
+    python -m fishsense_api_workflow_worker.remediate_laser_supersedes \
+        dry-run --out report.json [--dives 7,9] [--exclusions excl.json]
+    python -m fishsense_api_workflow_worker.remediate_laser_supersedes \
+        apply --report report.json
+
+inside the api-worker container. It wakes the light worker and runs the
+data-worker child, which judges every dive once and proposes reviving each
+superseded, *completed* label the judgement keeps — only on dives it actually
+judged, never an excluded dive or label, never a reflection suspect (reported
+for review instead). Apply takes dives, exclusions and digest from the reviewed
+report only; the child re-plans and refuses unless the digest matches, the
+apply activity re-checks each dive against current state and refuses (writing
+nothing) any id not in its fresh plan, and an empty plan is a clean no-op, so
+re-applying does nothing. Every revival is logged `REVIVED laser_label_id=…`.
+
+What a revival does downstream (traced 2026-09-26, file:line in PR #932's body):
+stages 5.1, head/tail predict+populate, species populate, laser depth, stage 14
+and the view pick it up on their own. **Needs a human:** existing
+`LaserExtrinsics` are never refit (delete the row to force a new id); a standing
+calibration refusal does not expire, because a revival does not move
+`updated_at` (`DELETE /api/v1/dives/{id}/calibration-refused/`); an image
+species-labelled after stage 6.1 ran needs 6.1 redone (drop its LABEL_STUDIO
+clusters) before stage 14 measures it; an image in no PREDICTION cluster cannot
+reach stage 2; on an image with two laser labels, stages 13/14 read an
+unordered "first" live row, so a revival can change their input with no
+provenance. `needs_reprocess` is the wrong tool for all of these.
+
 **The fitted line is a WITHIN-DIVE property. It is not stable across
 mount changes, so one dive's line is never a prior for another dive.**
 Demonstrated 2026-09-03.

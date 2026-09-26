@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Dict
 
 from fishsense_api_sdk.models.model_base import ModelBase
+from fishsense_api_sdk.models.superseded_reason import SupersededReason
 
 
 class LaserLabel(ModelBase):
@@ -17,6 +18,8 @@ class LaserLabel(ModelBase):
     label: str | None
     updated_at: datetime | None
     superseded: bool | None
+    # Who superseded it; None = unknown. Set it whenever you set `superseded`.
+    superseded_reason: SupersededReason | None = None
     completed: bool | None
     needs_reprocess: bool = False
     label_studio_json: Dict[str, Any] | str | None

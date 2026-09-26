@@ -106,6 +106,9 @@ def test_light_role_holds_the_stages_with_no_per_image_fan_out():
         "evaluate_laser_auto_accept_activity",
         "measure_fish_activity",
         "perform_laser_calibration_activity",
+        # The on-demand laser-supersede remediation: rows and numpy only.
+        "plan_laser_supersede_remediation_activity",
+        "apply_laser_supersede_remediation_activity",
         "validate_laser_labels_for_dive_activity",
     }
     assert {workflow.__name__ for workflow in roles.LIGHT_WORKFLOWS} == {
@@ -114,6 +117,7 @@ def test_light_role_holds_the_stages_with_no_per_image_fan_out():
         "EvaluateLaserAutoAcceptWorkflow",
         "MeasureFishWorkflow",
         "PerformLaserCalibrationWorkflow",
+        "RemediateLaserSupersedesWorkflow",
         "ValidateLaserLabelsForDiveWorkflow",
     }
 
