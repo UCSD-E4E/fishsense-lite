@@ -2761,7 +2761,7 @@ apply activity re-checks each dive against current state and refuses (writing
 nothing) any id not in its fresh plan, and an empty plan is a clean no-op, so
 re-applying does nothing. Every revival is logged `REVIVED laser_label_id=…`.
 
-What a revival does downstream (traced 2026-09-26, file:line in PR #931's body):
+What a revival does downstream (traced 2026-09-26, file:line in PR #932's body):
 stages 5.1, head/tail predict+populate, species populate, laser depth, stage 14
 and the view pick it up on their own. **Needs a human:** existing
 `LaserExtrinsics` are never refit (delete the row to force a new id); a standing
