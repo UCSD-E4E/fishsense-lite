@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from fishsense_data_processing_workflow_worker.laser_label_validation.line_fit import (
+from fishsense_core.laser import (
     fit_dive_line,
 )
 from fishsense_data_processing_workflow_worker.laser_label_validation.reflection import (

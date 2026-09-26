@@ -751,7 +751,7 @@ dev = [
 
 [[package]]
 name = "fishsense-api-workflow-worker"
-version = "2.5.0"
+version = "2.6.2"
 source = { editable = "services/fishsense-api-workflow-worker" }
 dependencies = [
     { name = "boto3" },
@@ -851,8 +851,8 @@ dev = [
 
 [[package]]
 name = "fishsense-core"
-version = "4.0.0"
-source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v4.0.0/fishsense_core-4.0.0-cp313-cp313-manylinux_2_34_x86_64.whl" }
+version = "4.1.0"
+source = { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v4.1.0/fishsense_core-4.1.0-cp313-cp313-manylinux_2_34_x86_64.whl" }
 dependencies = [
     { name = "numpy" },
     { name = "opencv-python-headless" },
@@ -861,7 +861,7 @@ dependencies = [
     { name = "scipy" },
 ]
 wheels = [
-    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v4.0.0/fishsense_core-4.0.0-cp313-cp313-manylinux_2_34_x86_64.whl", hash = "sha256:75396ed9200cf20fd621965ce3584cc2a460bd253ee1964f60870282fb34d428" },
+    { url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v4.1.0/fishsense_core-4.1.0-cp313-cp313-manylinux_2_34_x86_64.whl", hash = "sha256:a47917f5eb300c85e737891e93dcdabb42fcfce3260266de6d73e4f58a8d34f9" },
 ]
 
 [package.optional-dependencies]
@@ -878,7 +878,6 @@ slate = [
 [package.metadata]
 requires-dist = [
     { name = "bm3d", marker = "extra == 'denoise'", specifier = ">=4.0" },
-    { name = "fishsense-api-sdk", marker = "extra == 'rectified'" },
     { name = "huggingface-hub", marker = "extra == 'laser-detector'", specifier = ">=0.26" },
     { name = "huggingface-hub", marker = "extra == 'slate'", specifier = ">=0.26" },
     { name = "numpy", specifier = ">=2.3.5" },
@@ -894,7 +893,7 @@ provides-extras = ["denoise", "laser-detector", "rectified", "slate"]
 
 [[package]]
 name = "fishsense-data-processing-workflow-worker"
-version = "3.10.0"
+version = "3.10.4"
 source = { editable = "services/fishsense-data-processing-workflow-worker" }
 dependencies = [
     { name = "boto3" },
@@ -953,7 +952,7 @@ requires-dist = [
     { name = "einops", specifier = ">=0.8.0" },
     { name = "fishsense-api-sdk", editable = "libs/fishsense-api-sdk" },
     { name = "fishsense-core", extras = ["laser-detector", "slate"], marker = "python_full_version != '3.13.*'" },
-    { name = "fishsense-core", extras = ["laser-detector", "slate"], marker = "python_full_version == '3.13.*'", url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v4.0.0/fishsense_core-4.0.0-cp313-cp313-manylinux_2_34_x86_64.whl" },
+    { name = "fishsense-core", extras = ["laser-detector", "slate"], marker = "python_full_version == '3.13.*'", url = "https://github.com/UCSD-E4E/fishsense-core/releases/download/fishsense-core-v4.1.0/fishsense_core-4.1.0-cp313-cp313-manylinux_2_34_x86_64.whl" },
     { name = "fishsense-shared", editable = "libs/fishsense-shared" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "label-studio-sdk", specifier = ">=2.0.7" },
@@ -1023,7 +1022,7 @@ dev = [
 
 [[package]]
 name = "fishsense-shared"
-version = "0.23.1"
+version = "0.23.2"
 source = { editable = "libs/fishsense-shared" }
 dependencies = [
     { name = "dynaconf" },

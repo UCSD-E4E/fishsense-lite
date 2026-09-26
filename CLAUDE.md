@@ -2693,15 +2693,39 @@ line through the positives, flags labels >3σ off it (with a 1-px MAD
 floor for tight small-N dives), and **supersedes each flagged label**
 by writing `superseded=True` back through `put_laser_label`.
 
-Iterative-cleanup property: `get_laser_labels` filters
-`superseded=False` server-side, so a re-run on the same dive sees a
-smaller population, refits the line, and may flag additional
-borderline labels that are now visible as outliers relative to the
-cleaned inlier set. The hourly schedule re-runs against complete
-dives, so this naturally tightens over time. Each per-dive run is
-idempotent at the dive level — a partial failure mid-supersede leaves
-the previously-superseded labels in place, and the next run picks up
-where it left off.
+**Each run is one judgement of the dive's FULL population — and that is
+the fix for a prod-scale data loss, not a style choice (2026-09-26).** This
+paragraph used to call it an "iterative-cleanup property" that the validator
+re-fitted only the survivors (`get_laser_labels` hides superseded rows) and so
+"naturally tightens over time". It did not tighten; it eroded. `flag_outliers`
+estimates its noise scale from the rows it is handed, so removing the flagged
+tail shrank the next run's estimate and flagged more, hour after hour. Prod
+dive 521 lost 15, then 7, then 1 label on consecutive runs with no label
+edited between them, and a deterministic replay reproduces those exact 23.
+By 2026-09-26, 14,523 of 47,562 positive labels (30.5%) were superseded, 42
+dives past 50% — which no single run can do, because of the fraction gate.
+The vendored `line_fit.py` made each pass worse (MAD over *absolute*
+residuals, ~0.59 sigma, flagging ~7.6% of clean labels); fishsense-core 4.1.0
+fixed that (#85) and now owns the fit (`fishsense_core.laser`), but the
+estimator fix alone does not stop erosion — iterated, 4.1.0 still erodes 91
+of 272 dives, because their line drifts or steps mid-dive (#88).
+
+So the validator fetches with `include_superseded=True`, orders rows by
+`(image_id, id)` itself (RANSAC picks pairs by row index — core measured one
+dive flagging 41-63 labels across shuffles), fits and flags once, and
+supersedes only what is flagged *and still live*. Nothing carries over between
+runs, so an unchanged dive gets the same answer every hour
+(`test_laser_validator_does_not_erode.py`). Two residual properties to know:
+
+* **It never un-supersedes.** Most of what the erosion took now passes the
+  fit; reviving those is a reviewed operator decision, never the hourly job.
+* **New labels can still change the answer.** A label added mid-dive can move
+  RANSAC to another line and flag a different set, and supersedes are
+  permanent. The validator runs only on dives whose labelling is complete, so
+  this is rare, but it is not impossible.
+
+A legacy row with `superseded IS NULL` is fitted but never written (prod has
+none carrying a dot; every resolver reads NULL as not live).
 
 **The fitted line is a WITHIN-DIVE property. It is not stable across
 mount changes, so one dive's line is never a prior for another dive.**
@@ -2753,18 +2777,6 @@ calibration. If a calibration was already computed using a
 later-superseded label, the calibration row stays as-is until
 something explicitly recomputes it; there's no automatic invalidation.
 
-Open follow-up:
-
-1. **Replace the vendored copy of `line_fit.py` with a real
-   dependency.** The kernel was duplicated from
-   `UCSD-E4E/2026-05-02_laser_detector` @ commit 3d5d2e8 into
-   `services/fishsense-data-processing-workflow-worker/src/.../laser_label_validation/line_fit.py`
-   because that repo says "early — nothing trained yet" and isn't
-   published. Once the laser-detector cuts a versioned release, drop
-   the vendored module and add it as a workspace / git dep in the
-   data-processing worker's `pyproject.toml`. The vendored file has a
-   header comment pointing at the source.
-
 **Calibration frames are judged coarsely, not at 3σ (added 2026-09-14).** A
 frame carrying a completed, non-superseded `DiveSlateLabel` is a calibration
 observation, and the dive line is fitted overwhelmingly from the *measurement*
@@ -2805,7 +2817,10 @@ after stage 13 — it is dispatched from the hourly laser sync today, before any
 calibration exists.
 
 Tuning knobs if the writeback turns out too aggressive (false-positive
-rate too high, watch the OUTLIER log lines):
+rate too high, watch the OUTLIER log lines). They are
+`fishsense_core.laser` constants, so moving one means passing it explicitly
+at the call site (`flag_outliers` takes `sigma`, `mad_floor_px`,
+`coarse_tolerance_px`) or asking core for a release:
 
 - Raise `DEFAULT_OUTLIER_SIGMA` (currently 3.0) — straightforward
   threshold loosening.

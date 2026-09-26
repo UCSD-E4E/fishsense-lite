@@ -163,6 +163,26 @@ class TestLabelClient:  # pylint: disable=too-many-public-methods
             async with client:
                 assert await client.get_laser_labels(999) is None
 
+    async def test_get_laser_labels_default_path_is_unchanged(self):
+        client = _make_client()
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = _mock_404()
+            async with client:
+                await client.get_laser_labels(7)
+        mock_get.assert_awaited_once_with("/api/v1/dives/7/labels/laser")
+
+    async def test_get_laser_labels_passes_include_superseded(self):
+        """The laser validator's full-population read; see the API's
+        `test_laser_labels_include_superseded`."""
+        client = _make_client()
+        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = _mock_404()
+            async with client:
+                await client.get_laser_labels(7, include_superseded=True)
+        mock_get.assert_awaited_once_with(
+            "/api/v1/dives/7/labels/laser?include_superseded=true"
+        )
+
     async def test_get_species_labels_returns_none_on_404(self):
         client = _make_client()
         with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
